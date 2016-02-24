@@ -45,7 +45,7 @@ setup(
     package_data = {
         '' : ['examples/config'],
     },
-    long_description=read('README'),
+    long_description=read('README.md'),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Console",
