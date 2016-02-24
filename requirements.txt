@@ -1,0 +1,3 @@
+boto>=2.39
+paramiko
+python-dateutil

@@ -9,4 +9,4 @@ python:
 
 sudo: false
 
-script: tests/test.sh
+script: bash tests/test.sh
