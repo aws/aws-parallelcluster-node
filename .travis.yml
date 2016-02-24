@@ -7,7 +7,7 @@ python:
   - "3.4"
   - "3.5"
 
-installl:
+install:
   - pip install -r requirements.txt
   - pip install -e .
 
