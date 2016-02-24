@@ -45,7 +45,7 @@ setup(
     package_data = {
         '' : ['examples/config'],
     },
-    long_description=read('README.md'),
+    long_description = ("cfncluster-node is the python package installed on the Amazon EC2 instances launched as part of CfnCluster."),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Console",
