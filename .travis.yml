@@ -7,6 +7,11 @@ python:
   - "3.4"
   - "3.5"
 
+installl:
+  - pip install -r requirements.txt
+  - pip install -e .
+
 sudo: false
 
-script: bash tests/test.sh
+script: sh tests/test.sh
+
