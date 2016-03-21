@@ -37,7 +37,7 @@ def runPipe(cmds):
 
 def getJobs(hostname):
     # Checking for running jobs on the node
-    commands = ['/opt/torque/bin/qstat -r -n -1', ('grep ' + hostname.split('.')[0])]
+    commands = ['/opt/torque/bin/qstat -r -t -n -1', ('grep ' + hostname.split('.')[0])]
     try:
         status, output = runPipe(commands)
     except subprocess.CalledProcessError:
