@@ -1,4 +1,4 @@
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Amazon Software License (the "License"). You may not use this file except in compliance with the
 # License. A copy of the License is located at
@@ -15,25 +15,26 @@ import subprocess as sub
 import os
 import paramiko
 import logging
+import shlex
 
 log = logging.getLogger(__name__)
 
 def __runCommand(command):
     log.debug(repr(command))
-    _command = command
+    _command = shlex.split(command)
+    log.debug(_command)
     try:
         sub.check_call(_command, env=dict(os.environ))
     except sub.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
 
-
-def addHost(hostname,cluster_user):
+def addHost(hostname,cluster_user,slots):
     log.info('Adding %s', hostname)
 
-    command = ['/opt/torque/bin/qmgr', '-c', ('create node %s' % hostname)]
+    command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
     __runCommand(command)
 
-    command = ['/opt/torque/bin/pbsnodes', '-c', hostname]
+    command = ('/opt/torque/bin/pbsnodes -c %s' % hostname)
     __runCommand(command)
 
     # Connect and hostkey
@@ -63,18 +64,18 @@ def addHost(hostname,cluster_user):
     ssh.save_host_keys(hosts_key_file)
     ssh.close()
 
-    command = ['/etc/init.d/pbs_server', 'restart']
+    command = ('/etc/init.d/pbs_server restart')
     __runCommand(command)
 
 def removeHost(hostname, cluster_user):
     log.info('Removing %s', hostname)
 
-    command = ['/opt/torque/bin/pbsnodes', '-o', hostname]
+    command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)
     __runCommand(command)
 
-    command = ['/opt/torque/bin/qmgr', '-c', ('delete node %s' % hostname)]
+    command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
     __runCommand(command)
 
-    command = ['/etc/init.d/pbs_server', 'restart']
+    command = ('/etc/init.d/pbs_server restart')
     __runCommand(command)
 

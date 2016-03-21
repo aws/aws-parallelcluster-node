@@ -1,4 +1,4 @@
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Amazon Software License (the "License"). You may not use this file except in compliance with the
 # License. A copy of the License is located at
@@ -15,22 +15,24 @@ import subprocess as sub
 import os
 import paramiko
 import logging
+import shlex
 
 log = logging.getLogger(__name__)
 
 def __runOpenlavaCommand(command):
     log.debug(repr(command))
-    _command = command
+    _command = shlex.split(command)
+    log.debug(_command)
     try:
         sub.check_call(_command, env=dict(os.environ, LSF_ENVDIR='/opt/openlava/etc'))
     except sub.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
 
 
-def addHost(hostname, cluster_user):
-    log.info('Adding %s', hostname)
+def addHost(hostname, cluster_user, slots):
+    log.info('Adding %s with %s slots' % (hostname,slots))
 
-    command = ['/opt/openlava/bin/lsaddhost', '-t', 'linux', '-m', 'IntelXeon', hostname]
+    command = ('/opt/openlava/bin/lsaddhost -t linux -m IntelXeon -M "%s" %s' % (slots, hostname))
 
     __runOpenlavaCommand(command)
 
@@ -64,6 +66,6 @@ def addHost(hostname, cluster_user):
 def removeHost(hostname,cluster_user):
     log.info('Removing %s', hostname)
 
-    command = ['/opt/openlava/bin/lsrmhost', hostname]
+    command = ('/opt/openlava/bin/lsrmhost %s' % hostname)
 
     __runOpenlavaCommand(command)
