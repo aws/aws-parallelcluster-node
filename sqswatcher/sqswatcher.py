@@ -127,6 +127,7 @@ def pollQueue(scheduler, q, t):
                 if eventType != 'autoscaling:TEST_NOTIFICATION':
                     if eventType == 'cfncluster:COMPUTE_READY':
                         instanceId = message_attrs['EC2InstanceId']
+                        slots = message_attrs['Slots']
                         log.info("instanceId=%s" % instanceId)
                         ec2 = boto.connect_ec2()
                         ec2 = boto.ec2.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
@@ -143,7 +144,7 @@ def pollQueue(scheduler, q, t):
                                 else:
                                     log.info("Adding Hostname: %s" % hostname)
                                     hostname = hostname[0].instances[0].private_dns_name.split('.')[:1][0]
-                                    s.addHost(hostname,cluster_user)
+                                    s.addHost(hostname=hostname,cluster_user=cluster_user,slots=slots)
 
                                     t.put_item(data={
                                         'instanceId': instanceId,

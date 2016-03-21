@@ -21,8 +21,8 @@ def read(fname):
 
 console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main', 
                    'nodewatcher = nodewatcher.nodewatcher:main']
-version = "1.0.1"
-requires = ['boto>=2.39', 'paramiko', 'python-dateutil'] 
+version = "1.1.0"
+requires = ['boto>=2.39', 'paramiko>=1.16', 'python-dateutil>=2.5.1'] 
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it

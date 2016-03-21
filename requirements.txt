@@ -1,3 +1,3 @@
 boto>=2.39
-paramiko
-python-dateutil
+paramiko>=1.16
+python-dateutili>=2.5.1
