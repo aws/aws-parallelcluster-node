@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 def __runCommand(command):
     log.debug(repr(command))
-    _command = shlex.split(command)
+    _command = shlex.split(str(command))
     log.debug(_command)
     try:
         sub.check_call(_command, env=dict(os.environ))
