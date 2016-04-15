@@ -112,7 +112,7 @@ def __writeNodeList(node_list):
     os.chmod(_config, 0744)
 
 
-def addHost(hostname, cluster_user):
+def addHost(hostname, cluster_user, slots):
     log.info('Adding %s' % hostname)
 
     # Get the current node list
@@ -134,7 +134,7 @@ def addHost(hostname, cluster_user):
     __runCommand(command)
 
 
-def removeHost(hostname, cluster_user):
+def removeHost(hostname, cluster_user, slots):
     log.info('Removing %s', hostname)
 
     # Get the current node list
