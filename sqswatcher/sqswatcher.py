@@ -182,7 +182,7 @@ def pollQueue(scheduler, q, t):
                             hostname = item['hostname']
 
                             if hostname:
-                                s.removeHost(hostname,cluster_user)
+                                s.removeHost(hostname,cluster_user,slots=0)
 
                             item.delete()
 
