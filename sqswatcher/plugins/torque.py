@@ -64,9 +64,6 @@ def addHost(hostname,cluster_user,slots):
     ssh.save_host_keys(hosts_key_file)
     ssh.close()
 
-    command = ('/etc/init.d/pbs_server restart')
-    __runCommand(command)
-
 def removeHost(hostname, cluster_user):
     log.info('Removing %s', hostname)
 
@@ -74,8 +71,5 @@ def removeHost(hostname, cluster_user):
     __runCommand(command)
 
     command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
-    __runCommand(command)
-
-    command = ('/etc/init.d/pbs_server restart')
     __runCommand(command)
 
