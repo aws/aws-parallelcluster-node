@@ -89,9 +89,13 @@ report_variables      NONE
         ssh._host_keys_filename = None
         pass
     ssh.save_host_keys(hosts_key_file)
-    command = "sudo sh -c \'cd /opt/sge && /opt/sge/inst_sge -x -auto /opt/cfncluster/templates/sge/sge_inst.conf\'"
+    command = "sudo sh -c \'cd /opt/sge && /opt/sge/inst_sge -noremote -x -auto /opt/cfncluster/templates/sge/sge_inst.conf\'"
     stdin, stdout, stderr = ssh.exec_command(command)
     ssh.close()
+
+    # Removing host as administrative host
+    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
+    __runSgeCommand(command)
 
     # Add the host to the qll.q
     command = ('/opt/sge/bin/lx-amd64/qconf -aattr hostgroup hostlist %s @allhosts' % hostname)
@@ -118,8 +122,4 @@ def removeHost(hostname,cluster_user):
 
     # Removing host as submit host
     command = ("/opt/sge/bin/lx-amd64/qconf -ds %s" % hostname)
-    __runSgeCommand(command)
-
-    # Removing host as administrative host
-    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
     __runSgeCommand(command)
