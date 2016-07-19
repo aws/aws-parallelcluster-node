@@ -21,13 +21,13 @@ def read(fname):
 
 console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main', 
                    'nodewatcher = nodewatcher.nodewatcher:main']
-version = "1.3.0"
-requires = ['boto>=2.39', 'paramiko>=1.16', 'python-dateutil>=2.5.1'] 
+version = "1.3.1"
+requires = ['boto>=2.41.0', 'paramiko>=2.0.1', 'python-dateutil>=2.5.3'] 
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
     # was not in stdlib until 2.7.
-    requires.append('argparse>=1.1')
+    requires.append('argparse>=1.4')
 
 setup(
     name = "cfncluster-node",
