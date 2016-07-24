@@ -91,6 +91,8 @@ report_variables      NONE
     ssh.save_host_keys(hosts_key_file)
     command = "sudo sh -c \'cd /opt/sge && /opt/sge/inst_sge -noremote -x -auto /opt/cfncluster/templates/sge/sge_inst.conf\'"
     stdin, stdout, stderr = ssh.exec_command(command)
+    while not stdout.channel.exit_status_ready():
+        time.sleep(1)
     ssh.close()
 
     # Removing host as administrative host

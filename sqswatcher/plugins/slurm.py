@@ -57,6 +57,8 @@ def __restartSlurm(hostname, cluster_user):
         pass
     ssh.save_host_keys(hosts_key_file)
     command = 'sudo sh -c \"/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log\"'
+    while not stdout.channel.exit_status_ready():
+        time.sleep(1)
     stdin, stdout, stderr = ssh.exec_command(command)
     ssh.close()
 
