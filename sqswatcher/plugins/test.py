@@ -17,14 +17,14 @@ log = logging.getLogger(__name__)
 
 hostfile_path = 'sqswatcher.hosts'
 
-def addHost(hostname,cluster_user):
+def addHost(hostname,cluster_user, queue=None):
     if hostname != None:
         log.info('Adding', hostname)
         hostfile = open(hostfile_path, 'a')
         print >> hostfile, hostname
         hostfile.close()
 
-def removeHost(hostname,cluster_user):
+def removeHost(hostname,cluster_user, queue=None):
     if hostname != None:
         log.info('Removing', hostname)
         hostfile = open(hostfile_path, 'r')

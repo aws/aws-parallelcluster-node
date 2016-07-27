@@ -31,7 +31,7 @@ def __runSgeCommand(command):
     except sub.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
 
-def addHost(hostname, cluster_user, slots):
+def addHost(hostname, cluster_user, slots, queue=None):
     log.info('Adding %s with %s slots' % (hostname,slots))
 
     # Adding host as administrative host
@@ -107,7 +107,7 @@ report_variables      NONE
     command = ('/opt/sge/bin/lx-amd64/qconf -aattr queue slots ["%s=%s"] all.q' % (hostname,slots))
     __runSgeCommand(command)
 
-def removeHost(hostname,cluster_user):
+def removeHost(hostname,cluster_user, queue=None):
     log.info('Removing %s', hostname)
 
     # Purge hostname from all.q

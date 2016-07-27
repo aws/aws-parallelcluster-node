@@ -29,7 +29,7 @@ def __runOpenlavaCommand(command):
         log.error("Failed to run %s\n" % _command)
 
 
-def addHost(hostname, cluster_user, slots):
+def addHost(hostname, cluster_user, slots, queue=None):
     log.info('Adding %s with %s slots' % (hostname,slots))
 
     command = ('/opt/openlava/bin/lsaddhost -t linux -m IntelXeon -M "%s" %s' % (slots, hostname))
@@ -63,7 +63,7 @@ def addHost(hostname, cluster_user, slots):
     ssh.save_host_keys(hosts_key_file)
     ssh.close()
 
-def removeHost(hostname,cluster_user):
+def removeHost(hostname,cluster_user, queue=None):
     log.info('Removing %s', hostname)
 
     command = ('/opt/openlava/bin/lsrmhost %s' % hostname)

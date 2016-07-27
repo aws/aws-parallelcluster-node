@@ -28,7 +28,7 @@ def __runCommand(command):
     except sub.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
 
-def addHost(hostname,cluster_user,slots):
+def addHost(hostname,cluster_user,slots, queue=None):
     log.info('Adding %s', hostname)
 
     command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
@@ -67,7 +67,7 @@ def addHost(hostname,cluster_user,slots):
     command = ('/etc/init.d/pbs_server restart')
     __runCommand(command)
 
-def removeHost(hostname, cluster_user):
+def removeHost(hostname, cluster_user, queue=None):
     log.info('Removing %s', hostname)
 
     command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)

@@ -143,12 +143,14 @@ def pollQueue(scheduler, q, t):
                                     log.warning("Unable to find running instance %s." % instanceId)
                                 else:
                                     log.info("Adding Hostname: %s" % hostname)
+                                    queue_name = hostname[0].instances[0].tags.get('queue',None)
                                     hostname = hostname[0].instances[0].private_dns_name.split('.')[:1][0]
-                                    s.addHost(hostname=hostname,cluster_user=cluster_user,slots=slots)
+                                    s.addHost(hostname=hostname,cluster_user=cluster_user,slots=slots, queue=queue_name)
 
                                     t.put_item(data={
                                         'instanceId': instanceId,
-                                        'hostname': hostname
+                                        'hostname': hostname,
+                                        'queue': queue_name
                                     })
 
                                 q.delete_message(result)
@@ -180,9 +182,10 @@ def pollQueue(scheduler, q, t):
                         try:
                             item = t.get_item(consistent=True, instanceId=instanceId)
                             hostname = item['hostname']
+                            queue_name = item['queue']
 
                             if hostname:
-                                s.removeHost(hostname,cluster_user)
+                                s.removeHost(hostname,cluster_user, queue=queue_name)
 
                             item.delete()
 
