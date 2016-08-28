@@ -1,0 +1,10 @@
+*.pyc
+*.pyo
+*.class
+*~
+*#
+dist/
+build/
+*.egg-info/
+.idea/
+.DS_Store

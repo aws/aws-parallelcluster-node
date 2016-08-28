@@ -21,13 +21,13 @@ def read(fname):
 
 console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main', 
                    'nodewatcher = nodewatcher.nodewatcher:main']
-version = "1.0.1"
-requires = ['boto>=2.39', 'paramiko', 'python-dateutil'] 
+version = "1.3.2"
+requires = ['boto>=2.41.0', 'paramiko>=2.0.1', 'python-dateutil>=2.5.3'] 
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
     # was not in stdlib until 2.7.
-    requires.append('argparse>=1.1')
+    requires.append('argparse>=1.4')
 
 setup(
     name = "cfncluster-node",
@@ -45,7 +45,7 @@ setup(
     package_data = {
         '' : ['examples/config'],
     },
-    long_description=read('README'),
+    long_description = ("cfncluster-node is the python package installed on the Amazon EC2 instances launched as part of CfnCluster."),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Console",

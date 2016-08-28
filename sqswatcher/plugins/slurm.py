@@ -56,7 +56,9 @@ def __restartSlurm(hostname, cluster_user):
         ssh._host_keys_filename = None
         pass
     ssh.save_host_keys(hosts_key_file)
-    command = "sudo sh -c \'/etc/init.d/slurm restart &> /tmp/slurmdstart.log\'"
+    command = 'sudo sh -c \"/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log\"'
+    while not stdout.channel.exit_status_ready():
+        time.sleep(1)
     stdin, stdout, stderr = ssh.exec_command(command)
     ssh.close()
 
@@ -112,7 +114,7 @@ def __writeNodeList(node_list):
     os.chmod(_config, 0744)
 
 
-def addHost(hostname, cluster_user):
+def addHost(hostname, cluster_user, slots):
     log.info('Adding %s' % hostname)
 
     # Get the current node list
