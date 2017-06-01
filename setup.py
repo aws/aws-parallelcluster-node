@@ -51,6 +51,6 @@ setup(
         "Environment :: Console",
         "Programming Language :: Python",
         "Topic :: Scientific/Engineering",
-        "License :: Apache Software License",
+        "License :: OSI Approved :: Apache Software License",
     ],
 )
