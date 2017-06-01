@@ -95,10 +95,6 @@ report_variables      NONE
         time.sleep(1)
     ssh.close()
 
-    # Removing host as administrative host
-    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
-    __runSgeCommand(command)
-
     # Add the host to the qll.q
     command = ('/opt/sge/bin/lx-amd64/qconf -aattr hostgroup hostlist %s @allhosts' % hostname)
     __runSgeCommand(command)
@@ -109,6 +105,10 @@ report_variables      NONE
 
 def removeHost(hostname,cluster_user):
     log.info('Removing %s', hostname)
+
+    # Removing host as administrative host
+    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
+    __runSgeCommand(command)
 
     # Purge hostname from all.q
     command = ("/opt/sge/bin/lx-amd64/qconf -purge queue '*' all.q@%s" % hostname)
