@@ -103,6 +103,42 @@ report_variables      NONE
     command = ('/opt/sge/bin/lx-amd64/qconf -aattr queue slots ["%s=%s"] all.q' % (hostname,slots))
     __runSgeCommand(command)
 
+def __getJobs(hostname):
+    # Checking for running jobs on the node
+    log.info("Checking for jobs running on %s", hostname)
+    command = "/opt/sge/bin/lx-amd64/qstat -u '*' -q all.q@%s" % (hostname)
+    log.info("%s", command)
+    _command = shlex.split(command)
+    log.debug(_command)
+    try:
+        _output = sub.check_output(_command, env=dict(os.environ, SGE_ROOT='/opt/sge'), universal_newlines=True)
+    except sub.CalledProcessError:
+        # this call will return error status if no jobs are in the queue
+        _output = ""
+
+    # sample array job output:
+    # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
+    # -----------------------------------------------------------------------------------------------------------------
+    #       3 0.55500 test_job.s ajp          t     06/16/2017 14:16:54 all.q@ip-10-0-79-245.ec2.inter     1 39
+    #       3 0.55500 test_job.s ajp          t     06/16/2017 14:16:54 all.q@ip-10-0-79-245.ec2.inter     1 40
+    #       3 0.00000 test_job.s ajp          qw    06/16/2017 14:16:47                                    1 41-100:1
+
+    _jobs = list()
+    for line in _output.split('\n')[2:]:
+        if len(line.strip()) == 0: continue
+        log.info("%s", line)
+        parts = line.split()
+        state = parts[4]
+        if "q" in state: continue
+        jid = parts[0]
+        if len(parts) > 9:
+            tid = parts[9]
+            jid = jid + "." + tid
+        _jobs.append(jid)
+
+    log.info("Found %d jobs on %s", len(_jobs), hostname)
+    return _jobs
+
 def removeHost(hostname,cluster_user):
     log.info('Removing %s', hostname)
 
@@ -117,6 +153,12 @@ def removeHost(hostname,cluster_user):
     # Remove host from @allhosts group
     command = ("/opt/sge/bin/lx-amd64/qconf -dattr hostgroup hostlist %s @allhosts" % hostname)
     __runSgeCommand(command)
+
+    # Reschedule any jobs that are on the host
+    _jobs = __getJobs(hostname)
+    if len(_jobs) > 0:
+        command = ("/opt/sge/bin/lx-amd64/qmod -f -rj %s" % (" ".join(_jobs)))
+        __runSgeCommand(command)
 
     # Removing host as execution host
     command = ("/opt/sge/bin/lx-amd64/qconf -de %s" % hostname)
