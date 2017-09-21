@@ -142,10 +142,6 @@ def __getJobs(hostname):
 def removeHost(hostname,cluster_user):
     log.info('Removing %s', hostname)
 
-    # Removing host as administrative host
-    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
-    __runSgeCommand(command)
-
     # Purge hostname from all.q
     command = ("/opt/sge/bin/lx-amd64/qconf -purge queue '*' all.q@%s" % hostname)
     __runSgeCommand(command)
@@ -159,6 +155,10 @@ def removeHost(hostname,cluster_user):
     if len(_jobs) > 0:
         command = ("/opt/sge/bin/lx-amd64/qmod -f -rj %s" % (" ".join(_jobs)))
         __runSgeCommand(command)
+
+    # Removing host as administrative host
+    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
+    __runSgeCommand(command)
 
     # Removing host as execution host
     command = ("/opt/sge/bin/lx-amd64/qconf -de %s" % hostname)
