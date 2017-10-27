@@ -74,14 +74,15 @@ def __readNodeList():
                 node_name = slurm_config.next()
                 items = node_name.split(' ')
                 node_line = items[0].split('=')
+                procs_line = items[1].split('=')
                 if len(node_line[1]) > 0:
                     nodes[partition] = node_line[1].split(',')
                 else:
                     nodes[partition] = []
-    return nodes
+    return nodes, procs_line[1]
 
 
-def __writeNodeList(node_list):
+def __writeNodeList(node_list, slots):
     _config = "/opt/slurm/etc/slurm.conf"
     fh, abs_path = mkstemp()
     with open(abs_path,'w') as new_file:
@@ -99,7 +100,7 @@ def __writeNodeList(node_list):
                     if len(node_list[partition]) > 0:
                         new_file.write('NodeName=' + ','.join(node_list[partition]) + " " + ' '.join(items[1:]))
                     else:
-                        new_file.write("#NodeName= Procs=1 State=UNKNOWN\n")
+                        new_file.write("#NodeName= Procs=" + slots + " State=UNKNOWN\n")
                     items = partitions.split(' ')
                     node_line = items[1].split('=')
                     new_file.write(items[0] + " " + node_line[0] + '=dummy-' + partition + ',' + ','.join(node_list[partition]) + " " + ' '.join(items[2:]))
@@ -118,11 +119,11 @@ def addHost(hostname, cluster_user, slots):
     log.info('Adding %s' % hostname)
 
     # Get the current node list
-    node_list = __readNodeList()
+    node_list, old_slots = __readNodeList()
 
     # Add new node
     node_list['compute'].append(hostname)
-    __writeNodeList(node_list)
+    __writeNodeList(node_list, slots)
 
     # Restart slurmctl locally
     command = ['/etc/init.d/slurm', 'restart']
@@ -140,11 +141,11 @@ def removeHost(hostname, cluster_user):
     log.info('Removing %s', hostname)
 
     # Get the current node list
-    node_list = __readNodeList()
+    node_list, slots = __readNodeList()
 
     # Remove node
     node_list['compute'].remove(hostname)
-    __writeNodeList(node_list)
+    __writeNodeList(node_list, slots)
 
     # Restart slurmctl
     command = ['/etc/init.d/slurm', 'restart']
