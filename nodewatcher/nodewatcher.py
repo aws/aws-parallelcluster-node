@@ -14,6 +14,7 @@
 __author__ = 'dougalb'
 
 from datetime import datetime
+from datetime import timedelta
 import boto.ec2
 import dateutil.parser
 import urllib2
@@ -142,6 +143,54 @@ def maintainSize(region, asg):
         log.debug('capacity less then or equal to min size.')
         return True
 
+def updateJobTime():
+    #Write current time to file
+    log.debug('reading /etc/nodewatcher.cfg')
+
+    config = ConfigParser.RawConfigParser()
+    config.read('/etc/nodewatcher.cfg')
+
+    now = datetime.utcnow()
+    config.set('nodewatcher', 'last_time', now.strftime('%Y-%m-%d %H:%M:%S'))
+
+    tup = tempfile.mkstemp(dir=os.getcwd())
+    fd = os.fdopen(tup[0], 'w')
+    config.write(fd)
+    fd.close
+
+    os.rename(tup[1], '/etc/nodewatcher.cfg')
+
+    return True
+
+def getLastJobTime():
+    # Get the time a job was last seen
+    log.debug('reading /etc/nodewatcher.cfg')
+
+    config = ConfigParser.RawConfigParser()
+    config.read('/etc/nodewatcher.cfg')
+    if config.has_option('nodewatcher', 'last_time'):
+        last_time_string = config.get('nodewatcher', 'last_time')
+        last_time = datetime.strptime(last_time_string, '%Y-%m-%d %H:%M:%S')
+    else:
+        updateJobTime()
+        last_time = datetime.utcnow()
+
+    return last_time
+
+def getWaitTime():
+    # Get the amount of time (in minutes) an instance should wait before terminating
+    log.debug('reading /etc/nodewatcher.cfg')
+
+    config = ConfigParser.RawConfigParser()
+    config.read('/etc/nodewatcher.cfg')
+    if config.has_option('nodewatcher', 'cfn_wait_time'):
+        wait_time = config.get('nodewatcher', 'cfn_wait_time')
+    else:
+        # No option set, default wait time to five minutes
+        wait_time = 5
+
+    return wait_time
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -156,19 +205,32 @@ def main():
 
     while True:
         time.sleep(60)
-        conn = boto.ec2.connect_to_region(region)
-        hour_percentile = getHourPercentile(instance_id,conn)
-        log.info('Percent of hour used: %d' % hour_percentile)
-
-        if hour_percentile < 95:
-            continue
         
         jobs = getJobs(s, hostname)
         if jobs == True:
             log.info('Instance has active jobs.')
+            # Update job time
+            updateJobTime()
         else:
+            # Don't terminate instances if we're keeping the same size of the ASG
             if maintainSize(region, asg):
+                log.info('ASG Size set to not terminated')
                 continue
+
+            # Get last job time
+            last_time = getLastJobTime()
+            # Get minutes until termination
+            terminate_minutes = getWaitTime()
+
+            # Add the number of minutes to wait from the time a job was last seen
+            terminate_time = last_time + timedelta(minutes = terminate_minutes)
+
+            # Check if it's time to terminate
+            now = datetime.utcnow()
+            if now < terminate_time:
+                log.info('Not yet ' + terminate_time.strftime('%Y-%m-%d %H:%M:%S') + ', so not terminating the instance')
+                continue
+
             # avoid race condition by locking and verifying
             lockHost(s, hostname)
             jobs = getJobs(s, hostname)
@@ -181,3 +243,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
