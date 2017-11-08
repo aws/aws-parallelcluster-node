@@ -56,7 +56,12 @@ def __restartSlurm(hostname, cluster_user):
         ssh._host_keys_filename = None
         pass
     ssh.save_host_keys(hosts_key_file)
-    command = 'sudo sh -c \"/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log\"'
+    slurmRestart = Path('/etc/systemd/system/slurmd.service')
+    if slurmRestart.is_file():
+        command = 'sudo systemctl restart slurmctld.service'
+    else:
+        command = 'sudo sh -c \"/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log\"'
+
     stdin, stdout, stderr = ssh.exec_command(command)
     while not stdout.channel.exit_status_ready():
         time.sleep(1)
@@ -125,16 +130,14 @@ def addHost(hostname, cluster_user, slots):
     __writeNodeList(node_list)
 
     # Restart slurmctl locally
-    command = ['/etc/init.d/slurm', 'restart']
-    __runCommand(command)
-
+    restartMasterNodeSlurm()
+  
     # Restart slurmctl on host
     __restartSlurm(hostname, cluster_user)
 
     # Reconfifure Slurm, prompts all compute nodes to reread slurm.conf
     command = ['/opt/slurm/bin/scontrol', 'reconfigure']
     __runCommand(command)
-
 
 def removeHost(hostname, cluster_user):
     log.info('Removing %s', hostname)
@@ -147,10 +150,17 @@ def removeHost(hostname, cluster_user):
     __writeNodeList(node_list)
 
     # Restart slurmctl
-    command = ['/etc/init.d/slurm', 'restart']
-    __runCommand(command)
+    restartMasterNodeSlurm()
 
     # Reconfifure Slurm, prompts all compute nodes to reread slurm.conf
     command = ['/opt/slurm/bin/scontrol', 'reconfigure']
     __runCommand(command)
 
+
+def restartMasterNodeSlurm():
+    slurmRestart = Path('/etc/systemd/system/slurmctld.service')
+    if slurmRestart.is_file():
+        command = 'sudo systemctl restart slurmctld.service'
+    else:
+        command = ['/etc/init.d/slurm', 'restart']
+    __runCommand(command)
