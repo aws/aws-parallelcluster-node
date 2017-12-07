@@ -13,6 +13,7 @@ import subprocess as sub
 from tempfile import mkstemp
 from shutil import move
 import os
+import os.path
 import paramiko
 import socket
 import time
@@ -56,11 +57,7 @@ def __restartSlurm(hostname, cluster_user):
         ssh._host_keys_filename = None
         pass
     ssh.save_host_keys(hosts_key_file)
-    slurmRestart = Path('/etc/systemd/system/slurmd.service')
-    if slurmRestart.is_file():
-        command = 'sudo systemctl restart slurmctld.service'
-    else:
-        command = 'sudo sh -c \"/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log\"'
+    command = 'if [ -f /etc/systemd/system/slurmd.service ]; then sudo systemctl restart slurmd.service; else sudo sh -c \"/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log\"; fi'
 
     stdin, stdout, stderr = ssh.exec_command(command)
     while not stdout.channel.exit_status_ready():
@@ -158,9 +155,8 @@ def removeHost(hostname, cluster_user):
 
 
 def restartMasterNodeSlurm():
-    slurmRestart = Path('/etc/systemd/system/slurmctld.service')
-    if slurmRestart.is_file():
-        command = 'sudo systemctl restart slurmctld.service'
+    if os.path.isfile('/etc/systemd/system/slurmctld.service'):
+        command = ['sudo', 'systemctl', 'restart', 'slurmctld.service']
     else:
         command = ['/etc/init.d/slurm', 'restart']
     __runCommand(command)
