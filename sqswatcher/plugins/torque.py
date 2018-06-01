@@ -16,17 +16,61 @@ import os
 import paramiko
 import logging
 import shlex
+import time
+import xml.etree.ElementTree as xmltree
 
 log = logging.getLogger(__name__)
 
 def __runCommand(command):
+    output = None
     log.debug(repr(command))
     _command = shlex.split(str(command))
     log.debug(_command)
     try:
-        sub.check_call(_command, env=dict(os.environ))
-    except sub.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
+        output = sub.check_output(_command, env=dict(os.environ), stderr=sub.STDOUT)
+    except sub.CalledProcessError as exc:
+        log.error("Failed to run %s:\n%s" % (_command, exc.output))
+    return output
+
+def isHostInitState(host_state):
+    # Node states http://docs.adaptivecomputing.com/torque/6-0-2/adminGuide/help.htm#topics/torque/8-resources/resources.htm#nodeStates
+    init_states = ("down", "offline", "unknown", str(None))
+    return str(host_state).startswith(init_states)
+
+def wakeupSchedOn(hostname):
+    log.info('Waking up scheduler on host %s', hostname)
+    command = ("/opt/torque/bin/pbsnodes -x %s" % (hostname))
+
+    sleep_time = 3
+    times = 20
+    host_state = None
+    while isHostInitState(host_state) and times > 0:
+        output = __runCommand(command)
+        try:
+            # Ex.1: <Data><Node><name>ip-10-0-76-39</name><state>down,offline,MOM-list-not-sent</state><power_state>Running</power_state>
+            #        <np>1</np><ntype>cluster</ntype><mom_service_port>15002</mom_service_port><mom_manager_port>15003</mom_manager_port></Node></Data>
+            # Ex 2: <Data><Node><name>ip-10-0-76-39</name><state>free</state><power_state>Running</power_state><np>1</np><ntype>cluster</ntype>
+            #        <status>rectime=1527799181,macaddr=02:e4:00:b0:b1:72,cpuclock=Fixed,varattr=,jobs=,state=free,netload=210647044,gres=,loadave=0.00,
+            #        ncpus=1,physmem=1017208kb,availmem=753728kb,totmem=1017208kb,idletime=856,nusers=1,nsessions=1,sessions=19698,
+            #        uname=Linux ip-10-0-76-39 4.9.75-25.55.amzn1.x86_64 #1 SMP Fri Jan 5 23:50:27 UTC 2018 x86_64,opsys=linux</status>
+            #        <mom_service_port>15002</mom_service_port><mom_manager_port>15003</mom_manager_port></Node></Data>
+            xmlnode = xmltree.XML(output)
+            host_state = xmlnode.findtext("./Node/state")
+        except:
+            log.error("Error parsing XML from %s" % output)
+
+        if isHostInitState(host_state):
+            log.debug("Host %s is still in state %s" % (hostname, host_state))
+            time.sleep(sleep_time)
+            times -= 1
+
+    if host_state == "free":
+        command = "/opt/torque/bin/qmgr -c \"set server scheduling=true\""
+        __runCommand(command)
+    elif times == 0:
+        log.error("Host %s is still in state %s" % (hostname, host_state))
+    else:
+        log.debug("Host %s is in state %s" % (hostname, host_state))
 
 def addHost(hostname,cluster_user,slots):
     log.info('Adding %s', hostname)
@@ -64,8 +108,7 @@ def addHost(hostname,cluster_user,slots):
     ssh.save_host_keys(hosts_key_file)
     ssh.close()
 
-    command = ('/etc/init.d/pbs_server restart')
-    __runCommand(command)
+    wakeupSchedOn(hostname)
 
 def removeHost(hostname, cluster_user):
     log.info('Removing %s', hostname)
@@ -74,8 +117,5 @@ def removeHost(hostname, cluster_user):
     __runCommand(command)
 
     command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
-    __runCommand(command)
-
-    command = ('/etc/init.d/pbs_server restart')
     __runCommand(command)
 
