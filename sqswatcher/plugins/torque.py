@@ -18,8 +18,29 @@ import logging
 import shlex
 import time
 import xml.etree.ElementTree as xmltree
+import socket
 
 log = logging.getLogger(__name__)
+
+if not hasattr(sub, 'check_output'):
+    # Fuction adapted from Python 2.7 and used for Python 2.6
+    def check_output(*popenargs, **kwargs):
+        if 'stdout' in kwargs:
+            raise ValueError('stdout argument not allowed, it will be overridden.')
+        process = sub.Popen(stdout=sub.PIPE, *popenargs, **kwargs)
+        output, unused_err = process.communicate()
+        retcode = process.poll()
+        if retcode:
+            cmd = kwargs.get("args")
+            if cmd is None:
+                cmd = popenargs[0]
+            exc = sub.CalledProcessError(retcode, cmd)
+            exc.output = output
+            raise exc
+        return output
+
+    sub.check_output = check_output
+
 
 def __runCommand(command):
     output = None
