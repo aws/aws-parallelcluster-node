@@ -41,7 +41,7 @@ def getJobs(hostname):
     try:
         status, output = runPipe(commands)
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
+        log.error("Failed to run %s\n" % commands)
 
     if output == "":
         _jobs = False
