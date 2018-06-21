@@ -18,19 +18,26 @@ import logging
 import shlex
 import time
 import xml.etree.ElementTree as xmltree
+import socket
 
 log = logging.getLogger(__name__)
 
 def __runCommand(command):
-    output = None
     log.debug(repr(command))
     _command = shlex.split(str(command))
     log.debug(_command)
+
+    DEV_NULL = open(os.devnull, "rb")
     try:
-        output = sub.check_output(_command, env=dict(os.environ), stderr=sub.STDOUT)
-    except sub.CalledProcessError as exc:
-        log.error("Failed to run %s:\n%s" % (_command, exc.output))
-    return output
+        process = sub.Popen(_command, env=dict(os.environ), stdout=sub.PIPE, stderr=sub.STDOUT, stdin=DEV_NULL)
+        stdout = process.communicate()[0]
+        exitcode = process.poll()
+        if exitcode != 0:
+            log.error("Failed to run %s:\n%s" % (_command, stdout))
+        return stdout
+    finally:
+        DEV_NULL.close()
+
 
 def isHostInitState(host_state):
     # Node states http://docs.adaptivecomputing.com/torque/6-0-2/adminGuide/help.htm#topics/torque/8-resources/resources.htm#nodeStates
