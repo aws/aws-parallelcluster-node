@@ -18,15 +18,9 @@ import sys
 import ConfigParser
 import logging
 
-import boto.sqs
-import boto.ec2
-import boto.dynamodb
-import boto.dynamodb2
-import boto.dynamodb2.exceptions
-import boto.exception
-from boto.sqs.message import RawMessage
-from boto.dynamodb2.fields import HashKey
-from boto.dynamodb2.table import Table
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 
@@ -43,44 +37,61 @@ def getConfig():
     _table_name = config.get('sqswatcher', 'table_name')
     _scheduler = config.get('sqswatcher', 'scheduler')
     _cluster_user = config.get('sqswatcher', 'cluster_user')
+    _proxy = config.get('sqswatcher', 'proxy')
+    proxy_config = Config()
+
+    if not _proxy == "NONE":
+        proxy_config = Config(proxies={'https': _proxy})
 
     log.debug(" ".join("%s=%s" % i
                        for i in [('_region', _region),
                                  ('_sqsqueue', _sqsqueue),
                                  ('_table_name', _table_name),
                                  ('_scheduler', _scheduler),
-                                 ('_cluster_user', _cluster_user)]))
-    
-    return _region, _sqsqueue, _table_name, _scheduler, _cluster_user
+                                 ('_cluster_user', _cluster_user),
+                                 ('_proxy', _proxy)]))
+
+    return _region, _sqsqueue, _table_name, _scheduler, _cluster_user, proxy_config
 
 
-def setupQueue(region, sqsqueue):
+def setupQueue(region, sqsqueue, proxy_config):
     log.debug('running setupQueue')
 
-    conn = boto.sqs.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
+    sqs = boto3.resource('sqs', region_name=region, config=proxy_config)
 
-    _q = conn.get_queue(sqsqueue)
-    if _q != None:
-        _q.set_message_class(RawMessage)
+    _q = sqs.get_queue_by_name(QueueName=sqsqueue)
     return _q
 
 
-def setupDDBTable(region, table_name):
+def setupDDBTable(region, table_name, proxy_config):
     log.debug('running setupDDBTable')
 
-    conn = boto.dynamodb.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
-    tables = conn.list_tables()
-    check = [t for t in tables if t == table_name]
-    conn = boto.dynamodb2.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
-    if check:
-        _table = Table(table_name,connection=conn)
+    dynamodb = boto3.client('dynamodb', region_name=region, config=proxy_config)
+    tables = dynamodb.list_tables().get('TableNames')
+
+    dynamodb2 = boto3.resource('dynamodb',  region_name=region, config=proxy_config)
+    if table_name in tables:
+        _table = dynamodb2.Table(table_name)
     else:
-        _table = Table.create(table_name,
-                              schema=[HashKey('instanceId')
-                              ],connection=conn)
+        _table = dynamodb2.create_table(TableName=table_name,
+                              KeySchema=[
+                                  {
+                                    'AttributeName': 'instanceId',
+                                    'KeyType': 'HASH'
+                                  }
+                              ],
+                              AttributeDefinitions=[
+                                {
+                                    'AttributeName': 'instanceId',
+                                    'AttributeType': 'S'
+                                }
+                              ],
+                              ProvisionedThroughput={
+                                'ReadCapacityUnits': 5,
+                                'WriteCapacityUnits': 5
+                              })
+        _table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+
 
     return _table
 
@@ -95,106 +106,103 @@ def loadSchedulerModule(scheduler):
     return _scheduler
 
 
-def pollQueue(scheduler, q, t):
+def pollQueue(scheduler, q, t, proxy_config):
     log.debug("startup")
     s = loadSchedulerModule(scheduler)
 
     while True:
 
-        results = q.get_messages(10)
+        results = q.receive_messages(MaxNumberOfMessages=10)
 
         while len(results) > 0:
 
-            for result in results:
-                message = json.loads(result.get_body())
-                log.debug("Full Messge: %s" % message)
-                message_attrs = json.loads(message['Message'])
+            for message in results:
+                message_text = json.loads(message.body)
+                message_attrs = json.loads(message_text.get('Message'))
+                log.debug("SQS Message %s" % message_attrs)
 
-                try: 
-                    eventType = message_attrs['Event']
+                try:
+                    eventType = message_attrs.get('Event')
                 except:
                     try:
-                        eventType = message_attrs['detail-type']
+                        eventType = message_attrs.get('detail-type')
                     except KeyError:
                         log.warn("Unable to read message. Deleting.")
-                        q.delete_message(result)
+                        message.delete()
                         break
 
                 log.info("eventType=%s" % eventType)
                 if eventType == 'autoscaling:TEST_NOTIFICATION':
-                    q.delete_message(result)
+                    message.delete()
+                elif eventType == 'cfncluster:COMPUTE_READY':
+                    instanceId = message_attrs.get('EC2InstanceId')
+                    slots = message_attrs.get('Slots')
+                    log.info("instanceId=%s" % instanceId)
+                    ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
 
-                if eventType != 'autoscaling:TEST_NOTIFICATION':
-                    if eventType == 'cfncluster:COMPUTE_READY':
-                        instanceId = message_attrs['EC2InstanceId']
-                        slots = message_attrs['Slots']
-                        log.info("instanceId=%s" % instanceId)
-                        ec2 = boto.connect_ec2()
-                        ec2 = boto.ec2.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
-
-                        retry = 0
-                        wait = 15
-                        while retry < 3:
-                            try:
-                                hostname = ec2.get_all_instances(instance_ids=instanceId)
-
-                                if not hostname:
-                                    log.warning("Unable to find running instance %s." % instanceId)
-                                else:
-                                    log.info("Adding Hostname: %s" % hostname)
-                                    hostname = hostname[0].instances[0].private_dns_name.split('.')[:1][0]
-                                    s.addHost(hostname=hostname,cluster_user=cluster_user,slots=slots)
-
-                                    t.put_item(data={
-                                        'instanceId': instanceId,
-                                        'hostname': hostname
-                                    })
-
-                                q.delete_message(result)
-                                break
-                            except boto.exception.BotoServerError as e:
-                                if e.error_code == 'RequestLimitExceeded':
-                                    time.sleep(wait)
-                                    retry += 1
-                                    wait = (wait*2+retry)
-                                else:
-                                    raise e
-                            except:
-                                log.critical("Unexpected error:", sys.exc_info()[0])
-                                raise
-
-                    elif (eventType == 'autoscaling:EC2_INSTANCE_TERMINATE') or (eventType == 'EC2 Instance State-change Notification'):
-                        if eventType == 'autoscaling:EC2_INSTANCE_TERMINATE':
-                            instanceId = message_attrs['EC2InstanceId']
-                        elif eventType == 'EC2 Instance State-change Notification':
-                            if message_attrs['detail']['state'] == 'terminated':
-                                log.info('Terminated instance state from CloudWatch')
-                                instanceId = message_attrs['detail']['instance-id']
-                            else:
-                                log.info('Not Terminated, ignoring')
-                                q.delete_message(result)
-                                break
-
-                        log.info("instanceId=%s" % instanceId)
+                    retry = 0
+                    wait = 15
+                    while retry < 3:
                         try:
-                            item = t.get_item(consistent=True, instanceId=instanceId)
-                            hostname = item['hostname']
+                            instances = ec2.instances.filter(InstanceIds=[instanceId])
+                            instance = next(iter(instances or []), None)
 
-                            if hostname:
-                                s.removeHost(hostname,cluster_user)
+                            if not instance:
+                                log.warning("Unable to find running instance %s." % instanceId)
+                            else:
+                                hostname = instance.private_dns_name.split('.')[:1][0]
+                                log.info("Adding Hostname: %s" % hostname)
+                                s.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
 
-                            item.delete()
+                                t.put_item(Item={
+                                    'instanceId': instanceId,
+                                    'hostname': hostname
+                                })
 
-                        except boto.dynamodb2.exceptions.ItemNotFound:
-                            log.error("Did not find %s in the metadb\n" % instanceId)
+                            message.delete()
+                            break
+                        except ClientError as e:
+                            if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
+                                time.sleep(wait)
+                                retry += 1
+                                wait = (wait*2+retry)
+                            else:
+                                raise e
                         except:
-                            log.critical("Unexpected error:", sys.exc_info()[0])
+                            log.critical("Unexpected error: %s" % sys.exc_info()[0])
                             raise
 
-                        q.delete_message(result)
+                elif (eventType == 'autoscaling:EC2_INSTANCE_TERMINATE') or (eventType == 'EC2 Instance State-change Notification'):
+                    if eventType == 'autoscaling:EC2_INSTANCE_TERMINATE':
+                        instanceId = message_attrs.get('EC2InstanceId')
+                    elif eventType == 'EC2 Instance State-change Notification':
+                        if message_attrs.get('detail').get('state') == 'terminated':
+                            log.info('Terminated instance state from CloudWatch')
+                            instanceId = message_attrs.get('detail').get('instance-id')
+                        else:
+                            log.info('Not Terminated, ignoring')
+                            message.delete()
+                            break
 
-            results = q.get_messages(10)
+                    log.info("instanceId=%s" % instanceId)
+                    try:
+                        item = t.get_item(ConsistentRead=True, Key={"instanceId": instanceId})
+                        if item.get('Item') is not None:
+                            hostname = item.get('Item').get('hostname')
+
+                            if hostname:
+                                s.removeHost(hostname, cluster_user)
+
+                            t.delete_item(Key={"instanceId": instanceId})
+                        else:
+                            log.error("Did not find %s in the metadb\n" % instanceId)
+                    except:
+                        log.critical("Unexpected error: %s" % sys.exc_info()[0])
+                        raise
+
+                    message.delete()
+
+            results = q.receive_messages(MaxNumberOfMessages=10)
 
         time.sleep(30)
 
@@ -205,10 +213,10 @@ def main():
     )
     log.info("sqswatcher startup")
     global region, cluster_user
-    region, sqsqueue, table_name, scheduler, cluster_user = getConfig()
-    q = setupQueue(region, sqsqueue)
-    t = setupDDBTable(region, table_name)
-    pollQueue(scheduler, q, t)
+    region, sqsqueue, table_name, scheduler, cluster_user, proxy_config = getConfig()
+    q = setupQueue(region, sqsqueue, proxy_config)
+    t = setupDDBTable(region, table_name, proxy_config)
+    pollQueue(scheduler, q, t, proxy_config)
 
 if __name__ == "__main__":
     main()
