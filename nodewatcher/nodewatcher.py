@@ -14,16 +14,15 @@
 __author__ = 'dougalb'
 
 from datetime import datetime
-import boto.ec2
-import dateutil.parser
 import urllib2
-import ConfigParser
-import boto.ec2.autoscale
 import os
 import time
 import sys
 import tempfile
 import logging
+import boto3
+import ConfigParser
+from botocore.config import Config
 
 log = logging.getLogger(__name__)
 
@@ -37,12 +36,20 @@ def getConfig(instance_id):
         logging.getLogger().setLevel(lvl)
     _region = config.get('nodewatcher', 'region')
     _scheduler = config.get('nodewatcher', 'scheduler')
+    _proxy = config.get('nodewatcher', 'proxy')
+    proxy_config = Config()
+
+    if not _proxy == "NONE":
+        proxy_config = Config(proxies={'https': _proxy})
+
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
-        conn = boto.ec2.connect_to_region(_region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
-        _asg = conn.get_all_instances(instance_ids=instance_id)[0].instances[0].tags['aws:autoscaling:groupName']
+        ec2 = boto3.resource('ec2', region_name=_region, config=proxy_config)
+
+        instances = ec2.instances.filter(InstanceIds=[instance_id])
+        instance = next(iter(instances or []), None)
+        _asg = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
         log.debug("discovered asg: %s" % _asg)
         config.set('nodewatcher', 'asg', _asg)
 
@@ -53,13 +60,13 @@ def getConfig(instance_id):
 
         os.rename(tup[1], 'nodewatcher.cfg')
 
-    log.debug("region=%s asg=%s scheduler=%s" % (_region, _asg, _scheduler))
-    return _region, _asg, _scheduler
+    log.debug("region=%s asg=%s scheduler=%s prox_config=%s" % (_region, _asg, _scheduler, proxy_config))
+    return _region, _asg, _scheduler, proxy_config
 
-def getHourPercentile(instance_id, conn):
-    _reservations = conn.get_all_instances(instance_ids=[instance_id])
-    _instance = _reservations[0].instances[0]
-    _launch_time = dateutil.parser.parse(_instance.launch_time).replace(tzinfo=None)
+def getHourPercentile(instance_id, ec2):
+    instances = ec2.instances.filter(InstanceIds=[instance_id])
+    instance = next(iter(instances or []), None)
+    _launch_time = instance.launch_time.replace(tzinfo=None)
     _current_time = datetime.utcnow()
     _delta = _current_time - _launch_time
     _delta_in_hours = _delta.seconds / 3600.0
@@ -121,20 +128,17 @@ def lockHost(s,hostname,unlock=False):
 
     return _r
 
-def selfTerminate(region, asg, instance_id):
-    _as_conn = boto.ec2.autoscale.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
-    if not maintainSize(region, asg):
+def selfTerminate(asg_name, asg_conn, instance_id):
+    if not maintainSize(asg_name, asg_conn):
         log.info("terminating %s" % instance_id)
-        _as_conn.terminate_instance(instance_id, decrement_capacity=True)
+        asg_conn.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
 
-def maintainSize(region, asg):
-    _as_conn = boto.ec2.autoscale.connect_to_region(region,proxy=boto.config.get('Boto', 'proxy'),
-                                          proxy_port=boto.config.get('Boto', 'proxy_port'))
-    _asg = _as_conn.get_all_groups(names=[asg])[0]
-    _capacity = _asg.desired_capacity
-    _min_size = _asg.min_size
-    log.debug("capacity=%d min_size=%d" % (_capacity, _min_size))
+def maintainSize(asg_name, asg_conn):
+    asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]) \
+        .get('AutoScalingGroups')[0]
+    _capacity = asg.get('DesiredCapacity')
+    _min_size = asg.get('MinSize')
+    log.info("capacity=%d min_size=%d" % (_capacity, _min_size))
     if _capacity > _min_size:
         log.debug('capacity greater then min size.')
         return False
@@ -150,24 +154,25 @@ def main():
     log.info("nodewatcher startup")
     instance_id = getInstanceId()
     hostname = getHostname()
-    region, asg, scheduler = getConfig(instance_id)
+    region, asg_name, scheduler, proxy_config = getConfig(instance_id)
 
     s = loadSchedulerModule(scheduler)
 
     while True:
         time.sleep(60)
-        conn = boto.ec2.connect_to_region(region)
-        hour_percentile = getHourPercentile(instance_id,conn)
+        ec2_conn = boto3.resource('ec2', region_name=region, config=proxy_config)
+        asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
+        hour_percentile = getHourPercentile(instance_id, ec2_conn)
         log.info('Percent of hour used: %d' % hour_percentile)
 
         if hour_percentile < 95:
             continue
-        
+
         jobs = getJobs(s, hostname)
         if jobs == True:
             log.info('Instance has active jobs.')
         else:
-            if maintainSize(region, asg):
+            if maintainSize(asg_name, asg_conn):
                 continue
             # avoid race condition by locking and verifying
             lockHost(s, hostname)
@@ -177,7 +182,7 @@ def main():
                 lockHost(s, hostname, unlock=True)
                 continue
             else:
-                selfTerminate(region, asg, instance_id)
+                selfTerminate(asg_name, asg_conn, instance_id)
 
 if __name__ == "__main__":
     main()
