@@ -23,6 +23,9 @@ import logging
 import boto3
 import ConfigParser
 from botocore.config import Config
+import json
+import atexit
+
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ def getConfig(instance_id):
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
 
+    _idle_time = config.get('nodewatcher', 'idle_time')
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
@@ -60,8 +64,9 @@ def getConfig(instance_id):
 
         os.rename(tup[1], 'nodewatcher.cfg')
 
-    log.debug("region=%s asg=%s scheduler=%s prox_config=%s" % (_region, _asg, _scheduler, proxy_config))
-    return _region, _asg, _scheduler, proxy_config
+    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _idle_time))
+    return _region, _asg, _scheduler, proxy_config, _idle_time
+
 
 def getHourPercentile(instance_id, ec2):
     instances = ec2.instances.filter(InstanceIds=[instance_id])
@@ -146,6 +151,12 @@ def maintainSize(asg_name, asg_conn):
         log.debug('capacity less then or equal to min size.')
         return True
 
+
+def saveIdleTime(persisted_data):
+    with open('/tmp/data.json', 'w') as outfile:
+        json.dump(persisted_data, outfile)
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -154,10 +165,17 @@ def main():
     log.info("nodewatcher startup")
     instance_id = getInstanceId()
     hostname = getHostname()
-    region, asg_name, scheduler, proxy_config = getConfig(instance_id)
+    region, asg_name, scheduler, proxy_config, idle_time = getConfig(instance_id)
+
 
     s = loadSchedulerModule(scheduler)
 
+    if os.path.isfile('/tmp/data.json'):
+        data = json.loads(open('/tmp/data.json').read())
+    else:
+        data = {'idle_time': 0}
+
+    atexit.register(saveIdleTime, data)
     while True:
         time.sleep(60)
         ec2_conn = boto3.resource('ec2', region_name=region, config=proxy_config)
@@ -165,12 +183,10 @@ def main():
         hour_percentile = getHourPercentile(instance_id, ec2_conn)
         log.info('Percent of hour used: %d' % hour_percentile)
 
-        if hour_percentile < 95:
-            continue
-
         jobs = getJobs(s, hostname)
         if jobs == True:
             log.info('Instance has active jobs.')
+            data['idle_time'] = 0
         else:
             if maintainSize(asg_name, asg_conn):
                 continue
@@ -179,10 +195,15 @@ def main():
             jobs = getJobs(s, hostname)
             if jobs == True:
                 log.info('Instance actually has active jobs.')
+                data['idle_time'] = 0
                 lockHost(s, hostname, unlock=True)
                 continue
             else:
-                selfTerminate(asg_name, asg_conn, instance_id)
+                data['idle_time'] += 1
+                log.info('Instance has no job for the past %s minute(s)' % data['idle_time'])
+                if data['idle_time'] >= idle_time:
+                    os.remove('/tmp/data.json')
+                    selfTerminate(asg_name, asg_conn, instance_id)
 
 if __name__ == "__main__":
     main()
