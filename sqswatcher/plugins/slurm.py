@@ -83,52 +83,57 @@ def __readNodeList():
     return nodes
 
 
-def __writeNodeList(node_list):
+def __writeNodeList(node_list, slots=0):
     _config = "/opt/slurm/etc/slurm.conf"
     fh, abs_path = mkstemp()
     with open(abs_path,'w') as new_file:
         with open(_config) as slurm_config:
             for line in slurm_config:
                 if line.startswith('#PARTITION'):
-                    partition = line.split(':')[1].rstrip()
+                    # Involved slurm.conf section
+                    # #PARTITION:compute
+                    # NodeName=dummy-compute Procs=2048 State=UNKNOWN
+                    # NodeName=ip-172-31-6-43,ip-172-31-7-230 Procs=1 State=UNKNOWN
+                    # PartitionName=compute Nodes=dummy-compute,ip-172-31-6-43,ip-172-31-7-230 Default=YES MaxTime=INFINITE State=UP
+                    partition_name = line.split(':')[1].rstrip()
                     new_file.write(line)
-                    dummy_node = slurm_config.next()
-                    new_file.write(dummy_node)
-                    node_names = slurm_config.next()
-                    partitions = slurm_config.next()
-                    items = node_names.split(' ')
-                    node_line = items[0].split('=')
-                    if len(node_list[partition]) > 0:
-                        new_file.write('NodeName=' + ','.join(node_list[partition]) + " " + ' '.join(items[1:]))
+                    dummy_node_line = slurm_config.next()
+                    new_file.write(dummy_node_line)
+                    node_names_line = slurm_config.next()
+                    partitions_line = slurm_config.next()
+                    node_names_line_items = node_names_line.split(' ')
+                    if slots == 0:
+                        slots = node_names_line_items[1].split('=')[1].strip()
+                    if len(node_list[partition_name]) > 0:
+                        new_file.write('NodeName=' + ','.join(node_list[partition_name]) + ' Procs=%s' % slots + ' ' + ' '.join(node_names_line_items[2:]))
                     else:
-                        new_file.write("#NodeName= Procs=1 State=UNKNOWN\n")
-                    items = partitions.split(' ')
-                    node_line = items[1].split('=')
-                    new_file.write(items[0] + " " + node_line[0] + '=dummy-' + partition + ',' + ','.join(node_list[partition]) + " " + ' '.join(items[2:]))
+                        new_file.write('#NodeName= Procs=%s State=UNKNOWN\n' % slots)
+                    partitions_line_items = partitions_line.split(' ')
+                    new_file.write(partitions_line_items[0] + ' Nodes=dummy-' + partition_name + ',' + ','.join(node_list[partition_name]) + " " + ' '.join(partitions_line_items[2:]))
                 else:
                     new_file.write(line)
     os.close(fh)
-    #Remove original file
+    # Remove original file
     os.remove(_config)
-    #Move new file
+    # Move new file
     move(abs_path, _config)
-    #Update permissions on new file
+    # Update permissions on new file
     os.chmod(_config, 0744)
 
 
 def addHost(hostname, cluster_user, slots):
-    log.info('Adding %s' % hostname)
+    log.info('Adding %s with %s slots' % (hostname, slots))
 
     # Get the current node list
     node_list = __readNodeList()
 
     # Add new node
     node_list['compute'].append(hostname)
-    __writeNodeList(node_list)
+    __writeNodeList(node_list, slots)
 
     # Restart slurmctl locally
     restartMasterNodeSlurm()
-  
+
     # Restart slurmctl on host
     __restartSlurm(hostname, cluster_user)
 
