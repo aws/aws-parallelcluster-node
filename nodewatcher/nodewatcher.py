@@ -67,21 +67,6 @@ def getConfig(instance_id):
     log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _idle_time))
     return _region, _asg, _scheduler, proxy_config, _idle_time
 
-
-def getHourPercentile(instance_id, ec2):
-    instances = ec2.instances.filter(InstanceIds=[instance_id])
-    instance = next(iter(instances or []), None)
-    _launch_time = instance.launch_time.replace(tzinfo=None)
-    _current_time = datetime.utcnow()
-    _delta = _current_time - _launch_time
-    _delta_in_hours = _delta.seconds / 3600.0
-    _hour_percentile = (_delta_in_hours % 1) * 100
-
-    log.debug("launch=%s delta=%s percentile=%s" % (_launch_time, _delta,
-                                                    _hour_percentile))
-
-    return _hour_percentile
-
 def getInstanceId():
 
     try:
@@ -153,7 +138,7 @@ def maintainSize(asg_name, asg_conn):
 
 
 def saveIdleTime(persisted_data):
-    with open('/tmp/data.json', 'w') as outfile:
+    with open('/var/run/nodewatcher/node_idletime.json', 'w') as outfile:
         json.dump(persisted_data, outfile)
 
 
@@ -171,7 +156,7 @@ def main():
     s = loadSchedulerModule(scheduler)
 
     if os.path.isfile('/tmp/data.json'):
-        data = json.loads(open('/tmp/data.json').read())
+        data = json.loads(open('/var/run/nodewatcher/node_idletime.json').read())
     else:
         data = {'idle_time': 0}
 
@@ -200,9 +185,9 @@ def main():
                 continue
             else:
                 data['idle_time'] += 1
-                log.info('Instance has no job for the past %s minute(s)' % data['idle_time'])
+                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data['idle_time']))
                 if data['idle_time'] >= idle_time:
-                    os.remove('/tmp/data.json')
+                    os.remove('/var/run/nodewatcher/node_idletime.json')
                     selfTerminate(asg_name, asg_conn, instance_id)
 
 if __name__ == "__main__":
