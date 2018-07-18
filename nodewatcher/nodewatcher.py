@@ -25,6 +25,7 @@ import ConfigParser
 from botocore.config import Config
 import json
 import atexit
+import errno
 
 
 log = logging.getLogger(__name__)
@@ -138,6 +139,16 @@ def maintainSize(asg_name, asg_conn):
 
 
 def saveIdleTime(persisted_data):
+    try:
+        if not os.path.exists('/var/run/nodewatcher/'):
+            os.makedirs('/var/run/nodewatcher/')
+    except OSError as ex:
+        if ex.errno == errno.EEXIST and os.path.exists('/var/run/nodewatcher/'):
+            pass
+        else:
+            log.critical('Persisting idle time failed with exception: %s' % ex)
+            raise
+
     with open('/var/run/nodewatcher/node_idletime.json', 'w') as outfile:
         json.dump(persisted_data, outfile)
 
@@ -155,7 +166,7 @@ def main():
 
     s = loadSchedulerModule(scheduler)
 
-    if os.path.isfile('/tmp/data.json'):
+    if os.path.isfile('/var/run/nodewatcher/node_idletime.json'):
         data = json.loads(open('/var/run/nodewatcher/node_idletime.json').read())
     else:
         data = {'idle_time': 0}
