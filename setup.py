@@ -21,7 +21,7 @@ def read(fname):
 
 console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main',
                    'nodewatcher = nodewatcher.nodewatcher:main']
-version = "1.5.2rc2"
+version = "1.5.2"
 requires = ['boto>=2.48.0', 'python-dateutil>=2.6.1']
 
 if sys.version_info[:2] == (2, 6):
