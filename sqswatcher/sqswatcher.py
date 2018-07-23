@@ -212,14 +212,6 @@ def pollQueue(scheduler, q, t, proxy_config):
 def getInstanceMappingFile(region, proxy_config):
     s3 = boto3.resource('s3', config=proxy_config)
 
-    bucket_name = region + '-cfncluster'
-    print bucket_name
-    try:
-        s3.meta.client.head_bucket(Bucket=bucket_name)
-    except ClientError as e:
-        log.critical("Could not save instance mapping file. Failed with exception: %s" % e)
-        raise
-
     try:
         if not os.path.exists('/opt/cfncluster/'):
             os.makedirs('/opt/cfncluster/')
@@ -230,8 +222,13 @@ def getInstanceMappingFile(region, proxy_config):
             log.critical('Could not save instance mapping file. Failed with exception: %s' % ex)
             raise
 
-    bucket = s3.Bucket(bucket_name)
-    bucket.download_file('instances/instances.json', '/opt/cfncluster/instances.json')
+    bucket_name = region + '-cfncluster'
+    try:
+        bucket = s3.Bucket(bucket_name)
+        bucket.download_file('instances/instances.json', '/opt/cfncluster/instances.json')
+    except ClientError as e:
+        log.critical("Could not save instance mapping file. Failed with exception: %s" % e)
+        raise
 
 
 def main():
