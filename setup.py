@@ -19,18 +19,18 @@ from setuptools import setup, find_packages
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main', 
+console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main',
                    'nodewatcher = nodewatcher.nodewatcher:main']
-version = "1.5.1"
+version = "1.5.2"
 requires = ['boto>=2.48.0', 'python-dateutil>=2.6.1']
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
     # was not in stdlib until 2.7.
     requires.append('argparse>=1.4')
-    requires.append('paramiko==2.3.1')
+    requires.append('paramiko==2.3.2')
 else:
-    requires.append('paramiko>=2.3.1')
+    requires.append('paramiko>=2.3.2')
 
 setup(
     name = "cfncluster-node",
