@@ -29,6 +29,8 @@ import errno
 
 
 log = logging.getLogger(__name__)
+_NW_DATA_DIR = "/var/run/nodewatcher/"
+_NW_IDLETIME_FILE = _NW_DATA_DIR + "node_idletime.json"
 
 def getConfig(instance_id):
     log.debug('reading /etc/nodewatcher.cfg')
@@ -145,16 +147,17 @@ def maintainSize(asg_name, asg_conn):
 
 def saveIdleTime(persisted_data):
     try:
-        if not os.path.exists('/var/run/nodewatcher/'):
-            os.makedirs('/var/run/nodewatcher/')
+        if not os.path.exists(_NW_DATA_DIR):
+            os.makedirs(_NW_DATA_DIR)
     except OSError as ex:
-        if ex.errno == errno.EEXIST and os.path.exists('/var/run/nodewatcher/'):
+        if ex.errno == errno.EEXIST and os.path.exists(_NW_DATA_DIR):
             pass
         else:
-            log.critical('Persisting idle time failed with exception: %s' % ex)
+            log.critical('Persisting idle time %s to file %s failed with exception: %s '
+                         % (persisted_data, _NW_IDLETIME_FILE, ex))
             raise
 
-    with open('/var/run/nodewatcher/node_idletime.json', 'w') as outfile:
+    with open(_NW_IDLETIME_FILE, 'w') as outfile:
         json.dump(persisted_data, outfile)
 
 
@@ -171,8 +174,8 @@ def main():
 
     s = loadSchedulerModule(scheduler)
 
-    if os.path.isfile('/var/run/nodewatcher/node_idletime.json'):
-        data = json.loads(open('/var/run/nodewatcher/node_idletime.json').read())
+    if os.path.isfile(_NW_IDLETIME_FILE):
+        data = json.loads(open(_NW_IDLETIME_FILE).read())
     else:
         data = {'idle_time': 0}
 
@@ -202,7 +205,7 @@ def main():
                 if data['idle_time'] >= idle_time:
                     has_pending_jobs, error = queueHasPendingJobs(s)
                     if not error and not has_pending_jobs:
-                        os.remove('/var/run/nodewatcher/node_idletime.json')
+                        os.remove(_NW_IDLETIME_FILE)
                         selfTerminate(asg_name, asg_conn, instance_id)
 
                 lockHost(s, hostname, unlock=True)
