@@ -11,6 +11,8 @@
 
 import subprocess
 import logging
+import shlex
+import os
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +33,33 @@ def getJobs(hostname):
         _jobs = True
 
     return _jobs
+
+def queueHasPendingJobs():
+    command = "/opt/slurm/bin/squeue -t PD"
+    _command = shlex.split(command)
+    error = False
+    has_pending = False
+
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        error = True
+
+    output = process.communicate()[0]
+    lines = output.split("\n")
+    exit_code = process.poll()
+
+    if exit_code != 0:
+        log.error("Failed to run %s\n" % command)
+        error = True
+        return has_pending, error
+
+    if len(lines) > 1:
+        has_pending = True
+
+    return has_pending, error
 
 def lockHost(hostname, unlock=False):
     pass

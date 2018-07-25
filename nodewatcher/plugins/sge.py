@@ -14,6 +14,7 @@ __author__ = 'dougalb'
 import subprocess
 import os
 import logging
+import shlex
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def getJobs(hostname):
     try:
        _output = subprocess.Popen(command, stdout=subprocess.PIPE,
                                  env=dict(os.environ, SGE_ROOT='/opt/sge',
-                                         PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin')).communicate()[0]
+                                          PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin')).communicate()[0]
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % command)
 
@@ -34,6 +35,37 @@ def getJobs(hostname):
             break
 
     return _jobs
+
+def queueHasPendingJobs():
+    command = "qstat -g d -s p -u '*'"
+    _command = shlex.split(command)
+    error = False
+    has_pending = False
+
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        error = True
+
+    output = process.communicate()[0]
+    exit_code = process.poll()
+
+    if exit_code != 0:
+        log.error("Failed to run %s\n" % command)
+        error = True
+        return has_pending, error
+
+    lines = output.split("\n")
+
+    if len(lines) > 1:
+        has_pending = True
+
+    return has_pending, error
+
+
+
 
 def lockHost(hostname, unlock=False):
     _mod = unlock and '-e' or '-d'
