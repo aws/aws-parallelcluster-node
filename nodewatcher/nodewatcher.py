@@ -109,7 +109,7 @@ def getJobs(s,hostname):
 
     return _jobs
 
-def queueHasPendingJobs():
+def queueHasPendingJobs(s):
     _has_pending_jobs, _error = s.queueHasPendingJobs()
     log.debug("has_pending_jobs=%s, error=%s" %(_has_pending_jobs, _error))
     return _has_pending_jobs, _error
@@ -179,13 +179,10 @@ def main():
     atexit.register(saveIdleTime, data)
     while True:
         time.sleep(60)
-        ec2_conn = boto3.resource('ec2', region_name=region, config=proxy_config)
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
-        hour_percentile = getHourPercentile(instance_id, ec2_conn)
-        log.info('Percent of hour used: %d' % hour_percentile)
 
         jobs = getJobs(s, hostname)
-        if jobs == True:
+        if jobs:
             log.info('Instance has active jobs.')
             data['idle_time'] = 0
         else:
@@ -194,7 +191,7 @@ def main():
             # avoid race condition by locking and verifying
             lockHost(s, hostname)
             jobs = getJobs(s, hostname)
-            if jobs == True:
+            if jobs:
                 log.info('Instance actually has active jobs.')
                 data['idle_time'] = 0
                 lockHost(s, hostname, unlock=True)
@@ -203,10 +200,12 @@ def main():
                 data['idle_time'] += 1
                 log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data['idle_time']))
                 if data['idle_time'] >= idle_time:
-                    has_pending_jobs, error = queueHasPen
-                    if
-                    os.remove('/var/run/nodewatcher/node_idletime.json')
-                    selfTerminate(asg_name, asg_conn, instance_id)
+                    has_pending_jobs, error = queueHasPendingJobs(s)
+                    if not error and not has_pending_jobs:
+                        os.remove('/var/run/nodewatcher/node_idletime.json')
+                        selfTerminate(asg_name, asg_conn, instance_id)
+
+                lockHost(s, hostname, unlock=True)
 
 if __name__ == "__main__":
     main()
