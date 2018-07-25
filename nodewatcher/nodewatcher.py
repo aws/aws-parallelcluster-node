@@ -109,6 +109,11 @@ def getJobs(s,hostname):
 
     return _jobs
 
+def queueHasPendingJobs():
+    _has_pending_jobs, _error = s.queueHasPendingJobs()
+    log.debug("has_pending_jobs=%s, error=%s" %(_has_pending_jobs, _error))
+    return _has_pending_jobs, _error
+
 def lockHost(s,hostname,unlock=False):
     log.debug("%s %s" % (unlock and "unlocking" or "locking",
                          hostname))
@@ -198,6 +203,8 @@ def main():
                 data['idle_time'] += 1
                 log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data['idle_time']))
                 if data['idle_time'] >= idle_time:
+                    has_pending_jobs, error = queueHasPen
+                    if
                     os.remove('/var/run/nodewatcher/node_idletime.json')
                     selfTerminate(asg_name, asg_conn, instance_id)
 

@@ -17,6 +17,9 @@ def getJobs(hostname):
 
     return _jobs
 
+def queueHasPendingJobs():
+    return False, False
+
 def lockHost(hostname, unlock=False):
     pass
 

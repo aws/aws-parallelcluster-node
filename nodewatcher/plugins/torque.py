@@ -14,6 +14,7 @@ __author__ = 'dougalb'
 import subprocess
 import os
 import logging
+import shlex
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,43 @@ def getJobs(hostname):
         _jobs = True
 
     return _jobs
+
+def queueHasPendingJobs():
+    command = "qstat -Q"
+    _command = shlex.split(command)
+    error = False
+    has_pending = False
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        error = True
+
+    output = process.communicate()[0]
+    exit_code = process.poll()
+
+    if exit_code != 0:
+        log.error("Failed to run %s\n" % command)
+        error = True
+        return has_pending, error
+
+    lines = output.split("\n")
+    if len(lines) < 3:
+        log.error("Error in parsing the output %s\n" % lines)
+        error = True
+        return has_pending, error
+
+    queue_status = lines[2].split()
+
+    if len(qStatus) != 13:
+        log.error("Error in parsing the output %s\n" % lines[2])
+        error = True
+        return has_pending, error
+
+        has_pending = (int(queue_status[5]) != 0)
+
+    return has_pending, error
 
 def lockHost(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
