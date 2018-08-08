@@ -49,7 +49,7 @@ def getConfig(instance_id):
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
 
-    _scaledown_idletime = config.get('nodewatcher', 'idle_time')
+    _scaledown_idletime = config.get('nodewatcher', 'scale_down_idle_time')
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
