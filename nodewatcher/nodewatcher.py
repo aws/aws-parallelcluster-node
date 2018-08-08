@@ -31,6 +31,7 @@ import errno
 log = logging.getLogger(__name__)
 _NW_DATA_DIR = "/var/run/nodewatcher/"
 _NW_IDLETIME_FILE = _NW_DATA_DIR + "node_idletime.json"
+_NW_CURRENT_IDLETIME = 'current_idletime'
 
 def getConfig(instance_id):
     log.debug('reading /etc/nodewatcher.cfg')
@@ -48,7 +49,7 @@ def getConfig(instance_id):
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
 
-    _idle_time = config.get('nodewatcher', 'idle_time')
+    _scaledown_idletime = config.get('nodewatcher', 'idle_time')
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
@@ -67,8 +68,8 @@ def getConfig(instance_id):
 
         os.rename(tup[1], 'nodewatcher.cfg')
 
-    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _idle_time))
-    return _region, _asg, _scheduler, proxy_config, _idle_time
+    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _scaledown_idletime))
+    return _region, _asg, _scheduler, proxy_config, _scaledown_idletime
 
 def getInstanceId():
 
@@ -103,17 +104,17 @@ def loadSchedulerModule(scheduler):
 
     return _scheduler
 
-def getJobs(s,hostname):
+def hasJobs(s,hostname):
 
-    _jobs = s.getJobs(hostname)
+    _jobs = s.hasJobs(hostname)
 
     log.debug("jobs=%s" % _jobs)
 
     return _jobs
 
-def queueHasPendingJobs(s):
-    _has_pending_jobs, _error = s.queueHasPendingJobs()
-    log.debug("has_pending_jobs=%s, error=%s" %(_has_pending_jobs, _error))
+def hasPendingJobs(s):
+    _has_pending_jobs, _error = s.hasPendingJobs()
+    log.debug("has_pending_jobs=%s, error=%s" % (_has_pending_jobs, _error))
     return _has_pending_jobs, _error
 
 def lockHost(s,hostname,unlock=False):
@@ -150,12 +151,9 @@ def saveIdleTime(persisted_data):
         if not os.path.exists(_NW_DATA_DIR):
             os.makedirs(_NW_DATA_DIR)
     except OSError as ex:
-        if ex.errno == errno.EEXIST and os.path.exists(_NW_DATA_DIR):
-            pass
-        else:
-            log.critical('Persisting idle time %s to file %s failed with exception: %s '
+        log.critical('Persisting idle time %s to file %s failed with exception: %s '
                          % (persisted_data, _NW_IDLETIME_FILE, ex))
-            raise
+        raise
 
     with open(_NW_IDLETIME_FILE, 'w') as outfile:
         json.dump(persisted_data, outfile)
@@ -175,40 +173,38 @@ def main():
     s = loadSchedulerModule(scheduler)
 
     if os.path.isfile(_NW_IDLETIME_FILE):
-        data = json.loads(open(_NW_IDLETIME_FILE).read())
+        with open(_NW_IDLETIME_FILE) as f:
+            data = json.loads(f.read())
     else:
-        data = {'idle_time': 0}
+        data = {_NW_CURRENT_IDLETIME: 0}
 
     atexit.register(saveIdleTime, data)
     while True:
         time.sleep(60)
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
 
-        jobs = getJobs(s, hostname)
-        if jobs:
+        has_jobs = hasJobs(s, hostname)
+        if has_jobs:
             log.info('Instance has active jobs.')
-            data['idle_time'] = 0
+            data[_NW_CURRENT_IDLETIME] = 0
         else:
             if maintainSize(asg_name, asg_conn):
                 continue
-            # avoid race condition by locking and verifying
-            lockHost(s, hostname)
-            jobs = getJobs(s, hostname)
-            if jobs:
-                log.info('Instance actually has active jobs.')
-                data['idle_time'] = 0
-                lockHost(s, hostname, unlock=True)
-                continue
             else:
-                data['idle_time'] += 1
-                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data['idle_time']))
-                if data['idle_time'] >= idle_time:
-                    has_pending_jobs, error = queueHasPendingJobs(s)
-                    if not error and not has_pending_jobs:
-                        os.remove(_NW_IDLETIME_FILE)
-                        selfTerminate(asg_name, asg_conn, instance_id)
-
-                lockHost(s, hostname, unlock=True)
+                data[_NW_CURRENT_IDLETIME] += 1
+                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data[_NW_CURRENT_IDLETIME]))
+                if data[_NW_CURRENT_IDLETIME] >= idle_time:
+                    lockHost(s, hostname)
+                    has_jobs = hasJobs(s, hostname)
+                    if has_jobs:
+                        log.info('Instance has active jobs.')
+                        data[_NW_CURRENT_IDLETIME] = 0
+                    else:
+                        has_pending_jobs, error = hasPendingJobs(s)
+                        if not error and not has_pending_jobs:
+                            os.remove(_NW_IDLETIME_FILE)
+                            selfTerminate(asg_name, asg_conn, instance_id)
+                    lockHost(s, hostname, unlock=True)
 
 if __name__ == "__main__":
     main()
