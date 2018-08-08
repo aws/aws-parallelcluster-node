@@ -17,7 +17,7 @@ import os
 log = logging.getLogger(__name__)
 
 
-def getJobs(hostname):
+def hasJobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split('.')[0]
     # Checking for running jobs on the node
@@ -34,8 +34,14 @@ def getJobs(hostname):
 
     return _jobs
 
-def queueHasPendingJobs():
-    command = "/opt/slurm/bin/squeue -t PD"
+def hasPendingJobs():
+    command = "/opt/slurm/bin/squeue -t PD --noheader"
+
+    # Command outputs the pending jobs in the queue in the following format
+    #  71   compute   job.sh ec2-user PD       0:00      1 (Resources)
+    #  72   compute   job.sh ec2-user PD       0:00      1 (Priority)
+    #  73   compute   job.sh ec2-user PD       0:00      1 (Priority)
+
     _command = shlex.split(command)
     error = False
     has_pending = False
@@ -48,7 +54,7 @@ def queueHasPendingJobs():
         error = True
 
     output = process.communicate()[0]
-    lines = output.split("\n")
+    lines = filter(None, output.split("\n"))
     exit_code = process.poll()
 
     if exit_code != 0:
@@ -56,7 +62,7 @@ def queueHasPendingJobs():
         error = True
         return has_pending, error
 
-    if len(lines) > 1:
+    if len(lines) > 0:
         has_pending = True
 
     return has_pending, error

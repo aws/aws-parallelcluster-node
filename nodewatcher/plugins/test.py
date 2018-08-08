@@ -11,13 +11,13 @@
 
 __author__ = 'dougalb'
 
-def getJobs(hostname):
+def hasJobs(hostname):
     # Test function. Change as needed.
     _jobs = False
 
     return _jobs
 
-def queueHasPendingJobs():
+def hasPendingJobs():
     return False, False
 
 def lockHost(hostname, unlock=False):

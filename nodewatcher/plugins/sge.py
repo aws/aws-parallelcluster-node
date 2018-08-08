@@ -18,7 +18,7 @@ import shlex
 
 log = logging.getLogger(__name__)
 
-def getJobs(hostname):
+def hasJobs(hostname):
     # Checking for running jobs on the node
     command = ['/opt/sge/bin/idle-nodes']
     try:
@@ -36,8 +36,17 @@ def getJobs(hostname):
 
     return _jobs
 
-def queueHasPendingJobs():
+def hasPendingJobs():
     command = "qstat -g d -s p -u '*'"
+
+    # Command outputs the pending jobs in the queue in the following format
+    # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
+    # -----------------------------------------------------------------------------------------------------------------
+    #      70 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:24                                    1
+    #      71 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:24                                    1
+    #      72 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
+    #      73 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
+
     _command = shlex.split(command)
     error = False
     has_pending = False
@@ -57,7 +66,7 @@ def queueHasPendingJobs():
         error = True
         return has_pending, error
 
-    lines = output.split("\n")
+    lines = filter(None, output.split("\n"))
 
     if len(lines) > 1:
         has_pending = True
