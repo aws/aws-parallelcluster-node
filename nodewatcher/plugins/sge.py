@@ -73,9 +73,6 @@ def hasPendingJobs():
 
     return has_pending, error
 
-
-
-
 def lockHost(hostname, unlock=False):
     _mod = unlock and '-e' or '-d'
     command = ['/opt/sge/bin/lx-amd64/qmod', _mod, 'all.q@%s' % hostname]
