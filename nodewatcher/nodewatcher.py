@@ -199,12 +199,18 @@ def main():
                     if has_jobs:
                         log.info('Instance has active jobs.')
                         data[_NW_CURRENT_IDLETIME] = 0
+                        lockHost(s, hostname, unlock=True)
                     else:
                         has_pending_jobs, error = hasPendingJobs(s)
                         if not error and not has_pending_jobs:
                             os.remove(_NW_IDLETIME_FILE)
                             selfTerminate(asg_name, asg_conn, instance_id)
-                    lockHost(s, hostname, unlock=True)
+                        else:
+                            if has_pending_jobs:
+                                log.info('Queue has pending jobs. Not terminating instance')
+                            elif error:
+                                log.info('Encountered an error while polling queue for pending jobs. Not terminating instance')
+                            lockHost(s, hostname, unlock=True)
 
 if __name__ == "__main__":
     main()
