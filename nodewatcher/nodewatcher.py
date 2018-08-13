@@ -49,7 +49,7 @@ def getConfig(instance_id):
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
 
-    _scaledown_idletime = config.get('nodewatcher', 'scale_down_idle_time')
+    _scaledown_idletime = config.get('nodewatcher', 'scaledown_idletime')
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
@@ -211,6 +211,7 @@ def main():
                             elif error:
                                 log.info('Encountered an error while polling queue for pending jobs. Not terminating instance')
                             lockHost(s, hostname, unlock=True)
+
 
 if __name__ == "__main__":
     main()
