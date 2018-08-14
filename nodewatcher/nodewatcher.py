@@ -29,9 +29,9 @@ import errno
 
 
 log = logging.getLogger(__name__)
-_NW_DATA_DIR = "/var/run/nodewatcher/"
-_NW_IDLETIME_FILE = _NW_DATA_DIR + "node_idletime.json"
-_NW_CURRENT_IDLETIME = 'current_idletime'
+_DATA_DIR = "/var/run/nodewatcher/"
+_IDLETIME_FILE = _DATA_DIR + "node_idletime.json"
+_CURRENT_IDLETIME = 'current_idletime'
 
 def getConfig(instance_id):
     log.debug('reading /etc/nodewatcher.cfg')
@@ -148,14 +148,14 @@ def maintainSize(asg_name, asg_conn):
 
 def saveIdleTime(persisted_data):
     try:
-        if not os.path.exists(_NW_DATA_DIR):
-            os.makedirs(_NW_DATA_DIR)
+        if not os.path.exists(_DATA_DIR):
+            os.makedirs(_DATA_DIR)
     except OSError as ex:
         log.critical('Persisting idle time %s to file %s failed with exception: %s '
-                         % (persisted_data, _NW_IDLETIME_FILE, ex))
+                     % (persisted_data, _IDLETIME_FILE, ex))
         raise
 
-    with open(_NW_IDLETIME_FILE, 'w') as outfile:
+    with open(_IDLETIME_FILE, 'w') as outfile:
         json.dump(persisted_data, outfile)
 
 
@@ -172,11 +172,11 @@ def main():
 
     s = loadSchedulerModule(scheduler)
 
-    if os.path.isfile(_NW_IDLETIME_FILE):
-        with open(_NW_IDLETIME_FILE) as f:
+    if os.path.isfile(_IDLETIME_FILE):
+        with open(_IDLETIME_FILE) as f:
             data = json.loads(f.read())
     else:
-        data = {_NW_CURRENT_IDLETIME: 0}
+        data = {_CURRENT_IDLETIME: 0}
 
     atexit.register(saveIdleTime, data)
     while True:
@@ -186,24 +186,24 @@ def main():
         has_jobs = hasJobs(s, hostname)
         if has_jobs:
             log.info('Instance has active jobs.')
-            data[_NW_CURRENT_IDLETIME] = 0
+            data[_CURRENT_IDLETIME] = 0
         else:
             if maintainSize(asg_name, asg_conn):
                 continue
             else:
-                data[_NW_CURRENT_IDLETIME] += 1
-                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data[_NW_CURRENT_IDLETIME]))
-                if data[_NW_CURRENT_IDLETIME] >= idle_time:
+                data[_CURRENT_IDLETIME] += 1
+                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data[_CURRENT_IDLETIME]))
+                if data[_CURRENT_IDLETIME] >= idle_time:
                     lockHost(s, hostname)
                     has_jobs = hasJobs(s, hostname)
                     if has_jobs:
                         log.info('Instance has active jobs.')
-                        data[_NW_CURRENT_IDLETIME] = 0
+                        data[_CURRENT_IDLETIME] = 0
                         lockHost(s, hostname, unlock=True)
                     else:
                         has_pending_jobs, error = hasPendingJobs(s)
                         if not error and not has_pending_jobs:
-                            os.remove(_NW_IDLETIME_FILE)
+                            os.remove(_IDLETIME_FILE)
                             selfTerminate(asg_name, asg_conn, instance_id)
                         else:
                             if has_pending_jobs:
