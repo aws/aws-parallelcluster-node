@@ -17,6 +17,8 @@ import time
 import sys
 import ConfigParser
 import logging
+import os
+import errno
 
 import boto3
 from botocore.config import Config
@@ -206,6 +208,28 @@ def pollQueue(scheduler, q, t, proxy_config):
 
         time.sleep(30)
 
+
+def getInstanceMappingFile(region, proxy_config):
+    s3 = boto3.resource('s3', config=proxy_config)
+    cfncluster_dir = '/opt/cfncluster/'
+    cfncluster_file = cfncluster_dir + 'instances.json'
+
+    try:
+        if not os.path.exists(cfncluster_dir):
+            os.makedirs(cfncluster_dir)
+    except OSError as ex:
+            log.critical('Could not create directory %s. Failed with exception: %s' % (cfncluster_dir, ex))
+            raise
+
+    bucket_name = region + '-cfncluster'
+    try:
+        bucket = s3.Bucket(bucket_name)
+        bucket.download_file('instances/instances.json', cfncluster_file)
+    except ClientError as e:
+        log.critical("Could not save instance mapping file %s from S3 bucket %s. Failed with exception: %s" % (cfncluster_file, bucket_name, e))
+        raise
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -214,6 +238,7 @@ def main():
     log.info("sqswatcher startup")
     global region, cluster_user
     region, sqsqueue, table_name, scheduler, cluster_user, proxy_config = getConfig()
+    getInstanceMappingFile(region, proxy_config)
     q = setupQueue(region, sqsqueue, proxy_config)
     t = setupDDBTable(region, table_name, proxy_config)
     pollQueue(scheduler, q, t, proxy_config)
