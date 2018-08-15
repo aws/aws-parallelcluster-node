@@ -71,12 +71,6 @@ def hasPendingJobs():
         error = True
 
     output = process.communicate()[0]
-    exit_code = process.poll()
-
-    if exit_code != 0:
-        log.error("Failed to run %s\n" % command)
-        error = True
-        return has_pending, error
 
     lines = filter(None, output.split("\n"))
     if len(lines) < 3:

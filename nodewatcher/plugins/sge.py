@@ -37,7 +37,7 @@ def hasJobs(hostname):
     return _jobs
 
 def hasPendingJobs():
-    command = "/opt/sge/bin/qstat -g d -s p -u '*'"
+    command = "/opt/sge/bin/lx-amd64/qstat -g d -s p -u '*'"
 
     # Command outputs the pending jobs in the queue in the following format
     # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
@@ -59,13 +59,6 @@ def hasPendingJobs():
         error = True
 
     output = process.communicate()[0]
-    exit_code = process.poll()
-
-    if exit_code != 0:
-        log.error("Failed to run %s\n" % command)
-        error = True
-        return has_pending, error
-
     lines = filter(None, output.split("\n"))
 
     if len(lines) > 1:
