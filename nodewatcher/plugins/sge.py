@@ -37,7 +37,7 @@ def hasJobs(hostname):
     return _jobs
 
 def hasPendingJobs():
-    command = "qstat -g d -s p -u '*'"
+    command = "/opt/sge/bin/qstat -g d -s p -u '*'"
 
     # Command outputs the pending jobs in the queue in the following format
     # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID

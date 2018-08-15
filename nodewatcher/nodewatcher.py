@@ -49,7 +49,7 @@ def getConfig(instance_id):
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
 
-    _scaledown_idletime = config.get('nodewatcher', 'scaledown_idletime')
+    _scaledown_idletime = int(config.get('nodewatcher', 'scaledown_idletime'))
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
@@ -146,19 +146,6 @@ def maintainSize(asg_name, asg_conn):
         return True
 
 
-def saveIdleTime(persisted_data):
-    try:
-        if not os.path.exists(_DATA_DIR):
-            os.makedirs(_DATA_DIR)
-    except OSError as ex:
-        log.critical('Persisting idle time %s to file %s failed with exception: %s '
-                     % (persisted_data, _IDLETIME_FILE, ex))
-        raise
-
-    with open(_IDLETIME_FILE, 'w') as outfile:
-        json.dump(persisted_data, outfile)
-
-
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -172,13 +159,20 @@ def main():
 
     s = loadSchedulerModule(scheduler)
 
+    try:
+        if not os.path.exists(_DATA_DIR):
+            os.makedirs(_DATA_DIR)
+    except OSError as ex:
+        log.critical('Creating directory %s to persist current idle time failed with exception: %s '
+                     % (_DATA_DIR, ex))
+        raise
+
     if os.path.isfile(_IDLETIME_FILE):
         with open(_IDLETIME_FILE) as f:
             data = json.loads(f.read())
     else:
         data = {_CURRENT_IDLETIME: 0}
 
-    atexit.register(saveIdleTime, data)
     while True:
         time.sleep(60)
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
@@ -193,6 +187,9 @@ def main():
             else:
                 data[_CURRENT_IDLETIME] += 1
                 log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data[_CURRENT_IDLETIME]))
+                with open(_IDLETIME_FILE, 'w') as outfile:
+                    json.dump(data, outfile)
+
                 if data[_CURRENT_IDLETIME] >= idle_time:
                     lockHost(s, hostname)
                     has_jobs = hasJobs(s, hostname)
