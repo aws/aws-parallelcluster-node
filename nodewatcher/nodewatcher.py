@@ -22,7 +22,7 @@ import tempfile
 import logging
 import boto3
 import ConfigParser
-import botocore.exceptions
+from botocore.exceptions import ClientError
 from botocore.config import Config
 import json
 import atexit
@@ -204,7 +204,7 @@ def main():
                             os.remove(_IDLETIME_FILE)
                             try:
                                 selfTerminate(asg_name, asg_conn, instance_id)
-                            except botocore.exceptions.ClientError as ex:
+                            except ClientError as ex:
                                 log.error('Failed to terminate instance: %s with exception %s' % (instance_id, ex))
                                 lockHost(s, hostname, unlock=True)
                         else:
