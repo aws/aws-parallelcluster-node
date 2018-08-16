@@ -69,7 +69,7 @@ def main():
     )
 
     config = ConfigParser.RawConfigParser()
-    config.read('jobwatcher.cfg')
+    config.read('/etc/jobwatcher.cfg')
     if config.has_option('jobwatcher', 'loglevel'):
         lvl = logging._levelNames[config.get('jobwatcher', 'loglevel')]
         logging.getLogger().setLevel(lvl)
