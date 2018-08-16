@@ -23,8 +23,15 @@ import logging
 import boto3
 import ConfigParser
 from botocore.config import Config
+import json
+import atexit
+import errno
+
 
 log = logging.getLogger(__name__)
+_DATA_DIR = "/var/run/nodewatcher/"
+_IDLETIME_FILE = _DATA_DIR + "node_idletime.json"
+_CURRENT_IDLETIME = 'current_idletime'
 
 def getConfig(instance_id):
     log.debug('reading /etc/nodewatcher.cfg')
@@ -42,6 +49,7 @@ def getConfig(instance_id):
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
 
+    _scaledown_idletime = int(config.get('nodewatcher', 'scaledown_idletime'))
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
@@ -60,22 +68,8 @@ def getConfig(instance_id):
 
         os.rename(tup[1], 'nodewatcher.cfg')
 
-    log.debug("region=%s asg=%s scheduler=%s prox_config=%s" % (_region, _asg, _scheduler, proxy_config))
-    return _region, _asg, _scheduler, proxy_config
-
-def getHourPercentile(instance_id, ec2):
-    instances = ec2.instances.filter(InstanceIds=[instance_id])
-    instance = next(iter(instances or []), None)
-    _launch_time = instance.launch_time.replace(tzinfo=None)
-    _current_time = datetime.utcnow()
-    _delta = _current_time - _launch_time
-    _delta_in_hours = _delta.seconds / 3600.0
-    _hour_percentile = (_delta_in_hours % 1) * 100
-
-    log.debug("launch=%s delta=%s percentile=%s" % (_launch_time, _delta,
-                                                    _hour_percentile))
-
-    return _hour_percentile
+    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _scaledown_idletime))
+    return _region, _asg, _scheduler, proxy_config, _scaledown_idletime
 
 def getInstanceId():
 
@@ -110,13 +104,18 @@ def loadSchedulerModule(scheduler):
 
     return _scheduler
 
-def getJobs(s,hostname):
+def hasJobs(s,hostname):
 
-    _jobs = s.getJobs(hostname)
+    _jobs = s.hasJobs(hostname)
 
     log.debug("jobs=%s" % _jobs)
 
     return _jobs
+
+def hasPendingJobs(s):
+    _has_pending_jobs, _error = s.hasPendingJobs()
+    log.debug("has_pending_jobs=%s, error=%s" % (_has_pending_jobs, _error))
+    return _has_pending_jobs, _error
 
 def lockHost(s,hostname,unlock=False):
     log.debug("%s %s" % (unlock and "unlocking" or "locking",
@@ -146,6 +145,7 @@ def maintainSize(asg_name, asg_conn):
         log.debug('capacity less then or equal to min size.')
         return True
 
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -154,35 +154,61 @@ def main():
     log.info("nodewatcher startup")
     instance_id = getInstanceId()
     hostname = getHostname()
-    region, asg_name, scheduler, proxy_config = getConfig(instance_id)
+    region, asg_name, scheduler, proxy_config, idle_time = getConfig(instance_id)
+
 
     s = loadSchedulerModule(scheduler)
 
+    try:
+        if not os.path.exists(_DATA_DIR):
+            os.makedirs(_DATA_DIR)
+    except OSError as ex:
+        log.critical('Creating directory %s to persist current idle time failed with exception: %s '
+                     % (_DATA_DIR, ex))
+        raise
+
+    if os.path.isfile(_IDLETIME_FILE):
+        with open(_IDLETIME_FILE) as f:
+            data = json.loads(f.read())
+    else:
+        data = {_CURRENT_IDLETIME: 0}
+
     while True:
         time.sleep(60)
-        ec2_conn = boto3.resource('ec2', region_name=region, config=proxy_config)
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
-        hour_percentile = getHourPercentile(instance_id, ec2_conn)
-        log.info('Percent of hour used: %d' % hour_percentile)
 
-        if hour_percentile < 95:
-            continue
-
-        jobs = getJobs(s, hostname)
-        if jobs == True:
+        has_jobs = hasJobs(s, hostname)
+        if has_jobs:
             log.info('Instance has active jobs.')
+            data[_CURRENT_IDLETIME] = 0
         else:
             if maintainSize(asg_name, asg_conn):
                 continue
-            # avoid race condition by locking and verifying
-            lockHost(s, hostname)
-            jobs = getJobs(s, hostname)
-            if jobs == True:
-                log.info('Instance actually has active jobs.')
-                lockHost(s, hostname, unlock=True)
-                continue
             else:
-                selfTerminate(asg_name, asg_conn, instance_id)
+                data[_CURRENT_IDLETIME] += 1
+                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data[_CURRENT_IDLETIME]))
+                with open(_IDLETIME_FILE, 'w') as outfile:
+                    json.dump(data, outfile)
+
+                if data[_CURRENT_IDLETIME] >= idle_time:
+                    lockHost(s, hostname)
+                    has_jobs = hasJobs(s, hostname)
+                    if has_jobs:
+                        log.info('Instance has active jobs.')
+                        data[_CURRENT_IDLETIME] = 0
+                        lockHost(s, hostname, unlock=True)
+                    else:
+                        has_pending_jobs, error = hasPendingJobs(s)
+                        if not error and not has_pending_jobs:
+                            os.remove(_IDLETIME_FILE)
+                            selfTerminate(asg_name, asg_conn, instance_id)
+                        else:
+                            if has_pending_jobs:
+                                log.info('Queue has pending jobs. Not terminating instance')
+                            elif error:
+                                log.info('Encountered an error while polling queue for pending jobs. Not terminating instance')
+                            lockHost(s, hostname, unlock=True)
+
 
 if __name__ == "__main__":
     main()
