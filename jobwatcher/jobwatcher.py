@@ -35,6 +35,16 @@ def loadSchedulerModule(scheduler):
 
     return _scheduler
 
+def get_asg_name(stack_name, region, proxy_config):
+    asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
+
+    try:
+        r = asg_conn.describe_tags(Filters=[{'Name': 'value', 'Values': [stack_name]}])
+        return r.get('Tags')[0].get('ResourceId')
+    except IndexError as e:
+        log.error("No asg found for cluster %s" % stack_name)
+        raise
+
 def get_instance_properties(instance_type):
     with open(pricing_file) as f:
         instances = json.load(f)
@@ -74,8 +84,8 @@ def main():
         lvl = logging._levelNames[config.get('jobwatcher', 'loglevel')]
         logging.getLogger().setLevel(lvl)
     region = config.get('jobwatcher', 'region')
-    asg_name = config.get('jobwatcher', 'asg_name')
     scheduler = config.get('jobwatcher', 'scheduler')
+    stack_name = config.get('jobwatcher', 'stack_name')
     instance_type = config.get('jobwatcher', 'compute_instance_type')
     cfncluster_dir = config.get('jobwatcher', 'cfncluster_dir')
     _proxy = config.get('jobwatcher', 'proxy')
@@ -83,6 +93,14 @@ def main():
 
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
+
+    try:
+        asg_name = config.get('jobwatcher', 'asg_name')
+    except ConfigParser.NoOptionError:
+        asg_name = get_asg_name(stack_name, region, proxy_config)
+        config.set('nodewatcher', 'asg_name', asg_name)
+        with open('/etc/jobwatcher.cfg', 'w') as configfile:    # save
+            config.write(configfile)
 
     # fetch the pricing file on startup
     fetch_pricing_file(proxy_config, cfncluster_dir, region)
