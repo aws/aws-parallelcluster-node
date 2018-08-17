@@ -37,13 +37,19 @@ def loadSchedulerModule(scheduler):
 
 def get_asg_name(stack_name, region, proxy_config):
     asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
+    asg_name = ""
+    no_asg = True
 
-    try:
-        r = asg_conn.describe_tags(Filters=[{'Name': 'value', 'Values': [stack_name]}])
-        return r.get('Tags')[0].get('ResourceId')
-    except IndexError as e:
-        log.error("No asg found for cluster %s" % stack_name)
-        raise
+    while no_asg:
+        try:
+            r = asg_conn.describe_tags(Filters=[{'Name': 'value', 'Values': [stack_name]}])
+            asg_name = r.get('Tags')[0].get('ResourceId')
+            no_asg = False
+        except IndexError as e:
+            log.error("No asg found for cluster %s" % stack_name)
+            time.sleep(30)
+
+    return asg_name
 
 def get_instance_properties(instance_type):
     with open(pricing_file) as f:
@@ -69,7 +75,7 @@ def fetch_pricing_file(proxy_config, cfncluster_dir, region):
         bucket = s3.Bucket(bucket_name)
         bucket.download_file('instances/instances.json', '%s/instances.json' % cfncluster_dir)
     except ClientError as e:
-        log.critical("Could not save instance mapping file %s from S3 bucket %s. Failed with exception: %s" % (cfncluster_file, bucket_name, e))
+        log.critical("Could not save instance mapping file %s/instances.json from S3 bucket %s. Failed with exception: %s" % (cfncluster_dir, bucket_name, e))
         raise
 
 def main():
@@ -98,8 +104,8 @@ def main():
         asg_name = config.get('jobwatcher', 'asg_name')
     except ConfigParser.NoOptionError:
         asg_name = get_asg_name(stack_name, region, proxy_config)
-        config.set('nodewatcher', 'asg_name', asg_name)
-        with open('/etc/jobwatcher.cfg', 'w') as configfile:    # save
+        config.set('jobwatcher', 'asg_name', asg_name)
+        with open('/etc/jobwatcher.cfg', 'w') as configfile:
             config.write(configfile)
 
     # fetch the pricing file on startup
