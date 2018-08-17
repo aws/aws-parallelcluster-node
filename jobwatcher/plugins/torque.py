@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 def get_required_nodes(instance_properties):
     command = "/opt/torque/bin/qstat -a"
     status = ['C', 'Q']
-    _output = run_command(command)
+    _output = run_command(command, {})
     output = _output.split("\n")[5:]
     nodes = 0
     for line in output:
@@ -20,7 +20,7 @@ def get_required_nodes(instance_properties):
 def get_busy_nodes(instance_properties):
     command = "/opt/torque/bin/qstat -a"
     status = ['R']
-    _output = run_command(command)
+    _output = run_command(command, {})
     output = _output.split("\n")[5:]
     nodes = 0
     for line in output:

@@ -6,7 +6,7 @@ log = logging.getLogger(__name__)
 # get nodes requested from pending jobs
 def get_required_nodes(instance_properties):
     command = "/opt/slurm/bin/squeue -r -h -o '%t %D'"
-    _output = run_command(command)
+    _output = run_command(command, {})
     nodes = 0
     output = _output.split("\n")
     for line in output:
@@ -18,7 +18,7 @@ def get_required_nodes(instance_properties):
 # get nodes reserved by running jobs
 def get_busy_nodes(instance_properties):
     command = "/opt/slurm/bin/squeue -r -h -o '%t %D'"
-    _output = run_command(command)
+    _output = run_command(command, {})
     nodes = 0
     output = _output.split("\n")
     for line in output:
