@@ -22,6 +22,7 @@ import tempfile
 import logging
 import boto3
 import ConfigParser
+from botocore.exceptions import ClientError
 from botocore.config import Config
 import json
 import atexit
@@ -201,7 +202,11 @@ def main():
                         has_pending_jobs, error = hasPendingJobs(s)
                         if not error and not has_pending_jobs:
                             os.remove(_IDLETIME_FILE)
-                            selfTerminate(asg_name, asg_conn, instance_id)
+                            try:
+                                selfTerminate(asg_name, asg_conn, instance_id)
+                            except ClientError as ex:
+                                log.error('Failed to terminate instance: %s with exception %s' % (instance_id, ex))
+                                lockHost(s, hostname, unlock=True)
                         else:
                             if has_pending_jobs:
                                 log.info('Queue has pending jobs. Not terminating instance')
