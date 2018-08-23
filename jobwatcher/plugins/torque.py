@@ -6,7 +6,7 @@ log = logging.getLogger(__name__)
 # get nodes requested from pending jobs
 def get_required_nodes(instance_properties):
     command = "/opt/torque/bin/qstat -a"
-    status = ['C', 'Q']
+    status = ['Q']
     _output = run_command(command, {})
     output = _output.split("\n")[5:]
     nodes = 0
