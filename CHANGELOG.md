@@ -3,6 +3,14 @@ cfncluster-node CHANGELOG
 
 This file is used to list changes made in each version of the cfncluster-node package.
 
+1.5.4
+-----
+
+Bug fixes/minor improvements:
+
+  - Upgraded Boto2 to Boto3 package.
+
+
 1.5.2
 -----
 
