@@ -16,14 +16,17 @@ from setuptools import setup, find_packages
 # Used for the long_description.  It's nice, because now 1) we have a top level
 # README file and 2) it's easier to type in the README file than to put a raw
 # string in below ...
+
+
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
 
 console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main',
                    'nodewatcher = nodewatcher.nodewatcher:main',
                    'jobwatcher = jobwatcher.jobwatcher:main']
-version = "1.5.2"
-requires = ['boto3>=1.7.52', 'boto>=2.48.0', 'python-dateutil>=2.6.1']
+version = "1.5.4"
+requires = ['boto3>=1.7.55', 'python-dateutil>=2.6.1']
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
