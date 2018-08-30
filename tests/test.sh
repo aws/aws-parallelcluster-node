@@ -5,3 +5,4 @@ set -x
 echo $PATH
 which nodewatcher
 which sqswatcher
+which jobwatcher 
