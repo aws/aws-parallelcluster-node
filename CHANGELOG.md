@@ -3,6 +3,14 @@ cfncluster-node CHANGELOG
 
 This file is used to list changes made in each version of the cfncluster-node package.
 
+1.6.0
+-----
+
+Bug fixes/minor improvements:
+
+  - Changed scaling functionality to scale up and scale down faster.
+
+
 1.5.4
 -----
 
