@@ -14,6 +14,7 @@ __author__ = 'dougalb'
 import subprocess
 import os
 import logging
+import shlex
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ def runPipe(cmds):
     else:
         return (False, stderr)
 
-def getJobs(hostname):
+def hasJobs(hostname):
     # Checking for running jobs on the node
     commands = ['/opt/torque/bin/qstat -r -t -n -1', ('grep ' + hostname.split('.')[0])]
     try:
@@ -49,6 +50,42 @@ def getJobs(hostname):
         _jobs = True
 
     return _jobs
+
+def hasPendingJobs():
+    command = "/opt/torque/bin/qstat -Q"
+
+    # Command outputs the status of the queue in the following format
+    # Queue              Max    Tot   Ena   Str   Que   Run   Hld   Wat   Trn   Ext T   Cpt
+    # ----------------   ---   ----    --    --   ---   ---   ---   ---   ---   --- -   ---
+    # batch                0     24   yes   yes    24     0     0     0     0     0 E     0
+    # test1                0     26   yes   yes    26     0     0     0     0     0 E     0
+
+    _command = shlex.split(command)
+    error = False
+    has_pending = False
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        error = True
+
+    output = process.communicate()[0]
+
+    lines = filter(None, output.split("\n"))
+    if len(lines) < 3:
+        error = True
+        return has_pending, error
+    pending = 0
+    for idx, line in enumerate(lines):
+        if idx < 2:
+            continue
+        queue_status = line.split()
+        pending += int(queue_status[5])
+
+    has_pending = pending > 0
+
+    return has_pending, error
 
 def lockHost(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
