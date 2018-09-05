@@ -25,6 +25,7 @@ from botocore.config import Config
 
 log = logging.getLogger(__name__)
 pricing_file = '/opt/cfncluster/instances.json'
+cfnconfig_file = '/opt/cfncluster/cfnconfig'
 
 def loadSchedulerModule(scheduler):
     scheduler = 'jobwatcher.plugins.' + scheduler
@@ -51,16 +52,55 @@ def get_asg_name(stack_name, region, proxy_config):
 
     return asg_name
 
-def get_instance_properties(instance_type):
+
+def read_cfnconfig():
+    cfnconfig_params = {}
+    with open(cfnconfig_file) as f:
+        for kvp in f:
+            key, value = kvp.partition('=')[::2]
+            cfnconfig_params[key.strip()] = value.strip()
+    return cfnconfig_params
+
+
+def get_vcpus_from_pricing_file(instance_type):
     with open(pricing_file) as f:
         instances = json.load(f)
         try:
-            slots = int(instances[instance_type]["vcpus"])
-            log.info("Instance %s has %s slots." % (instance_type, slots))
-            return {'slots': slots}
+            vcpus = int(instances[instance_type]["vcpus"])
+            log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
+            return vcpus
         except KeyError as e:
             log.error("Instance %s not found in file %s." % (instance_type, pricing_file))
             exit(1)
+
+
+def get_instance_properties(instance_type):
+    cfnconfig_params = read_cfnconfig()
+    try:
+        cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
+        slots = 0
+        vcpus = get_vcpus_from_pricing_file(instance_type)
+
+        if cfn_scheduler_slots == "cores":
+            log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
+            slots = -(-vcpus//2)
+        elif cfn_scheduler_slots == "vcpus":
+            log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
+            slots = vcpus
+        elif cfn_scheduler_slots.isdigit():
+            slots = int(cfn_scheduler_slots)
+            log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
+
+        if not slots > 0:
+            log.critical("cfn_scheduler_slots config parameter '%s' was invalid" % cfn_scheduler_slots)
+            exit(1)
+
+        return {'slots': slots}
+
+    except KeyError:
+        log.error("Required config parameter 'cfn_scheduler_slots' not found in file %s." % cfnconfig_file)
+        exit(1)
+
 
 def fetch_pricing_file(proxy_config, cfncluster_dir, region):
     s3 = boto3.resource('s3', region_name=region, config=proxy_config)

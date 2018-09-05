@@ -35,4 +35,3 @@ def get_busy_nodes(instance_properties):
                 nodes += 1
     return nodes
 
-print get_required_nodes({"slots": 4})
