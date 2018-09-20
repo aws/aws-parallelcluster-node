@@ -33,6 +33,7 @@ if sys.version_info[:2] == (2, 6):
     # was not in stdlib until 2.7.
     requires.append('argparse>=1.4')
     requires.append('paramiko==2.3.2')
+    requires.append('pycparser==2.18')
 else:
     requires.append('paramiko>=2.3.2')
 
