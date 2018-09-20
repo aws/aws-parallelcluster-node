@@ -27,7 +27,8 @@ log = logging.getLogger(__name__)
 pricing_file = '/opt/cfncluster/instances.json'
 cfnconfig_file = '/opt/cfncluster/cfnconfig'
 
-def loadSchedulerModule(scheduler):
+
+def load_scheduler_module(scheduler):
     scheduler = 'jobwatcher.plugins.' + scheduler
     _scheduler = __import__(scheduler)
     _scheduler = sys.modules[scheduler]
@@ -35,6 +36,7 @@ def loadSchedulerModule(scheduler):
     log.debug("scheduler=%s" % repr(_scheduler))
 
     return _scheduler
+
 
 def get_asg_name(stack_name, region, proxy_config):
     asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
@@ -108,8 +110,8 @@ def fetch_pricing_file(proxy_config, cfncluster_dir, region):
         if not os.path.exists(cfncluster_dir):
             os.makedirs(cfncluster_dir)
     except OSError as ex:
-            log.critical('Could not create directory %s. Failed with exception: %s' % (cfncluster_dir, ex))
-            raise
+        log.critical('Could not create directory %s. Failed with exception: %s' % (cfncluster_dir, ex))
+        raise
     bucket_name = '%s-cfncluster' % region
     try:
         bucket = s3.Bucket(bucket_name)
@@ -117,6 +119,7 @@ def fetch_pricing_file(proxy_config, cfncluster_dir, region):
     except ClientError as e:
         log.critical("Could not save instance mapping file %s/instances.json from S3 bucket %s. Failed with exception: %s" % (cfncluster_dir, bucket_name, e))
         raise
+
 
 def main():
     logging.basicConfig(
@@ -152,7 +155,7 @@ def main():
     fetch_pricing_file(proxy_config, cfncluster_dir, region)
 
     # load scheduler
-    s = loadSchedulerModule(scheduler)
+    s = load_scheduler_module(scheduler)
 
     while True:
         # get the number of vcpu's per compute instance
@@ -168,8 +171,7 @@ def main():
         asg_conn = boto3.client('autoscaling', region_name=region)
 
         # get current limits
-        asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name])\
-                .get('AutoScalingGroups')[0]
+        asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
 
         min = asg.get('MinSize')
         current_desired = asg.get('DesiredCapacity')
