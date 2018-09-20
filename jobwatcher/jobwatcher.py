@@ -127,8 +127,10 @@ def main():
         format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
     )
 
+    _configfilename = "/etc/jobwatcher.cfg"
+    log.info("Reading configuration file %s" % _configfilename)
     config = ConfigParser.RawConfigParser()
-    config.read('/etc/jobwatcher.cfg')
+    config.read(_configfilename)
     if config.has_option('jobwatcher', 'loglevel'):
         lvl = logging._levelNames[config.get('jobwatcher', 'loglevel')]
         logging.getLogger().setLevel(lvl)
@@ -142,13 +144,15 @@ def main():
 
     if not _proxy == "NONE":
         proxy_config = Config(proxies={'https': _proxy})
+        log.info("Configured proxy is: %s" % _proxy)
 
     try:
         asg_name = config.get('jobwatcher', 'asg_name')
     except ConfigParser.NoOptionError:
         asg_name = get_asg_name(stack_name, region, proxy_config)
         config.set('jobwatcher', 'asg_name', asg_name)
-        with open('/etc/jobwatcher.cfg', 'w') as configfile:
+        log.info("Saving asg_name %s in the config file %s" % (asg_name, _configfilename))
+        with open(_configfilename, 'w') as configfile:
             config.write(configfile)
 
     # fetch the pricing file on startup
@@ -168,7 +172,7 @@ def main():
         running = s.get_busy_nodes(instance_properties)
 
         # connect to asg
-        asg_conn = boto3.client('autoscaling', region_name=region)
+        asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
 
         # get current limits
         asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
