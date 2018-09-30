@@ -171,28 +171,31 @@ def main():
         # Get number of nodes currently
         running = s.get_busy_nodes(instance_properties)
 
-        # connect to asg
-        asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
+        log.info("%s jobs pending; %s jobs running" % (pending, running))
 
-        # get current limits
-        asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
+        if pending > 0:
+            # connect to asg
+            asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
 
-        min = asg.get('MinSize')
-        current_desired = asg.get('DesiredCapacity')
-        max = asg.get('MaxSize')
-        log.info("min/desired/max %d/%d/%d" % (min, current_desired, max))
-        log.info("Nodes requested %d, Nodes running %d" % (pending, running))
+            # get current limits
+            asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
 
-        # check to make sure it's in limits
-        desired = running + pending
-        if desired > max:
-            log.info("%d requested nodes is greater than max %d. Requesting max %d." % (desired, max, max))
-            asg_conn.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=max)
-        elif desired <= current_desired:
-            log.info("%d nodes desired %d nodes in asg. Noop" % (desired, current_desired))
-        else:
-            log.info("Setting desired to %d nodes, requesting %d more nodes from asg." % (desired, desired - current_desired))
-            asg_conn.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=desired)
+            min = asg.get('MinSize')
+            current_desired = asg.get('DesiredCapacity')
+            max = asg.get('MaxSize')
+            log.info("min/desired/max %d/%d/%d" % (min, current_desired, max))
+            log.info("Nodes requested %d, Nodes running %d" % (pending, running))
+
+            # check to make sure it's in limits
+            desired = running + pending
+            if desired > max:
+                log.info("%d requested nodes is greater than max %d. Requesting max %d." % (desired, max, max))
+                asg_conn.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=max)
+            elif desired <= current_desired:
+                log.info("%d nodes desired %d nodes in asg. Noop" % (desired, current_desired))
+            else:
+                log.info("Setting desired to %d nodes, requesting %d more nodes from asg." % (desired, desired - current_desired))
+                asg_conn.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=desired)
 
         time.sleep(60)
 

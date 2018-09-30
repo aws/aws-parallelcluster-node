@@ -1,6 +1,6 @@
 import logging
 import json
-from run_command import run_command
+from utils import run_command
 
 log = logging.getLogger(__name__)
 

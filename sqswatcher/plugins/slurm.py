@@ -18,6 +18,7 @@ import paramiko
 import socket
 import time
 import logging
+import re
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ def __writeNodeList(node_list, slots=0):
                     new_file.write(line)
                     dummy_node_line = slurm_config.next()
                     new_file.write(dummy_node_line)
+                    dummy_nodes = re.search('NodeName=(dummy.*) Procs.* State.*', dummy_node_line).group(1)
                     node_names_line = slurm_config.next()
                     partitions_line = slurm_config.next()
                     node_names_line_items = node_names_line.split(' ')
@@ -109,7 +111,7 @@ def __writeNodeList(node_list, slots=0):
                     else:
                         new_file.write('#NodeName= Procs=%s State=UNKNOWN\n' % slots)
                     partitions_line_items = partitions_line.split(' ')
-                    new_file.write(partitions_line_items[0] + ' Nodes=dummy-' + partition_name + ',' + ','.join(node_list[partition_name]) + " " + ' '.join(partitions_line_items[2:]))
+                    new_file.write(partitions_line_items[0] + ' Nodes=' + dummy_nodes + ',' + ','.join(node_list[partition_name]) + " " + ' '.join(partitions_line_items[2:]))
                 else:
                     new_file.write(line)
     os.close(fh)
