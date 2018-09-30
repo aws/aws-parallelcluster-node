@@ -14,5 +14,6 @@ install:
 
 sudo: false
 
-script: sh tests/test.sh
-
+script:
+  - sh tests/test.sh
+  - python jobwatcher/plugins/unittests.py
