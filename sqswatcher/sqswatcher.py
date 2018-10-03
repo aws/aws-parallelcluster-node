@@ -21,6 +21,7 @@ import logging
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from utils.utils import load_scheduler_module
 
 log = logging.getLogger(__name__)
 
@@ -96,19 +97,9 @@ def setupDDBTable(region, table_name, proxy_config):
     return _table
 
 
-def loadSchedulerModule(scheduler):
-    scheduler = 'sqswatcher.plugins.' + scheduler
-    _scheduler = __import__(scheduler)
-    _scheduler = sys.modules[scheduler]
-
-    log.debug("scheduler=%s" % repr(_scheduler))
-
-    return _scheduler
-
-
 def pollQueue(scheduler, q, t, proxy_config):
     log.debug("startup")
-    s = loadSchedulerModule(scheduler)
+    s = load_scheduler_module('sqswatcher', scheduler)
 
     while True:
 

@@ -27,6 +27,7 @@ from botocore.config import Config
 import json
 import atexit
 import errno
+from utils.utils import get_asg_name, load_scheduler_module
 
 
 log = logging.getLogger(__name__)
@@ -69,20 +70,6 @@ def getConfig(instance_id):
     log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, _proxy_config, _scaledown_idletime))
     return _region, _asg, _scheduler, _proxy_config, _scaledown_idletime
 
-def get_asg_name(stack_name, region, proxy_config):
-    cfn = boto3.client('cloudformation', region_name=region, config=proxy_config)
-    asg_name = ""
-
-    try:
-        r = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId='ComputeFleet')
-        asg_name = r.get('StackResourceDetail').get('PhysicalResourceId')
-        log.info("asg=%s" % asg_name)
-    except ClientError as e:
-        log.error("No asg found for cluster %s" % stack_name)
-        sys.exit(1)
-
-    return asg_name
-
 def getInstanceId():
 
     try:
@@ -106,15 +93,6 @@ def getHostname():
     log.debug("hostname=%s" % _hostname)
 
     return _hostname
-
-def loadSchedulerModule(scheduler):
-    scheduler = 'nodewatcher.plugins.' + scheduler
-    _scheduler = __import__(scheduler)
-    _scheduler = sys.modules[scheduler]
-
-    log.debug("scheduler=%s" % repr(_scheduler))
-
-    return _scheduler
 
 def hasJobs(s,hostname):
 
@@ -169,7 +147,7 @@ def main():
     region, asg_name, scheduler, proxy_config, idle_time = getConfig(instance_id)
 
 
-    s = loadSchedulerModule(scheduler)
+    s = load_scheduler_module('nodewatcher', scheduler)
 
     try:
         if not os.path.exists(_DATA_DIR):

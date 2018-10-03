@@ -22,36 +22,11 @@ import logging
 import json
 from botocore.exceptions import ClientError
 from botocore.config import Config
+from utils.utils import get_asg_name, load_scheduler_module
 
 log = logging.getLogger(__name__)
 pricing_file = '/opt/cfncluster/instances.json'
 cfnconfig_file = '/opt/cfncluster/cfnconfig'
-
-
-def load_scheduler_module(scheduler):
-    scheduler = 'jobwatcher.plugins.' + scheduler
-    _scheduler = __import__(scheduler)
-    _scheduler = sys.modules[scheduler]
-
-    log.debug("scheduler=%s" % repr(_scheduler))
-
-    return _scheduler
-
-
-def get_asg_name(stack_name, region, proxy_config):
-    cfn = boto3.client('cloudformation', region_name=region, config=proxy_config)
-    asg_name = ""
-
-    try:
-        r = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId='ComputeFleet')
-        asg_name = r.get('StackResourceDetail').get('PhysicalResourceId')
-        log.debug("asg=%s" % asg_name)
-    except ClientError as e:
-        log.error("No asg found for cluster %s" % stack_name)
-        sys.exit(1)
-
-    return asg_name
-
 
 def read_cfnconfig():
     cfnconfig_params = {}
@@ -157,7 +132,7 @@ def main():
     fetch_pricing_file(proxy_config, cfncluster_dir, region)
 
     # load scheduler
-    s = load_scheduler_module(scheduler)
+    s = load_scheduler_module('jobwatcher', scheduler)
 
     while True:
         # get the number of vcpu's per compute instance
