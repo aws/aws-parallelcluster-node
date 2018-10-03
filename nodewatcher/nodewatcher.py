@@ -45,20 +45,17 @@ def getConfig(instance_id):
     _region = config.get('nodewatcher', 'region')
     _scheduler = config.get('nodewatcher', 'scheduler')
     _proxy = config.get('nodewatcher', 'proxy')
-    proxy_config = Config()
+    _stack_name = config.get('nodewatcher', 'stack_name')
+    _proxy_config = Config()
 
     if not _proxy == "NONE":
-        proxy_config = Config(proxies={'https': _proxy})
+        _proxy_config = Config(proxies={'https': _proxy})
 
     _scaledown_idletime = int(config.get('nodewatcher', 'scaledown_idletime'))
     try:
         _asg = config.get('nodewatcher', 'asg')
     except ConfigParser.NoOptionError:
-        ec2 = boto3.resource('ec2', region_name=_region, config=proxy_config)
-
-        instances = ec2.instances.filter(InstanceIds=[instance_id])
-        instance = next(iter(instances or []), None)
-        _asg = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
+        _asg = get_asg_name(_stack_name, _region, _proxy_config)
         log.debug("discovered asg: %s" % _asg)
         config.set('nodewatcher', 'asg', _asg)
 
@@ -69,8 +66,22 @@ def getConfig(instance_id):
 
         os.rename(tup[1], 'nodewatcher.cfg')
 
-    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _scaledown_idletime))
-    return _region, _asg, _scheduler, proxy_config, _scaledown_idletime
+    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, _proxy_config, _scaledown_idletime))
+    return _region, _asg, _scheduler, _proxy_config, _scaledown_idletime
+
+def get_asg_name(stack_name, region, proxy_config):
+    cfn = boto3.client('cloudformation', region_name=region, config=proxy_config)
+    asg_name = ""
+
+    try:
+        r = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId='ComputeFleet')
+        asg_name = r.get('StackResourceDetail').get('PhysicalResourceId')
+        log.info("asg=%s" % asg_name)
+    except ClientError as e:
+        log.error("No asg found for cluster %s" % stack_name)
+        sys.exit(1)
+
+    return asg_name
 
 def getInstanceId():
 

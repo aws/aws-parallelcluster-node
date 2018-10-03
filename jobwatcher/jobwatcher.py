@@ -39,18 +39,16 @@ def load_scheduler_module(scheduler):
 
 
 def get_asg_name(stack_name, region, proxy_config):
-    asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
+    cfn = boto3.client('cloudformation', region_name=region, config=proxy_config)
     asg_name = ""
-    no_asg = True
 
-    while no_asg:
-        try:
-            r = asg_conn.describe_tags(Filters=[{'Name': 'value', 'Values': [stack_name]}])
-            asg_name = r.get('Tags')[0].get('ResourceId')
-            no_asg = False
-        except IndexError as e:
-            log.error("No asg found for cluster %s" % stack_name)
-            time.sleep(30)
+    try:
+        r = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId='ComputeFleet')
+        asg_name = r.get('StackResourceDetail').get('PhysicalResourceId')
+        log.debug("asg=%s" % asg_name)
+    except ClientError as e:
+        log.error("No asg found for cluster %s" % stack_name)
+        sys.exit(1)
 
     return asg_name
 
