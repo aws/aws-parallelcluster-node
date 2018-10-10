@@ -1,2 +1,2 @@
 pycparser==2.18
-paramiko==2.3.2
+paramiko==2.3.3
