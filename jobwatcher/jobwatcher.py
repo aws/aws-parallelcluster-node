@@ -24,8 +24,8 @@ from botocore.exceptions import ClientError
 from botocore.config import Config
 
 log = logging.getLogger(__name__)
-pricing_file = '/opt/cfncluster/instances.json'
-cfnconfig_file = '/opt/cfncluster/cfnconfig'
+pricing_file = '/opt/parallelcluster/instances.json'
+cfnconfig_file = '/opt/parallelcluster/cfnconfig'
 
 
 def load_scheduler_module(scheduler):
@@ -112,12 +112,13 @@ def fetch_pricing_file(proxy_config, cfncluster_dir, region):
     except OSError as ex:
         log.critical('Could not create directory %s. Failed with exception: %s' % (cfncluster_dir, ex))
         raise
-    bucket_name = '%s-cfncluster' % region
+    bucket_name = '%s-aws-parallelcluster' % region
     try:
         bucket = s3.Bucket(bucket_name)
         bucket.download_file('instances/instances.json', '%s/instances.json' % cfncluster_dir)
     except ClientError as e:
-        log.critical("Could not save instance mapping file %s/instances.json from S3 bucket %s. Failed with exception: %s" % (cfncluster_dir, bucket_name, e))
+        log.critical("Could not save instance mapping file %s/instances.json from S3 bucket %s. "
+                     "Failed with exception: %s" % (cfncluster_dir, bucket_name, e))
         raise
 
 

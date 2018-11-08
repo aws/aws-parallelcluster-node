@@ -134,7 +134,7 @@ def pollQueue(scheduler, q, t, proxy_config):
                 log.info("eventType=%s" % eventType)
                 if eventType == 'autoscaling:TEST_NOTIFICATION':
                     message.delete()
-                elif eventType == 'cfncluster:COMPUTE_READY':
+                elif eventType == 'parallelcluster:COMPUTE_READY':
                     instanceId = message_attrs.get('EC2InstanceId')
                     slots = message_attrs.get('Slots')
                     log.info("instanceId=%s" % instanceId)

@@ -1,7 +1,7 @@
-cfncluster-node CHANGELOG
-=========================
+aws-parallelcluster-node CHANGELOG
+===================================
 
-This file is used to list changes made in each version of the cfncluster-node package.
+This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
 1.6.0
 -----
