@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.0.0
+-----
+
+- Rename package to AWS ParallelCluster
+
+
 1.6.0
 -----
 
