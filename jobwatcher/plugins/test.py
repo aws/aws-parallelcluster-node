@@ -31,7 +31,7 @@ def get_busy_nodes(instance_properties):
 def nodes(slots, instance_properties):
     if slots <= 0:
         return 0
-    with open('/opt/cfncluster/instances.json') as f:
+    with open('/opt/parallelcluster/instances.json') as f:
         instances = json.load(f)
         vcpus = int(instances[instance_type]["vcpus"])
         log.info("Instance %s has %s slots." % (instance_type, vcpus))

@@ -1,9 +1,9 @@
-===============
-cfncluster-node
-===============
+=========================
+aws-parallelcluster-node
+=========================
 
-.. image:: https://travis-ci.org/awslabs/cfncluster-node.png?branch=develop
-   :target: https://travis-ci.org/awslabs/cfncluster-node
+.. image:: https://travis-ci.org/aws/aws-parallelcluster-node.png?branch=develop
+   :target: https://travis-ci.org/aws/aws-parallelcluster-node
    :alt: Build Status
 
-cfncluster-node is the python package installed on the Amazon EC2 instances launched as part of CfnCluster.
+   aws-parallelcluster-node is the python package installed on the Amazon EC2 instances launched as part of AWS ParallelCluster.
