@@ -1,2 +1,2 @@
-cfncluster-node
-Copyright 2014-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved. 
+aws-parallelcluster-node
+Copyright 2014-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.

@@ -89,7 +89,7 @@ report_variables      NONE
         ssh._host_keys_filename = None
         pass
     ssh.save_host_keys(hosts_key_file)
-    command = "sudo sh -c \'cd /opt/sge && /opt/sge/inst_sge -noremote -x -auto /opt/cfncluster/templates/sge/sge_inst.conf\'"
+    command = "sudo sh -c \'cd /opt/sge && /opt/sge/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf\'"
     stdin, stdout, stderr = ssh.exec_command(command)
     while not stdout.channel.exit_status_ready():
         time.sleep(1)
