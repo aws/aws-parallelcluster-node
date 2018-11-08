@@ -38,22 +38,22 @@ else:
     requires.append('paramiko>=2.4.2')
 
 setup(
-    name = "cfncluster-node",
-    version = version,
-    author = "Dougal Ballantyne",
-    author_email = "dougalb@amazon.com",
-    description = ("cfncluster-node provides the scripts for a cfncluster node."),
-    url = ("https://github.com/awslabs/cfncluster"),
-    license = "Apache License 2.0",
-    packages = find_packages(),
-    install_requires = requires,
+    name="aws-parallelcluster-node",
+    version=version,
+    author="Amazon Web Services",
+    description="aws-parallelcluster-node provides the scripts for an AWS ParallelCluster node.",
+    url="https://github.com/aws/aws-parallelcluster-node",
+    license="Apache License 2.0",
+    packages=find_packages(),
+    install_requires=requires,
     entry_points=dict(console_scripts=console_scripts),
-    include_package_data = True,
-    zip_safe = False,
-    package_data = {
-        '' : ['examples/config'],
+    include_package_data=True,
+    zip_safe=False,
+    package_data={
+        '': ['examples/config'],
     },
-    long_description = ("cfncluster-node is the python package installed on the Amazon EC2 instances launched as part of CfnCluster."),
+    long_description=("aws-parallelcluster-node is the python package installed on the Amazon EC2 instances launched "
+                      "as part of AWS ParallelCluster."),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Console",
