@@ -152,7 +152,8 @@ def stackCreationComplete(stack_name, region, proxy_config):
     log.info('Checking for status of the stack %s' % stack_name)
     cfn_client = boto3.client('cloudformation', region_name=region, config=proxy_config)
     stacks = cfn_client.describe_stacks(StackName=stack_name)
-    return stacks['Stacks'][0]['StackStatus'] == 'CREATE_COMPLETE'
+    return stacks['Stacks'][0]['StackStatus'] == 'CREATE_COMPLETE' or \
+        stacks['Stacks'][0]['StackStatus'] == 'UPDATE_COMPLETE'
 
 
 def main():
@@ -183,7 +184,13 @@ def main():
         data = {_CURRENT_IDLETIME: 0}
 
     stack_creation_complete = False
+    termination_in_progress = False
     while True:
+        # if this node is terminating sleep for a long time and wait for termination
+        if termination_in_progress:
+            time.sleep(300)
+            log.info('%s is still terminating' % hostname)
+            continue
         time.sleep(60)
         if not stack_creation_complete:
             stack_creation_complete = stackCreationComplete(stack_name, region, proxy_config)
@@ -217,6 +224,7 @@ def main():
                             os.remove(_IDLETIME_FILE)
                             try:
                                 selfTerminate(asg_name, asg_conn, instance_id)
+                                termination_in_progress = True
                             except ClientError as ex:
                                 log.error('Failed to terminate instance: %s with exception %s' % (instance_id, ex))
                                 lockHost(s, hostname, unlock=True)

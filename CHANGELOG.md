@@ -3,6 +3,15 @@ cfncluster-node CHANGELOG
 
 This file is used to list changes made in each version of the cfncluster-node package.
 
+1.6.1
+-----
+
+Bug fixes:
+
+  - Changed scaling functionality to prevent scheduling jobs on dead nodes.
+  - Fixed a bug where scale down operations were not performed on clusters which were updated
+
+
 1.6.0
 -----
 
