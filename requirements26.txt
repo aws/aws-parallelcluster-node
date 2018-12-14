@@ -1,2 +1,3 @@
 pycparser==2.18
+idna==2.6
 paramiko==2.3.3
