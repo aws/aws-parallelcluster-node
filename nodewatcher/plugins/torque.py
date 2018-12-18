@@ -18,7 +18,8 @@ import shlex
 
 log = logging.getLogger(__name__)
 
-def runPipe(cmds):
+
+def run_pipe(cmds):
     try:
         p1 = subprocess.Popen(cmds[0].split(' '), stdin = None, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
         prev = p1
@@ -36,11 +37,12 @@ def runPipe(cmds):
     else:
         return (False, stderr)
 
-def hasJobs(hostname):
+
+def has_jobs(hostname):
     # Checking for running jobs on the node
     commands = ['/opt/torque/bin/qstat -r -t -n -1', ('grep ' + hostname.split('.')[0])]
     try:
-        status, output = runPipe(commands)
+        status, output = run_pipe(commands)
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % commands)
 
@@ -51,7 +53,34 @@ def hasJobs(hostname):
 
     return _jobs
 
-def hasPendingJobs():
+
+def get_idle_nodes():
+    command = "/opt/torque/bin/pbsnodes -l free"
+
+    # Command outputs list of free nodes
+    # ip-172-31-53-229     free
+    # ip-172-31-53-223     free
+    # ip-172-31-53-224     free
+
+    _command = shlex.split(command)
+    idle_nodes = []
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        return idle_nodes
+
+    output = process.communicate()[0]
+    lines = filter(None, output.split("\n"))
+    for line in lines:
+        if "free" in line:
+            idle_nodes.append(line.split()[0])
+
+    return idle_nodes
+
+
+def has_pending_jobs():
     command = "/opt/torque/bin/qstat -Q"
 
     # Command outputs the status of the queue in the following format
@@ -87,7 +116,35 @@ def hasPendingJobs():
 
     return has_pending, error
 
-def lockHost(hostname, unlock=False):
+
+def get_current_cluster_size():
+    command = "/opt/torque/bin/pbsnodes -n -l all"
+
+    # Command outputs the list of compute nodes and master node in the following format
+    # ip-172-31-63-125     down                       MasterServer
+    # ip-172-31-63-151     free
+
+    _command = shlex.split(command)
+
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        return -1
+
+    output = process.communicate()[0]
+
+    # if this command did not include MasterServer something has gone wrong
+    if "MasterServer" not in output:
+        return -1
+
+    current_cluster_size = len(filter(None, output.split("\n"))) - 1
+    log.info("Current cluster size as reported by scheduler: %s" % current_cluster_size)
+    return current_cluster_size
+
+
+def lock_host(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
     _mod = unlock and '-c' or '-o'
     command = ['/opt/torque/bin/pbsnodes', _mod, hostname]

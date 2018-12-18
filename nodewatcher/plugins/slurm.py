@@ -17,7 +17,7 @@ import os
 log = logging.getLogger(__name__)
 
 
-def hasJobs(hostname):
+def has_jobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split('.')[0]
     # Checking for running jobs on the node
@@ -34,7 +34,60 @@ def hasJobs(hostname):
 
     return _jobs
 
-def hasPendingJobs():
+
+def get_idle_nodes():
+    command = "/opt/slurm/bin/sinfo -o \"%N %t\" --noheader"
+
+    # Command outputs the state of the nodes in the following format
+    # ip-172-31-55-126 alloc
+    # ip-172-31-55-127 alloc
+    # ip-172-31-55-128 idle
+    # ip-172-31-55-129 idle
+
+    _command = shlex.split(command)
+    idle_nodes = []
+
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        return idle_nodes
+
+    output = process.communicate()[0]
+    lines = filter(None, output.split("\n"))
+    for line in lines:
+        if "idle" in line:
+            idle_nodes.append(line.split()[0])
+
+    return idle_nodes
+
+
+def get_current_cluster_size():
+    command = "/opt/slurm/bin/sinfo -o %N --noheader"
+
+    # Command outputs the list of compute nodes in the following format
+    # ip-172-31-55-126
+    # ip-172-31-55-127
+    # ip-172-31-55-128
+    # ip-172-31-55-129
+
+    _command = shlex.split(command)
+
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        return -1
+
+    output = process.communicate()[0]
+    current_cluster_size = len(filter(None, output.split("\n")))
+    log.info("Current cluster size as reported by scheduler: %s" % current_cluster_size)
+    return current_cluster_size
+
+
+def has_pending_jobs():
     command = "/opt/slurm/bin/squeue -t PD --noheader"
 
     # Command outputs the pending jobs in the queue in the following format
@@ -61,5 +114,6 @@ def hasPendingJobs():
 
     return has_pending, error
 
-def lockHost(hostname, unlock=False):
+
+def lock_host(hostname, unlock=False):
     pass

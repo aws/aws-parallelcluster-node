@@ -18,7 +18,8 @@ import shlex
 
 log = logging.getLogger(__name__)
 
-def hasJobs(hostname):
+
+def has_jobs(hostname):
     # Checking for running jobs on the node
     command = ['/opt/sge/bin/idle-nodes']
     try:
@@ -36,7 +37,53 @@ def hasJobs(hostname):
 
     return _jobs
 
-def hasPendingJobs():
+
+def get_idle_nodes():
+    command = ['/opt/sge/bin/idle-nodes']
+
+    # Command outputs the idle nodes in the following format
+    # ip-172-31-56-253
+    # ip-172-31-56-25
+    # ip-172-31-56-252
+    # ip-172-31-56-251
+
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                 env=dict(os.environ, SGE_ROOT='/opt/sge',
+                                          PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'))
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        return set()
+
+    output = process.communicate()[0]
+    idle_nodes = filter(None, output.split('\n'))
+    return idle_nodes
+
+
+def get_current_cluster_size():
+    command = "/opt/sge/bin/lx-amd64/qconf -sel"
+
+    # Command outputs the compute nodes in the following format
+    # ip-172-31-56-253.ec2.internal
+    # ip-172-31-56-252.ec2.internal
+    # ip-172-31-56-251.ec2.internal
+
+    _command = shlex.split(command)
+    try:
+        process = subprocess.Popen(_command, env=dict(os.environ, SGE_ROOT='/opt/sge',
+                                                      PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'),
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s\n" % command)
+        return -1
+
+    output = process.communicate()[0]
+    current_cluster_size = len(filter(None, output.split("\n")))
+    log.info("Current cluster size as reported by scheduler: %s" % current_cluster_size)
+    return current_cluster_size
+
+
+def has_pending_jobs():
     command = "/opt/sge/bin/lx-amd64/qstat -g d -s p -u '*'"
 
     # Command outputs the pending jobs in the queue in the following format
@@ -52,7 +99,8 @@ def hasPendingJobs():
     has_pending = False
 
     try:
-        process = subprocess.Popen(_command, env=dict(os.environ),
+        process = subprocess.Popen(_command, env=dict(os.environ, SGE_ROOT='/opt/sge',
+                                                      PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'),
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % command)
@@ -66,7 +114,8 @@ def hasPendingJobs():
 
     return has_pending, error
 
-def lockHost(hostname, unlock=False):
+
+def lock_host(hostname, unlock=False):
     _mod = unlock and '-e' or '-d'
     command = ['/opt/sge/bin/lx-amd64/qmod', _mod, 'all.q@%s' % hostname]
     try:

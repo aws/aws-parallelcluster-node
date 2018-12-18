@@ -156,8 +156,16 @@ def pollQueue(scheduler, q, t, proxy_config):
 
                                 t.put_item(Item={
                                     'instanceId': instanceId,
-                                    'hostname': hostname
+                                    'hostname': hostname,
+                                    'terminated_by_cluster': False
                                 })
+
+                                t.update_item(
+                                    Key={'instanceId': 'current_cluster_size'},
+                                    UpdateExpression='SET #count = #count + :count',
+                                    ExpressionAttributeNames={'#count': 'count'},
+                                    ExpressionAttributeValues={':count': 1}
+                                )
 
                             message.delete()
                             break
@@ -185,10 +193,21 @@ def pollQueue(scheduler, q, t, proxy_config):
                             break
 
                     log.info("instanceId=%s" % instanceId)
+                    log.info("Fetching the item from DynamoDB table")
                     try:
                         item = t.get_item(ConsistentRead=True, Key={"instanceId": instanceId})
                         if item.get('Item') is not None:
                             hostname = item.get('Item').get('hostname')
+                            terminated_by_cluster = item.get('Item').get('terminated_by_cluster')
+
+                            if not terminated_by_cluster:
+                                log.info("Instance %s was not terminated by the cluster" % instanceId)
+                                t.update_item(
+                                    Key={'instanceId': 'current_cluster_size'},
+                                    UpdateExpression='SET #count = #count - :count',
+                                    ExpressionAttributeNames={'#count': 'count'},
+                                    ExpressionAttributeValues={':count': 1}
+                                )
 
                             if hostname:
                                 s.removeHost(hostname, cluster_user)
@@ -216,6 +235,10 @@ def main():
     region, sqsqueue, table_name, scheduler, cluster_user, proxy_config = getConfig()
     q = setupQueue(region, sqsqueue, proxy_config)
     t = setupDDBTable(region, table_name, proxy_config)
+    t.put_item(Item={
+        'instanceId': 'current_cluster_size',
+        'count': 0
+    })
     pollQueue(scheduler, q, t, proxy_config)
 
 if __name__ == "__main__":
