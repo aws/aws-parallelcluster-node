@@ -3,6 +3,18 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.1.0
+-----
+
+Bug Fixes:
+
+    - Don't schedule jobs on compute nodes that are terminating
+
+2.0.2
+-----
+
+- Align version to main ParallelCluster package
+
 2.0.0
 -----
 
