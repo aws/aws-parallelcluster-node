@@ -25,13 +25,14 @@ def read(fname):
 console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main',
                    'nodewatcher = nodewatcher.nodewatcher:main',
                    'jobwatcher = jobwatcher.jobwatcher:main']
-version = "2.0.0"
+version = "2.1.0"
 requires = ['boto3>=1.7.55', 'python-dateutil>=2.6.1']
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
     # was not in stdlib until 2.7.
     requires.append('argparse>=1.4')
+    requires.append('idna==2.6')
     requires.append('paramiko==2.3.3')
     requires.append('pycparser==2.18')
 else:
