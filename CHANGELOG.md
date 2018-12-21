@@ -6,6 +6,11 @@ This file is used to list changes made in each version of the aws-parallelcluste
 2.1.0
 -----
 
+- China Regions, cn-north-1 and cn-northwest-1 support
+
+2.1.0
+-----
+
 Bug Fixes:
 
     - Don't schedule jobs on compute nodes that are terminating
