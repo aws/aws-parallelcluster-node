@@ -152,9 +152,7 @@ def stackCreationComplete(stack_name, region, proxy_config):
     log.info('Checking for status of the stack %s' % stack_name)
     cfn_client = boto3.client('cloudformation', region_name=region, config=proxy_config)
     stacks = cfn_client.describe_stacks(StackName=stack_name)
-    return stacks['Stacks'][0]['StackStatus'] == 'CREATE_COMPLETE' or \
-           stacks['Stacks'][0]['StackStatus'] == 'UPDATE_COMPLETE'
-
+    return stacks['Stacks'][0]['StackStatus'] in ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE']
 
 def main():
     logging.basicConfig(
