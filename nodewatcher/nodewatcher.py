@@ -148,7 +148,7 @@ def maintainSize(asg_name, asg_conn):
         return True
 
 
-def stackCreationComplete(stack_name, region, proxy_config):
+def stackReady(stack_name, region, proxy_config):
     log.info('Checking for status of the stack %s' % stack_name)
     cfn_client = boto3.client('cloudformation', region_name=region, config=proxy_config)
     stacks = cfn_client.describe_stacks(StackName=stack_name)
@@ -181,7 +181,7 @@ def main():
     else:
         data = {_CURRENT_IDLETIME: 0}
 
-    stack_creation_complete = False
+    stack_ready = False
     termination_in_progress = False
     while True:
         # if this node is terminating sleep for a long time and wait for termination
@@ -190,9 +190,9 @@ def main():
             log.info('%s is still terminating' % hostname)
             continue
         time.sleep(60)
-        if not stack_creation_complete:
-            stack_creation_complete = stackCreationComplete(stack_name, region, proxy_config)
-            log.info('%s creation complete: %s' % (stack_name, stack_creation_complete))
+        if not stack_ready:
+            stack_ready = stackReady(stack_name, region, proxy_config)
+            log.info('%s ready: %s' % (stack_name, stack_ready))
             continue
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
 
