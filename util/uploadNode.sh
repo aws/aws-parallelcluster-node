@@ -86,16 +86,16 @@ main() {
     _cwd=$(pwd)
     pushd "${_srcdir}" > /dev/null
     _stashName=$(git stash create)
-    git archive --format tar --prefix="parallelcluster-node-${_version}/" "${_stashName:-HEAD}" | gzip > "${_cwd}/parallelcluster-node-${_version}.tgz"
-    #tar zcvf "${_cwd}/parallelcluster-node-${_version}.tgz" --transform "s,^parallelcluster-node/,parallelcluster-node-${_version}/," ../parallelcluster-node
+    git archive --format tar --prefix="aws-parallelcluster-node-${_version}/" "${_stashName:-HEAD}" | gzip > "${_cwd}/aws-parallelcluster-node-${_version}.tgz"
+    #tar zcvf "${_cwd}/aws-parallelcluster-node-${_version}.tgz" --transform "s,^aws-parallelcluster-node/,aws-parallelcluster-node-${_version}/," ../aws-parallelcluster-node
     popd > /dev/null
-    md5sum parallelcluster-node-${_version}.tgz > parallelcluster-node-${_version}.md5
+    md5sum aws-parallelcluster-node-${_version}.tgz > aws-parallelcluster-node-${_version}.md5
 
     # upload package
-    aws ${_profile} --region "${_region}" s3 cp --acl public-read parallelcluster-node-${_version}.tgz s3://${_bucket}/node/parallelcluster-node-${_version}.tgz || _error_exit 'Failed to push node to S3'
-    aws ${_profile} --region "${_region}" s3 cp --acl public-read parallelcluster-node-${_version}.md5 s3://${_bucket}/node/parallelcluster-node-${_version}.md5 || _error_exit 'Failed to push node md5 to S3'
-    aws ${_profile} --region "${_region}" s3api head-object --bucket ${_bucket} --key node/parallelcluster-node-${_version}.tgz --output text --query LastModified > parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to fetch LastModified date'
-    aws ${_profile} --region "${_region}" s3 cp --acl public-read parallelcluster-node-${_version}.tgz.date s3://${_bucket}/node/parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to push node date'
+    aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.tgz s3://${_bucket}/node/aws-parallelcluster-node-${_version}.tgz || _error_exit 'Failed to push node to S3'
+    aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.md5 s3://${_bucket}/node/aws-parallelcluster-node-${_version}.md5 || _error_exit 'Failed to push node md5 to S3'
+    aws ${_profile} --region "${_region}" s3api head-object --bucket ${_bucket} --key node/aws-parallelcluster-node-${_version}.tgz --output text --query LastModified > aws-parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to fetch LastModified date'
+    aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.tgz.date s3://${_bucket}/node/aws-parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to push node date'
 
     _bucket_region=$(aws ${_profile} s3api get-bucket-location --bucket ${_bucket} --output text)
     if [ ${_bucket_region} == "None" ]; then
@@ -106,7 +106,7 @@ main() {
 
     echo ""
     echo "Done. Add the following variable to the pcluster config file, under the [cluster ...] section"
-    echo "extra_json = { \"cluster\" : { \"custom_node_package\" : \"https://s3${_bucket_region}.amazonaws.com/${_bucket}/node/parallelcluster-node-${_version}.tgz\" } }"
+    echo "extra_json = { \"cluster\" : { \"custom_node_package\" : \"https://s3${_bucket_region}.amazonaws.com/${_bucket}/node/aws-parallelcluster-node-${_version}.tgz\" } }"
 }
 
 main "$@"
