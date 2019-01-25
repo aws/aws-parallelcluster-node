@@ -127,7 +127,7 @@ def pollQueue(scheduler, q, t, proxy_config):
                     try:
                         eventType = message_attrs.get('detail-type')
                     except KeyError:
-                        log.warn("Unable to read message. Deleting.")
+                        log.warning("Unable to read message. Deleting.")
                         message.delete()
                         break
 
@@ -148,29 +148,33 @@ def pollQueue(scheduler, q, t, proxy_config):
                             instance = next(iter(instances or []), None)
 
                             if not instance:
-                                log.warning("Unable to find running instance %s." % instanceId)
+                                log.error("Unable to find running instance %s." % instanceId)
                             else:
                                 hostname = instance.private_dns_name.split('.')[:1][0]
-                                log.info("Adding Hostname: %s" % hostname)
-                                s.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
+                                if hostname:
+                                    log.info("Adding Hostname: %s" % hostname)
+                                    s.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
 
-                                t.put_item(Item={
-                                    'instanceId': instanceId,
-                                    'hostname': hostname
-                                })
-
-                            message.delete()
+                                    t.put_item(Item={
+                                        'instanceId': instanceId,
+                                        'hostname': hostname
+                                    })
+                                else:
+                                    log.error("Unable to get the hostname for the instance %s." % instanceId)
                             break
                         except ClientError as e:
                             if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
+                                log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
                                 time.sleep(wait)
                                 retry += 1
-                                wait = (wait*2+retry)
+                                wait = wait * 2
                             else:
-                                raise e
+                                log.critical(e.response.get("Error").get("Message"))
+                                break
                         except:
                             log.critical("Unexpected error: %s" % sys.exc_info()[0])
-                            raise
+                            break
+                    message.delete()
 
                 elif (eventType == 'autoscaling:EC2_INSTANCE_TERMINATE') or (eventType == 'EC2 Instance State-change Notification'):
                     if eventType == 'autoscaling:EC2_INSTANCE_TERMINATE':
