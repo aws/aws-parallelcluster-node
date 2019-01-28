@@ -10,8 +10,6 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
 import json
 import time
 import sys
@@ -102,18 +100,16 @@ def loadSchedulerModule(scheduler):
     _scheduler = sys.modules[scheduler]
 
     log.debug("scheduler=%s" % repr(_scheduler))
-
     return _scheduler
 
 
-def pollQueue(scheduler, q, t, proxy_config):
+def pollQueue(scheduler, queue, table, proxy_config):
     log.debug("startup")
-    s = loadSchedulerModule(scheduler)
+    scheduler_module = loadSchedulerModule(scheduler)
 
     while True:
 
-        results = q.receive_messages(MaxNumberOfMessages=10)
-
+        results = queue.receive_messages(MaxNumberOfMessages=10)
         while len(results) > 0:
 
             for message in results:
@@ -122,45 +118,45 @@ def pollQueue(scheduler, q, t, proxy_config):
                 log.debug("SQS Message %s" % message_attrs)
 
                 try:
-                    eventType = message_attrs.get('Event')
+                    event_type = message_attrs.get('Event')
                 except:
                     try:
-                        eventType = message_attrs.get('detail-type')
+                        event_type = message_attrs.get('detail-type')
                     except KeyError:
                         log.warning("Unable to read message. Deleting.")
                         message.delete()
                         break
 
-                log.info("eventType=%s" % eventType)
-                if eventType == 'autoscaling:TEST_NOTIFICATION':
+                log.info("event_type=%s" % event_type)
+                if event_type == 'autoscaling:TEST_NOTIFICATION':
                     message.delete()
-                elif eventType == 'parallelcluster:COMPUTE_READY':
-                    instanceId = message_attrs.get('EC2InstanceId')
+                elif event_type == 'parallelcluster:COMPUTE_READY':
+                    instance_id = message_attrs.get('EC2InstanceId')
                     slots = message_attrs.get('Slots')
-                    log.info("instanceId=%s" % instanceId)
+                    log.info("instance_id=%s" % instance_id)
                     ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
 
                     retry = 0
                     wait = 15
                     while retry < 3:
                         try:
-                            instances = ec2.instances.filter(InstanceIds=[instanceId])
+                            instances = ec2.instances.filter(InstanceIds=[instance_id])
                             instance = next(iter(instances or []), None)
 
                             if not instance:
-                                log.error("Unable to find running instance %s." % instanceId)
+                                log.error("Unable to find running instance %s." % instance_id)
                             else:
                                 hostname = instance.private_dns_name.split('.')[:1][0]
                                 if hostname:
-                                    log.info("Adding Hostname: %s" % hostname)
-                                    s.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
+                                    log.info("Adding hostname: %s" % hostname)
+                                    scheduler_module.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
 
-                                    t.put_item(Item={
-                                        'instanceId': instanceId,
+                                    table.put_item(Item={
+                                        'instanceId': instance_id,
                                         'hostname': hostname
                                     })
                                 else:
-                                    log.error("Unable to get the hostname for the instance %s." % instanceId)
+                                    log.error("Unable to get the hostname for the instance %s." % instance_id)
                             break
                         except ClientError as e:
                             if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
@@ -176,35 +172,35 @@ def pollQueue(scheduler, q, t, proxy_config):
                             break
                     message.delete()
 
-                elif (eventType == 'autoscaling:EC2_INSTANCE_TERMINATE') or (eventType == 'EC2 Instance State-change Notification'):
-                    if eventType == 'autoscaling:EC2_INSTANCE_TERMINATE':
-                        instanceId = message_attrs.get('EC2InstanceId')
-                    elif eventType == 'EC2 Instance State-change Notification':
+                elif (event_type == 'autoscaling:EC2_INSTANCE_TERMINATE') or (event_type == 'EC2 Instance State-change Notification'):
+                    if event_type == 'autoscaling:EC2_INSTANCE_TERMINATE':
+                        instance_id = message_attrs.get('EC2InstanceId')
+                    elif event_type == 'EC2 Instance State-change Notification':
                         if message_attrs.get('detail').get('state') == 'terminated':
                             log.info('Terminated instance state from CloudWatch')
-                            instanceId = message_attrs.get('detail').get('instance-id')
+                            instance_id = message_attrs.get('detail').get('instance-id')
                         else:
                             log.info('Not Terminated, ignoring')
                             message.delete()
                             break
 
-                    log.info("instanceId=%s" % instanceId)
+                    log.info("instance_id=%s" % instance_id)
                     retry = 0
                     wait = 15
                     while retry < 3:
                         try:
-                            item = t.get_item(ConsistentRead=True, Key={"instanceId": instanceId})
+                            item = table.get_item(ConsistentRead=True, Key={"instanceId": instance_id})
                             if item.get('Item') is not None:
                                 hostname = item.get('Item').get('hostname')
 
                                 if hostname:
-                                    s.removeHost(hostname, cluster_user)
+                                    scheduler_module.removeHost(hostname, cluster_user)
                                 else:
-                                    log.warning("Hostname is empty for the instance %s." % instanceId)
+                                    log.warning("Hostname is empty for the instance %s." % instance_id)
 
-                                t.delete_item(Key={"instanceId": instanceId})
+                                table.delete_item(Key={"instanceId": instance_id})
                             else:
-                                log.error("Did not find %s in the metadb." % instanceId)
+                                log.error("Did not find %s in the metadb." % instance_id)
                             break
                         except ClientError as e:
                             if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
@@ -221,7 +217,7 @@ def pollQueue(scheduler, q, t, proxy_config):
 
                     message.delete()
 
-            results = q.receive_messages(MaxNumberOfMessages=10)
+            results = queue.receive_messages(MaxNumberOfMessages=10)
 
         time.sleep(30)
 
