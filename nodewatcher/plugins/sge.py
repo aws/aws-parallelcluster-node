@@ -9,32 +9,44 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
-import subprocess
-import os
 import logging
+import os
 import shlex
+import subprocess
 
 log = logging.getLogger(__name__)
 
+
 def hasJobs(hostname):
     # Checking for running jobs on the node
-    command = ['/opt/sge/bin/idle-nodes']
+    _command = ['/opt/sge/bin/idle-nodes']
     try:
-       _output = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                 env=dict(os.environ, SGE_ROOT='/opt/sge',
-                                          PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin')).communicate()[0]
-    except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
+        _child = subprocess.Popen(_command,
+                                  stdout=subprocess.PIPE,
+                                  env=dict(
+                                      os.environ,
+                                      SGE_ROOT='/opt/sge',
+                                      PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin',
+                                      ),
+                                  )
 
-    _jobs = True
-    for host in _output.split('\n'):
-        if hostname.split('.')[0] in host:
+        _output, _errors = _child.communicate()
+        if _errors and _errors != "":
+            # this happens when the node has not been correctly added to the cluster
+            log.error("Unable to get the host list with the command %s. Assuming no active jobs." % _command)
             _jobs = False
-            break
+        else:
+            _jobs = True
+            for host in _output.split('\n'):
+                if hostname.split('.')[0] in host:
+                    _jobs = False
+                    break
+    except subprocess.CalledProcessError:
+        log.error("Failed to run %s. Assuming no active jobs." % _command)
+        _jobs = False
 
     return _jobs
+
 
 def hasPendingJobs():
     command = "/opt/sge/bin/lx-amd64/qstat -g d -s p -u '*'"
