@@ -189,20 +189,35 @@ def pollQueue(scheduler, q, t, proxy_config):
                             break
 
                     log.info("instanceId=%s" % instanceId)
-                    try:
-                        item = t.get_item(ConsistentRead=True, Key={"instanceId": instanceId})
-                        if item.get('Item') is not None:
-                            hostname = item.get('Item').get('hostname')
+                    retry = 0
+                    wait = 15
+                    while retry < 3:
+                        try:
+                            item = t.get_item(ConsistentRead=True, Key={"instanceId": instanceId})
+                            if item.get('Item') is not None:
+                                hostname = item.get('Item').get('hostname')
 
-                            if hostname:
-                                s.removeHost(hostname, cluster_user)
+                                if hostname:
+                                    s.removeHost(hostname, cluster_user)
+                                else:
+                                    log.warning("Hostname is empty for the instance %s." % instanceId)
 
-                            t.delete_item(Key={"instanceId": instanceId})
-                        else:
-                            log.error("Did not find %s in the metadb\n" % instanceId)
-                    except:
-                        log.critical("Unexpected error: %s" % sys.exc_info()[0])
-                        raise
+                                t.delete_item(Key={"instanceId": instanceId})
+                            else:
+                                log.error("Did not find %s in the metadb." % instanceId)
+                            break
+                        except ClientError as e:
+                            if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
+                                log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
+                                time.sleep(wait)
+                                retry += 1
+                                wait = wait * 2
+                            else:
+                                log.critical(e.response.get("Error").get("Message"))
+                                break
+                        except:
+                            log.critical("Unexpected error: %s" % sys.exc_info()[0])
+                            break
 
                     message.delete()
 
