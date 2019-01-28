@@ -11,23 +11,18 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
-from datetime import datetime
-import urllib2
+import ConfigParser
+import json
+import logging
 import os
-import time
 import sys
 import tempfile
-import logging
-import boto3
-import ConfigParser
-from botocore.exceptions import ClientError
-from botocore.config import Config
-import json
-import atexit
-import errno
+import time
+import urllib2
 
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 _DATA_DIR = "/var/run/nodewatcher/"
@@ -171,8 +166,7 @@ def main():
         if not os.path.exists(_DATA_DIR):
             os.makedirs(_DATA_DIR)
     except OSError as ex:
-        log.critical('Creating directory %s to persist current idle time failed with exception: %s '
-                     % (_DATA_DIR, ex))
+        log.critical('Creating directory %s to persist current idle time failed with exception: %s ' % (_DATA_DIR, ex))
         raise
 
     if os.path.isfile(_IDLETIME_FILE):
