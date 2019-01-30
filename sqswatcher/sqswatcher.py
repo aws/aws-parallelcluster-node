@@ -90,7 +90,6 @@ def setupDDBTable(region, table_name, proxy_config):
                               })
         _table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
-
     return _table
 
 
@@ -101,6 +100,92 @@ def loadSchedulerModule(scheduler):
 
     log.debug("scheduler=%s" % repr(_scheduler))
     return _scheduler
+
+
+def _exponential_retry(func, attempts=3, delay=15, multiplier=2):
+    """
+    Execute the given boto3 function multiple times with an exponential delay in case of RequestLimitExceeded.
+
+    :param func: the boto3 function to execute
+    :param attempts: the number of times to try before giving up
+    :param delay: initial delay between retries in seconds
+    :param multiplier: multiplier factor for the delay
+    :return the value returned from the function, if any
+    """
+    count = 0
+    wait = delay
+    while count < attempts:
+        try:
+            return func()
+        except ClientError as e:
+            if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
+                count += 1
+                if count < attempts:
+                    log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
+                    time.sleep(wait)
+                    wait *= multiplier
+            else:
+                log.critical(e.response.get("Error").get("Message"))
+                break
+        except:
+            log.critical("Unexpected error: %s" % sys.exc_info()[0])
+            break
+
+
+def _add_host(scheduler_module, table, instance_id, slots, proxy_config):
+    """
+    Add the given instance_id to the scheduler cluster and to the instances table.
+
+    :param scheduler_module: scheduler specific module to use
+    :param table: dynamodb table in which the instance must be added
+    :param instance_id: the id of the instance to add
+    :param slots: the number of slots associated to the instance
+    :param proxy_config: proxy configuration to use
+    """
+    ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
+    instances = _exponential_retry(lambda: ec2.instances.filter(InstanceIds=[instance_id]))
+    instance = next(iter(instances or []), None)
+
+    if not instance:
+        log.error("Unable to find running instance %s." % instance_id)
+    else:
+        hostname = instance.private_dns_name.split('.')[:1][0]
+        if hostname:
+            log.info("Adding hostname: %s" % hostname)
+            scheduler_module.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
+            log.info("Host %s successfully added to the cluster" % hostname)
+
+            table.put_item(Item={
+                'instanceId': instance_id,
+                'hostname': hostname
+            })
+            log.info("Instance %s successfully added to the database" % instance_id)
+        else:
+            log.error("Unable to get the hostname for the instance %s" % instance_id)
+
+
+def _remove_host(scheduler_module, table, instance_id):
+    """
+    Remove the given instance_id from the scheduler cluster and from the instances table.
+
+    :param scheduler_module: scheduler specific module to use
+    :param table: dynamodb table from which the instance item must be removed
+    :param instance_id: the id of the instance to remove
+    """
+    item = _exponential_retry(lambda: table.get_item(ConsistentRead=True, Key={"instanceId": instance_id}))
+    if item.get('Item') is not None:
+        hostname = item.get('Item').get('hostname')
+        if hostname:
+            log.info("Removing hostname: %s" % hostname)
+            scheduler_module.removeHost(hostname, cluster_user)
+            log.info("Host %s successfully removed from the cluster" % hostname)
+        else:
+            log.warning("Hostname is empty for the instance %s." % instance_id)
+
+        _exponential_retry(lambda: table.delete_item(Key={"instanceId": instance_id}))
+        log.info("Instance %s successfully removed from the database" % instance_id)
+    else:
+        log.error("Instance %s not found in the database" % instance_id)
 
 
 def pollQueue(scheduler, queue, table, proxy_config):
@@ -134,45 +219,14 @@ def pollQueue(scheduler, queue, table, proxy_config):
                     instance_id = message_attrs.get('EC2InstanceId')
                     slots = message_attrs.get('Slots')
                     log.info("instance_id=%s" % instance_id)
-                    ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
-
-                    retry = 0
-                    wait = 15
-                    while retry < 3:
-                        try:
-                            instances = ec2.instances.filter(InstanceIds=[instance_id])
-                            instance = next(iter(instances or []), None)
-
-                            if not instance:
-                                log.error("Unable to find running instance %s." % instance_id)
-                            else:
-                                hostname = instance.private_dns_name.split('.')[:1][0]
-                                if hostname:
-                                    log.info("Adding hostname: %s" % hostname)
-                                    scheduler_module.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
-
-                                    table.put_item(Item={
-                                        'instanceId': instance_id,
-                                        'hostname': hostname
-                                    })
-                                else:
-                                    log.error("Unable to get the hostname for the instance %s." % instance_id)
-                            break
-                        except ClientError as e:
-                            if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
-                                log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
-                                time.sleep(wait)
-                                retry += 1
-                                wait = wait * 2
-                            else:
-                                log.critical(e.response.get("Error").get("Message"))
-                                break
-                        except:
-                            log.critical("Unexpected error: %s" % sys.exc_info()[0])
-                            break
+                    _add_host(scheduler_module, table, instance_id, slots, proxy_config)
                     message.delete()
 
-                elif (event_type == 'autoscaling:EC2_INSTANCE_TERMINATE') or (event_type == 'EC2 Instance State-change Notification'):
+                elif (
+                        event_type == 'autoscaling:EC2_INSTANCE_TERMINATE' or
+                        event_type == 'EC2 Instance State-change Notification'
+                     ):
+
                     if event_type == 'autoscaling:EC2_INSTANCE_TERMINATE':
                         instance_id = message_attrs.get('EC2InstanceId')
                     elif event_type == 'EC2 Instance State-change Notification':
@@ -185,41 +239,13 @@ def pollQueue(scheduler, queue, table, proxy_config):
                             break
 
                     log.info("instance_id=%s" % instance_id)
-                    retry = 0
-                    wait = 15
-                    while retry < 3:
-                        try:
-                            item = table.get_item(ConsistentRead=True, Key={"instanceId": instance_id})
-                            if item.get('Item') is not None:
-                                hostname = item.get('Item').get('hostname')
-
-                                if hostname:
-                                    scheduler_module.removeHost(hostname, cluster_user)
-                                else:
-                                    log.warning("Hostname is empty for the instance %s." % instance_id)
-
-                                table.delete_item(Key={"instanceId": instance_id})
-                            else:
-                                log.error("Did not find %s in the metadb." % instance_id)
-                            break
-                        except ClientError as e:
-                            if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
-                                log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
-                                time.sleep(wait)
-                                retry += 1
-                                wait = wait * 2
-                            else:
-                                log.critical(e.response.get("Error").get("Message"))
-                                break
-                        except:
-                            log.critical("Unexpected error: %s" % sys.exc_info()[0])
-                            break
-
+                    _remove_host(scheduler_module, table, instance_id)
                     message.delete()
 
             results = queue.receive_messages(MaxNumberOfMessages=10)
 
         time.sleep(30)
+
 
 def main():
     logging.basicConfig(
