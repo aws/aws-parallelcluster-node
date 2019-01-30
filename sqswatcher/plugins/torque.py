@@ -80,7 +80,7 @@ def wakeupSchedOn(hostname):
         log.debug("Host %s is in state %s" % (hostname, host_state))
 
 def addHost(hostname,cluster_user,slots):
-    log.info('Adding %s', hostname)
+    log.info('Adding %s with %s slots' % (hostname, slots))
 
     command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
     __runCommand(command)
