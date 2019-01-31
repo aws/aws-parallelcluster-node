@@ -22,11 +22,18 @@ from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 
-def getConfig():
-    log.debug('reading /etc/sqswatcher.cfg')
+
+def _get_config():
+    """
+    Get sqswatcher configuration.
+
+    :return: the configuration parameters
+    """
+    _config_file = '/etc/sqswatcher.cfg'
+    log.debug('reading %s' % _config_file)
 
     config = ConfigParser.RawConfigParser()
-    config.read('/etc/sqswatcher.cfg')
+    config.read(_config_file)
     if config.has_option('sqswatcher', 'loglevel'):
         lvl = logging._levelNames[config.get('sqswatcher', 'loglevel')]
         logging.getLogger().setLevel(lvl)
@@ -52,17 +59,33 @@ def getConfig():
     return _region, _sqsqueue, _table_name, _scheduler, _cluster_user, proxy_config
 
 
-def setupQueue(region, sqsqueue, proxy_config):
-    log.debug('running setupQueue')
+def _setup_queue(region, queue_name, proxy_config):
+    """
+    Get SQS Queue by queue name.
+
+    :param region: AWS region
+    :param queue_name: Queue name to search for
+    :param proxy_config: proxy configuration
+    :return: the Queue object
+    """
+    log.debug('running _setup_queue')
 
     sqs = boto3.resource('sqs', region_name=region, config=proxy_config)
 
-    _q = sqs.get_queue_by_name(QueueName=sqsqueue)
-    return _q
+    _queue = sqs.get_queue_by_name(QueueName=queue_name)
+    return _queue
 
 
-def setupDDBTable(region, table_name, proxy_config):
-    log.debug('running setupDDBTable')
+def _setup_ddb_table(region, table_name, proxy_config):
+    """
+    Get DynamoDB table by name.
+
+    :param region: AWS region
+    :param table_name: Table name to search for
+    :param proxy_config: proxy configuration
+    :return: the Table object
+    """
+    log.debug('running _setup_ddb_table')
 
     dynamodb = boto3.client('dynamodb', region_name=region, config=proxy_config)
     tables = dynamodb.list_tables().get('TableNames')
@@ -71,29 +94,36 @@ def setupDDBTable(region, table_name, proxy_config):
     if table_name in tables:
         _table = dynamodb2.Table(table_name)
     else:
-        _table = dynamodb2.create_table(TableName=table_name,
-                              KeySchema=[
-                                  {
-                                    'AttributeName': 'instanceId',
-                                    'KeyType': 'HASH'
-                                  }
-                              ],
-                              AttributeDefinitions=[
-                                {
-                                    'AttributeName': 'instanceId',
-                                    'AttributeType': 'S'
-                                }
-                              ],
-                              ProvisionedThroughput={
-                                'ReadCapacityUnits': 5,
-                                'WriteCapacityUnits': 5
-                              })
+        _table = dynamodb2.create_table(
+            TableName=table_name,
+            KeySchema=[
+                {
+                    'AttributeName': 'instanceId',
+                    'KeyType': 'HASH'
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'instanceId',
+                    'AttributeType': 'S'
+                }
+            ],
+            ProvisionedThroughput={
+                'ReadCapacityUnits': 5,
+                'WriteCapacityUnits': 5
+            },
+        )
         _table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
     return _table
 
 
-def loadSchedulerModule(scheduler):
+def _load_scheduler_module(scheduler):
+    """
+    Import the module from the plugins subfolder, containing scheduler specific functions.
+
+    :param scheduler: name of the module to import
+    """
     scheduler = 'sqswatcher.plugins.' + scheduler
     _scheduler = __import__(scheduler)
     _scheduler = sys.modules[scheduler]
@@ -188,9 +218,9 @@ def _remove_host(scheduler_module, table, instance_id):
         log.error("Instance %s not found in the database" % instance_id)
 
 
-def pollQueue(scheduler, queue, table, proxy_config):
+def _poll_queue(scheduler, queue, table, proxy_config):
     log.debug("startup")
-    scheduler_module = loadSchedulerModule(scheduler)
+    scheduler_module = _load_scheduler_module(scheduler)
 
     while True:
 
@@ -213,8 +243,10 @@ def pollQueue(scheduler, queue, table, proxy_config):
                         break
 
                 log.info("event_type=%s" % event_type)
+
                 if event_type == 'autoscaling:TEST_NOTIFICATION':
                     message.delete()
+
                 elif event_type == 'parallelcluster:COMPUTE_READY':
                     instance_id = message_attrs.get('EC2InstanceId')
                     slots = message_attrs.get('Slots')
@@ -225,8 +257,7 @@ def pollQueue(scheduler, queue, table, proxy_config):
                 elif (
                         event_type == 'autoscaling:EC2_INSTANCE_TERMINATE' or
                         event_type == 'EC2 Instance State-change Notification'
-                     ):
-
+                ):
                     if event_type == 'autoscaling:EC2_INSTANCE_TERMINATE':
                         instance_id = message_attrs.get('EC2InstanceId')
                     elif event_type == 'EC2 Instance State-change Notification':
@@ -254,10 +285,13 @@ def main():
     )
     log.info("sqswatcher startup")
     global region, cluster_user
-    region, sqsqueue, table_name, scheduler, cluster_user, proxy_config = getConfig()
-    q = setupQueue(region, sqsqueue, proxy_config)
-    t = setupDDBTable(region, table_name, proxy_config)
-    pollQueue(scheduler, q, t, proxy_config)
+
+    region, sqsqueue, table_name, scheduler, cluster_user, proxy_config = _get_config()
+    queue = _setup_queue(region, sqsqueue, proxy_config)
+    table = _setup_ddb_table(region, table_name, proxy_config)
+
+    _poll_queue(scheduler, queue, table, proxy_config)
+
 
 if __name__ == "__main__":
     main()
