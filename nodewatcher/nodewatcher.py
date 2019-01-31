@@ -29,8 +29,9 @@ _DATA_DIR = "/var/run/nodewatcher/"
 _IDLETIME_FILE = _DATA_DIR + "node_idletime.json"
 _CURRENT_IDLETIME = 'current_idletime'
 
+
 def getConfig(instance_id):
-    log.debug('reading /etc/nodewatcher.cfg')
+    log.debug('Reading /etc/nodewatcher.cfg')
 
     config = ConfigParser.RawConfigParser()
     config.read('/etc/nodewatcher.cfg')
@@ -55,7 +56,7 @@ def getConfig(instance_id):
         instances = ec2.instances.filter(InstanceIds=[instance_id])
         instance = next(iter(instances or []), None)
         _asg = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
-        log.debug("discovered asg: %s" % _asg)
+        log.debug("Discovered asg: %s" % _asg)
         config.set('nodewatcher', 'asg', _asg)
 
         tup = tempfile.mkstemp(dir=os.getcwd())
@@ -67,6 +68,7 @@ def getConfig(instance_id):
 
     log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _scaledown_idletime))
     return _region, _asg, _scheduler, proxy_config, _scaledown_idletime, _stack_name
+
 
 def getInstanceId():
 
@@ -80,6 +82,7 @@ def getInstanceId():
 
     return _instance_id
 
+
 def getHostname():
 
     try:
@@ -92,6 +95,7 @@ def getHostname():
 
     return _hostname
 
+
 def loadSchedulerModule(scheduler):
     scheduler = 'nodewatcher.plugins.' + scheduler
     _scheduler = __import__(scheduler)
@@ -101,6 +105,7 @@ def loadSchedulerModule(scheduler):
 
     return _scheduler
 
+
 def hasJobs(s,hostname):
 
     _jobs = s.hasJobs(hostname)
@@ -109,10 +114,12 @@ def hasJobs(s,hostname):
 
     return _jobs
 
+
 def hasPendingJobs(s):
     _has_pending_jobs, _error = s.hasPendingJobs()
     log.debug("has_pending_jobs=%s, error=%s" % (_has_pending_jobs, _error))
     return _has_pending_jobs, _error
+
 
 def lockHost(s,hostname,unlock=False):
     log.debug("%s %s" % (unlock and "unlocking" or "locking",
@@ -120,26 +127,28 @@ def lockHost(s,hostname,unlock=False):
 
     _r = s.lockHost(hostname, unlock)
 
-    time.sleep(15) # allow for some settling
+    time.sleep(15)  # allow for some settling
 
     return _r
 
+
 def selfTerminate(asg_name, asg_conn, instance_id):
     if not maintainSize(asg_name, asg_conn):
-        log.info("terminating %s" % instance_id)
+        log.info("Self terminating %s" % instance_id)
         asg_conn.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
+
 
 def maintainSize(asg_name, asg_conn):
     asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]) \
         .get('AutoScalingGroups')[0]
     _capacity = asg.get('DesiredCapacity')
     _min_size = asg.get('MinSize')
-    log.info("capacity=%d min_size=%d" % (_capacity, _min_size))
+    log.info("DesiredCapacity is %d, MinSize is %d" % (_capacity, _min_size))
     if _capacity > _min_size:
-        log.debug('capacity greater then min size.')
+        log.debug('Capacity greater than min size.')
         return False
     else:
-        log.debug('capacity less then or equal to min size.')
+        log.debug('Capacity less than or equal to min size.')
         return True
 
 
@@ -149,14 +158,16 @@ def stackReady(stack_name, region, proxy_config):
     stacks = cfn_client.describe_stacks(StackName=stack_name)
     return stacks['Stacks'][0]['StackStatus'] in ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE']
 
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
     )
-    log.info("nodewatcher startup")
+    log.info('nodewatcher startup')
     instance_id = getInstanceId()
     hostname = getHostname()
+    log.info('Instance id is %s, hostname is %s' % (instance_id, hostname))
     region, asg_name, scheduler, proxy_config, idle_time, stack_name = getConfig(instance_id)
 
 
@@ -181,12 +192,12 @@ def main():
         # if this node is terminating sleep for a long time and wait for termination
         if termination_in_progress:
             time.sleep(300)
-            log.info('%s is still terminating' % hostname)
+            log.info('Instance is still terminating')
             continue
         time.sleep(60)
         if not stack_ready:
             stack_ready = stackReady(stack_name, region, proxy_config)
-            log.info('%s ready: %s' % (stack_name, stack_ready))
+            log.info('Stack %s ready: %s' % (stack_name, stack_ready))
             continue
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
 
@@ -199,7 +210,7 @@ def main():
                 continue
             else:
                 data[_CURRENT_IDLETIME] += 1
-                log.info('Instance %s has no job for the past %s minute(s)' % (instance_id, data[_CURRENT_IDLETIME]))
+                log.info('Instance had no job for the past %s minute(s)' % data[_CURRENT_IDLETIME])
                 with open(_IDLETIME_FILE, 'w') as outfile:
                     json.dump(data, outfile)
 
@@ -218,13 +229,14 @@ def main():
                                 selfTerminate(asg_name, asg_conn, instance_id)
                                 termination_in_progress = True
                             except ClientError as ex:
-                                log.error('Failed to terminate instance: %s with exception %s' % (instance_id, ex))
+                                log.error('Failed to terminate instance with exception %s' % ex)
                                 lockHost(s, hostname, unlock=True)
                         else:
                             if has_pending_jobs:
                                 log.info('Queue has pending jobs. Not terminating instance')
                             elif error:
-                                log.info('Encountered an error while polling queue for pending jobs. Not terminating instance')
+                                log.info('Encountered an error while polling queue for pending jobs. '
+                                         'Not terminating instance')
                             lockHost(s, hostname, unlock=True)
 
 
