@@ -18,8 +18,19 @@ log = logging.getLogger(__name__)
 
 
 def hasJobs(hostname):
-    # Checking for running jobs on the node
+    # Checking for running jobs on the node, with parallel job view expanded (-g t)
     _command = ['/opt/sge/bin/lx-amd64/qstat', '-g', 't', '-l', 'hostname=%s' % hostname, '-u', '*']
+
+    # Command output
+    # job-ID  prior   name       user         state submit/start at     queue                          master ja-task-ID
+    # ------------------------------------------------------------------------------------------------------------------
+    # 16 0.6 0500 job.sh     ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte SLAVE
+    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
+    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
+    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
+    # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 1
+    # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 2
+
     try:
         _output = subprocess.Popen(_command,
                                   stdout=subprocess.PIPE,

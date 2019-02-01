@@ -43,6 +43,7 @@ def hasJobs(hostname):
         status, output = runPipe(commands)
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % commands)
+        _output = ""
 
     if output == "":
         _jobs = False
