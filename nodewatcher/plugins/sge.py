@@ -19,31 +19,24 @@ log = logging.getLogger(__name__)
 
 def hasJobs(hostname):
     # Checking for running jobs on the node
-    _command = ['/opt/sge/bin/idle-nodes']
+    _command = ['/opt/sge/bin/lx-amd64/qstat', '-g', 't', '-l', 'hostname=%s' % hostname, '-u', '*']
     try:
-        _child = subprocess.Popen(_command,
+        _output = subprocess.Popen(_command,
                                   stdout=subprocess.PIPE,
                                   env=dict(
                                       os.environ,
                                       SGE_ROOT='/opt/sge',
                                       PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin',
-                                      ),
-                                  )
-
-        _output, _errors = _child.communicate()
-        if _errors and _errors != "":
-            # this happens when the node has not been correctly added to the cluster
-            log.error("Unable to get the host list with the command %s. Assuming no active jobs." % _command)
-            _jobs = False
-        else:
-            _jobs = True
-            for host in _output.split('\n'):
-                if hostname.split('.')[0] in host:
-                    _jobs = False
-                    break
+                                  ),
+                                  ).communicate()[0]
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s. Assuming no active jobs." % _command)
+        print ("Failed to run %s\n" % _command)
+        _output = ""
+
+    if _output == "":
         _jobs = False
+    else:
+        _jobs = True
 
     return _jobs
 
