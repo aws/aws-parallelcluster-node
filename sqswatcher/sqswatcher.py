@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
 # License. A copy of the License is located at
@@ -19,6 +19,15 @@ import logging
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+
+class HostRemovalError(Exception):
+    pass
+
+
+class QueryConfigError(Exception):
+    pass
+
 
 log = logging.getLogger(__name__)
 
@@ -218,6 +227,16 @@ def _remove_host(scheduler_module, table, instance_id):
         log.error("Instance %s not found in the database" % instance_id)
 
 
+def _requeue_message(queue, message):
+    """
+    Requeue the given message into the specified queue
+
+    :param queue: the queue where to send the message
+    :param message: the message to requeue
+    """
+    queue.send_message(MessageBody=message.body, DelaySeconds=60)
+
+
 def _poll_queue(scheduler, queue, table, proxy_config):
     log.debug("startup")
     scheduler_module = _load_scheduler_module(scheduler)
@@ -270,7 +289,14 @@ def _poll_queue(scheduler, queue, table, proxy_config):
                             break
 
                     log.info("instance_id=%s" % instance_id)
-                    _remove_host(scheduler_module, table, instance_id)
+                    try:
+                        _remove_host(scheduler_module, table, instance_id)
+                    except HostRemovalError:
+                        log.info("Unable to remove host, requeuing %s message" % event_type)
+                        _requeue_message(queue, message)
+                    except QueryConfigError:
+                        log.info("Unable to query scheduler configuration, discarding %s message" % event_type)
+
                     message.delete()
 
             results = queue.receive_messages(MaxNumberOfMessages=10)
