@@ -88,17 +88,18 @@ def _get_vcpus_from_pricing_file(instance_type):
     Read pricing file and get number of vcpus for the given instance type.
 
     :param instance_type: the instance type to search for.
-    :return: the number of vcpus
+    :return: the number of vcpus or -1 if the instance type cannot be found
     """
     with open(pricing_file) as f:
         instances = json.load(f)
         try:
             vcpus = int(instances[instance_type]["vcpus"])
             log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
-            return vcpus
         except KeyError:
-            log.error("Instance %s not found in file %s." % (instance_type, pricing_file))
-            exit(1)
+            log.error("Unable to get vcpus from file %s. Instance type %s not found." % (pricing_file, instance_type))
+            vcpus = -1
+
+        return vcpus
 
 
 def _get_instance_properties(instance_type):
@@ -108,36 +109,49 @@ def _get_instance_properties(instance_type):
     :param instance_type: instance type to search for
     :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
     """
-    cfnconfig_params = _read_cfnconfig()
     try:
+        cfnconfig_params = _read_cfnconfig()
         cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
-        slots = 0
-        vcpus = _get_vcpus_from_pricing_file(instance_type)
-
-        if cfn_scheduler_slots == "cores":
-            log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
-            slots = -(-vcpus//2)
-        elif cfn_scheduler_slots == "vcpus":
-            log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
-            slots = vcpus
-        elif cfn_scheduler_slots.isdigit():
-            slots = int(cfn_scheduler_slots)
-            log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
-
-        if not slots > 0:
-            log.critical("cfn_scheduler_slots config parameter '%s' was invalid" % cfn_scheduler_slots)
-            exit(1)
-
-        return {'slots': slots}
-
     except KeyError:
-        log.error("Required config parameter 'cfn_scheduler_slots' not found in file %s." % cfnconfig_file)
-        exit(1)
+        log.error(
+            "Required config parameter 'cfn_scheduler_slots' not found in file %s. Assuming 'vcpus'" % cfnconfig_file
+        )
+        cfn_scheduler_slots = "vcpus"
+
+    vcpus = _get_vcpus_from_pricing_file(instance_type)
+
+    if cfn_scheduler_slots == "cores":
+        log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
+        slots = -(-vcpus//2)
+
+    elif cfn_scheduler_slots == "vcpus":
+        log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
+        slots = vcpus
+
+    elif cfn_scheduler_slots.isdigit():
+        slots = int(cfn_scheduler_slots)
+        log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
+
+        if slots <= 0:
+            log.error(
+                "cfn_scheduler_slots config parameter '%s' must be greater than 0. "
+                "Assuming 'vcpus'" % cfn_scheduler_slots
+            )
+            slots = vcpus
+    else:
+        log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
+        slots = vcpus
+
+    if slots <= 0:
+        log.critical("slots value is invalid. Setting it to 0.")
+        slots = 0
+
+    return {'slots': slots}
 
 
 def _fetch_pricing_file(pcluster_dir, region, proxy_config):
     """
-    Download pricing file
+    Download pricing file.
 
     :param proxy_config: Proxy Configuration
     :param pcluster_dir: Parallelcluster configuration folder
@@ -203,47 +217,55 @@ def main():
     while True:
         # get the number of vcpu's per compute instance
         instance_properties = _get_instance_properties(instance_type)
+        if instance_properties.get('slots') <= 0:
+            log.critical("Error detecting number of slots per instance. The cluster will not scale up.")
 
-        # Get number of nodes requested
-        pending = s.get_required_nodes(instance_properties)
+        else:
+            # Get number of nodes requested
+            pending = s.get_required_nodes(instance_properties)
 
-        # Get number of nodes currently
-        running = s.get_busy_nodes(instance_properties)
+            if pending < 0:
+                log.critical("Error detecting number of required nodes. The cluster will not scale up.")
 
-        log.info("%s jobs pending; %s jobs running" % (pending, running))
+            elif pending == 0:
+                log.debug("There are no pending jobs. Noop.")
 
-        if pending > 0:
-            # connect to asg
-            asg_client = boto3.client('autoscaling', region_name=region, config=proxy_config)
-
-            # get current limits
-            asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
-
-            min_size = asg.get('MinSize')
-            current_desired = asg.get('DesiredCapacity')
-            max_size = asg.get('MaxSize')
-            log.info("min/desired/max %d/%d/%d" % (min_size, current_desired, max_size))
-            log.info("Nodes requested %d, Nodes running %d" % (pending, running))
-
-            # Check to make sure requested number of instances is within ASG limits
-            required = running + pending
-            if required <= current_desired:
-                log.info("%d nodes desired %d nodes in asg. Noop" % (required, current_desired))
             else:
-                if required > max_size:
-                    log.info(
-                        "%d requested nodes is greater than max %d. Requesting max %d."
-                        % (required, max_size, max_size)
-                    )
-                else:
-                    log.info(
-                        "Setting desired to %d nodes, requesting %d more nodes from asg."
-                        % (required, required - current_desired)
-                    )
-                requested = min(required, max_size)
+                # Get current number of nodes
+                running = s.get_busy_nodes(instance_properties)
+                log.info("%s jobs pending; %s jobs running" % (pending, running))
 
-                # update ASG
-                asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
+                # connect to asg
+                asg_client = boto3.client('autoscaling', region_name=region, config=proxy_config)
+
+                # get current limits
+                asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
+
+                min_size = asg.get('MinSize')
+                current_desired = asg.get('DesiredCapacity')
+                max_size = asg.get('MaxSize')
+                log.info("min/desired/max %d/%d/%d" % (min_size, current_desired, max_size))
+                log.info("%d nodes requested, %d nodes running" % (pending, running))
+
+                # Check to make sure requested number of instances is within ASG limits
+                required = running + pending
+                if required <= current_desired:
+                    log.info("%d nodes required, %d nodes in asg. Noop" % (required, current_desired))
+                else:
+                    if required > max_size:
+                        log.info(
+                            "The number of required nodes %d is greater than max %d. Requesting max %d."
+                            % (required, max_size, max_size)
+                        )
+                    else:
+                        log.info(
+                            "Setting desired to %d nodes, requesting %d more nodes from asg."
+                            % (required, required - current_desired)
+                        )
+                    requested = min(required, max_size)
+
+                    # update ASG
+                    asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
         time.sleep(60)
 
