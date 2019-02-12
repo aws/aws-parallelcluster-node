@@ -227,14 +227,23 @@ def main():
 
             # Check to make sure requested number of instances is within ASG limits
             required = running + pending
-            if required > max_size:
-                log.info("%d requested nodes is greater than max %d. Requesting max %d." % (required, max_size, max_size))
-                asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=max_size)
-            elif required <= current_desired:
+            if required <= current_desired:
                 log.info("%d nodes desired %d nodes in asg. Noop" % (required, current_desired))
             else:
-                log.info("Setting desired to %d nodes, requesting %d more nodes from asg." % (required, required - current_desired))
-                asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=required)
+                if required > max_size:
+                    log.info(
+                        "%d requested nodes is greater than max %d. Requesting max %d."
+                        % (required, max_size, max_size)
+                    )
+                else:
+                    log.info(
+                        "Setting desired to %d nodes, requesting %d more nodes from asg."
+                        % (required, required - current_desired)
+                    )
+                requested = min(required, max_size)
+
+                # update ASG
+                asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
         time.sleep(60)
 
