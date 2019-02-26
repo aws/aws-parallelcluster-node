@@ -3,6 +3,19 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.2.0
+-----
+- Prevent jobwatcher crashes by using fallback values
+- Improve nodewatcher logging
+- sqswatcher: add number of slots to the log of torque scheduler
+- Improved function to test if a compute node has running jobs
+- Add retries in case aws request limits are reached
+- Remove invalid messages from SQS queue in order to process remaining messages
+- Add upload node script `util/uploadNode.sh`
+
+Minor:
+- Add `UPDATE_ROLLBACK_COMPLETE` to stack completion statuses
+
 2.1.0
 -----
 
