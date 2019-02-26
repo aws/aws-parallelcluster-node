@@ -3,7 +3,25 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-2.1.0
+2.2.0
+-----
+
+**CHANGES**
+- `nodewatcher`: sge - improve logic to detect if a compute node has running jobs
+- `sqswatcher`: remove invalid messages from SQS queue in order to process remaining messages
+- `sqswatcher`: add number of slots to the log of torque scheduler
+- `sqswatcher`: add retries in case aws request limits are reached
+
+**BUG FIXES**
+- `sqswatcher`: keep processing compute node termination until all scheduled jobs are terminated/cancelled.
+  This allows to automatically remove dead nodes from the scheduler once all jobs are terminated.
+- `jobwatcher`: better handling of error conditions and usage of fallback values
+- `nodewatcher`: enable daemon when cluster status is `UPDATE_ROLLBACK_COMPLETE`
+
+**TOOLING**
+- Add a script to simplify node package upload when using `custom_node_package` option
+
+2.1.1
 -----
 
 - China Regions, cn-north-1 and cn-northwest-1 support
@@ -12,8 +30,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 -----
 
 Bug Fixes:
-
-    - Don't schedule jobs on compute nodes that are terminating
+- Don't schedule jobs on compute nodes that are terminating
 
 2.0.2
 -----
