@@ -9,32 +9,48 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
-import subprocess
-import os
 import logging
+import os
 import shlex
+import subprocess
 
 log = logging.getLogger(__name__)
 
-def hasJobs(hostname):
-    # Checking for running jobs on the node
-    command = ['/opt/sge/bin/idle-nodes']
-    try:
-       _output = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                 env=dict(os.environ, SGE_ROOT='/opt/sge',
-                                          PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin')).communicate()[0]
-    except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
 
-    _jobs = True
-    for host in _output.split('\n'):
-        if hostname.split('.')[0] in host:
-            _jobs = False
-            break
+def hasJobs(hostname):
+    # Checking for running jobs on the node, with parallel job view expanded (-g t)
+    _command = ['/opt/sge/bin/lx-amd64/qstat', '-g', 't', '-l', 'hostname=%s' % hostname, '-u', '*']
+
+    # Command output
+    # job-ID  prior   name       user         state submit/start at     queue                          master ja-task-ID
+    # ------------------------------------------------------------------------------------------------------------------
+    # 16 0.6 0500 job.sh     ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte SLAVE
+    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
+    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
+    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
+    # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 1
+    # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 2
+
+    try:
+        _output = subprocess.Popen(_command,
+                                  stdout=subprocess.PIPE,
+                                  env=dict(
+                                      os.environ,
+                                      SGE_ROOT='/opt/sge',
+                                      PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin',
+                                  ),
+                                  ).communicate()[0]
+    except subprocess.CalledProcessError:
+        print ("Failed to run %s\n" % _command)
+        _output = ""
+
+    if _output == "":
+        _jobs = False
+    else:
+        _jobs = True
 
     return _jobs
+
 
 def hasPendingJobs():
     command = "/opt/sge/bin/lx-amd64/qstat -g d -s p -u '*'"

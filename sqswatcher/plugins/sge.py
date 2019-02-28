@@ -1,4 +1,4 @@
-# Copyright 2013-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
 # License. A copy of the License is located at
@@ -9,8 +9,6 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
 import subprocess as sub
 import paramiko
 from tempfile import NamedTemporaryFile
@@ -19,28 +17,65 @@ import os
 import socket
 import logging
 import shlex
+from sqswatcher.sqswatcher import HostRemovalError
+from sqswatcher.sqswatcher import QueryConfigError
 
 log = logging.getLogger(__name__)
 
-def __runSgeCommand(command):
-    log.debug(repr(command))
+
+def _is_host_configured(command, hostname):
+    _command = shlex.split(command)
+    log.debug(_command)
+    host_configured = False
+
+    try:
+        output = sub.Popen(
+            _command,
+            stdout=sub.PIPE,
+            env=dict(
+                os.environ,
+                SGE_ROOT='/opt/sge',
+                PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin',
+            ),
+        ).communicate()[0]
+    except:
+        log.error("Failed to run %s\n" % command)
+        raise QueryConfigError
+
+    if output is not None:
+        # Expected output
+        # ip-172-31-66-16.ec2.internal
+        # ip-172-31-74-69.ec2.internal
+        match = list(filter(lambda x: hostname in x.split(".")[0], output.split("\n")))
+
+        if len(match) > 0:
+            host_configured = True
+
+    return host_configured
+
+
+def _run_sge_command(command, raise_exception=False):
     _command = shlex.split(str(command))
     log.debug(_command)
+
     try:
         sub.check_call(_command, env=dict(os.environ, SGE_ROOT='/opt/sge'))
     except sub.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
+        if raise_exception:
+            raise HostRemovalError
+
 
 def addHost(hostname, cluster_user, slots):
     log.info('Adding %s with %s slots' % (hostname,slots))
 
     # Adding host as administrative host
     command = ('/opt/sge/bin/lx-amd64/qconf -ah %s' % hostname)
-    __runSgeCommand(command)
+    _run_sge_command(command)
 
     # Adding host as submit host
     command = ('/opt/sge/bin/lx-amd64/qconf -as %s' % hostname)
-    __runSgeCommand(command)
+    _run_sge_command(command)
 
     # Setup template to add execution host
     qconf_Ae_template = """hostname              %s
@@ -62,7 +97,7 @@ report_variables      NONE
 
         # Add host as an execution host
         command = ('/opt/sge/bin/lx-amd64/qconf -Ae %s' % t.name)
-        __runSgeCommand(command)
+        _run_sge_command(command)
 
     # Connect and start SGE
     ssh = paramiko.SSHClient()
@@ -95,33 +130,51 @@ report_variables      NONE
         time.sleep(1)
     ssh.close()
 
-    # Add the host to the qll.q
+    # Add the host to the all.q
     command = ('/opt/sge/bin/lx-amd64/qconf -aattr hostgroup hostlist %s @allhosts' % hostname)
-    __runSgeCommand(command)
+    _run_sge_command(command)
 
     # Set the numbers of slots for the host
     command = ('/opt/sge/bin/lx-amd64/qconf -aattr queue slots ["%s=%s"] all.q' % (hostname,slots))
-    __runSgeCommand(command)
+    _run_sge_command(command)
 
-def removeHost(hostname,cluster_user):
+
+def removeHost(hostname, cluster_user):
     log.info('Removing %s', hostname)
 
-    # Removing host as administrative host
-    command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
-    __runSgeCommand(command)
+    # Check if host is administrative host
+    command = "/opt/sge/bin/lx-amd64/qconf -sh"
+    if _is_host_configured(command, hostname):
+        # Removing host as administrative host
+        command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
+        _run_sge_command(command, raise_exception=True)
+    else:
+        log.info('Host %s is not administrative host', hostname)
 
+    # Check if host is in all.q (qconf -sq all.q)
     # Purge hostname from all.q
     command = ("/opt/sge/bin/lx-amd64/qconf -purge queue '*' all.q@%s" % hostname)
-    __runSgeCommand(command)
+    _run_sge_command(command)
 
+    # Check if host is in @allhosts group (qconf -shgrp_resolved @allhosts)
     # Remove host from @allhosts group
     command = ("/opt/sge/bin/lx-amd64/qconf -dattr hostgroup hostlist %s @allhosts" % hostname)
-    __runSgeCommand(command)
+    _run_sge_command(command)
 
-    # Removing host as execution host
-    command = ("/opt/sge/bin/lx-amd64/qconf -de %s" % hostname)
-    __runSgeCommand(command)
+    # Check if host is execution host
+    command = "/opt/sge/bin/lx-amd64/qconf -sel"
+    if _is_host_configured(command, hostname):
+        # Removing host as execution host
+        command = ("/opt/sge/bin/lx-amd64/qconf -de %s" % hostname)
+        _run_sge_command(command, raise_exception=True)
+    else:
+        log.info('Host %s is not execution host', hostname)
 
-    # Removing host as submit host
-    command = ("/opt/sge/bin/lx-amd64/qconf -ds %s" % hostname)
-    __runSgeCommand(command)
+    # Check if host is submission host
+    command = "/opt/sge/bin/lx-amd64/qconf -ss"
+    if _is_host_configured(command, hostname):
+        # Removing host as submission host
+        command = ("/opt/sge/bin/lx-amd64/qconf -ds %s" % hostname)
+        _run_sge_command(command, raise_exception=True)
+    else:
+        log.info('Host %s is not submission host', hostname)

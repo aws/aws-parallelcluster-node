@@ -26,6 +26,7 @@ def hasJobs(hostname):
         output = subprocess.Popen(_command, stdout=subprocess.PIPE).communicate()[0]
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
+        _output = ""
 
     if output == "":
         _jobs = False

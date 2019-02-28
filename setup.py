@@ -34,6 +34,7 @@ if sys.version_info[:2] == (2, 6):
     requires.append('argparse>=1.4')
     requires.append('idna==2.6')
     requires.append('paramiko==2.3.3')
+    requires.append('cryptography==2.1.4')  # dependency of paramiko
     requires.append('pycparser==2.18')
 else:
     requires.append('paramiko>=2.4.2')
