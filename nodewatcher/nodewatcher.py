@@ -30,7 +30,13 @@ _IDLETIME_FILE = _DATA_DIR + "node_idletime.json"
 _CURRENT_IDLETIME = 'current_idletime'
 
 
-def getConfig(instance_id):
+def _get_config(instance_id):
+    """
+    Get configuration from config file.
+
+    :param instance_id: instance id used to retrieve ASG group name
+    :return: configuration parameters
+    """
     log.debug('Reading /etc/nodewatcher.cfg')
 
     config = ConfigParser.RawConfigParser()
@@ -66,16 +72,25 @@ def getConfig(instance_id):
 
         os.rename(tup[1], 'nodewatcher.cfg')
 
-    log.debug("region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (_region, _asg, _scheduler, proxy_config, _scaledown_idletime))
+    log.debug(
+        "region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (
+            _region, _asg, _scheduler, proxy_config, _scaledown_idletime
+        )
+    )
     return _region, _asg, _scheduler, proxy_config, _scaledown_idletime, _stack_name
 
 
-def getInstanceId():
+def _get_metadata(metadata_path):
+    """
+    Get EC2 instance metadata.
 
+    :param metadata_path: the metadata relative path
+    :return the metadata value.
+    """
     try:
-        _instance_id = urllib2.urlopen("http://169.254.169.254/latest/meta-data/instance-id").read()
+        _instance_id = urllib2.urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read()
     except urllib2.URLError:
-        log.critical('Unable to get instance-id from metadata')
+        log.critical("Unable to get {0} metadata".format(metadata_path))
         sys.exit(1)
 
     log.debug("instance_id=%s" % _instance_id)
@@ -83,64 +98,81 @@ def getInstanceId():
     return _instance_id
 
 
-def getHostname():
+def _load_scheduler_module(scheduler):
+    """
+    Load scheduler module, containing scheduler specific functions.
 
-    try:
-        _hostname = urllib2.urlopen("http://169.254.169.254/latest/meta-data/local-hostname").read()
-    except urllib2.URLError:
-        log.critical('Unable to get hostname from metadata')
-        sys.exit(1)
-
-    log.debug("hostname=%s" % _hostname)
-
-    return _hostname
-
-
-def loadSchedulerModule(scheduler):
+    :param scheduler: scheduler name, it must corresponds to the <scheduler>.py file in the current folder.
+    :return: the scheduler module
+    """
     scheduler = 'nodewatcher.plugins.' + scheduler
     _scheduler = __import__(scheduler)
     _scheduler = sys.modules[scheduler]
 
     log.debug("scheduler=%s" % repr(_scheduler))
-
     return _scheduler
 
 
-def hasJobs(s,hostname):
+def _has_jobs(scheduler_module, hostname):
+    """
+    Verify if there are running jobs in the given host.
 
-    _jobs = s.hasJobs(hostname)
-
+    :param scheduler_module: scheduler specific module to use
+    :param hostname: host to search for
+    :return: true if the given host has running jobs
+    """
+    _jobs = scheduler_module.hasJobs(hostname)
     log.debug("jobs=%s" % _jobs)
-
     return _jobs
 
 
-def hasPendingJobs(s):
-    _has_pending_jobs, _error = s.hasPendingJobs()
+def _has_pending_jobs(scheduler_module):
+    """
+    Verify if there are penging jobs in the cluster.
+
+    :param scheduler_module: scheduler specific module to use
+    :return: true if there are pending jobs and the error code
+    """
+    _has_pending_jobs, _error = scheduler_module.hasPendingJobs()
     log.debug("has_pending_jobs=%s, error=%s" % (_has_pending_jobs, _error))
     return _has_pending_jobs, _error
 
 
-def lockHost(s,hostname,unlock=False):
-    log.debug("%s %s" % (unlock and "unlocking" or "locking",
-                         hostname))
+def _lock_host(scheduler_module, hostname, unlock=False):
+    """
+    Lock/Unlock the given host (e.g. before termination).
 
-    _r = s.lockHost(hostname, unlock)
-
+    :param scheduler_module: scheduler specific module to use
+    :param hostname: host to lock
+    :param unlock: False to lock the host, True to unlock
+    """
+    log.debug("%s %s" % (unlock and "unlocking" or "locking", hostname))
+    scheduler_module.lockHost(hostname, unlock)
     time.sleep(15)  # allow for some settling
 
-    return _r
 
+def _self_terminate(asg_name, asg_client, instance_id):
+    """
+    Terminate the given instance and decrease ASG desired capacity.
 
-def selfTerminate(asg_name, asg_conn, instance_id):
-    if not maintainSize(asg_name, asg_conn):
+    :param asg_name: ASG name
+    :param asg_client: ASG boto3 client
+    :param instance_id: the instnace to terminate
+    """
+    if not _maintain_size(asg_name, asg_client):
         log.info("Self terminating %s" % instance_id)
-        asg_conn.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
+        asg_client.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
 
 
-def maintainSize(asg_name, asg_conn):
-    asg = asg_conn.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]) \
-        .get('AutoScalingGroups')[0]
+def _maintain_size(asg_name, asg_client):
+    """
+    Verify if the desired capacity is lower than the configured min size.
+    
+    :param asg_name: the ASG to query for
+    :param asg_client: ASG boto3 client
+    :return: True if the desired capacity is lower than the configured min size.
+    """
+    asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
     _capacity = asg.get('DesiredCapacity')
     _min_size = asg.get('MinSize')
     log.info("DesiredCapacity is %d, MinSize is %d" % (_capacity, _min_size))
@@ -152,7 +184,15 @@ def maintainSize(asg_name, asg_conn):
         return True
 
 
-def stackReady(stack_name, region, proxy_config):
+def _is_stack_ready(stack_name, region, proxy_config):
+    """
+    Verify if the Stack is in one of the *_COMPLETE states.
+
+    :param stack_name: Stack to query for
+    :param region: AWS region
+    :param proxy_config: Proxy configuration
+    :return: true if the stack is in the *_COMPLETE status
+    """
     log.info('Checking for status of the stack %s' % stack_name)
     cfn_client = boto3.client('cloudformation', region_name=region, config=proxy_config)
     stacks = cfn_client.describe_stacks(StackName=stack_name)
@@ -165,13 +205,12 @@ def main():
         format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
     )
     log.info('nodewatcher startup')
-    instance_id = getInstanceId()
-    hostname = getHostname()
+    instance_id = _get_metadata("instance-id")
+    hostname = _get_metadata("local-hostname")
     log.info('Instance id is %s, hostname is %s' % (instance_id, hostname))
-    region, asg_name, scheduler, proxy_config, idle_time, stack_name = getConfig(instance_id)
+    region, asg_name, scheduler, proxy_config, idle_time, stack_name = _get_config(instance_id)
 
-
-    s = loadSchedulerModule(scheduler)
+    scheduler_module = _load_scheduler_module(scheduler)
 
     try:
         if not os.path.exists(_DATA_DIR):
@@ -196,17 +235,17 @@ def main():
             continue
         time.sleep(60)
         if not stack_ready:
-            stack_ready = stackReady(stack_name, region, proxy_config)
+            stack_ready = _is_stack_ready(stack_name, region, proxy_config)
             log.info('Stack %s ready: %s' % (stack_name, stack_ready))
             continue
         asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
 
-        has_jobs = hasJobs(s, hostname)
+        has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
             log.info('Instance has active jobs.')
             data[_CURRENT_IDLETIME] = 0
         else:
-            if maintainSize(asg_name, asg_conn):
+            if _maintain_size(asg_name, asg_conn):
                 continue
             else:
                 data[_CURRENT_IDLETIME] += 1
@@ -215,29 +254,29 @@ def main():
                     json.dump(data, outfile)
 
                 if data[_CURRENT_IDLETIME] >= idle_time:
-                    lockHost(s, hostname)
-                    has_jobs = hasJobs(s, hostname)
+                    _lock_host(scheduler_module, hostname)
+                    has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
                         log.info('Instance has active jobs.')
                         data[_CURRENT_IDLETIME] = 0
-                        lockHost(s, hostname, unlock=True)
+                        _lock_host(scheduler_module, hostname, unlock=True)
                     else:
-                        has_pending_jobs, error = hasPendingJobs(s)
+                        has_pending_jobs, error = _has_pending_jobs(scheduler_module)
                         if not error and not has_pending_jobs:
                             os.remove(_IDLETIME_FILE)
                             try:
-                                selfTerminate(asg_name, asg_conn, instance_id)
+                                _self_terminate(asg_name, asg_conn, instance_id)
                                 termination_in_progress = True
                             except ClientError as ex:
                                 log.error('Failed to terminate instance with exception %s' % ex)
-                                lockHost(s, hostname, unlock=True)
+                                _lock_host(scheduler_module, hostname, unlock=True)
                         else:
                             if has_pending_jobs:
                                 log.info('Queue has pending jobs. Not terminating instance')
                             elif error:
                                 log.info('Encountered an error while polling queue for pending jobs. '
                                          'Not terminating instance')
-                            lockHost(s, hostname, unlock=True)
+                            _lock_host(scheduler_module, hostname, unlock=True)
 
 
 if __name__ == "__main__":
