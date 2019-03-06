@@ -25,9 +25,6 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
-_DATA_DIR = "/var/run/nodewatcher/"
-_IDLETIME_FILE = _DATA_DIR + "node_idletime.json"
-_CURRENT_IDLETIME = 'current_idletime'
 
 
 def _get_config(instance_id):
@@ -37,10 +34,11 @@ def _get_config(instance_id):
     :param instance_id: instance id used to retrieve ASG group name
     :return: configuration parameters
     """
-    log.debug('Reading /etc/nodewatcher.cfg')
+    config_file = "/etc/nodewatcher.cfg"
+    log.debug("Reading %s", config_file)
 
     config = ConfigParser.RawConfigParser()
-    config.read('/etc/nodewatcher.cfg')
+    config.read(config_file)
     if config.has_option('nodewatcher', 'loglevel'):
         lvl = logging._levelNames[config.get('nodewatcher', 'loglevel')]
         logging.getLogger().setLevel(lvl)
@@ -212,18 +210,20 @@ def main():
 
     scheduler_module = _load_scheduler_module(scheduler)
 
+    data_dir = "/var/run/nodewatcher/"
     try:
-        if not os.path.exists(_DATA_DIR):
-            os.makedirs(_DATA_DIR)
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
     except OSError as ex:
-        log.critical('Creating directory %s to persist current idle time failed with exception: %s ' % (_DATA_DIR, ex))
+        log.critical('Creating directory %s to persist current idle time failed with exception: %s ' % (data_dir, ex))
         raise
 
-    if os.path.isfile(_IDLETIME_FILE):
-        with open(_IDLETIME_FILE) as f:
+    idletime_file = data_dir + "node_idletime.json"
+    if os.path.isfile(idletime_file):
+        with open(idletime_file) as f:
             data = json.loads(f.read())
     else:
-        data = {_CURRENT_IDLETIME: 0}
+        data = {"current_idletime": 0}
 
     stack_ready = False
     termination_in_progress = False
@@ -243,27 +243,27 @@ def main():
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
             log.info('Instance has active jobs.')
-            data[_CURRENT_IDLETIME] = 0
+            data["current_idletime"] = 0
         else:
             if _maintain_size(asg_name, asg_conn):
                 continue
             else:
-                data[_CURRENT_IDLETIME] += 1
-                log.info('Instance had no job for the past %s minute(s)' % data[_CURRENT_IDLETIME])
-                with open(_IDLETIME_FILE, 'w') as outfile:
+                data["current_idletime"] += 1
+                log.info('Instance had no job for the past %s minute(s)' % data["current_idletime"])
+                with open(idletime_file, 'w') as outfile:
                     json.dump(data, outfile)
 
-                if data[_CURRENT_IDLETIME] >= idle_time:
+                if data["current_idletime"] >= idle_time:
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
                         log.info('Instance has active jobs.')
-                        data[_CURRENT_IDLETIME] = 0
+                        data["current_idletime"] = 0
                         _lock_host(scheduler_module, hostname, unlock=True)
                     else:
                         has_pending_jobs, error = _has_pending_jobs(scheduler_module)
                         if not error and not has_pending_jobs:
-                            os.remove(_IDLETIME_FILE)
+                            os.remove(idletime_file)
                             try:
                                 _self_terminate(asg_name, asg_conn, instance_id)
                                 termination_in_progress = True
