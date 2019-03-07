@@ -46,8 +46,9 @@ def _get_asg_name(stack_name, region, proxy_config):
             r = asg_conn.describe_tags(Filters=[{'Name': 'value', 'Values': [stack_name]}])
             asg_name = r.get('Tags')[0].get('ResourceId')
             no_asg = False
+            log.info("The ASG associated to the stack %s is %s", stack_name, asg_name)
         except IndexError:
-            log.error("No asg found for cluster %s" % stack_name)
+            log.error("No ASG found for stack %s", stack_name)
             time.sleep(30)
 
     return asg_name
@@ -158,39 +159,47 @@ def _fetch_pricing_file(pcluster_dir, region, proxy_config):
         raise
 
 
+def _get_config():
+    """
+    Get configuration from config file.
+
+    :return: configuration parameters
+    """
+    config_file = "/etc/jobwatcher.cfg"
+    log.info("Reading %s", config_file)
+
+    config = ConfigParser.RawConfigParser()
+    config.read(config_file)
+    if config.has_option("jobwatcher", "loglevel"):
+        lvl = logging._levelNames[config.get("jobwatcher", "loglevel")]
+        logging.getLogger().setLevel(lvl)
+
+    region = config.get("jobwatcher", "region")
+    scheduler = config.get("jobwatcher", "scheduler")
+    stack_name = config.get("jobwatcher", "stack_name")
+    instance_type = config.get("jobwatcher", "compute_instance_type")
+    pcluster_dir = config.get("jobwatcher", "cfncluster_dir")
+
+    _proxy = config.get("jobwatcher", "proxy")
+    proxy_config = Config()
+    if _proxy != "NONE":
+        proxy_config = Config(proxies={"https": _proxy})
+
+    log.info(
+        "Configured parameters: region=%s scheduler=%s stack_name=%s instance_type=%s pcluster_dir=%s proxy=%s",
+        region, scheduler, stack_name, instance_type, pcluster_dir, _proxy
+    )
+    return region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
+        format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
     )
-
-    _configfilename = "/etc/jobwatcher.cfg"
-    log.info("Reading configuration file %s" % _configfilename)
-    config = ConfigParser.RawConfigParser()
-    config.read(_configfilename)
-    if config.has_option('jobwatcher', 'loglevel'):
-        lvl = logging._levelNames[config.get('jobwatcher', 'loglevel')]
-        logging.getLogger().setLevel(lvl)
-    region = config.get('jobwatcher', 'region')
-    scheduler = config.get('jobwatcher', 'scheduler')
-    stack_name = config.get('jobwatcher', 'stack_name')
-    instance_type = config.get('jobwatcher', 'compute_instance_type')
-    pcluster_dir = config.get('jobwatcher', 'cfncluster_dir')
-    _proxy = config.get('jobwatcher', 'proxy')
-    proxy_config = Config()
-
-    if not _proxy == "NONE":
-        proxy_config = Config(proxies={'https': _proxy})
-        log.info("Configured proxy is: %s" % _proxy)
-
-    try:
-        asg_name = config.get('jobwatcher', 'asg_name')
-    except ConfigParser.NoOptionError:
-        asg_name = _get_asg_name(stack_name, region, proxy_config)
-        config.set('jobwatcher', 'asg_name', asg_name)
-        log.info("Saving asg_name %s in the config file %s" % (asg_name, _configfilename))
-        with open(_configfilename, 'w') as configfile:
-            config.write(configfile)
+    log.info("jobwatcher startup")
+    region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config = _get_config()
+    asg_name = _get_asg_name(stack_name, region, proxy_config)
 
     # fetch the pricing file on startup
     _fetch_pricing_file(pcluster_dir, region, proxy_config)

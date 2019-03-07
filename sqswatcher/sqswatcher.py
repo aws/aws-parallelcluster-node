@@ -40,34 +40,31 @@ def _get_config():
 
     :return: the configuration parameters
     """
-    _config_file = '/etc/sqswatcher.cfg'
-    log.debug('reading %s' % _config_file)
+    config_file = "/etc/sqswatcher.cfg"
+    log.info("Reading %s", config_file)
 
     config = ConfigParser.RawConfigParser()
-    config.read(_config_file)
-    if config.has_option('sqswatcher', 'loglevel'):
-        lvl = logging._levelNames[config.get('sqswatcher', 'loglevel')]
+    config.read(config_file)
+    if config.has_option("sqswatcher", "loglevel"):
+        lvl = logging._levelNames[config.get("sqswatcher", "loglevel")]
         logging.getLogger().setLevel(lvl)
-    _region = config.get('sqswatcher', 'region')
-    _sqsqueue = config.get('sqswatcher', 'sqsqueue')
-    _table_name = config.get('sqswatcher', 'table_name')
-    _scheduler = config.get('sqswatcher', 'scheduler')
-    _cluster_user = config.get('sqswatcher', 'cluster_user')
-    _proxy = config.get('sqswatcher', 'proxy')
+
+    region = config.get("sqswatcher", "region")
+    scheduler = config.get("sqswatcher", "scheduler")
+    sqsqueue = config.get("sqswatcher", "sqsqueue")
+    table_name = config.get("sqswatcher", "table_name")
+    cluster_user = config.get("sqswatcher", "cluster_user")
+
+    _proxy = config.get("sqswatcher", "proxy")
     proxy_config = Config()
+    if _proxy != "NONE":
+        proxy_config = Config(proxies={"https": _proxy})
 
-    if not _proxy == "NONE":
-        proxy_config = Config(proxies={'https': _proxy})
-
-    log.debug(" ".join("%s=%s" % i
-                       for i in [('_region', _region),
-                                 ('_sqsqueue', _sqsqueue),
-                                 ('_table_name', _table_name),
-                                 ('_scheduler', _scheduler),
-                                 ('_cluster_user', _cluster_user),
-                                 ('_proxy', _proxy)]))
-
-    return _region, _sqsqueue, _table_name, _scheduler, _cluster_user, proxy_config
+    log.info(
+        "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s proxy=%s",
+        region, scheduler, sqsqueue, table_name, cluster_user, _proxy
+    )
+    return region, scheduler, sqsqueue, table_name, cluster_user, proxy_config
 
 
 def _setup_queue(region, queue_name, proxy_config):
@@ -300,7 +297,7 @@ def main():
     log.info("sqswatcher startup")
     global region, cluster_user
 
-    region, sqsqueue, table_name, scheduler, cluster_user, proxy_config = _get_config()
+    region, scheduler, sqsqueue, table_name, cluster_user, proxy_config = _get_config()
     queue = _setup_queue(region, sqsqueue, proxy_config)
     table = _setup_ddb_table(region, table_name, proxy_config)
 

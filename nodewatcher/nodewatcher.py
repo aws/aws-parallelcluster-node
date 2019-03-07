@@ -16,7 +16,6 @@ import json
 import logging
 import os
 import sys
-import tempfile
 import time
 import urllib2
 
@@ -29,55 +28,36 @@ from common.utils import load_module
 log = logging.getLogger(__name__)
 
 
-def _get_config(instance_id):
+def _get_config():
     """
     Get configuration from config file.
 
-    :param instance_id: instance id used to retrieve ASG group name
     :return: configuration parameters
     """
     config_file = "/etc/nodewatcher.cfg"
-    log.debug("Reading %s", config_file)
+    log.info("Reading %s", config_file)
 
     config = ConfigParser.RawConfigParser()
     config.read(config_file)
-    if config.has_option('nodewatcher', 'loglevel'):
-        lvl = logging._levelNames[config.get('nodewatcher', 'loglevel')]
+    if config.has_option("nodewatcher", "loglevel"):
+        lvl = logging._levelNames[config.get("nodewatcher", "loglevel")]
         logging.getLogger().setLevel(lvl)
-    _region = config.get('nodewatcher', 'region')
-    _scheduler = config.get('nodewatcher', 'scheduler')
-    _proxy = config.get('nodewatcher', 'proxy')
+
+    region = config.get("nodewatcher", "region")
+    scheduler = config.get("nodewatcher", "scheduler")
+    stack_name = config.get("nodewatcher", "stack_name")
+    scaledown_idletime = int(config.get("nodewatcher", "scaledown_idletime"))
+
+    _proxy = config.get("nodewatcher", "proxy")
     proxy_config = Config()
+    if _proxy != "NONE":
+        proxy_config = Config(proxies={"https": _proxy})
 
-    if not _proxy == "NONE":
-        proxy_config = Config(proxies={'https': _proxy})
-
-    _scaledown_idletime = int(config.get('nodewatcher', 'scaledown_idletime'))
-    _stack_name = config.get('nodewatcher', 'stack_name')
-    try:
-        _asg = config.get('nodewatcher', 'asg')
-    except ConfigParser.NoOptionError:
-        ec2 = boto3.resource('ec2', region_name=_region, config=proxy_config)
-
-        instances = ec2.instances.filter(InstanceIds=[instance_id])
-        instance = next(iter(instances or []), None)
-        _asg = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
-        log.debug("Discovered asg: %s" % _asg)
-        config.set('nodewatcher', 'asg', _asg)
-
-        tup = tempfile.mkstemp(dir=os.getcwd())
-        fd = os.fdopen(tup[0], 'w')
-        config.write(fd)
-        fd.close
-
-        os.rename(tup[1], 'nodewatcher.cfg')
-
-    log.debug(
-        "region=%s asg=%s scheduler=%s prox_config=%s idle_time=%s" % (
-            _region, _asg, _scheduler, proxy_config, _scaledown_idletime
-        )
+    log.info(
+        "Configured parameters: region=%s scheduler=%s stack_name=%s scaledown_idletime=%s proxy=%s",
+        region, scheduler, stack_name, scaledown_idletime, _proxy
     )
-    return _region, _asg, _scheduler, proxy_config, _scaledown_idletime, _stack_name
+    return region, scheduler, stack_name, scaledown_idletime, proxy_config
 
 
 def _get_metadata(metadata_path):
@@ -190,10 +170,18 @@ def main():
         format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
     )
     log.info('nodewatcher startup')
+    region, scheduler, stack_name, scaledown_idletime, proxy_config = _get_config()
+
     instance_id = _get_metadata("instance-id")
     hostname = _get_metadata("local-hostname")
-    log.info('Instance id is %s, hostname is %s' % (instance_id, hostname))
-    region, asg_name, scheduler, proxy_config, idle_time, stack_name = _get_config(instance_id)
+    log.info('Instance id is %s, hostname is %s', instance_id, hostname)
+
+    # get ASG name
+    ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
+    instances = ec2.instances.filter(InstanceIds=[instance_id])
+    instance = next(iter(instances or []), None)
+    asg_name = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
+    log.info("The ASG associated to the stack %s is %s", stack_name, asg_name)
 
     scheduler_module = load_module("nodewatcher.plugins." + scheduler)
 
@@ -240,7 +228,7 @@ def main():
                 with open(idletime_file, 'w') as outfile:
                     json.dump(data, outfile)
 
-                if data["current_idletime"] >= idle_time:
+                if data["current_idletime"] >= scaledown_idletime:
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
