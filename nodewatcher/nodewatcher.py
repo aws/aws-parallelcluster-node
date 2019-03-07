@@ -1,8 +1,9 @@
-#!/usr/bin/env python2.6
+#!/usr/bin/env python
 
-# Copyright 2013-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the
 # License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
@@ -24,7 +25,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from common.utils import load_module
+from common.utils import get_asg_name, load_module
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +81,6 @@ def _get_metadata(metadata_path):
         sys.exit(1)
 
     log.debug("%s=%s", metadata_path, metadata_value)
-
     return metadata_value
 
 
@@ -181,13 +181,7 @@ def main():
     instance_id = _get_metadata("instance-id")
     hostname = _get_metadata("local-hostname")
     log.info('Instance id is %s, hostname is %s', instance_id, hostname)
-
-    # get ASG name
-    ec2 = boto3.resource('ec2', region_name=config.region, config=config.proxy_config)
-    instances = ec2.instances.filter(InstanceIds=[instance_id])
-    instance = next(iter(instances or []), None)
-    asg_name = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
-    log.info("The ASG associated to the stack %s is %s", config.stack_name, asg_name)
+    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
     scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
 
