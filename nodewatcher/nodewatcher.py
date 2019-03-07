@@ -88,14 +88,14 @@ def _get_metadata(metadata_path):
     :return the metadata value.
     """
     try:
-        _instance_id = urllib2.urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read()
+        metadata_value = urllib2.urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read()
     except urllib2.URLError:
         log.critical("Unable to get {0} metadata".format(metadata_path))
         sys.exit(1)
 
-    log.debug("instance_id=%s" % _instance_id)
+    log.debug("%s=%s", metadata_path, metadata_value)
 
-    return _instance_id
+    return metadata_value
 
 
 def _has_jobs(scheduler_module, hostname):
