@@ -24,6 +24,8 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from common.utils import load_module
+
 log = logging.getLogger(__name__)
 
 
@@ -94,21 +96,6 @@ def _get_metadata(metadata_path):
     log.debug("instance_id=%s" % _instance_id)
 
     return _instance_id
-
-
-def _load_scheduler_module(scheduler):
-    """
-    Load scheduler module, containing scheduler specific functions.
-
-    :param scheduler: scheduler name, it must corresponds to the <scheduler>.py file in the current folder.
-    :return: the scheduler module
-    """
-    scheduler = 'nodewatcher.plugins.' + scheduler
-    _scheduler = __import__(scheduler)
-    _scheduler = sys.modules[scheduler]
-
-    log.debug("scheduler=%s" % repr(_scheduler))
-    return _scheduler
 
 
 def _has_jobs(scheduler_module, hostname):
@@ -208,7 +195,7 @@ def main():
     log.info('Instance id is %s, hostname is %s' % (instance_id, hostname))
     region, asg_name, scheduler, proxy_config, idle_time, stack_name = _get_config(instance_id)
 
-    scheduler_module = _load_scheduler_module(scheduler)
+    scheduler_module = load_module("nodewatcher.plugins." + scheduler)
 
     data_dir = "/var/run/nodewatcher/"
     try:

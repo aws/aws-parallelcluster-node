@@ -10,15 +10,17 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import time
-import sys
 import ConfigParser
+import json
 import logging
+import sys
+import time
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+from common.utils import load_module
 
 
 class HostRemovalError(Exception):
@@ -127,20 +129,6 @@ def _setup_ddb_table(region, table_name, proxy_config):
     return _table
 
 
-def _load_scheduler_module(scheduler):
-    """
-    Import the module from the plugins subfolder, containing scheduler specific functions.
-
-    :param scheduler: name of the module to import
-    """
-    scheduler = 'sqswatcher.plugins.' + scheduler
-    _scheduler = __import__(scheduler)
-    _scheduler = sys.modules[scheduler]
-
-    log.debug("scheduler=%s" % repr(_scheduler))
-    return _scheduler
-
-
 def _exponential_retry(func, attempts=3, delay=15, multiplier=2):
     """
     Execute the given boto3 function multiple times with an exponential delay in case of RequestLimitExceeded.
@@ -239,7 +227,7 @@ def _requeue_message(queue, message):
 
 def _poll_queue(scheduler, queue, table, proxy_config):
     log.debug("startup")
-    scheduler_module = _load_scheduler_module(scheduler)
+    scheduler_module = load_module("sqswatcher.plugins." + scheduler)
 
     while True:
 
