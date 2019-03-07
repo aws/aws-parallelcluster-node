@@ -1,8 +1,9 @@
-#!/usr/bin/env python2.6
+#!/usr/bin/env python
 
-# Copyright 2013-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the
 # License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
@@ -22,37 +23,11 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from common.utils import load_module
+from common.utils import get_asg_name, load_module
 
 log = logging.getLogger(__name__)
 pricing_file = '/opt/parallelcluster/instances.json'
 cfnconfig_file = '/opt/parallelcluster/cfnconfig'
-
-
-def _get_asg_name(stack_name, region, proxy_config):
-    """
-    Get autoscaling group name.
-
-    :param stack_name: stack name to search for
-    :param region: AWS region
-    :param proxy_config: Proxy configuration
-    :return: the ASG name
-    """
-    asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
-    asg_name = ""
-    no_asg = True
-
-    while no_asg:
-        try:
-            r = asg_conn.describe_tags(Filters=[{'Name': 'value', 'Values': [stack_name]}])
-            asg_name = r.get('Tags')[0].get('ResourceId')
-            no_asg = False
-            log.info("The ASG associated to the stack %s is %s", stack_name, asg_name)
-        except IndexError:
-            log.error("No ASG found for stack %s", stack_name)
-            time.sleep(30)
-
-    return asg_name
 
 
 def _read_cfnconfig():
@@ -205,7 +180,7 @@ def main():
     )
     log.info("jobwatcher startup")
     config = _get_config()
-    asg_name = _get_asg_name(config.stack_name, config.region, config.proxy_config)
+    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
     # fetch the pricing file on startup
     _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
