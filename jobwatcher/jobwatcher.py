@@ -11,37 +11,21 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'seaam'
-
 import ConfigParser
-import boto3
-import os
-import sys
-import time
-import logging
 import json
-from botocore.exceptions import ClientError
+import logging
+import os
+import time
+
+import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
+
+from common.utils import load_module
 
 log = logging.getLogger(__name__)
 pricing_file = '/opt/parallelcluster/instances.json'
 cfnconfig_file = '/opt/parallelcluster/cfnconfig'
-
-
-def _load_scheduler_module(scheduler):
-    """
-    Load scheduler module, containing scheduler specific functions.
-
-    :param scheduler: scheduler name, it must corresponds to the <scheduler>.py file in the current folder.
-    :return: the scheduler module
-    """
-    scheduler = 'jobwatcher.plugins.' + scheduler
-    _scheduler = __import__(scheduler)
-    _scheduler = sys.modules[scheduler]
-
-    log.debug("scheduler=%s" % repr(_scheduler))
-
-    return _scheduler
 
 
 def _get_asg_name(stack_name, region, proxy_config):
@@ -212,7 +196,7 @@ def main():
     _fetch_pricing_file(pcluster_dir, region, proxy_config)
 
     # load scheduler
-    s = _load_scheduler_module(scheduler)
+    scheduler_module = load_module("jobwatcher.plugins." + scheduler)
 
     while True:
         # get the number of vcpu's per compute instance
@@ -222,7 +206,7 @@ def main():
 
         else:
             # Get number of nodes requested
-            pending = s.get_required_nodes(instance_properties)
+            pending = scheduler_module.get_required_nodes(instance_properties)
 
             if pending < 0:
                 log.critical("Error detecting number of required nodes. The cluster will not scale up.")
@@ -232,7 +216,7 @@ def main():
 
             else:
                 # Get current number of nodes
-                running = s.get_busy_nodes(instance_properties)
+                running = scheduler_module.get_busy_nodes(instance_properties)
                 log.info("%s jobs pending; %s jobs running" % (pending, running))
 
                 # connect to asg
