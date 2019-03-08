@@ -172,6 +172,24 @@ def _get_config():
     return JobwatcherConfig(region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config)
 
 
+def _get_asg_settings(asg_client, asg_name):
+    """
+    Get current ASG settings.
+
+    :param asg_client: ASG boto3 client
+    :param asg_name: ASG name
+    :return: desired_capacity and max_size
+    """
+    asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
+
+    min_size = asg.get('MinSize')
+    desired_capacity = asg.get('DesiredCapacity')
+    max_size = asg.get('MaxSize')
+
+    log.info("min/desired/max %d/%d/%d" % (min_size, desired_capacity, max_size))
+    return desired_capacity, max_size
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -212,13 +230,7 @@ def main():
                 asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
 
                 # get current limits
-                asg = asg_client.describe_auto_scaling_groups(
-                    AutoScalingGroupNames=[asg_name]
-                ).get('AutoScalingGroups')[0]
-                min_size = asg.get('MinSize')
-                current_desired = asg.get('DesiredCapacity')
-                max_size = asg.get('MaxSize')
-                log.info("min/desired/max %d/%d/%d" % (min_size, current_desired, max_size))
+                current_desired, max_size = _get_asg_settings(asg_client, asg_name)
                 log.info("%d nodes requested, %d nodes running" % (pending, running))
 
                 # Check to make sure requested number of instances is within ASG limits
