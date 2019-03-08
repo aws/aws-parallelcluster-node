@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+
 # Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the
 # License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
@@ -11,6 +13,7 @@
 # limitations under the License.
 
 import ConfigParser
+import collections
 import json
 import logging
 import sys
@@ -32,6 +35,11 @@ class QueryConfigError(Exception):
 
 
 log = logging.getLogger(__name__)
+
+
+SQSwatcherConfig = collections.namedtuple(
+    "SQSwatcherConfig", ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config"]
+)
 
 
 def _get_config():
@@ -64,7 +72,7 @@ def _get_config():
         "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s proxy=%s",
         region, scheduler, sqsqueue, table_name, cluster_user, _proxy
     )
-    return region, scheduler, sqsqueue, table_name, cluster_user, proxy_config
+    return SQSwatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config)
 
 
 def _setup_queue(region, queue_name, proxy_config):
@@ -156,11 +164,13 @@ def _exponential_retry(func, attempts=3, delay=15, multiplier=2):
             break
 
 
-def _add_host(scheduler_module, table, instance_id, slots, proxy_config):
+def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config):
     """
     Add the given instance_id to the scheduler cluster and to the instances table.
 
     :param scheduler_module: scheduler specific module to use
+    :param region: AWS region
+    :param cluster_user: Cluster user
     :param table: dynamodb table in which the instance must be added
     :param instance_id: the id of the instance to add
     :param slots: the number of slots associated to the instance
@@ -188,11 +198,12 @@ def _add_host(scheduler_module, table, instance_id, slots, proxy_config):
             log.error("Unable to get the hostname for the instance %s" % instance_id)
 
 
-def _remove_host(scheduler_module, table, instance_id):
+def _remove_host(scheduler_module, cluster_user, table, instance_id):
     """
     Remove the given instance_id from the scheduler cluster and from the instances table.
 
     :param scheduler_module: scheduler specific module to use
+    :param cluster_user: cluster user
     :param table: dynamodb table from which the instance item must be removed
     :param instance_id: the id of the instance to remove
     """
@@ -222,7 +233,17 @@ def _requeue_message(queue, message):
     queue.send_message(MessageBody=message.body, DelaySeconds=60)
 
 
-def _poll_queue(scheduler, queue, table, proxy_config):
+def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config):
+    """
+    Poll SQS queue.
+
+    :param scheduler: scheduler
+    :param region: AWS region
+    :param cluster_user: cluster user
+    :param queue: SQS queue name to poll
+    :param table: DB table name
+    :param proxy_config: Proxy configuration
+    """
     log.debug("startup")
     scheduler_module = load_module("sqswatcher.plugins." + scheduler)
 
@@ -255,7 +276,7 @@ def _poll_queue(scheduler, queue, table, proxy_config):
                     instance_id = message_attrs.get('EC2InstanceId')
                     slots = message_attrs.get('Slots')
                     log.info("instance_id=%s" % instance_id)
-                    _add_host(scheduler_module, table, instance_id, slots, proxy_config)
+                    _add_host(scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config)
                     message.delete()
 
                 elif (
@@ -275,7 +296,7 @@ def _poll_queue(scheduler, queue, table, proxy_config):
 
                     log.info("instance_id=%s" % instance_id)
                     try:
-                        _remove_host(scheduler_module, table, instance_id)
+                        _remove_host(scheduler_module, cluster_user, table, instance_id)
                     except HostRemovalError:
                         log.info("Unable to remove host, requeuing %s message" % event_type)
                         _requeue_message(queue, message)
@@ -295,13 +316,12 @@ def main():
         format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
     )
     log.info("sqswatcher startup")
-    global region, cluster_user
 
-    region, scheduler, sqsqueue, table_name, cluster_user, proxy_config = _get_config()
-    queue = _setup_queue(region, sqsqueue, proxy_config)
-    table = _setup_ddb_table(region, table_name, proxy_config)
+    config = _get_config()
+    queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
+    table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
 
-    _poll_queue(scheduler, queue, table, proxy_config)
+    _poll_queue(config.scheduler, config.region, config.cluster_user, queue, table, config.proxy_config)
 
 
 if __name__ == "__main__":
