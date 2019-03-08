@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import ConfigParser
+import collections
 import json
 import logging
 import os
@@ -159,6 +160,11 @@ def _fetch_pricing_file(pcluster_dir, region, proxy_config):
         raise
 
 
+JobwatcherConfig = collections.namedtuple(
+    "JobwatcherConfig", ["region", "scheduler", "stack_name", "instance_type", "pcluster_dir", "proxy_config"]
+)
+
+
 def _get_config():
     """
     Get configuration from config file.
@@ -189,7 +195,7 @@ def _get_config():
         "Configured parameters: region=%s scheduler=%s stack_name=%s instance_type=%s pcluster_dir=%s proxy=%s",
         region, scheduler, stack_name, instance_type, pcluster_dir, _proxy
     )
-    return region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config
+    return JobwatcherConfig(region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config)
 
 
 def main():
@@ -198,18 +204,18 @@ def main():
         format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
     )
     log.info("jobwatcher startup")
-    region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config = _get_config()
-    asg_name = _get_asg_name(stack_name, region, proxy_config)
+    config = _get_config()
+    asg_name = _get_asg_name(config.stack_name, config.region, config.proxy_config)
 
     # fetch the pricing file on startup
-    _fetch_pricing_file(pcluster_dir, region, proxy_config)
+    _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
 
     # load scheduler
-    scheduler_module = load_module("jobwatcher.plugins." + scheduler)
+    scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
 
     while True:
         # get the number of vcpu's per compute instance
-        instance_properties = _get_instance_properties(instance_type)
+        instance_properties = _get_instance_properties(config.instance_type)
         if instance_properties.get('slots') <= 0:
             log.critical("Error detecting number of slots per instance. The cluster will not scale up.")
 
@@ -229,11 +235,12 @@ def main():
                 log.info("%s jobs pending; %s jobs running" % (pending, running))
 
                 # connect to asg
-                asg_client = boto3.client('autoscaling', region_name=region, config=proxy_config)
+                asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
 
                 # get current limits
-                asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
-
+                asg = asg_client.describe_auto_scaling_groups(
+                    AutoScalingGroupNames=[asg_name]
+                ).get('AutoScalingGroups')[0]
                 min_size = asg.get('MinSize')
                 current_desired = asg.get('DesiredCapacity')
                 max_size = asg.get('MaxSize')

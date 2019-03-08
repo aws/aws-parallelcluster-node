@@ -12,6 +12,7 @@
 # limitations under the License.
 
 import ConfigParser
+import collections
 import json
 import logging
 import os
@@ -26,6 +27,11 @@ from botocore.exceptions import ClientError
 from common.utils import load_module
 
 log = logging.getLogger(__name__)
+
+
+NodewatcherConfig = collections.namedtuple(
+    "NodewatcherConfig", ["region", "scheduler", "stack_name", "scaledown_idletime", "proxy_config"]
+)
 
 
 def _get_config():
@@ -57,7 +63,7 @@ def _get_config():
         "Configured parameters: region=%s scheduler=%s stack_name=%s scaledown_idletime=%s proxy=%s",
         region, scheduler, stack_name, scaledown_idletime, _proxy
     )
-    return region, scheduler, stack_name, scaledown_idletime, proxy_config
+    return NodewatcherConfig(region, scheduler, stack_name, scaledown_idletime, proxy_config)
 
 
 def _get_metadata(metadata_path):
@@ -170,20 +176,20 @@ def main():
         format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
     )
     log.info('nodewatcher startup')
-    region, scheduler, stack_name, scaledown_idletime, proxy_config = _get_config()
+    config = _get_config()
 
     instance_id = _get_metadata("instance-id")
     hostname = _get_metadata("local-hostname")
     log.info('Instance id is %s, hostname is %s', instance_id, hostname)
 
     # get ASG name
-    ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
+    ec2 = boto3.resource('ec2', region_name=config.region, config=config.proxy_config)
     instances = ec2.instances.filter(InstanceIds=[instance_id])
     instance = next(iter(instances or []), None)
     asg_name = filter(lambda tag: tag.get('Key') == 'aws:autoscaling:groupName', instance.tags)[0].get('Value')
-    log.info("The ASG associated to the stack %s is %s", stack_name, asg_name)
+    log.info("The ASG associated to the stack %s is %s", config.stack_name, asg_name)
 
-    scheduler_module = load_module("nodewatcher.plugins." + scheduler)
+    scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
 
     data_dir = "/var/run/nodewatcher/"
     try:
@@ -210,10 +216,10 @@ def main():
             continue
         time.sleep(60)
         if not stack_ready:
-            stack_ready = _is_stack_ready(stack_name, region, proxy_config)
-            log.info('Stack %s ready: %s' % (stack_name, stack_ready))
+            stack_ready = _is_stack_ready(config.stack_name, config.region, config.proxy_config)
+            log.info('Stack %s ready: %s' % (config.stack_name, stack_ready))
             continue
-        asg_conn = boto3.client('autoscaling', region_name=region, config=proxy_config)
+        asg_conn = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
@@ -228,7 +234,7 @@ def main():
                 with open(idletime_file, 'w') as outfile:
                     json.dump(data, outfile)
 
-                if data["current_idletime"] >= scaledown_idletime:
+                if data["current_idletime"] >= config.scaledown_idletime:
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
