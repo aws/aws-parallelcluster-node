@@ -170,6 +170,52 @@ def _is_stack_ready(stack_name, region, proxy_config):
     return stacks['Stacks'][0]['StackStatus'] in ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE']
 
 
+def _create_data_dir():
+    """
+    Create folder to store nodewatcher data.
+
+    :return: the folder path
+    :raise OSError if dir creation fails
+    """
+    data_dir = "/var/run/nodewatcher/"
+    try:
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+    except OSError as ex:
+        log.critical("Creating directory %s to persist current idle time failed with exception: %s", data_dir, ex)
+        raise
+
+    return data_dir
+
+
+def _store_idletime(idletime_file, idletime):
+    """
+    Save idletime to file, in json format.
+
+    :param idletime_file: the file on which store the data
+    :param idletime: the idletime value to store
+    """
+    data = {"current_idletime": idletime}
+    with open(idletime_file, "w") as outfile:
+        json.dump(data, outfile)
+
+
+def _init_idletime(idletime_file):
+    """
+    Initialize idletime value (from file if there).
+
+    :param idletime_file: the file to search for
+    :return: the current idletime value (0 if the file doesn't exist)
+    """
+    idletime = 0
+    if os.path.isfile(idletime_file):
+        with open(idletime_file) as f:
+            data = json.loads(f.read())
+            idletime = data.get("current_idletime", 0)
+
+    return idletime
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -185,20 +231,9 @@ def main():
 
     scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
 
-    data_dir = "/var/run/nodewatcher/"
-    try:
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-    except OSError as ex:
-        log.critical('Creating directory %s to persist current idle time failed with exception: %s ' % (data_dir, ex))
-        raise
-
+    data_dir = _create_data_dir()
     idletime_file = data_dir + "node_idletime.json"
-    if os.path.isfile(idletime_file):
-        with open(idletime_file) as f:
-            data = json.loads(f.read())
-    else:
-        data = {"current_idletime": 0}
+    idletime = _init_idletime(idletime_file)
 
     stack_ready = False
     termination_in_progress = False
@@ -218,22 +253,21 @@ def main():
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
             log.info('Instance has active jobs.')
-            data["current_idletime"] = 0
+            idletime = 0
         else:
             if _maintain_size(asg_name, asg_conn):
                 continue
             else:
-                data["current_idletime"] += 1
-                log.info('Instance had no job for the past %s minute(s)' % data["current_idletime"])
-                with open(idletime_file, 'w') as outfile:
-                    json.dump(data, outfile)
+                idletime += 1
+                log.info("Instance had no job for the past %s minute(s)", idletime)
+                _store_idletime(idletime_file, idletime)
 
-                if data["current_idletime"] >= config.scaledown_idletime:
+                if idletime >= config.scaledown_idletime:
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
                         log.info('Instance has active jobs.')
-                        data["current_idletime"] = 0
+                        idletime = 0
                         _lock_host(scheduler_module, hostname, unlock=True)
                     else:
                         has_pending_jobs, error = _has_pending_jobs(scheduler_module)
