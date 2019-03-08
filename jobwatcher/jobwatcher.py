@@ -26,8 +26,6 @@ from botocore.exceptions import ClientError
 from common.utils import get_asg_name, load_module
 
 log = logging.getLogger(__name__)
-pricing_file = '/opt/parallelcluster/instances.json'
-cfnconfig_file = '/opt/parallelcluster/cfnconfig'
 
 
 def _read_cfnconfig():
@@ -37,6 +35,8 @@ def _read_cfnconfig():
     :return: a dictionary containing the configuration parameters
     """
     cfnconfig_params = {}
+    cfnconfig_file = "/opt/parallelcluster/cfnconfig"
+    log.info("Reading %s", cfnconfig_file)
     with open(cfnconfig_file) as f:
         for kvp in f:
             key, value = kvp.partition('=')[::2]
@@ -51,6 +51,7 @@ def _get_vcpus_from_pricing_file(instance_type):
     :param instance_type: the instance type to search for.
     :return: the number of vcpus or -1 if the instance type cannot be found
     """
+    pricing_file = "/opt/parallelcluster/instances.json"
     with open(pricing_file) as f:
         instances = json.load(f)
         try:
@@ -74,9 +75,7 @@ def _get_instance_properties(instance_type):
         cfnconfig_params = _read_cfnconfig()
         cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
     except KeyError:
-        log.error(
-            "Required config parameter 'cfn_scheduler_slots' not found in file %s. Assuming 'vcpus'" % cfnconfig_file
-        )
+        log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
         cfn_scheduler_slots = "vcpus"
 
     vcpus = _get_vcpus_from_pricing_file(instance_type)
