@@ -238,7 +238,6 @@ def main():
                     else:
                         has_pending_jobs, error = _has_pending_jobs(scheduler_module)
                         if not error and not has_pending_jobs:
-                            os.remove(idletime_file)
                             try:
                                 _self_terminate(asg_name, asg_conn, instance_id)
                                 termination_in_progress = True
