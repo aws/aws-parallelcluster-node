@@ -224,14 +224,13 @@ def main():
             else:
                 # Get current number of nodes
                 running = scheduler_module.get_busy_nodes(instance_properties)
-                log.info("%s jobs pending; %s jobs running" % (pending, running))
+                log.info("%d nodes requested, %d nodes running", pending, running)
 
                 # connect to asg
                 asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
 
                 # get current limits
                 current_desired, max_size = _get_asg_settings(asg_client, asg_name)
-                log.info("%d nodes requested, %d nodes running" % (pending, running))
 
                 # Check to make sure requested number of instances is within ASG limits
                 required = running + pending
