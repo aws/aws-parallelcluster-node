@@ -1,24 +1,31 @@
-import shlex
-import subprocess as sub
-import os
 import logging
+import os
+import shlex
+import subprocess
+
+from future.moves.subprocess import check_output
 
 log = logging.getLogger(__name__)
 
 
-def run_command(command, env):
-    _command = shlex.split(command)
+def check_command_output(command, env):
+    """
+    Execute shell command and retrieve command output.
+
+    :param command: command to execute
+    :param env: a dictionary containing environment variables
+    :return: the command output
+    """
     try:
-        DEV_NULL = open(os.devnull, "rb")
-        env.update(os.environ.copy())
-        process = sub.Popen(_command, env=env, stdout=sub.PIPE, stderr=sub.STDOUT, stdin=DEV_NULL)
-        _output = process.communicate()[0]
-        return _output
-    except sub.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
-        exit(1)
-    finally:
-        DEV_NULL.close()
+        with open(os.devnull, "rb") as devnull:
+            env.update(os.environ.copy())
+            log.debug("Executing command: %s" % command)
+            # /dev/null to stdin redirect is used to detach the command process from the daemon one
+            return check_output(shlex.split(command), env=env, stderr=subprocess.STDOUT, stdin=devnull)
+    except subprocess.CalledProcessError as e:
+        # CalledProcessError.__str__ already produces a significant error message
+        log.error(e)
+        raise
 
 
 def get_optimal_nodes(nodes_requested, slots_requested, instance_properties):
