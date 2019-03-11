@@ -1,8 +1,10 @@
 import logging
-import xml.etree.ElementTree as ET
-from utils import run_command, get_optimal_nodes
+from xml.etree import ElementTree
+
+from utils import check_command_output, get_optimal_nodes
 
 log = logging.getLogger(__name__)
+
 
 # get nodes requested from pending jobs
 def get_required_nodes(instance_properties):
@@ -17,7 +19,7 @@ def get_required_nodes(instance_properties):
     # 2.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5387     2      4       --   01:00:00 R  00:08:27
 
     status = ['Q']
-    _output = run_command(command, {})
+    _output = check_command_output(command, {})
     output = _output.split("\n")[5:]
     slots_requested = []
     nodes_requested = []
@@ -49,8 +51,8 @@ def get_busy_nodes(instance_properties):
     #       <mom_manager_port>15003</mom_manager_port>
     #    </Node>
     # </Data>
-    _output = run_command(command, {})
-    root = ET.fromstring(_output)
+    _output = check_command_output(command, {})
+    root = ElementTree.fromstring(_output)
     count = 0
     # See how many nodes have jobs
     for node in root.findall('Node'):
