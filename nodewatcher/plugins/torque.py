@@ -18,6 +18,7 @@ import shlex
 
 log = logging.getLogger(__name__)
 
+
 def runPipe(cmds):
     try:
         p1 = subprocess.Popen(cmds[0].split(' '), stdin = None, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
@@ -36,6 +37,7 @@ def runPipe(cmds):
     else:
         return (False, stderr)
 
+
 def hasJobs(hostname):
     # Checking for running jobs on the node
     commands = ['/opt/torque/bin/qstat -r -t -n -1', ('grep ' + hostname.split('.')[0])]
@@ -43,7 +45,7 @@ def hasJobs(hostname):
         status, output = runPipe(commands)
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % commands)
-        _output = ""
+        output = ""
 
     if output == "":
         _jobs = False
@@ -51,6 +53,7 @@ def hasJobs(hostname):
         _jobs = True
 
     return _jobs
+
 
 def hasPendingJobs():
     command = "/opt/torque/bin/qstat -Q"
@@ -87,6 +90,7 @@ def hasPendingJobs():
     has_pending = pending > 0
 
     return has_pending, error
+
 
 def lockHost(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html

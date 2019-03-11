@@ -26,7 +26,7 @@ def hasJobs(hostname):
         output = subprocess.Popen(_command, stdout=subprocess.PIPE).communicate()[0]
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % _command)
-        _output = ""
+        output = ""
 
     if output == "":
         _jobs = False
@@ -34,6 +34,7 @@ def hasJobs(hostname):
         _jobs = True
 
     return _jobs
+
 
 def hasPendingJobs():
     command = "/opt/slurm/bin/squeue -t PD --noheader"
@@ -61,6 +62,7 @@ def hasPendingJobs():
         has_pending = True
 
     return has_pending, error
+
 
 def lockHost(hostname, unlock=False):
     pass

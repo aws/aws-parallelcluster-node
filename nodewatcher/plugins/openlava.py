@@ -12,7 +12,6 @@
 __author__ = 'dougalb'
 
 import subprocess
-import os
 import logging
 
 log = logging.getLogger(__name__)
@@ -21,9 +20,10 @@ def getJobs(hostname):
     # Checking for running jobs on the node
     command = ['/opt/openlava/bin/bjobs', '-m', hostname, '-u', 'all']
     try:
-       output = subprocess.Popen(command, stdout=subprocess.PIPE).communicate()[0]
+        output = subprocess.Popen(command, stdout=subprocess.PIPE).communicate()[0]
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
+        log.error("Failed to run %s\n" % command)
+        output = ""
 
     if output == "":
         _jobs = False
@@ -31,6 +31,7 @@ def getJobs(hostname):
         _jobs = True
 
     return _jobs
+
 
 def lockHost(hostname, unlock=False):
     # http://wp.auburn.edu/morgaia/?p=103
