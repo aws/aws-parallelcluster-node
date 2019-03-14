@@ -44,6 +44,6 @@ def get_busy_nodes(instance_properties):
     output = output.split("\n")
     for line in output:
         line_arr = line.split()
-        if len(line_arr) == 2 and (line_arr[1] == 'mix' or line_arr[1] == 'alloc'):
+        if len(line_arr) == 2 and (line_arr[1] in ['mix', 'alloc', 'drain', 'drain*']):
             nodes += int(line_arr[0])
     return nodes
