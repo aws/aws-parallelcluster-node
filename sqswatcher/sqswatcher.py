@@ -12,8 +12,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ConfigParser
 import collections
+import ConfigParser
 import json
 import logging
 import sys
@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 SQSWatcherConfig = collections.namedtuple(
     "SQSWatcherConfig",
-    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size"]
+    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size"],
 )
 
 
@@ -93,9 +93,9 @@ def _setup_queue(region, queue_name, proxy_config):
     :param proxy_config: proxy configuration
     :return: the Queue object
     """
-    log.debug('running _setup_queue')
+    log.debug("running _setup_queue")
 
-    sqs = boto3.resource('sqs', region_name=region, config=proxy_config)
+    sqs = boto3.resource("sqs", region_name=region, config=proxy_config)
 
     _queue = sqs.get_queue_by_name(QueueName=queue_name)
     return _queue
@@ -110,35 +110,22 @@ def _setup_ddb_table(region, table_name, proxy_config):
     :param proxy_config: proxy configuration
     :return: the Table object
     """
-    log.debug('running _setup_ddb_table')
+    log.debug("running _setup_ddb_table")
 
-    dynamodb = boto3.client('dynamodb', region_name=region, config=proxy_config)
-    tables = dynamodb.list_tables().get('TableNames')
+    dynamodb = boto3.client("dynamodb", region_name=region, config=proxy_config)
+    tables = dynamodb.list_tables().get("TableNames")
 
-    dynamodb2 = boto3.resource('dynamodb',  region_name=region, config=proxy_config)
+    dynamodb2 = boto3.resource("dynamodb", region_name=region, config=proxy_config)
     if table_name in tables:
         _table = dynamodb2.Table(table_name)
     else:
         _table = dynamodb2.create_table(
             TableName=table_name,
-            KeySchema=[
-                {
-                    'AttributeName': 'instanceId',
-                    'KeyType': 'HASH'
-                }
-            ],
-            AttributeDefinitions=[
-                {
-                    'AttributeName': 'instanceId',
-                    'AttributeType': 'S'
-                }
-            ],
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 5,
-                'WriteCapacityUnits': 5
-            },
+            KeySchema=[{"AttributeName": "instanceId", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "instanceId", "AttributeType": "S"}],
+            ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
         )
-        _table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+        _table.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
     return _table
 
@@ -159,7 +146,7 @@ def _exponential_retry(func, attempts=3, delay=15, multiplier=2):
         try:
             return func()
         except ClientError as e:
-            if e.response.get('Error').get('Code') == 'RequestLimitExceeded':
+            if e.response.get("Error").get("Code") == "RequestLimitExceeded":
                 count += 1
                 if count < attempts:
                     log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
@@ -185,14 +172,14 @@ def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots,
     :param slots: the number of slots associated to the instance
     :param proxy_config: proxy configuration to use
     """
-    ec2 = boto3.resource('ec2', region_name=region, config=proxy_config)
+    ec2 = boto3.resource("ec2", region_name=region, config=proxy_config)
     instances = _exponential_retry(lambda: ec2.instances.filter(InstanceIds=[instance_id]))
     instance = next(iter(instances or []), None)
 
     if not instance:
         log.error("Unable to find running instance %s." % instance_id)
     else:
-        hostname = instance.private_dns_name.split('.')[:1][0]
+        hostname = instance.private_dns_name.split(".")[:1][0]
         if hostname:
             log.info("Adding hostname: %s" % hostname)
             scheduler_module.addHost(
@@ -200,10 +187,7 @@ def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots,
             )
             log.info("Host %s successfully added to the cluster" % hostname)
 
-            table.put_item(Item={
-                'instanceId': instance_id,
-                'hostname': hostname
-            })
+            table.put_item(Item={"instanceId": instance_id, "hostname": hostname})
             log.info("Instance %s successfully added to the database" % instance_id)
         else:
             log.error("Unable to get the hostname for the instance %s" % instance_id)
@@ -219,8 +203,8 @@ def _remove_host(scheduler_module, cluster_user, table, instance_id, max_cluster
     :param instance_id: the id of the instance to remove
     """
     item = _exponential_retry(lambda: table.get_item(ConsistentRead=True, Key={"instanceId": instance_id}))
-    if item.get('Item') is not None:
-        hostname = item.get('Item').get('hostname')
+    if item.get("Item") is not None:
+        hostname = item.get("Item").get("hostname")
         if hostname:
             log.info("Removing hostname: %s" % hostname)
             scheduler_module.removeHost(hostname, cluster_user, max_cluster_size=max_cluster_size)
@@ -265,14 +249,14 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max
 
             for message in results:
                 message_text = json.loads(message.body)
-                message_attrs = json.loads(message_text.get('Message'))
+                message_attrs = json.loads(message_text.get("Message"))
                 log.debug("SQS Message %s" % message_attrs)
 
                 try:
-                    event_type = message_attrs.get('Event')
+                    event_type = message_attrs.get("Event")
                 except:
                     try:
-                        event_type = message_attrs.get('detail-type')
+                        event_type = message_attrs.get("detail-type")
                     except KeyError:
                         log.warning("Unable to read message. Deleting.")
                         message.delete()
@@ -280,30 +264,37 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max
 
                 log.info("event_type=%s" % event_type)
 
-                if event_type == 'autoscaling:TEST_NOTIFICATION':
+                if event_type == "autoscaling:TEST_NOTIFICATION":
                     message.delete()
 
-                elif event_type == 'parallelcluster:COMPUTE_READY':
-                    instance_id = message_attrs.get('EC2InstanceId')
-                    slots = message_attrs.get('Slots')
+                elif event_type == "parallelcluster:COMPUTE_READY":
+                    instance_id = message_attrs.get("EC2InstanceId")
+                    slots = message_attrs.get("Slots")
                     log.info("instance_id=%s" % instance_id)
                     _add_host(
-                        scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config, max_cluster_size
+                        scheduler_module,
+                        region,
+                        cluster_user,
+                        table,
+                        instance_id,
+                        slots,
+                        proxy_config,
+                        max_cluster_size,
                     )
                     message.delete()
 
                 elif (
-                        event_type == 'autoscaling:EC2_INSTANCE_TERMINATE' or
-                        event_type == 'EC2 Instance State-change Notification'
+                    event_type == "autoscaling:EC2_INSTANCE_TERMINATE"
+                    or event_type == "EC2 Instance State-change Notification"
                 ):
-                    if event_type == 'autoscaling:EC2_INSTANCE_TERMINATE':
-                        instance_id = message_attrs.get('EC2InstanceId')
-                    elif event_type == 'EC2 Instance State-change Notification':
-                        if message_attrs.get('detail').get('state') == 'terminated':
-                            log.info('Terminated instance state from CloudWatch')
-                            instance_id = message_attrs.get('detail').get('instance-id')
+                    if event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
+                        instance_id = message_attrs.get("EC2InstanceId")
+                    elif event_type == "EC2 Instance State-change Notification":
+                        if message_attrs.get("detail").get("state") == "terminated":
+                            log.info("Terminated instance state from CloudWatch")
+                            instance_id = message_attrs.get("detail").get("instance-id")
                         else:
-                            log.info('Not Terminated, ignoring')
+                            log.info("Not Terminated, ignoring")
                             message.delete()
                             break
 
@@ -324,17 +315,16 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("sqswatcher startup")
 
     config = _get_config()
     queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
     table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
 
-    _poll_queue(config.scheduler, config.region, config.cluster_user, queue, table, config.proxy_config, config.max_queue_size)
+    _poll_queue(
+        config.scheduler, config.region, config.cluster_user, queue, table, config.proxy_config, config.max_queue_size
+    )
 
 
 if __name__ == "__main__":
