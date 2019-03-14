@@ -66,7 +66,7 @@ def _run_sge_command(command, raise_exception=False):
             raise HostRemovalError
 
 
-def addHost(hostname, cluster_user, slots):
+def addHost(hostname, cluster_user, slots, max_cluster_size):
     log.info('Adding %s with %s slots' % (hostname,slots))
 
     # Adding host as administrative host
@@ -139,7 +139,7 @@ report_variables      NONE
     _run_sge_command(command)
 
 
-def removeHost(hostname, cluster_user):
+def removeHost(hostname, cluster_user, max_cluster_size):
     log.info('Removing %s', hostname)
 
     # Check if host is administrative host
