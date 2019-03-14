@@ -14,52 +14,50 @@ import logging
 import shlex
 import os
 
+from common.slurm import PENDING_RESOURCES_REASONS
+
 log = logging.getLogger(__name__)
+
+
+def _run_command(command):
+    try:
+        if isinstance(command, str):
+            command = shlex.split(command)
+        return subprocess.check_output(command, env=dict(os.environ), universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        # CalledProcessError.__str__ already produces a significant error message
+        log.error(e)
+        raise
 
 
 def hasJobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split('.')[0]
     # Checking for running jobs on the node
-    _command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
+    command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
     try:
-        output = subprocess.Popen(_command, stdout=subprocess.PIPE).communicate()[0]
+        output = _run_command(command)
+        has_jobs = output != ""
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
-        output = ""
+        has_jobs = False
 
-    if output == "":
-        _jobs = False
-    else:
-        _jobs = True
-
-    return _jobs
+    return has_jobs
 
 
 def hasPendingJobs():
-    command = "/opt/slurm/bin/squeue -t PD --noheader"
+    command = "/opt/slurm/bin/squeue -t PD --noheader -o '%r'"
 
     # Command outputs the pending jobs in the queue in the following format
-    #  71   compute   job.sh ec2-user PD       0:00      1 (Resources)
-    #  72   compute   job.sh ec2-user PD       0:00      1 (Priority)
-    #  73   compute   job.sh ec2-user PD       0:00      1 (Priority)
-
-    _command = shlex.split(command)
-    error = False
-    has_pending = False
-
+    #  Resources
+    #  Priority
+    #  PartitionNodeLimit
     try:
-        process = subprocess.Popen(_command, env=dict(os.environ),
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output = _run_command(command)
+        has_pending = len(filter(lambda reason: reason in PENDING_RESOURCES_REASONS, output.split("\n"))) > 0
+        error = False
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
         error = True
-
-    output = process.communicate()[0]
-    lines = filter(None, output.split("\n"))
-
-    if len(lines) > 0:
-        has_pending = True
+        has_pending = False
 
     return has_pending, error
 
