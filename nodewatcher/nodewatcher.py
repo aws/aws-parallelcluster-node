@@ -263,28 +263,29 @@ def main():
                 _store_idletime(idletime_file, idletime)
 
                 if idletime >= config.scaledown_idletime:
+                    has_pending_jobs, error = _has_pending_jobs(scheduler_module)
+                    if error:
+                        log.info('Encountered an error while polling queue for pending jobs. '
+                                 'Not terminating instance')
+                    elif has_pending_jobs:
+                        log.info('Queue has pending jobs. Not terminating instance')
+                        continue
+
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
                         log.info('Instance has active jobs.')
                         idletime = 0
                         _lock_host(scheduler_module, hostname, unlock=True)
-                    else:
-                        has_pending_jobs, error = _has_pending_jobs(scheduler_module)
-                        if not error and not has_pending_jobs:
-                            try:
-                                _self_terminate(asg_name, asg_conn, instance_id)
-                                termination_in_progress = True
-                            except ClientError as ex:
-                                log.error('Failed to terminate instance with exception %s' % ex)
-                                _lock_host(scheduler_module, hostname, unlock=True)
-                        else:
-                            if has_pending_jobs:
-                                log.info('Queue has pending jobs. Not terminating instance')
-                            elif error:
-                                log.info('Encountered an error while polling queue for pending jobs. '
-                                         'Not terminating instance')
-                            _lock_host(scheduler_module, hostname, unlock=True)
+                        continue
+
+                    try:
+                        _self_terminate(asg_name, asg_conn, instance_id)
+                        termination_in_progress = True
+                    except ClientError as ex:
+                        log.error('Failed to terminate instance with exception %s' % ex)
+                        termination_in_progress = False
+                        _lock_host(scheduler_module, hostname, unlock=True)
 
 
 if __name__ == "__main__":
