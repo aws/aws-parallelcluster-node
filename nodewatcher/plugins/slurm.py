@@ -63,4 +63,28 @@ def hasPendingJobs():
 
 
 def lockHost(hostname, unlock=False):
-    pass
+    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
+    hostname = hostname.split(".")[0]
+    if unlock:
+        log.info("Unlocking host %s", hostname)
+        command = [
+            "/opt/slurm/bin/scontrol",
+            "update",
+            "NodeName={0}".format(hostname),
+            "State=RESUME",
+            'Reason="Unlocking"',
+        ]
+    else:
+        log.info("Locking host %s", hostname)
+        command = [
+            "/opt/slurm/bin/scontrol",
+            "update",
+            "NodeName={0}".format(hostname),
+            "State=DRAIN",
+            'Reason="Shutting down"',
+        ]
+    try:
+        subprocess.check_call(command, env=dict(os.environ))
+    except subprocess.CalledProcessError as e:
+        # CalledProcessError.__str__ already produces a significant error message
+        log.error(e)
