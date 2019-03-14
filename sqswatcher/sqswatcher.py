@@ -37,8 +37,9 @@ class QueryConfigError(Exception):
 log = logging.getLogger(__name__)
 
 
-SQSwatcherConfig = collections.namedtuple(
-    "SQSwatcherConfig", ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config"]
+SQSWatcherConfig = collections.namedtuple(
+    "SQSWatcherConfig",
+    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size"]
 )
 
 
@@ -62,6 +63,7 @@ def _get_config():
     sqsqueue = config.get("sqswatcher", "sqsqueue")
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
+    max_queue_size = int(config.get("sqswatcher", "max_queue_size"))
 
     _proxy = config.get("sqswatcher", "proxy")
     proxy_config = Config()
@@ -69,10 +71,17 @@ def _get_config():
         proxy_config = Config(proxies={"https": _proxy})
 
     log.info(
-        "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s proxy=%s",
-        region, scheduler, sqsqueue, table_name, cluster_user, _proxy
+        "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
+        "proxy=%s max_queue_size=%d",
+        region,
+        scheduler,
+        sqsqueue,
+        table_name,
+        cluster_user,
+        _proxy,
+        max_queue_size,
     )
-    return SQSwatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config)
+    return SQSWatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, max_queue_size)
 
 
 def _setup_queue(region, queue_name, proxy_config):
@@ -164,7 +173,7 @@ def _exponential_retry(func, attempts=3, delay=15, multiplier=2):
             break
 
 
-def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config):
+def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config, max_cluster_size):
     """
     Add the given instance_id to the scheduler cluster and to the instances table.
 
@@ -186,7 +195,9 @@ def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots,
         hostname = instance.private_dns_name.split('.')[:1][0]
         if hostname:
             log.info("Adding hostname: %s" % hostname)
-            scheduler_module.addHost(hostname=hostname, cluster_user=cluster_user, slots=slots)
+            scheduler_module.addHost(
+                hostname=hostname, cluster_user=cluster_user, slots=slots, max_cluster_size=max_cluster_size
+            )
             log.info("Host %s successfully added to the cluster" % hostname)
 
             table.put_item(Item={
@@ -198,7 +209,7 @@ def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots,
             log.error("Unable to get the hostname for the instance %s" % instance_id)
 
 
-def _remove_host(scheduler_module, cluster_user, table, instance_id):
+def _remove_host(scheduler_module, cluster_user, table, instance_id, max_cluster_size):
     """
     Remove the given instance_id from the scheduler cluster and from the instances table.
 
@@ -212,7 +223,7 @@ def _remove_host(scheduler_module, cluster_user, table, instance_id):
         hostname = item.get('Item').get('hostname')
         if hostname:
             log.info("Removing hostname: %s" % hostname)
-            scheduler_module.removeHost(hostname, cluster_user)
+            scheduler_module.removeHost(hostname, cluster_user, max_cluster_size=max_cluster_size)
             log.info("Host %s successfully removed from the cluster" % hostname)
         else:
             log.warning("Hostname is empty for the instance %s." % instance_id)
@@ -233,7 +244,7 @@ def _requeue_message(queue, message):
     queue.send_message(MessageBody=message.body, DelaySeconds=60)
 
 
-def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config):
+def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max_cluster_size):
     """
     Poll SQS queue.
 
@@ -276,7 +287,9 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config):
                     instance_id = message_attrs.get('EC2InstanceId')
                     slots = message_attrs.get('Slots')
                     log.info("instance_id=%s" % instance_id)
-                    _add_host(scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config)
+                    _add_host(
+                        scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config, max_cluster_size
+                    )
                     message.delete()
 
                 elif (
@@ -296,7 +309,7 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config):
 
                     log.info("instance_id=%s" % instance_id)
                     try:
-                        _remove_host(scheduler_module, cluster_user, table, instance_id)
+                        _remove_host(scheduler_module, cluster_user, table, instance_id, max_cluster_size)
                     except HostRemovalError:
                         log.info("Unable to remove host, requeuing %s message" % event_type)
                         _requeue_message(queue, message)
@@ -321,7 +334,7 @@ def main():
     queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
     table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
 
-    _poll_queue(config.scheduler, config.region, config.cluster_user, queue, table, config.proxy_config)
+    _poll_queue(config.scheduler, config.region, config.cluster_user, queue, table, config.proxy_config, config.max_queue_size)
 
 
 if __name__ == "__main__":

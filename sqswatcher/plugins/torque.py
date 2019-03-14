@@ -79,7 +79,7 @@ def wakeupSchedOn(hostname):
     else:
         log.debug("Host %s is in state %s" % (hostname, host_state))
 
-def addHost(hostname,cluster_user,slots):
+def addHost(hostname, cluster_user, slots, max_cluster_size):
     log.info('Adding %s with %s slots' % (hostname, slots))
 
     command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
@@ -117,7 +117,7 @@ def addHost(hostname,cluster_user,slots):
 
     wakeupSchedOn(hostname)
 
-def removeHost(hostname, cluster_user):
+def removeHost(hostname, cluster_user, max_cluster_size):
     log.info('Removing %s', hostname)
 
     command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)
