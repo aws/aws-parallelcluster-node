@@ -67,3 +67,18 @@ def get_asg_name(stack_name, region, proxy_config, log, attempts=4, delay=30):
                 raise ASGNotFoundError("Unable to get ASG for stack %s" % stack_name)
         except Exception as e:
             raise ASGNotFoundError("Unable to get ASG for stack %s. Failed with exception: %s" % (stack_name, e))
+
+
+def get_asg_settings(region, proxy_config, asg_name, log):
+    try:
+        asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
+        asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
+        min_size = asg.get('MinSize')
+        desired_capacity = asg.get('DesiredCapacity')
+        max_size = asg.get('MaxSize')
+
+        log.info("min/desired/max %d/%d/%d" % (min_size, desired_capacity, max_size))
+        return min_size, desired_capacity, max_size
+    except Exception as e:
+        log.error("Failed when retrieving data for ASG %s with exception %s", asg_name, e)
+        raise
