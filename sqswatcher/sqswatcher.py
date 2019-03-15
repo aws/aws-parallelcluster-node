@@ -228,71 +228,83 @@ def _requeue_message(queue, message):
     queue.send_message(MessageBody=message.body, DelaySeconds=60)
 
 
-def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max_cluster_size):
+def _retrieve_all_sqs_messages(queue):
+    max_number_of_messages = 10
+    messages = []
+    while True:
+        retrieved_messages = queue.receive_messages(MaxNumberOfMessages=max_number_of_messages)
+        if len(retrieved_messages) > 0:
+            messages.extend(retrieved_messages)
+        if len(retrieved_messages) < max_number_of_messages:
+            break
+
+    return messages
+
+
+def _process_sqs_messages(messages, sqs_config, scheduler_module, table, queue):
+    for message in messages:
+        message_text = json.loads(message.body)
+        message_attrs = json.loads(message_text.get("Message"))
+
+        event_type = message_attrs.get("Event")
+        if not event_type:
+            log.warning("Unable to read message. Deleting.")
+            message.delete()
+            continue
+
+        if event_type == "parallelcluster:COMPUTE_READY":
+            _process_compute_ready_event(message_attrs, sqs_config, scheduler_module, table)
+        elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
+            _process_instance_terminate_event(message_attrs, sqs_config, scheduler_module, table, queue, message)
+        else:
+            log.info("Unsupported event type %s. Discarding message." % event_type)
+
+        message.delete()
+
+
+def _process_compute_ready_event(message_attrs, sqs_config, scheduler_module, table):
+    instance_id = message_attrs.get("EC2InstanceId")
+    slots = message_attrs.get("Slots")
+    log.info("instance_id=%s" % instance_id)
+    _add_host(
+        scheduler_module,
+        sqs_config.region,
+        sqs_config.cluster_user,
+        table,
+        instance_id,
+        slots,
+        sqs_config.proxy_config,
+        sqs_config.max_queue_size,
+    )
+
+
+def _process_instance_terminate_event(message_attrs, sqs_config, scheduler_module, table, queue, message):
+    instance_id = message_attrs.get("EC2InstanceId")
+
+    log.info("instance_id=%s" % instance_id)
+    try:
+        _remove_host(scheduler_module, sqs_config.cluster_user, table, instance_id, sqs_config.max_queue_size)
+    except HostRemovalError:
+        log.info("Unable to remove host, re-queuing %s message" % message_attrs.get("Event"))
+        _requeue_message(queue, message)
+    except QueryConfigError:
+        log.info("Unable to query scheduler configuration, discarding %s message" % message_attrs.get("Event"))
+
+
+def _poll_queue(sqs_config, queue, table):
     """
     Poll SQS queue.
 
-    :param scheduler: scheduler
-    :param region: AWS region
-    :param cluster_user: cluster user
-    :param queue: SQS queue name to poll
-    :param table: DB table name
-    :param proxy_config: Proxy configuration
+    :param sqs_config: SQS daemon configuration
+    :param queue: SQS Queue object connected to the cluster queue
+    :param table: DB table resource object
     """
     log.debug("startup")
-    scheduler_module = load_module("sqswatcher.plugins." + scheduler)
+    scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
 
     while True:
-
-        results = queue.receive_messages(MaxNumberOfMessages=10)
-        while len(results) > 0:
-
-            for message in results:
-                message_text = json.loads(message.body)
-                message_attrs = json.loads(message_text.get("Message"))
-                log.debug("SQS Message %s" % message_attrs)
-
-                event_type = message_attrs.get("Event")
-                if not event_type:
-                    log.warning("Unable to read message event type. Deleting message %s.", message_text)
-                    message.delete()
-                    continue
-
-                log.info("event_type=%s" % event_type)
-
-                if event_type == "parallelcluster:COMPUTE_READY":
-                    instance_id = message_attrs.get("EC2InstanceId")
-                    slots = message_attrs.get("Slots")
-                    log.info("instance_id=%s" % instance_id)
-                    _add_host(
-                        scheduler_module,
-                        region,
-                        cluster_user,
-                        table,
-                        instance_id,
-                        slots,
-                        proxy_config,
-                        max_cluster_size,
-                    )
-                    message.delete()
-
-                elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-                    instance_id = message_attrs.get("EC2InstanceId")
-
-                    log.info("instance_id=%s" % instance_id)
-                    try:
-                        _remove_host(scheduler_module, cluster_user, table, instance_id, max_cluster_size)
-                    except HostRemovalError:
-                        log.info("Unable to remove host, requeuing %s message" % event_type)
-                        _requeue_message(queue, message)
-                    except QueryConfigError:
-                        log.info("Unable to query scheduler configuration, discarding %s message" % event_type)
-
-                    message.delete()
-                else:
-                    log.info("Unsupported event type %s. Discarding message." % event_type)
-                    message.delete()
-
+        messages = _retrieve_all_sqs_messages(queue)
+        _process_sqs_messages(messages, sqs_config, scheduler_module, table, queue)
         time.sleep(30)
 
 
@@ -304,9 +316,7 @@ def main():
     queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
     table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
 
-    _poll_queue(
-        config.scheduler, config.region, config.cluster_user, queue, table, config.proxy_config, config.max_queue_size
-    )
+    _poll_queue(config, queue, table)
 
 
 if __name__ == "__main__":
