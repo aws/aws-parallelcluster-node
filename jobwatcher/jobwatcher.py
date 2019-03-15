@@ -23,7 +23,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from common.utils import get_asg_name, load_module
+from common.utils import get_asg_name, load_module, get_asg_settings
 
 log = logging.getLogger(__name__)
 
@@ -172,24 +172,6 @@ def _get_config():
     return JobwatcherConfig(region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config)
 
 
-def _get_asg_settings(asg_client, asg_name):
-    """
-    Get current ASG settings.
-
-    :param asg_client: ASG boto3 client
-    :param asg_name: ASG name
-    :return: desired_capacity and max_size
-    """
-    asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
-
-    min_size = asg.get('MinSize')
-    desired_capacity = asg.get('DesiredCapacity')
-    max_size = asg.get('MaxSize')
-
-    log.info("min/desired/max %d/%d/%d" % (min_size, desired_capacity, max_size))
-    return desired_capacity, max_size
-
-
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -226,11 +208,8 @@ def main():
                 running = scheduler_module.get_busy_nodes(instance_properties)
                 log.info("%d nodes requested, %d nodes running", pending, running)
 
-                # connect to asg
-                asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
-
                 # get current limits
-                current_desired, max_size = _get_asg_settings(asg_client, asg_name)
+                _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name, log)
 
                 # Check to make sure requested number of instances is within ASG limits
                 required = running + pending
@@ -250,6 +229,7 @@ def main():
                     requested = min(required, max_size)
 
                     # update ASG
+                    asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
                     asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
         time.sleep(60)
