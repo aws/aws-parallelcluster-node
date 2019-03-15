@@ -252,22 +252,15 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max
                 message_attrs = json.loads(message_text.get("Message"))
                 log.debug("SQS Message %s" % message_attrs)
 
-                try:
-                    event_type = message_attrs.get("Event")
-                except:
-                    try:
-                        event_type = message_attrs.get("detail-type")
-                    except KeyError:
-                        log.warning("Unable to read message. Deleting.")
-                        message.delete()
-                        break
+                event_type = message_attrs.get("Event")
+                if not event_type:
+                    log.warning("Unable to read message event type. Deleting message %s.", message_text)
+                    message.delete()
+                    continue
 
                 log.info("event_type=%s" % event_type)
 
-                if event_type == "autoscaling:TEST_NOTIFICATION":
-                    message.delete()
-
-                elif event_type == "parallelcluster:COMPUTE_READY":
+                if event_type == "parallelcluster:COMPUTE_READY":
                     instance_id = message_attrs.get("EC2InstanceId")
                     slots = message_attrs.get("Slots")
                     log.info("instance_id=%s" % instance_id)
@@ -283,20 +276,8 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max
                     )
                     message.delete()
 
-                elif (
-                    event_type == "autoscaling:EC2_INSTANCE_TERMINATE"
-                    or event_type == "EC2 Instance State-change Notification"
-                ):
-                    if event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-                        instance_id = message_attrs.get("EC2InstanceId")
-                    elif event_type == "EC2 Instance State-change Notification":
-                        if message_attrs.get("detail").get("state") == "terminated":
-                            log.info("Terminated instance state from CloudWatch")
-                            instance_id = message_attrs.get("detail").get("instance-id")
-                        else:
-                            log.info("Not Terminated, ignoring")
-                            message.delete()
-                            break
+                elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
+                    instance_id = message_attrs.get("EC2InstanceId")
 
                     log.info("instance_id=%s" % instance_id)
                     try:
@@ -308,8 +289,9 @@ def _poll_queue(scheduler, region, cluster_user, queue, table, proxy_config, max
                         log.info("Unable to query scheduler configuration, discarding %s message" % event_type)
 
                     message.delete()
-
-            results = queue.receive_messages(MaxNumberOfMessages=10)
+                else:
+                    log.info("Unsupported event type %s. Discarding message." % event_type)
+                    message.delete()
 
         time.sleep(30)
 
