@@ -26,7 +26,7 @@ console_scripts = ['sqswatcher = sqswatcher.sqswatcher:main',
                    'nodewatcher = nodewatcher.nodewatcher:main',
                    'jobwatcher = jobwatcher.jobwatcher:main']
 version = "2.2.1"
-requires = ['boto3>=1.7.55', 'python-dateutil>=2.6.1', 'retrying>=1.3.3']
+requires = ['boto3>=1.7.55', 'python-dateutil>=2.6.1', 'retrying>=1.3.3', 'future']
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
