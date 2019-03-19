@@ -24,7 +24,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from future.moves.collections import OrderedDict
 
-from common.utils import load_module
+from common.utils import load_module, get_asg_settings, get_asg_name
 from retrying import retry
 
 
@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 
 SQSWatcherConfig = collections.namedtuple(
     "SQSWatcherConfig",
-    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size"],
+    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size", "stack_name"],
 )
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
@@ -70,6 +70,7 @@ def _get_config():
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
     max_queue_size = int(config.get("sqswatcher", "max_queue_size"))
+    stack_name = config.get("sqswatcher", "stack_name")
 
     _proxy = config.get("sqswatcher", "proxy")
     proxy_config = Config()
@@ -78,7 +79,7 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
-        "proxy=%s max_queue_size=%d",
+        "proxy=%s max_queue_size=%d stack_name=%s",
         region,
         scheduler,
         sqsqueue,
@@ -86,8 +87,11 @@ def _get_config():
         cluster_user,
         _proxy,
         max_queue_size,
+        stack_name,
     )
-    return SQSWatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, max_queue_size)
+    return SQSWatcherConfig(
+        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, max_queue_size, stack_name
+    )
 
 
 def _setup_queue(region, queue_name, proxy_config):
@@ -264,12 +268,14 @@ def _process_instance_terminate_event(message_attrs, sqs_config, message, table)
         return None
 
 
-def _process_sqs_messages(update_events, scheduler_module, sqs_config, table, queue):
-    if not update_events:
+def _process_sqs_messages(
+    update_events, scheduler_module, sqs_config, table, queue, max_cluster_size, update_max_cluster_size
+):
+    if not update_events and not update_max_cluster_size:
         return
 
     failed_events, succeeded_events = scheduler_module.update_cluster(
-        sqs_config.max_queue_size, sqs_config.cluster_user, update_events
+        max_cluster_size, sqs_config.cluster_user, update_events
     )
 
     for event in list(succeeded_events):
@@ -297,7 +303,15 @@ def _process_sqs_messages(update_events, scheduler_module, sqs_config, table, qu
         event.message.delete()
 
 
-def _poll_queue(sqs_config, queue, table):
+def _retrieve_max_cluster_size(sqs_config, asg_name, fallback):
+    try:
+        _, _, max_size = get_asg_settings(sqs_config.region, sqs_config.proxy_config, asg_name, log)
+        return max_size
+    except Exception:
+        return fallback
+
+
+def _poll_queue(sqs_config, queue, table, asg_name):
     """
     Poll SQS queue.
 
@@ -307,10 +321,21 @@ def _poll_queue(sqs_config, queue, table):
     """
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
 
+    max_cluster_size = sqs_config.max_queue_size
     while True:
+        new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, max_cluster_size)
         messages = _retrieve_all_sqs_messages(queue)
         update_events = _parse_sqs_messages(messages, sqs_config, table)
-        _process_sqs_messages(update_events, scheduler_module, sqs_config, table, queue)
+        _process_sqs_messages(
+            update_events,
+            scheduler_module,
+            sqs_config,
+            table,
+            queue,
+            new_max_cluster_size,
+            new_max_cluster_size != max_cluster_size,
+        )
+        max_cluster_size = new_max_cluster_size
         time.sleep(30)
 
 
@@ -321,8 +346,9 @@ def main():
     config = _get_config()
     queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
     table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
+    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
-    _poll_queue(config, queue, table)
+    _poll_queue(config, queue, table, asg_name)
 
 
 if __name__ == "__main__":
