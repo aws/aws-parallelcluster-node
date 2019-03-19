@@ -22,6 +22,8 @@ from tempfile import mkstemp
 
 import paramiko
 from retrying import retry
+from multiprocessing import Pool
+from math import ceil
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +84,29 @@ def _restart_compute_node(hostname, cluster_user):
     if return_code != 0:
         log.error("Failed when restarting slurmd on compute node %s", hostname)
     ssh_client.close()
+
+
+def _restart_compute_node_worker(args):
+    hostname = args[0]
+    try:
+        _restart_compute_node(*args)
+        return hostname, True
+    except Exception:
+        return hostname, False
+
+
+def _restart_multiple_compute_nodes(hostnames, cluster_user, parallelism=10):
+    if not hostnames:
+        return {}
+
+    pool = Pool(parallelism)
+    try:
+        r = pool.map_async(_restart_compute_node_worker, [(hostname, cluster_user) for hostname in hostnames])
+        results = r.get(timeout=int(ceil(len(hostnames) / float(parallelism)) * 10))
+    finally:
+        pool.terminate()
+
+    return dict(results)
 
 
 def _reconfigure_nodes():
@@ -149,22 +174,38 @@ def removeHost(hostname, cluster_user, max_cluster_size):
 
 
 def update_cluster_nodes(max_cluster_size, cluster_user, update_events):
-    failed = []
-    succeeded = []
+    # Get the current node list
+    node_list = _read_node_list()
+    nodes_to_restart = []
     for event in update_events:
-        try:
-            if event.action == "REMOVE":
-                removeHost(event.host.hostname, cluster_user, max_cluster_size)
-            elif event.action == "ADD":
-                addHost(event.host.hostname, cluster_user, event.host.slots, max_cluster_size)
-            succeeded.append(event)
-        except Exception as e:
-            log.error(
-                "Encountered error when processing %s event for host %s: %s",
-                event.action,
-                event.host.hostname,
-                e,
+        if event.action == "REMOVE":
+            node_name = "NodeName={0}".format(event.host.hostname)
+            node_list = [node for node in node_list if node.split()[0] == node_name]
+        elif event.action == "ADD":
+            # Add new node
+            new_node = "NodeName={nodename} CPUs={cpus} State=UNKNOWN\n".format(
+                nodename=event.host.hostname, cpus=event.host.slots
             )
-            failed.append(event)
+            if new_node not in node_list:
+                node_list.append(new_node)
+            # Restarting also if already in config cause it might have failed at the previous iteration
+            nodes_to_restart.append(event.host.hostname)
 
-    return failed, succeeded
+    try:
+        _write_node_list(node_list, max_cluster_size)
+        _restart_master_node()
+        results = _restart_multiple_compute_nodes(nodes_to_restart, cluster_user)
+        _reconfigure_nodes()
+
+        failed = []
+        succeeded = []
+        for event in update_events:
+            if results.get(event.host.hostname, True):
+                succeeded.append(event)
+            else:
+                failed.append(event)
+
+        return failed, succeeded
+    except Exception as e:
+        log.error("Encountered error when processing events: %s", e)
+        return update_events, []
