@@ -14,16 +14,18 @@
 
 import collections
 import ConfigParser
+import itertools
 import json
 import logging
-import sys
 import time
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from future.moves.collections import OrderedDict
 
 from common.utils import load_module
+from retrying import retry
 
 
 class HostRemovalError(Exception):
@@ -41,6 +43,10 @@ SQSWatcherConfig = collections.namedtuple(
     "SQSWatcherConfig",
     ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size"],
 )
+
+Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
+
+UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 
 
 def _get_config():
@@ -130,92 +136,17 @@ def _setup_ddb_table(region, table_name, proxy_config):
     return _table
 
 
-def _exponential_retry(func, attempts=3, delay=15, multiplier=2):
-    """
-    Execute the given boto3 function multiple times with an exponential delay in case of RequestLimitExceeded.
+def _retry_on_request_limit_exceeded(func):
+    @retry(
+        stop_max_attempt_number=3,
+        wait_exponential_multiplier=15000,
+        retry_on_exception=lambda exception: isinstance(exception, ClientError)
+        and exception.response.get("Error").get("Code") == "RequestLimitExceeded",
+    )
+    def _retry():
+        return func()
 
-    :param func: the boto3 function to execute
-    :param attempts: the number of times to try before giving up
-    :param delay: initial delay between retries in seconds
-    :param multiplier: multiplier factor for the delay
-    :return the value returned from the function, if any
-    """
-    count = 0
-    wait = delay
-    while count < attempts:
-        try:
-            return func()
-        except ClientError as e:
-            if e.response.get("Error").get("Code") == "RequestLimitExceeded":
-                count += 1
-                if count < attempts:
-                    log.debug("Request limit exceeded, waiting other %s seconds..." % wait)
-                    time.sleep(wait)
-                    wait *= multiplier
-            else:
-                log.critical(e.response.get("Error").get("Message"))
-                break
-        except:
-            log.critical("Unexpected error: %s" % sys.exc_info()[0])
-            break
-
-
-def _add_host(scheduler_module, region, cluster_user, table, instance_id, slots, proxy_config, max_cluster_size):
-    """
-    Add the given instance_id to the scheduler cluster and to the instances table.
-
-    :param scheduler_module: scheduler specific module to use
-    :param region: AWS region
-    :param cluster_user: Cluster user
-    :param table: dynamodb table in which the instance must be added
-    :param instance_id: the id of the instance to add
-    :param slots: the number of slots associated to the instance
-    :param proxy_config: proxy configuration to use
-    """
-    ec2 = boto3.resource("ec2", region_name=region, config=proxy_config)
-    instances = _exponential_retry(lambda: ec2.instances.filter(InstanceIds=[instance_id]))
-    instance = next(iter(instances or []), None)
-
-    if not instance:
-        log.error("Unable to find running instance %s." % instance_id)
-    else:
-        hostname = instance.private_dns_name.split(".")[:1][0]
-        if hostname:
-            log.info("Adding hostname: %s" % hostname)
-            scheduler_module.addHost(
-                hostname=hostname, cluster_user=cluster_user, slots=slots, max_cluster_size=max_cluster_size
-            )
-            log.info("Host %s successfully added to the cluster" % hostname)
-
-            table.put_item(Item={"instanceId": instance_id, "hostname": hostname})
-            log.info("Instance %s successfully added to the database" % instance_id)
-        else:
-            log.error("Unable to get the hostname for the instance %s" % instance_id)
-
-
-def _remove_host(scheduler_module, cluster_user, table, instance_id, max_cluster_size):
-    """
-    Remove the given instance_id from the scheduler cluster and from the instances table.
-
-    :param scheduler_module: scheduler specific module to use
-    :param cluster_user: cluster user
-    :param table: dynamodb table from which the instance item must be removed
-    :param instance_id: the id of the instance to remove
-    """
-    item = _exponential_retry(lambda: table.get_item(ConsistentRead=True, Key={"instanceId": instance_id}))
-    if item.get("Item") is not None:
-        hostname = item.get("Item").get("hostname")
-        if hostname:
-            log.info("Removing hostname: %s" % hostname)
-            scheduler_module.removeHost(hostname, cluster_user, max_cluster_size=max_cluster_size)
-            log.info("Host %s successfully removed from the cluster" % hostname)
-        else:
-            log.warning("Hostname is empty for the instance %s." % instance_id)
-
-        _exponential_retry(lambda: table.delete_item(Key={"instanceId": instance_id}))
-        log.info("Instance %s successfully removed from the database" % instance_id)
-    else:
-        log.error("Instance %s not found in the database" % instance_id)
+    return _retry()
 
 
 def _requeue_message(queue, message):
@@ -229,19 +160,29 @@ def _requeue_message(queue, message):
 
 
 def _retrieve_all_sqs_messages(queue):
-    max_number_of_messages = 10
+    log.info("Retrieving messages from SQS queue")
+    max_messages_per_call = 10
+    max_messages = 50
     messages = []
-    while True:
-        retrieved_messages = queue.receive_messages(MaxNumberOfMessages=max_number_of_messages)
+    while len(messages) < max_messages:
+        # setting WaitTimeSeconds in order to use Amazon SQS Long Polling.
+        # when not using Long Polling with a small queue you might not receive any message
+        # since only a subset of random machines is queried.
+        retrieved_messages = queue.receive_messages(MaxNumberOfMessages=max_messages_per_call, WaitTimeSeconds=2)
         if len(retrieved_messages) > 0:
             messages.extend(retrieved_messages)
-        if len(retrieved_messages) < max_number_of_messages:
+        else:
+            # the queue is not always returning max_messages_per_call even when available
+            # looping until receive_messages returns at least 1 message
             break
+
+    log.info("Retrieved %d messages from SQS queue", len(messages))
 
     return messages
 
 
-def _process_sqs_messages(messages, sqs_config, scheduler_module, table, queue):
+def _parse_sqs_messages(messages, sqs_config, table):
+    update_events = OrderedDict()
     for message in messages:
         message_text = json.loads(message.body)
         message_attrs = json.loads(message_text.get("Message"))
@@ -253,42 +194,106 @@ def _process_sqs_messages(messages, sqs_config, scheduler_module, table, queue):
             continue
 
         if event_type == "parallelcluster:COMPUTE_READY":
-            _process_compute_ready_event(message_attrs, sqs_config, scheduler_module, table)
+            instance_id = message_attrs.get("EC2InstanceId")
+            log.info("Processing COMPUTE_READY event for instance %s", instance_id)
+            update_event = _process_compute_ready_event(message_attrs, sqs_config, message)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-            _process_instance_terminate_event(message_attrs, sqs_config, scheduler_module, table, queue, message)
+            instance_id = message_attrs.get("EC2InstanceId")
+            log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", instance_id)
+            update_event = _process_instance_terminate_event(message_attrs, sqs_config, message, table)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
+            update_event = None
 
-        message.delete()
+        if update_event:
+            if instance_id in update_events:
+                # delete first to preserve messages order in dict
+                del update_events[instance_id]
+            update_events[instance_id] = update_event
+        else:
+            # discarding message
+            log.warning("Discarding message %s", message)
+            message.delete()
+
+    return update_events.values()
 
 
-def _process_compute_ready_event(message_attrs, sqs_config, scheduler_module, table):
+def _get_hostname(instance_id, region, proxy):
+    ec2 = boto3.resource("ec2", region_name=region, config=proxy)
+    try:
+        instances = _retry_on_request_limit_exceeded(lambda: ec2.instances.filter(InstanceIds=[instance_id]))
+    except Exception as e:
+        log.error("Failed when retrieving ec2 instance data for instance %s with exception %s", instance_id, e)
+        instances = None
+
+    instance = next(iter(instances or []), None)
+    if instance:
+        return instance.private_dns_name.split(".")[0]
+    else:
+        return None
+
+
+def _process_compute_ready_event(message_attrs, sqs_config, message):
     instance_id = message_attrs.get("EC2InstanceId")
     slots = message_attrs.get("Slots")
-    log.info("instance_id=%s" % instance_id)
-    _add_host(
-        scheduler_module,
-        sqs_config.region,
-        sqs_config.cluster_user,
-        table,
-        instance_id,
-        slots,
-        sqs_config.proxy_config,
-        sqs_config.max_queue_size,
+    hostname = _get_hostname(instance_id, sqs_config.region, sqs_config.proxy_config)
+
+    if hostname:
+        return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
+    else:
+        log.error("Unable to find running instance %s.", instance_id)
+        return None
+
+
+def _process_instance_terminate_event(message_attrs, sqs_config, message, table):
+    instance_id = message_attrs.get("EC2InstanceId")
+    try:
+        item = _retry_on_request_limit_exceeded(
+            lambda: table.get_item(ConsistentRead=True, Key={"instanceId": instance_id})
+        )
+    except Exception as e:
+        log.error("Failed when retrieving instance data for instance %s from db with exception %s", instance_id, e)
+        return None
+
+    if item.get("Item") is not None:
+        hostname = item.get("Item").get("hostname")
+        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None))
+    else:
+        log.error("Instance %s not found in the database.", instance_id)
+        return None
+
+
+def _process_sqs_messages(update_events, scheduler_module, sqs_config, table, queue):
+    if not update_events:
+        return
+
+    failed_events, succeeded_events = scheduler_module.update_cluster_nodes(
+        sqs_config.max_queue_size, sqs_config.cluster_user, update_events
     )
 
+    for event in list(succeeded_events):
+        try:
+            if event.action == "ADD":
+                _retry_on_request_limit_exceeded(
+                    lambda: table.put_item(Item={"instanceId": event.host.instance_id, "hostname": event.host.hostname})
+                )
+            elif event.action == "REMOVE":
+                _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
+            log.info("Successfully processed event %s", event)
+        except Exception as e:
+            log.error(
+                "Failed when updating dynamo db table for instance %s with exception %s", event.host.instance_id, e
+            )
+            failed_events.append(event)
+            succeeded_events.remove(event)
 
-def _process_instance_terminate_event(message_attrs, sqs_config, scheduler_module, table, queue, message):
-    instance_id = message_attrs.get("EC2InstanceId")
+    for event in failed_events:
+        log.warning("Re-queuing failed event %s", event)
+        _requeue_message(queue, event.message)
 
-    log.info("instance_id=%s" % instance_id)
-    try:
-        _remove_host(scheduler_module, sqs_config.cluster_user, table, instance_id, sqs_config.max_queue_size)
-    except HostRemovalError:
-        log.info("Unable to remove host, re-queuing %s message" % message_attrs.get("Event"))
-        _requeue_message(queue, message)
-    except QueryConfigError:
-        log.info("Unable to query scheduler configuration, discarding %s message" % message_attrs.get("Event"))
+    for event in itertools.chain(failed_events, succeeded_events):
+        log.info("Removing event from queue: %s", event)
+        event.message.delete()
 
 
 def _poll_queue(sqs_config, queue, table):
@@ -299,12 +304,12 @@ def _poll_queue(sqs_config, queue, table):
     :param queue: SQS Queue object connected to the cluster queue
     :param table: DB table resource object
     """
-    log.debug("startup")
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
 
     while True:
         messages = _retrieve_all_sqs_messages(queue)
-        _process_sqs_messages(messages, sqs_config, scheduler_module, table, queue)
+        update_events = _parse_sqs_messages(messages, sqs_config, table)
+        _process_sqs_messages(update_events, scheduler_module, sqs_config, table, queue)
         time.sleep(30)
 
 

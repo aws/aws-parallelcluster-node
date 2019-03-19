@@ -178,3 +178,25 @@ def removeHost(hostname, cluster_user, max_cluster_size):
         _run_sge_command(command, raise_exception=True)
     else:
         log.info('Host %s is not submission host', hostname)
+
+
+def update_cluster_nodes(max_cluster_size, cluster_user, update_events):
+    failed = []
+    succeeded = []
+    for event in update_events:
+        try:
+            if event.action == "REMOVE":
+                removeHost(event.host.hostname, cluster_user, max_cluster_size)
+            elif event.action == "ADD":
+                addHost(event.host.hostname, cluster_user, event.host.slots, max_cluster_size)
+            succeeded.append(event)
+        except Exception as e:
+            log.error(
+                "Encountered error when processing %s event for host %s: %s",
+                event.action,
+                event.host.hostname,
+                e,
+            )
+            failed.append(event)
+
+    return failed, succeeded
