@@ -37,6 +37,10 @@ class QueryConfigError(Exception):
     pass
 
 
+class CriticalError(Exception):
+    pass
+
+
 log = logging.getLogger(__name__)
 
 
@@ -127,18 +131,12 @@ def _setup_ddb_table(region, table_name, proxy_config):
     tables = dynamodb.list_tables().get("TableNames")
 
     dynamodb2 = boto3.resource("dynamodb", region_name=region, config=proxy_config)
-    if table_name in tables:
-        _table = dynamodb2.Table(table_name)
-    else:
-        _table = dynamodb2.create_table(
-            TableName=table_name,
-            KeySchema=[{"AttributeName": "instanceId", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "instanceId", "AttributeType": "S"}],
-            ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
-        )
-        _table.meta.client.get_waiter("table_exists").wait(TableName=table_name)
+    if table_name not in tables:
+        error_msg = "Unable to find the DynamoDB table '{0}'".format(table_name)
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
 
-    return _table
+    return dynamodb2.Table(table_name)
 
 
 def _retry_on_request_limit_exceeded(func):
