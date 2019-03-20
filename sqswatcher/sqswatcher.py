@@ -206,10 +206,11 @@ def _parse_sqs_messages(messages, sqs_config, table):
             update_event = None
 
         if update_event:
-            if instance_id in update_events:
+            hostname = update_event.host.hostname
+            if hostname in update_events:
                 # delete first to preserve messages order in dict
-                del update_events[instance_id]
-            update_events[instance_id] = update_event
+                del update_events[hostname]
+            update_events[hostname] = update_event
         else:
             # discarding message
             log.warning("Discarding message %s", message)
