@@ -22,6 +22,11 @@ class ASGNotFoundError(Exception):
     pass
 
 
+class CriticalError(Exception):
+    """Critical error for the daemon."""
+    pass
+
+
 def load_module(module):
     """
     Load python module.

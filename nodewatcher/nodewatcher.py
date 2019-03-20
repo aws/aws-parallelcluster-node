@@ -17,7 +17,6 @@ import collections
 import json
 import logging
 import os
-import sys
 import time
 import urllib2
 
@@ -25,7 +24,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from common.utils import get_asg_name, load_module
+from common.utils import CriticalError, get_asg_name, load_module
 
 log = logging.getLogger(__name__)
 
@@ -77,8 +76,9 @@ def _get_metadata(metadata_path):
     try:
         metadata_value = urllib2.urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read()
     except urllib2.URLError:
-        log.critical("Unable to get {0} metadata".format(metadata_path))
-        sys.exit(1)
+        error_msg = "Unable to get {0} metadata".format(metadata_path)
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
 
     log.debug("%s=%s", metadata_path, metadata_value)
     return metadata_value
