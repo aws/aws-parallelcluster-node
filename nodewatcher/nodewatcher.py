@@ -216,21 +216,16 @@ def _init_idletime(idletime_file):
     return idletime
 
 
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s'
-    )
-    log.info('nodewatcher startup')
-    config = _get_config()
+def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id):
+    """
+    Verify instance and scheduler status and self-terminate the instance if not required and if gone over time.
 
-    instance_id = _get_metadata("instance-id")
-    hostname = _get_metadata("local-hostname")
-    log.info('Instance id is %s, hostname is %s', instance_id, hostname)
-    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
-
-    scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
-
+    :param config: NodewatcherConfig object
+    :param scheduler_module: scheduler module
+    :param asg_name: ASG name
+    :param hostname: current hostname
+    :param instance_id: current instance id
+    """
     data_dir = _create_data_dir()
     idletime_file = data_dir + "node_idletime.json"
     idletime = _init_idletime(idletime_file)
@@ -241,18 +236,18 @@ def main():
         # if this node is terminating sleep for a long time and wait for termination
         if termination_in_progress:
             time.sleep(300)
-            log.info('Instance is still terminating')
+            log.info("Instance is still terminating")
             continue
         time.sleep(60)
         if not stack_ready:
             stack_ready = _is_stack_ready(config.stack_name, config.region, config.proxy_config)
-            log.info('Stack %s ready: %s' % (config.stack_name, stack_ready))
+            log.info("Stack %s ready: %s" % (config.stack_name, stack_ready))
             continue
-        asg_conn = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
+        asg_conn = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
-            log.info('Instance has active jobs.')
+            log.info("Instance has active jobs.")
             idletime = 0
         else:
             if _maintain_size(asg_name, asg_conn):
@@ -265,16 +260,16 @@ def main():
                 if idletime >= config.scaledown_idletime:
                     has_pending_jobs, error = _has_pending_jobs(scheduler_module)
                     if error:
-                        log.info('Encountered an error while polling queue for pending jobs. '
-                                 'Not terminating instance')
+                        log.info("Encountered an error while polling queue for pending jobs. "
+                                 "Not terminating instance")
                     elif has_pending_jobs:
-                        log.info('Queue has pending jobs. Not terminating instance')
+                        log.info("Queue has pending jobs. Not terminating instance")
                         continue
 
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
-                        log.info('Instance has active jobs.')
+                        log.info("Instance has active jobs.")
                         idletime = 0
                         _lock_host(scheduler_module, hostname, unlock=True)
                         continue
@@ -283,9 +278,27 @@ def main():
                         _self_terminate(asg_name, asg_conn, instance_id)
                         termination_in_progress = True
                     except ClientError as ex:
-                        log.error('Failed to terminate instance with exception %s' % ex)
+                        log.error("Failed to terminate instance with exception %s" % ex)
                         termination_in_progress = False
                         _lock_host(scheduler_module, hostname, unlock=True)
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
+    )
+    log.info("nodewatcher startup")
+    config = _get_config()
+
+    scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
+
+    instance_id = _get_metadata("instance-id")
+    hostname = _get_metadata("local-hostname")
+    log.info("Instance id is %s, hostname is %s", instance_id, hostname)
+    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+
+    _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id)
 
 
 if __name__ == "__main__":
