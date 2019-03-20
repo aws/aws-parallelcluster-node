@@ -186,13 +186,7 @@ def _retrieve_all_sqs_messages(queue):
     return messages
 
 
-def _parse_sqs_messages(messages, sqs_config, table):
-    instance_ids = _get_compute_ready_instance_ids(messages)
-    hostnames = _get_hostnames(instance_ids, sqs_config.region, sqs_config.proxy_config)
-    if not hostnames:
-        # cannot process messages, bailing out.
-        return []
-
+def _parse_sqs_messages(messages, table):
     update_events = OrderedDict()
     for message in messages:
         message_text = json.loads(message.body)
@@ -207,7 +201,7 @@ def _parse_sqs_messages(messages, sqs_config, table):
         instance_id = message_attrs.get("EC2InstanceId")
         if event_type == "parallelcluster:COMPUTE_READY":
             log.info("Processing COMPUTE_READY event for instance %s", instance_id)
-            update_event = _process_compute_ready_event(message_attrs, hostnames, message)
+            update_event = _process_compute_ready_event(message_attrs, message)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
             log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", instance_id)
             update_event = _process_instance_terminate_event(message_attrs, message, table)
@@ -229,43 +223,11 @@ def _parse_sqs_messages(messages, sqs_config, table):
     return update_events.values()
 
 
-def _get_compute_ready_instance_ids(messages):
-    instance_ids = []
-    for message in messages:
-        message_text = json.loads(message.body)
-        message_attrs = json.loads(message_text.get("Message"))
-        event_type = message_attrs.get("Event")
-
-        if event_type == "parallelcluster:COMPUTE_READY":
-            instance_ids.append(message_attrs.get("EC2InstanceId"))
-
-    return instance_ids
-
-
-def _get_hostnames(instance_ids, region, proxy):
-    ec2 = boto3.client("ec2", region_name=region, config=proxy)
-    try:
-        response = _retry_on_request_limit_exceeded(lambda: ec2.describe_instances(InstanceIds=instance_ids))
-        hostnames = {}
-        for reservation in response.get("Reservations"):
-            for instance in reservation.get("Instances"):
-                hostnames[instance["InstanceId"]] = instance["PrivateDnsName"].split(".")[0]
-    except Exception as e:
-        log.error("Failed when retrieving ec2 instances data with exception %s", e)
-        hostnames = None
-
-    return hostnames
-
-
-def _process_compute_ready_event(message_attrs, hostnames, message):
+def _process_compute_ready_event(message_attrs, message):
     instance_id = message_attrs.get("EC2InstanceId")
     slots = message_attrs.get("Slots")
-    hostname = hostnames.get(instance_id)
-    if hostname:
-        return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
-    else:
-        log.error("Unable to find running instance %s.", instance_id)
-        return None
+    hostname = message_attrs.get("LocalHostname").split(".")[0]
+    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
 
 
 def _process_instance_terminate_event(message_attrs, message, table):
@@ -343,7 +305,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     while True:
         new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, max_cluster_size)
         messages = _retrieve_all_sqs_messages(queue)
-        update_events = _parse_sqs_messages(messages, sqs_config, table)
+        update_events = _parse_sqs_messages(messages, table)
         _process_sqs_messages(
             update_events,
             scheduler_module,
