@@ -142,37 +142,6 @@ def _write_node_list(node_list, max_cluster_size):
     move(abs_path, PCLUSTER_NODES_CONFIG)
 
 
-def addHost(hostname, cluster_user, slots, max_cluster_size):
-    log.info("Adding %s with %s slots" % (hostname, slots))
-
-    # Get the current node list
-    node_list = _read_node_list()
-    # Add new node
-    new_node = "NodeName={nodename} CPUs={cpus} State=UNKNOWN\n".format(nodename=hostname, cpus=slots)
-    if new_node not in node_list:
-        node_list.append(new_node)
-    # Write new config
-    _write_node_list(node_list, max_cluster_size)
-
-    _restart_master_node()
-    _restart_compute_node(hostname, cluster_user)
-    _reconfigure_nodes()
-
-
-def removeHost(hostname, cluster_user, max_cluster_size):
-    log.info("Removing %s", hostname)
-
-    # Get the current node list
-    node_list = _read_node_list()
-    # Remove node
-    node_list = [node for node in node_list if hostname not in node]
-    # Write new config
-    _write_node_list(node_list, max_cluster_size)
-
-    _restart_master_node()
-    _reconfigure_nodes()
-
-
 def update_cluster_nodes(max_cluster_size, cluster_user, update_events):
     # Get the current node list
     node_list = _read_node_list()
