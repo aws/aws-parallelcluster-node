@@ -29,6 +29,9 @@ from common.utils import CriticalError, get_asg_name, load_module
 
 log = logging.getLogger(__name__)
 
+DATA_DIR = "/var/run/nodewatcher/"
+IDLETIME_FILE = DATA_DIR + "node_idletime.json"
+
 
 NodewatcherConfig = collections.namedtuple(
     "NodewatcherConfig", ["region", "scheduler", "stack_name", "scaledown_idletime", "proxy_config"]
@@ -171,48 +174,48 @@ def _is_stack_ready(stack_name, region, proxy_config):
     return stacks['Stacks'][0]['StackStatus'] in ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE']
 
 
-def _create_data_dir():
-    """
-    Create folder to store nodewatcher data.
-
-    :return: the folder path
-    :raise OSError if dir creation fails
-    """
-    data_dir = "/var/run/nodewatcher/"
+def _init_data_dir():
+    """Create folder to store nodewatcher data."""
     try:
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-    except OSError as ex:
-        log.critical("Creating directory %s to persist current idle time failed with exception: %s", data_dir, ex)
-        raise
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR)
+    except Exception as e:
+        log.warning(
+            "Unable to create the folder '%s' to persist current idle time. Failed with exception: %s", DATA_DIR, e
+        )
 
-    return data_dir
 
-
-def _store_idletime(idletime_file, idletime):
+def _store_idletime(idletime):
     """
     Save idletime to file, in json format.
 
-    :param idletime_file: the file on which store the data
     :param idletime: the idletime value to store
     """
     data = {"current_idletime": idletime}
-    with open(idletime_file, "w") as outfile:
-        json.dump(data, outfile)
+    try:
+        with open(IDLETIME_FILE, "w") as outfile:
+            json.dump(data, outfile)
+    except Exception as e:
+        log.warning(
+            "Unable to store idletime '%s' in the file '%s'. Failed with exception: %s", idletime, IDLETIME_FILE, e
+        )
 
 
-def _init_idletime(idletime_file):
+def _init_idletime():
     """
     Initialize idletime value (from file if there).
 
-    :param idletime_file: the file to search for
     :return: the current idletime value (0 if the file doesn't exist)
     """
     idletime = 0
-    if os.path.isfile(idletime_file):
-        with open(idletime_file) as f:
-            data = json.loads(f.read())
-            idletime = data.get("current_idletime", 0)
+    _init_data_dir()
+    if os.path.isfile(IDLETIME_FILE):
+        try:
+            with open(IDLETIME_FILE) as f:
+                data = json.loads(f.read())
+                idletime = data.get("current_idletime", 0)
+        except Exception as e:
+            log.warning("Unable to get idletime from the file '%s'. Failed with exception: %s", IDLETIME_FILE, e)
 
     return idletime
 
@@ -227,10 +230,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param hostname: current hostname
     :param instance_id: current instance id
     """
-    data_dir = _create_data_dir()
-    idletime_file = data_dir + "node_idletime.json"
-    idletime = _init_idletime(idletime_file)
-
+    idletime = _init_idletime()
     stack_ready = False
     termination_in_progress = False
     while True:
@@ -256,7 +256,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
             else:
                 idletime += 1
                 log.info("Instance had no job for the past %s minute(s)", idletime)
-                _store_idletime(idletime_file, idletime)
+                _store_idletime(idletime)
 
                 if idletime >= config.scaledown_idletime:
                     has_pending_jobs, error = _has_pending_jobs(scheduler_module)
