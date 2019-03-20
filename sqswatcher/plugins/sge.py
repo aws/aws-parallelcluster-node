@@ -180,7 +180,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
         log.info('Host %s is not submission host', hostname)
 
 
-def update_cluster_nodes(max_cluster_size, cluster_user, update_events):
+def update_cluster(max_cluster_size, cluster_user, update_events):
     failed = []
     succeeded = []
     for event in update_events:

@@ -70,7 +70,7 @@ def _restart_master_node():
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=10000)
-def _restart_compute_node(hostname, cluster_user):
+def _restart_compute_daemons(hostname, cluster_user):
     log.info("Restarting slurm on compute node %s", hostname)
     ssh_client = _ssh_connect(hostname, cluster_user)
     command = (
@@ -89,7 +89,7 @@ def _restart_compute_node(hostname, cluster_user):
 def _restart_compute_node_worker(args):
     hostname = args[0]
     try:
-        _restart_compute_node(*args)
+        _restart_compute_daemons(*args)
         return hostname, True
     except Exception:
         return hostname, False
@@ -142,7 +142,7 @@ def _write_node_list(node_list, max_cluster_size):
     move(abs_path, PCLUSTER_NODES_CONFIG)
 
 
-def update_cluster_nodes(max_cluster_size, cluster_user, update_events):
+def update_cluster(max_cluster_size, cluster_user, update_events):
     # Get the current node list
     node_list = _read_node_list()
     nodes_to_restart = []

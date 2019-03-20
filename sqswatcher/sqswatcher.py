@@ -268,7 +268,7 @@ def _process_sqs_messages(update_events, scheduler_module, sqs_config, table, qu
     if not update_events:
         return
 
-    failed_events, succeeded_events = scheduler_module.update_cluster_nodes(
+    failed_events, succeeded_events = scheduler_module.update_cluster(
         sqs_config.max_queue_size, sqs_config.cluster_user, update_events
     )
 

@@ -127,7 +127,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     __runCommand(command)
 
 
-def update_cluster_nodes(max_cluster_size, cluster_user, update_events):
+def update_cluster(max_cluster_size, cluster_user, update_events):
     failed = []
     succeeded = []
     for event in update_events:
