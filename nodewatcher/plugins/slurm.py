@@ -9,10 +9,12 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import subprocess
+from future.moves.subprocess import check_output
+
 import logging
-import shlex
 import os
+import shlex
+import subprocess
 
 from common.slurm import PENDING_RESOURCES_REASONS
 
@@ -23,7 +25,7 @@ def _run_command(command):
     try:
         if isinstance(command, str):
             command = shlex.split(command)
-        return subprocess.check_output(command, env=dict(os.environ), universal_newlines=True)
+        return check_output(command, env=dict(os.environ), universal_newlines=True)
     except subprocess.CalledProcessError as e:
         # CalledProcessError.__str__ already produces a significant error message
         log.error(e)
