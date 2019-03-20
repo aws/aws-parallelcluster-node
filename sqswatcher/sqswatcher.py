@@ -12,6 +12,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
+from future.moves.collections import OrderedDict
+
 import collections
 import ConfigParser
 import itertools
@@ -22,10 +24,9 @@ import time
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from future.moves.collections import OrderedDict
-
-from common.utils import load_module, get_asg_settings, get_asg_name
 from retrying import retry
+
+from common.utils import get_asg_name, get_asg_settings, load_module
 
 
 class HostRemovalError(Exception):
@@ -143,7 +144,7 @@ def _setup_ddb_table(region, table_name, proxy_config):
 def _retry_on_request_limit_exceeded(func):
     @retry(
         stop_max_attempt_number=3,
-        wait_exponential_multiplier=15000,
+        wait_exponential_multiplier=5000,
         retry_on_exception=lambda exception: isinstance(exception, ClientError)
         and exception.response.get("Error").get("Code") == "RequestLimitExceeded",
     )
@@ -186,6 +187,12 @@ def _retrieve_all_sqs_messages(queue):
 
 
 def _parse_sqs_messages(messages, sqs_config, table):
+    instance_ids = _get_compute_ready_instance_ids(messages)
+    hostnames = _get_hostnames(instance_ids, sqs_config.region, sqs_config.proxy_config)
+    if not hostnames:
+        # cannot process messages, bailing out.
+        return []
+
     update_events = OrderedDict()
     for message in messages:
         message_text = json.loads(message.body)
@@ -197,14 +204,13 @@ def _parse_sqs_messages(messages, sqs_config, table):
             message.delete()
             continue
 
+        instance_id = message_attrs.get("EC2InstanceId")
         if event_type == "parallelcluster:COMPUTE_READY":
-            instance_id = message_attrs.get("EC2InstanceId")
             log.info("Processing COMPUTE_READY event for instance %s", instance_id)
-            update_event = _process_compute_ready_event(message_attrs, sqs_config, message)
+            update_event = _process_compute_ready_event(message_attrs, hostnames, message)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-            instance_id = message_attrs.get("EC2InstanceId")
             log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", instance_id)
-            update_event = _process_instance_terminate_event(message_attrs, sqs_config, message, table)
+            update_event = _process_instance_terminate_event(message_attrs, message, table)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
             update_event = None
@@ -223,26 +229,38 @@ def _parse_sqs_messages(messages, sqs_config, table):
     return update_events.values()
 
 
-def _get_hostname(instance_id, region, proxy):
-    ec2 = boto3.resource("ec2", region_name=region, config=proxy)
+def _get_compute_ready_instance_ids(messages):
+    instance_ids = []
+    for message in messages:
+        message_text = json.loads(message.body)
+        message_attrs = json.loads(message_text.get("Message"))
+        event_type = message_attrs.get("Event")
+
+        if event_type == "parallelcluster:COMPUTE_READY":
+            instance_ids.append(message_attrs.get("EC2InstanceId"))
+
+    return instance_ids
+
+
+def _get_hostnames(instance_ids, region, proxy):
+    ec2 = boto3.client("ec2", region_name=region, config=proxy)
     try:
-        instances = _retry_on_request_limit_exceeded(lambda: ec2.instances.filter(InstanceIds=[instance_id]))
+        response = _retry_on_request_limit_exceeded(lambda: ec2.describe_instances(InstanceIds=instance_ids))
+        hostnames = {}
+        for reservation in response.get("Reservations"):
+            for instance in reservation.get("Instances"):
+                hostnames[instance["InstanceId"]] = instance["PrivateDnsName"].split(".")[0]
     except Exception as e:
-        log.error("Failed when retrieving ec2 instance data for instance %s with exception %s", instance_id, e)
-        instances = None
+        log.error("Failed when retrieving ec2 instances data with exception %s", e)
+        hostnames = None
 
-    instance = next(iter(instances or []), None)
-    if instance:
-        return instance.private_dns_name.split(".")[0]
-    else:
-        return None
+    return hostnames
 
 
-def _process_compute_ready_event(message_attrs, sqs_config, message):
+def _process_compute_ready_event(message_attrs, hostnames, message):
     instance_id = message_attrs.get("EC2InstanceId")
     slots = message_attrs.get("Slots")
-    hostname = _get_hostname(instance_id, sqs_config.region, sqs_config.proxy_config)
-
+    hostname = hostnames.get(instance_id)
     if hostname:
         return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
     else:
@@ -250,7 +268,7 @@ def _process_compute_ready_event(message_attrs, sqs_config, message):
         return None
 
 
-def _process_instance_terminate_event(message_attrs, sqs_config, message, table):
+def _process_instance_terminate_event(message_attrs, message, table):
     instance_id = message_attrs.get("EC2InstanceId")
     try:
         item = _retry_on_request_limit_exceeded(
