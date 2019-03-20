@@ -172,21 +172,14 @@ def _get_config():
     return JobwatcherConfig(region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config)
 
 
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
-    )
-    log.info("jobwatcher startup")
-    config = _get_config()
-    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+def _poll_scheduler_status(config, asg_name, scheduler_module):
+    """
+    Verify scheduler status and ask the ASG new nodes, if required.
 
-    # fetch the pricing file on startup
-    _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
-
-    # load scheduler
-    scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
-
+    :param config: JobwatcherConfig object
+    :param asg_name: ASG name
+    :param scheduler_module: scheduler module
+    """
     while True:
         # get the number of vcpu's per compute instance
         instance_properties = _get_instance_properties(config.instance_type)
@@ -233,6 +226,24 @@ def main():
                     asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
         time.sleep(60)
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
+    )
+    log.info("jobwatcher startup")
+    config = _get_config()
+    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+
+    # fetch the pricing file on startup
+    _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
+
+    # load scheduler
+    scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
+
+    _poll_scheduler_status(config, asg_name, scheduler_module)
 
 
 if __name__ == '__main__':
