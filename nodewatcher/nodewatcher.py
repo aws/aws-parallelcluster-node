@@ -23,6 +23,7 @@ import urllib2
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from retrying import retry
 
 from common.utils import CriticalError, get_asg_name, load_module
 
@@ -283,22 +284,27 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                         _lock_host(scheduler_module, hostname, unlock=True)
 
 
+@retry()
 def main():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
     )
     log.info("nodewatcher startup")
-    config = _get_config()
+    try:
+        config = _get_config()
 
-    scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
+        scheduler_module = load_module("nodewatcher.plugins." + config.scheduler)
 
-    instance_id = _get_metadata("instance-id")
-    hostname = _get_metadata("local-hostname")
-    log.info("Instance id is %s, hostname is %s", instance_id, hostname)
-    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+        instance_id = _get_metadata("instance-id")
+        hostname = _get_metadata("local-hostname")
+        log.info("Instance id is %s, hostname is %s", instance_id, hostname)
+        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
-    _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id)
+        _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id)
+    except Exception as e:
+        log.critical(e)
+        raise
 
 
 if __name__ == "__main__":
