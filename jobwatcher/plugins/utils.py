@@ -1,29 +1,6 @@
 import logging
-import os
-import shlex
-import subprocess
-
-from future.moves.subprocess import check_output
 
 log = logging.getLogger(__name__)
-
-
-def check_command_output(command, env):
-    """
-    Execute shell command and retrieve command output.
-
-    :param command: command to execute
-    :param env: a dictionary containing environment variables
-    :return: the command output
-    """
-    try:
-        env.update(os.environ.copy())
-        log.debug("Executing command: %s" % command)
-        return check_output(shlex.split(command), env=env, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        # CalledProcessError.__str__ already produces a significant error message
-        log.error(e)
-        raise
 
 
 def get_optimal_nodes(nodes_requested, slots_requested, instance_properties):

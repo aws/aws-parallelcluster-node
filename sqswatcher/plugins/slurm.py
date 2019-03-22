@@ -16,27 +16,19 @@
 import logging
 import os
 import os.path
-import subprocess
+from math import ceil
+from multiprocessing import Pool
 from shutil import move
 from tempfile import mkstemp
 
 import paramiko
 from retrying import retry
-from multiprocessing import Pool
-from math import ceil
+
+from common.utils import run_command
 
 log = logging.getLogger(__name__)
 
 PCLUSTER_NODES_CONFIG = "/opt/slurm/etc/slurm_parallelcluster_nodes.conf"
-
-
-def _run_command(command):
-    try:
-        subprocess.check_call(command, env=dict(os.environ))
-    except subprocess.CalledProcessError as e:
-        # CalledProcessError.__str__ already produces a significant error message
-        log.error(e)
-        raise
 
 
 def _ssh_connect(hostname, cluster_user):
@@ -63,7 +55,7 @@ def _restart_master_node():
     else:
         command = ["/etc/init.d/slurm", "restart"]
     try:
-        _run_command(command)
+        run_command(command, {}, log)
     except Exception as e:
         log.error("Failed when restarting slurm daemon on master node with exception %s", e)
         raise
@@ -113,7 +105,7 @@ def _reconfigure_nodes():
     log.info("Reconfiguring slurm")
     command = ["/opt/slurm/bin/scontrol", "reconfigure"]
     try:
-        _run_command(command)
+        run_command(command, {}, log)
     except Exception as e:
         log.error("Failed when reconfiguring slurm daemon with exception %s", e)
 

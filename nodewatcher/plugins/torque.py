@@ -9,12 +9,10 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
-import subprocess
-import os
 import logging
-import shlex
+import subprocess
+
+from common.utils import CriticalError, check_command_output, run_command
 
 log = logging.getLogger(__name__)
 
@@ -43,16 +41,12 @@ def hasJobs(hostname):
     commands = ['/opt/torque/bin/qstat -r -t -n -1', ('grep ' + hostname.split('.')[0])]
     try:
         status, output = runPipe(commands)
+        has_jobs = output != ""
     except subprocess.CalledProcessError:
         log.error("Failed to run %s\n" % commands)
-        output = ""
+        has_jobs = False
 
-    if output == "":
-        _jobs = False
-    else:
-        _jobs = True
-
-    return _jobs
+    return has_jobs
 
 
 def hasPendingJobs():
@@ -63,41 +57,34 @@ def hasPendingJobs():
     # ----------------   ---   ----    --    --   ---   ---   ---   ---   ---   --- -   ---
     # batch                0     24   yes   yes    24     0     0     0     0     0 E     0
     # test1                0     26   yes   yes    26     0     0     0     0     0 E     0
-
-    _command = shlex.split(command)
-    error = False
-    has_pending = False
     try:
-        process = subprocess.Popen(_command, env=dict(os.environ),
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
+        output = check_command_output(command, {}, log)
+        lines = filter(None, output.split("\n"))
+        if len(lines) < 3:
+            log.error("Unable to check pending jobs. The command '%s' does not return a valid output", command)
+            raise CriticalError
+
+        pending = 0
+        for idx, line in enumerate(lines):
+            if idx < 2:
+                continue
+            queue_status = line.split()
+            pending += int(queue_status[5])
+
+        has_pending = pending > 0
+        error = False
+    except (subprocess.CalledProcessError, CriticalError):
         error = True
-
-    output = process.communicate()[0]
-
-    lines = filter(None, output.split("\n"))
-    if len(lines) < 3:
-        error = True
-        return has_pending, error
-    pending = 0
-    for idx, line in enumerate(lines):
-        if idx < 2:
-            continue
-        queue_status = line.split()
-        pending += int(queue_status[5])
-
-    has_pending = pending > 0
+        has_pending = False
 
     return has_pending, error
 
 
 def lockHost(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
-    _mod = unlock and '-c' or '-o'
-    command = ['/opt/torque/bin/pbsnodes', _mod, hostname]
+    mod = unlock and '-c' or '-o'
+    command = ['/opt/torque/bin/pbsnodes', mod, hostname]
     try:
-        subprocess.check_call(command)
+        run_command(command, {}, log)
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
-
+        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)

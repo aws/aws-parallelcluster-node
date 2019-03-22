@@ -9,14 +9,17 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import subprocess as sub
-import paramiko
-from tempfile import NamedTemporaryFile
-import time
-import os
-import socket
 import logging
+import os
 import shlex
+import socket
+import subprocess as sub
+import time
+from tempfile import NamedTemporaryFile
+
+import paramiko
+
+from common.utils import check_command_output
 from sqswatcher.sqswatcher import HostRemovalError
 from sqswatcher.sqswatcher import QueryConfigError
 
@@ -24,32 +27,20 @@ log = logging.getLogger(__name__)
 
 
 def _is_host_configured(command, hostname):
-    _command = shlex.split(command)
-    log.debug(_command)
-    host_configured = False
-
     try:
-        output = sub.Popen(
-            _command,
-            stdout=sub.PIPE,
-            env=dict(
-                os.environ,
-                SGE_ROOT='/opt/sge',
-                PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin',
-            ),
-        ).communicate()[0]
-    except:
-        log.error("Failed to run %s\n" % command)
+        host_configured = False
+        output = check_command_output(
+            command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
+        )
+        if output is not None:
+            # Expected output
+            # ip-172-31-66-16.ec2.internal
+            # ip-172-31-74-69.ec2.internal
+            match = list(filter(lambda x: hostname in x.split(".")[0], output.split("\n")))
+            if len(match) > 0:
+                host_configured = True
+    except Exception:
         raise QueryConfigError
-
-    if output is not None:
-        # Expected output
-        # ip-172-31-66-16.ec2.internal
-        # ip-172-31-74-69.ec2.internal
-        match = list(filter(lambda x: hostname in x.split(".")[0], output.split("\n")))
-
-        if len(match) > 0:
-            host_configured = True
 
     return host_configured
 

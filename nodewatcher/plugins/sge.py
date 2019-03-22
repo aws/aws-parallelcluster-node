@@ -10,16 +10,16 @@
 # limitations under the License.
 
 import logging
-import os
-import shlex
 import subprocess
+
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
 
 
 def hasJobs(hostname):
     # Checking for running jobs on the node, with parallel job view expanded (-g t)
-    _command = ['/opt/sge/bin/lx-amd64/qstat', '-g', 't', '-l', 'hostname=%s' % hostname, '-u', '*']
+    command = ['/opt/sge/bin/lx-amd64/qstat', '-g', 't', '-l', 'hostname=%s' % hostname, '-u', '*']
 
     # Command output
     # job-ID  prior   name       user         state submit/start at     queue                          master ja-task-ID
@@ -32,24 +32,14 @@ def hasJobs(hostname):
     # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 2
 
     try:
-        _output = subprocess.Popen(_command,
-                                  stdout=subprocess.PIPE,
-                                  env=dict(
-                                      os.environ,
-                                      SGE_ROOT='/opt/sge',
-                                      PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin',
-                                  ),
-                                  ).communicate()[0]
+        output = check_command_output(
+            command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
+        )
+        has_jobs = output != ""
     except subprocess.CalledProcessError:
-        print ("Failed to run %s\n" % _command)
-        _output = ""
+        has_jobs = False
 
-    if _output == "":
-        _jobs = False
-    else:
-        _jobs = True
-
-    return _jobs
+    return has_jobs
 
 
 def hasPendingJobs():
@@ -63,33 +53,23 @@ def hasPendingJobs():
     #      72 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
     #      73 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
 
-    _command = shlex.split(command)
-    error = False
-    has_pending = False
-
     try:
-        process = subprocess.Popen(_command, env=dict(os.environ),
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output = check_command_output(command, {}, log)
+        lines = filter(None, output.split("\n"))
+        has_pending = True if len(lines) > 1 else False
+        error = False
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
         error = True
-
-    output = process.communicate()[0]
-    lines = filter(None, output.split("\n"))
-
-    if len(lines) > 1:
-        has_pending = True
+        has_pending = False
 
     return has_pending, error
 
-def lockHost(hostname, unlock=False):
-    _mod = unlock and '-e' or '-d'
-    command = ['/opt/sge/bin/lx-amd64/qmod', _mod, 'all.q@%s' % hostname]
-    try:
-        subprocess.check_call(
-            command,
-            env=dict(os.environ, SGE_ROOT='/opt/sge',
-                     PATH='/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'))
-    except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
 
+def lockHost(hostname, unlock=False):
+    mod = unlock and '-e' or '-d'
+    command = ['/opt/sge/bin/lx-amd64/qmod', mod, 'all.q@%s' % hostname]
+
+    try:
+        run_command(command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log)
+    except subprocess.CalledProcessError:
+        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)

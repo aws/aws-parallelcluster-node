@@ -9,27 +9,13 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-from future.moves.subprocess import check_output
-
 import logging
-import os
-import shlex
 import subprocess
 
 from common.slurm import PENDING_RESOURCES_REASONS
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
-
-
-def _run_command(command):
-    try:
-        if isinstance(command, str):
-            command = shlex.split(command)
-        return check_output(command, env=dict(os.environ), universal_newlines=True)
-    except subprocess.CalledProcessError as e:
-        # CalledProcessError.__str__ already produces a significant error message
-        log.error(e)
-        raise
 
 
 def hasJobs(hostname):
@@ -38,7 +24,7 @@ def hasJobs(hostname):
     # Checking for running jobs on the node
     command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
     try:
-        output = _run_command(command)
+        output = check_command_output(command, {}, log)
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -54,7 +40,7 @@ def hasPendingJobs():
     #  Priority
     #  PartitionNodeLimit
     try:
-        output = _run_command(command)
+        output = check_command_output(command, {}, log)
         has_pending = len(filter(lambda reason: reason in PENDING_RESOURCES_REASONS, output.split("\n"))) > 0
         error = False
     except subprocess.CalledProcessError:
@@ -86,7 +72,6 @@ def lockHost(hostname, unlock=False):
             'Reason="Shutting down"',
         ]
     try:
-        subprocess.check_call(command, env=dict(os.environ))
-    except subprocess.CalledProcessError as e:
-        # CalledProcessError.__str__ already produces a significant error message
-        log.error(e)
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
