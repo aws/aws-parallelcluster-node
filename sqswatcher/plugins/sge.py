@@ -11,62 +11,45 @@
 
 import logging
 import os
-import shlex
 import socket
-import subprocess as sub
+import subprocess
 import time
 from tempfile import NamedTemporaryFile
 
 import paramiko
 
-from common.utils import check_command_output
-from sqswatcher.sqswatcher import HostRemovalError
-from sqswatcher.sqswatcher import QueryConfigError
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
 
 
 def _is_host_configured(command, hostname):
-    try:
-        host_configured = False
-        output = check_command_output(
-            command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
-        )
-        if output is not None:
-            # Expected output
-            # ip-172-31-66-16.ec2.internal
-            # ip-172-31-74-69.ec2.internal
-            match = list(filter(lambda x: hostname in x.split(".")[0], output.split("\n")))
-            if len(match) > 0:
-                host_configured = True
-    except Exception:
-        raise QueryConfigError
-
-    return host_configured
-
-
-def _run_sge_command(command, raise_exception=False):
-    _command = shlex.split(str(command))
-    log.debug(_command)
-
-    try:
-        sub.check_call(_command, env=dict(os.environ, SGE_ROOT='/opt/sge'))
-    except sub.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
-        if raise_exception:
-            raise HostRemovalError
+    output = check_command_output(
+        command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
+    )
+    # Expected output
+    # ip-172-31-66-16.ec2.internal
+    # ip-172-31-74-69.ec2.internal
+    match = list(filter(lambda x: hostname in x.split(".")[0], output.split("\n")))
+    return True if len(match) > 0 else False
 
 
 def addHost(hostname, cluster_user, slots, max_cluster_size):
     log.info('Adding %s with %s slots' % (hostname,slots))
 
     # Adding host as administrative host
-    command = ('/opt/sge/bin/lx-amd64/qconf -ah %s' % hostname)
-    _run_sge_command(command)
+    try:
+        command = ("/opt/sge/bin/lx-amd64/qconf -ah %s" % hostname)
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.warning("Unable to add host %s as administrative host", hostname)
 
     # Adding host as submit host
-    command = ('/opt/sge/bin/lx-amd64/qconf -as %s' % hostname)
-    _run_sge_command(command)
+    try:
+        command = ("/opt/sge/bin/lx-amd64/qconf -as %s" % hostname)
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.warning("Unable to add host %s as submission host", hostname)
 
     # Setup template to add execution host
     qconf_Ae_template = """hostname              %s
@@ -87,8 +70,11 @@ report_variables      NONE
         os.fsync(t.fileno())
 
         # Add host as an execution host
-        command = ('/opt/sge/bin/lx-amd64/qconf -Ae %s' % t.name)
-        _run_sge_command(command)
+        try:
+            command = ('/opt/sge/bin/lx-amd64/qconf -Ae %s' % t.name)
+            run_command(command, {}, log)
+        except subprocess.CalledProcessError:
+            log.warning("Unable to add host %s as execution host", hostname)
 
     # Connect and start SGE
     ssh = paramiko.SSHClient()
@@ -97,7 +83,7 @@ report_variables      NONE
     user_key_file = os.path.expanduser("~" + cluster_user) + '/.ssh/id_rsa'
     iter=0
     connected=False
-    while iter < 3 and connected == False:
+    while iter < 3 and connected is False:
         try:
             log.info('Connecting to host: %s iter: %d' % (hostname, iter))
             ssh.connect(hostname, username=cluster_user, key_filename=user_key_file)
@@ -122,12 +108,18 @@ report_variables      NONE
     ssh.close()
 
     # Add the host to the all.q
-    command = ('/opt/sge/bin/lx-amd64/qconf -aattr hostgroup hostlist %s @allhosts' % hostname)
-    _run_sge_command(command)
+    try:
+        command = ("/opt/sge/bin/lx-amd64/qconf -aattr hostgroup hostlist %s @allhosts" % hostname)
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.warning("Unable to add host %s to all.q", hostname)
 
     # Set the numbers of slots for the host
-    command = ('/opt/sge/bin/lx-amd64/qconf -aattr queue slots ["%s=%s"] all.q' % (hostname,slots))
-    _run_sge_command(command)
+    try:
+        command = ('/opt/sge/bin/lx-amd64/qconf -aattr queue slots ["%s=%s"] all.q' % (hostname,slots))
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.warning("Unable to set the number of slots for the host %s", hostname)
 
 
 def removeHost(hostname, cluster_user, max_cluster_size):
@@ -138,26 +130,32 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     if _is_host_configured(command, hostname):
         # Removing host as administrative host
         command = ("/opt/sge/bin/lx-amd64/qconf -dh %s" % hostname)
-        _run_sge_command(command, raise_exception=True)
+        run_command(command, {}, log)
     else:
         log.info('Host %s is not administrative host', hostname)
 
     # Check if host is in all.q (qconf -sq all.q)
     # Purge hostname from all.q
-    command = ("/opt/sge/bin/lx-amd64/qconf -purge queue '*' all.q@%s" % hostname)
-    _run_sge_command(command)
+    try:
+        command = ("/opt/sge/bin/lx-amd64/qconf -purge queue '*' all.q@%s" % hostname)
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.warning("Unable to remove host %s from all.q", hostname)
 
     # Check if host is in @allhosts group (qconf -shgrp_resolved @allhosts)
     # Remove host from @allhosts group
-    command = ("/opt/sge/bin/lx-amd64/qconf -dattr hostgroup hostlist %s @allhosts" % hostname)
-    _run_sge_command(command)
+    try:
+        command = ("/opt/sge/bin/lx-amd64/qconf -dattr hostgroup hostlist %s @allhosts" % hostname)
+        run_command(command, {}, log)
+    except subprocess.CalledProcessError:
+        log.warning("Unable to remove host %s from @allhosts group", hostname)
 
     # Check if host is execution host
     command = "/opt/sge/bin/lx-amd64/qconf -sel"
     if _is_host_configured(command, hostname):
         # Removing host as execution host
         command = ("/opt/sge/bin/lx-amd64/qconf -de %s" % hostname)
-        _run_sge_command(command, raise_exception=True)
+        run_command(command, {}, log)
     else:
         log.info('Host %s is not execution host', hostname)
 
@@ -166,7 +164,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     if _is_host_configured(command, hostname):
         # Removing host as submission host
         command = ("/opt/sge/bin/lx-amd64/qconf -ds %s" % hostname)
-        _run_sge_command(command, raise_exception=True)
+        run_command(command, {}, log)
     else:
         log.info('Host %s is not submission host', hostname)
 
@@ -183,10 +181,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events):
             succeeded.append(event)
         except Exception as e:
             log.error(
-                "Encountered error when processing %s event for host %s: %s",
-                event.action,
-                event.host.hostname,
-                e,
+                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e,
             )
             failed.append(event)
 
