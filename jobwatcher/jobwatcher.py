@@ -24,7 +24,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from retrying import retry
 
-from common.utils import get_asg_name, load_module, get_asg_settings
+from common.utils import CriticalError, get_asg_name, load_module, get_asg_settings
 
 log = logging.getLogger(__name__)
 
@@ -45,33 +45,32 @@ def _read_cfnconfig():
     return cfnconfig_params
 
 
-def _get_vcpus_from_pricing_file(instance_type):
+@retry(stop_max_attempt_number=3, wait_fixed=5000)
+def _get_vcpus_from_pricing_file(config):
     """
     Read pricing file and get number of vcpus for the given instance type.
 
     :param instance_type: the instance type to search for.
     :return: the number of vcpus or -1 if the instance type cannot be found
     """
-    pricing_file = "/opt/parallelcluster/instances.json"
-    with open(pricing_file) as f:
-        instances = json.load(f)
-        try:
-            vcpus = int(instances[instance_type]["vcpus"])
-            log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
-        except KeyError:
-            log.error("Unable to get vcpus from file %s. Instance type %s not found." % (pricing_file, instance_type))
-            vcpus = -1
+    _create_data_dir(config.pcluster_dir)
 
-        return vcpus
+    pricing_file = config.pcluster_dir + "instances.json"
+    _fetch_pricing_file(pricing_file, config.region, config.proxy_config)
+
+    return _get_vcpus_by_instance_type(pricing_file, config.instance_type)
 
 
-def _get_instance_properties(instance_type):
+def _get_instance_properties(config):
     """
     Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
 
-    :param instance_type: instance type to search for
+    :param config: instance type to search for
     :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
     """
+    # get vcpus from the pricing file
+    vcpus = _get_vcpus_from_pricing_file(config)
+
     try:
         cfnconfig_params = _read_cfnconfig()
         cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
@@ -79,60 +78,93 @@ def _get_instance_properties(instance_type):
         log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
         cfn_scheduler_slots = "vcpus"
 
-    vcpus = _get_vcpus_from_pricing_file(instance_type)
-
     if cfn_scheduler_slots == "cores":
-        log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
+        log.info("Instance %s will use number of cores as slots based on configuration." % config.instance_type)
         slots = -(-vcpus//2)
 
     elif cfn_scheduler_slots == "vcpus":
-        log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
+        log.info("Instance %s will use number of vcpus as slots based on configuration." % config.instance_type)
         slots = vcpus
 
     elif cfn_scheduler_slots.isdigit():
         slots = int(cfn_scheduler_slots)
-        log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
+        log.info("Instance %s will use %s slots based on configuration." % (config.instance_type, slots))
 
         if slots <= 0:
             log.error(
-                "cfn_scheduler_slots config parameter '%s' must be greater than 0. "
-                "Assuming 'vcpus'" % cfn_scheduler_slots
+                "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
+                    cfn_scheduler_slots
+                )
             )
             slots = vcpus
     else:
         log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
         slots = vcpus
 
-    if slots <= 0:
-        log.critical("slots value is invalid. Setting it to 0.")
-        slots = 0
-
     return {'slots': slots}
 
 
-def _fetch_pricing_file(pcluster_dir, region, proxy_config):
+def _create_data_dir(pcluster_dir):
     """
-    Download pricing file.
+    Create jobwatcher data dir.
 
-    :param proxy_config: Proxy Configuration
-    :param pcluster_dir: Parallelcluster configuration folder
-    :param region: AWS Region
+    :param pcluster_dir: the folder to create.
+    :raise CriticalError if unable to create the folder.
     """
-    s3 = boto3.resource('s3', region_name=region, config=proxy_config)
     try:
         if not os.path.exists(pcluster_dir):
             os.makedirs(pcluster_dir)
-    except OSError as ex:
-        log.critical('Could not create directory %s. Failed with exception: %s' % (pcluster_dir, ex))
+    except OSError as e:
+        log.critical("Could not create directory {0}. Failed with exception: {1}".format(pcluster_dir, e))
         raise
+
+
+def _fetch_pricing_file(pricing_file, region, proxy_config):
+    """
+    Download pricing file.
+
+    :param pricing_file: pricing file path
+    :param region: AWS Region
+    :param proxy_config: Proxy Configuration
+    :raise ClientError if unable to download the pricing file.
+    """
     bucket_name = '%s-aws-parallelcluster' % region
     try:
-        bucket = s3.Bucket(bucket_name)
-        bucket.download_file('instances/instances.json', '%s/instances.json' % pcluster_dir)
+        s3 = boto3.resource('s3', region_name=region, config=proxy_config)
+        s3.Bucket(bucket_name).download_file('instances/instances.json', pricing_file)
     except ClientError as e:
-        log.critical("Could not save instance mapping file %s/instances.json from S3 bucket %s. "
-                     "Failed with exception: %s" % (pcluster_dir, bucket_name, e))
+        log.critical("Could not save instance mapping file {0} from S3 bucket {1}. Failed with exception: {2}".format(
+            pricing_file, bucket_name, e)
+        )
         raise
+
+
+def _get_vcpus_by_instance_type(pricing_file, instance_type):
+    """
+    Get vcpus for the given instance type from the pricing file.
+
+    :param pricing_file: pricing file path
+    :param instance_type: The instance type to search for
+    :return: the number of vcpus for the given instance type
+    :raise CriticalError if unable to find the given instance or whatever error.
+    """
+    try:
+        # read vcpus value from file
+        with open(pricing_file) as f:
+            instances = json.load(f)
+            vcpus = int(instances[instance_type]["vcpus"])
+            log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
+            return vcpus
+    except KeyError:
+        error_msg = "Unable to get vcpus from file {0}. Instance type {1} not found.".format(
+            pricing_file, instance_type
+        )
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
+    except Exception:
+        error_msg = "Unable to get vcpus for the instance type {0} from file {1}".format(instance_type, pricing_file)
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
 
 
 JobwatcherConfig = collections.namedtuple(
@@ -173,58 +205,53 @@ def _get_config():
     return JobwatcherConfig(region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config)
 
 
-def _poll_scheduler_status(config, asg_name, scheduler_module):
+def _poll_scheduler_status(config, asg_name, scheduler_module, instance_properties):
     """
     Verify scheduler status and ask the ASG new nodes, if required.
 
     :param config: JobwatcherConfig object
     :param asg_name: ASG name
     :param scheduler_module: scheduler module
+    :param instance_properties: instance properties
     """
     while True:
-        # get the number of vcpu's per compute instance
-        instance_properties = _get_instance_properties(config.instance_type)
-        if instance_properties.get('slots') <= 0:
-            log.critical("Error detecting number of slots per instance. The cluster will not scale up.")
+        # Get number of nodes requested
+        pending = scheduler_module.get_required_nodes(instance_properties)
+
+        if pending < 0:
+            log.critical("Error detecting number of required nodes. The cluster will not scale up.")
+
+        elif pending == 0:
+            log.info("There are no pending jobs. Noop.")
 
         else:
-            # Get number of nodes requested
-            pending = scheduler_module.get_required_nodes(instance_properties)
+            # Get current number of nodes
+            running = scheduler_module.get_busy_nodes(instance_properties)
+            log.info("%d nodes requested, %d nodes running", pending, running)
 
-            if pending < 0:
-                log.critical("Error detecting number of required nodes. The cluster will not scale up.")
+            # get current limits
+            _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name, log)
 
-            elif pending == 0:
-                log.debug("There are no pending jobs. Noop.")
-
+            # Check to make sure requested number of instances is within ASG limits
+            required = running + pending
+            if required <= current_desired:
+                log.info("%d nodes required, %d nodes in asg. Noop" % (required, current_desired))
             else:
-                # Get current number of nodes
-                running = scheduler_module.get_busy_nodes(instance_properties)
-                log.info("%d nodes requested, %d nodes running", pending, running)
-
-                # get current limits
-                _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name, log)
-
-                # Check to make sure requested number of instances is within ASG limits
-                required = running + pending
-                if required <= current_desired:
-                    log.info("%d nodes required, %d nodes in asg. Noop" % (required, current_desired))
+                if required > max_size:
+                    log.info(
+                        "The number of required nodes %d is greater than max %d. Requesting max %d."
+                        % (required, max_size, max_size)
+                    )
                 else:
-                    if required > max_size:
-                        log.info(
-                            "The number of required nodes %d is greater than max %d. Requesting max %d."
-                            % (required, max_size, max_size)
-                        )
-                    else:
-                        log.info(
-                            "Setting desired to %d nodes, requesting %d more nodes from asg."
-                            % (required, required - current_desired)
-                        )
-                    requested = min(required, max_size)
+                    log.info(
+                        "Setting desired to %d nodes, requesting %d more nodes from asg."
+                        % (required, required - current_desired)
+                    )
+                requested = min(required, max_size)
 
-                    # update ASG
-                    asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
-                    asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
+                # update ASG
+                asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
+                asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
         time.sleep(60)
 
@@ -240,13 +267,13 @@ def main():
         config = _get_config()
         asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
-        # fetch the pricing file on startup
-        _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
+        # get instance properties
+        instance_properties = _get_instance_properties(config)
 
         # load scheduler
         scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
 
-        _poll_scheduler_status(config, asg_name, scheduler_module)
+        _poll_scheduler_status(config, asg_name, scheduler_module, instance_properties)
     except Exception as e:
         log.critical(e)
         raise
