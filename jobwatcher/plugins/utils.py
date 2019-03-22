@@ -17,11 +17,9 @@ def check_command_output(command, env):
     :return: the command output
     """
     try:
-        with open(os.devnull, "rb") as devnull:
-            env.update(os.environ.copy())
-            log.debug("Executing command: %s" % command)
-            # /dev/null to stdin redirect is used to detach the command process from the daemon one
-            return check_output(shlex.split(command), env=env, stderr=subprocess.STDOUT, stdin=devnull)
+        env.update(os.environ.copy())
+        log.debug("Executing command: %s" % command)
+        return check_output(shlex.split(command), env=env, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
         # CalledProcessError.__str__ already produces a significant error message
         log.error(e)
