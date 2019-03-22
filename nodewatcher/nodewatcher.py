@@ -286,10 +286,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
 
 @retry()
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("nodewatcher startup")
     try:
         config = _get_config()
