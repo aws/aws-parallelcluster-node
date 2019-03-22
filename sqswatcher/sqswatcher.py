@@ -332,16 +332,21 @@ def _poll_queue(sqs_config, queue, table, asg_name):
         time.sleep(30)
 
 
+@retry()
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("sqswatcher startup")
 
-    config = _get_config()
-    queue = _get_sqs_queue(config.region, config.sqsqueue, config.proxy_config)
-    table = _get_ddb_table(config.region, config.table_name, config.proxy_config)
-    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+    try:
+        config = _get_config()
+        queue = _get_sqs_queue(config.region, config.sqsqueue, config.proxy_config)
+        table = _get_ddb_table(config.region, config.table_name, config.proxy_config)
+        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
-    _poll_queue(config, queue, table, asg_name)
+        _poll_queue(config, queue, table, asg_name)
+    except Exception as e:
+        log.critical(e)
+        raise
 
 
 if __name__ == "__main__":
