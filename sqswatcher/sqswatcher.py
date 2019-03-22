@@ -99,7 +99,8 @@ def _get_config():
     )
 
 
-def _setup_queue(region, queue_name, proxy_config):
+@retry(stop_max_attempt_number=3, wait_fixed=5000)
+def _get_sqs_queue(region, queue_name, proxy_config):
     """
     Get SQS Queue by queue name.
 
@@ -108,15 +109,23 @@ def _setup_queue(region, queue_name, proxy_config):
     :param proxy_config: proxy configuration
     :return: the Queue object
     """
-    log.debug("running _setup_queue")
-
+    log.debug("Getting SQS queue '%s'", queue_name)
     sqs = boto3.resource("sqs", region_name=region, config=proxy_config)
+    try:
+        queue = sqs.get_queue_by_name(QueueName=queue_name)
+    except ClientError as e:
+        log.critical("Unable to get the SQS queue '%s'. Failed with exception: %s", queue_name, e)
+        raise
 
-    _queue = sqs.get_queue_by_name(QueueName=queue_name)
-    return _queue
+    return queue
 
 
-def _setup_ddb_table(region, table_name, proxy_config):
+@retry(
+    stop_max_attempt_number=3,
+    wait_fixed=5000,
+    retry_on_exception=lambda exception: not isinstance(exception, CriticalError)
+)
+def _get_ddb_table(region, table_name, proxy_config):
     """
     Get DynamoDB table by name.
 
@@ -125,18 +134,22 @@ def _setup_ddb_table(region, table_name, proxy_config):
     :param proxy_config: proxy configuration
     :return: the Table object
     """
-    log.debug("running _setup_ddb_table")
+    log.debug("Getting DynamoDB table '%s'", table_name)
+    ddb_client = boto3.client("dynamodb", region_name=region, config=proxy_config)
+    try:
+        tables = ddb_client.list_tables().get("TableNames")
+        if table_name not in tables:
+            error_msg = "Unable to find the DynamoDB table '{0}'".format(table_name)
+            log.critical(error_msg)
+            raise CriticalError(error_msg)
 
-    dynamodb = boto3.client("dynamodb", region_name=region, config=proxy_config)
-    tables = dynamodb.list_tables().get("TableNames")
+        ddb_resource = boto3.resource("dynamodb", region_name=region, config=proxy_config)
+        table = ddb_resource.Table(table_name)
+    except ClientError as e:
+        log.critical("Unable to get the DynamoDB table '%s'. Failed with exception: %s", table_name, e)
+        raise
 
-    dynamodb2 = boto3.resource("dynamodb", region_name=region, config=proxy_config)
-    if table_name not in tables:
-        error_msg = "Unable to find the DynamoDB table '{0}'".format(table_name)
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-
-    return dynamodb2.Table(table_name)
+    return table
 
 
 def _retry_on_request_limit_exceeded(func):
@@ -324,8 +337,8 @@ def main():
     log.info("sqswatcher startup")
 
     config = _get_config()
-    queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
-    table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
+    queue = _get_sqs_queue(config.region, config.sqsqueue, config.proxy_config)
+    table = _get_ddb_table(config.region, config.table_name, config.proxy_config)
     asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
     _poll_queue(config, queue, table, asg_name)
