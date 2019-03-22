@@ -105,6 +105,7 @@ def _get_sqs_queue(region, queue_name, proxy_config):
     sqs = boto3.resource("sqs", region_name=region, config=proxy_config)
     try:
         queue = sqs.get_queue_by_name(QueueName=queue_name)
+        log.debug("SQS queue is %s", queue)
     except ClientError as e:
         log.critical("Unable to get the SQS queue '%s'. Failed with exception: %s", queue_name, e)
         raise
@@ -137,6 +138,7 @@ def _get_ddb_table(region, table_name, proxy_config):
 
         ddb_resource = boto3.resource("dynamodb", region_name=region, config=proxy_config)
         table = ddb_resource.Table(table_name)
+        log.debug("DynamoDB table found correctly.")
     except ClientError as e:
         log.critical("Unable to get the DynamoDB table '%s'. Failed with exception: %s", table_name, e)
         raise
@@ -271,7 +273,7 @@ def _process_sqs_messages(
                 )
             elif event.action == "REMOVE":
                 _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
-            log.info("Successfully processed event %s", event)
+            log.debug("Successfully processed event %s", event)
         except Exception as e:
             log.error(
                 "Failed when updating dynamo db table for instance %s with exception %s", event.host.instance_id, e
@@ -284,7 +286,7 @@ def _process_sqs_messages(
         _requeue_message(queue, event.message)
 
     for event in itertools.chain(failed_events, succeeded_events):
-        log.info("Removing event from queue: %s", event)
+        log.debug("Removing event from queue: %s", event)
         event.message.delete()
 
 

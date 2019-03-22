@@ -258,19 +258,13 @@ def _poll_scheduler_status(config, asg_name, scheduler_module, instance_properti
 
 @retry()
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("jobwatcher startup")
     try:
         config = _get_config()
         asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
-
-        # get instance properties
         instance_properties = _get_instance_properties(config)
 
-        # load scheduler
         scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
 
         _poll_scheduler_status(config, asg_name, scheduler_module, instance_properties)
