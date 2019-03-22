@@ -12,14 +12,14 @@
 import logging
 import subprocess
 
-from common.utils import check_command_output, run_command
+from common.sge import check_sge_command_output, run_sge_command
 
 log = logging.getLogger(__name__)
 
 
 def hasJobs(hostname):
     # Checking for running jobs on the node, with parallel job view expanded (-g t)
-    command = ['/opt/sge/bin/lx-amd64/qstat', '-g', 't', '-l', 'hostname=%s' % hostname, '-u', '*']
+    command = "qstat -g t -l hostname={0} -u '*'".format(hostname)
 
     # Command output
     # job-ID  prior   name       user         state submit/start at     queue                          master ja-task-ID
@@ -32,9 +32,7 @@ def hasJobs(hostname):
     # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 2
 
     try:
-        output = check_command_output(
-            command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
-        )
+        output = check_sge_command_output(command, log)
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -43,7 +41,7 @@ def hasJobs(hostname):
 
 
 def hasPendingJobs():
-    command = "/opt/sge/bin/lx-amd64/qstat -g d -s p -u '*'"
+    command = "qstat -g d -s p -u '*'"
 
     # Command outputs the pending jobs in the queue in the following format
     # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
@@ -54,7 +52,7 @@ def hasPendingJobs():
     #      73 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
 
     try:
-        output = check_command_output(command, {}, log)
+        output = check_sge_command_output(command, log)
         lines = filter(None, output.split("\n"))
         has_pending = True if len(lines) > 1 else False
         error = False
@@ -66,10 +64,10 @@ def hasPendingJobs():
 
 
 def lockHost(hostname, unlock=False):
-    mod = unlock and '-e' or '-d'
-    command = ['/opt/sge/bin/lx-amd64/qmod', mod, 'all.q@%s' % hostname]
+    mod = unlock and "-e" or "-d"
+    command = ["qmod", mod, "all.q@%s" % hostname]
 
     try:
-        run_command(command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log)
+        run_sge_command(command, log)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
