@@ -12,6 +12,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
+from future.moves.collections import OrderedDict
+
 import collections
 import ConfigParser
 import itertools
@@ -22,10 +24,9 @@ import time
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from future.moves.collections import OrderedDict
-
-from common.utils import load_module
 from retrying import retry
+
+from common.utils import get_asg_name, get_asg_settings, load_module
 
 
 class HostRemovalError(Exception):
@@ -41,7 +42,7 @@ log = logging.getLogger(__name__)
 
 SQSWatcherConfig = collections.namedtuple(
     "SQSWatcherConfig",
-    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size"],
+    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size", "stack_name"],
 )
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
@@ -70,6 +71,7 @@ def _get_config():
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
     max_queue_size = int(config.get("sqswatcher", "max_queue_size"))
+    stack_name = config.get("sqswatcher", "stack_name")
 
     _proxy = config.get("sqswatcher", "proxy")
     proxy_config = Config()
@@ -78,7 +80,7 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
-        "proxy=%s max_queue_size=%d",
+        "proxy=%s max_queue_size=%d stack_name=%s",
         region,
         scheduler,
         sqsqueue,
@@ -86,8 +88,11 @@ def _get_config():
         cluster_user,
         _proxy,
         max_queue_size,
+        stack_name,
     )
-    return SQSWatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, max_queue_size)
+    return SQSWatcherConfig(
+        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, max_queue_size, stack_name
+    )
 
 
 def _setup_queue(region, queue_name, proxy_config):
@@ -138,8 +143,8 @@ def _setup_ddb_table(region, table_name, proxy_config):
 
 def _retry_on_request_limit_exceeded(func):
     @retry(
-        stop_max_attempt_number=3,
-        wait_exponential_multiplier=15000,
+        stop_max_attempt_number=5,
+        wait_exponential_multiplier=5000,
         retry_on_exception=lambda exception: isinstance(exception, ClientError)
         and exception.response.get("Error").get("Code") == "RequestLimitExceeded",
     )
@@ -181,7 +186,7 @@ def _retrieve_all_sqs_messages(queue):
     return messages
 
 
-def _parse_sqs_messages(messages, sqs_config, table):
+def _parse_sqs_messages(messages, table):
     update_events = OrderedDict()
     for message in messages:
         message_text = json.loads(message.body)
@@ -193,14 +198,13 @@ def _parse_sqs_messages(messages, sqs_config, table):
             message.delete()
             continue
 
+        instance_id = message_attrs.get("EC2InstanceId")
         if event_type == "parallelcluster:COMPUTE_READY":
-            instance_id = message_attrs.get("EC2InstanceId")
             log.info("Processing COMPUTE_READY event for instance %s", instance_id)
-            update_event = _process_compute_ready_event(message_attrs, sqs_config, message)
+            update_event = _process_compute_ready_event(message_attrs, message)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-            instance_id = message_attrs.get("EC2InstanceId")
             log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", instance_id)
-            update_event = _process_instance_terminate_event(message_attrs, sqs_config, message, table)
+            update_event = _process_instance_terminate_event(message_attrs, message, table)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
             update_event = None
@@ -219,34 +223,14 @@ def _parse_sqs_messages(messages, sqs_config, table):
     return update_events.values()
 
 
-def _get_hostname(instance_id, region, proxy):
-    ec2 = boto3.resource("ec2", region_name=region, config=proxy)
-    try:
-        instances = _retry_on_request_limit_exceeded(lambda: ec2.instances.filter(InstanceIds=[instance_id]))
-    except Exception as e:
-        log.error("Failed when retrieving ec2 instance data for instance %s with exception %s", instance_id, e)
-        instances = None
-
-    instance = next(iter(instances or []), None)
-    if instance:
-        return instance.private_dns_name.split(".")[0]
-    else:
-        return None
-
-
-def _process_compute_ready_event(message_attrs, sqs_config, message):
+def _process_compute_ready_event(message_attrs, message):
     instance_id = message_attrs.get("EC2InstanceId")
     slots = message_attrs.get("Slots")
-    hostname = _get_hostname(instance_id, sqs_config.region, sqs_config.proxy_config)
-
-    if hostname:
-        return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
-    else:
-        log.error("Unable to find running instance %s.", instance_id)
-        return None
+    hostname = message_attrs.get("LocalHostname").split(".")[0]
+    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
 
 
-def _process_instance_terminate_event(message_attrs, sqs_config, message, table):
+def _process_instance_terminate_event(message_attrs, message, table):
     instance_id = message_attrs.get("EC2InstanceId")
     try:
         item = _retry_on_request_limit_exceeded(
@@ -264,12 +248,16 @@ def _process_instance_terminate_event(message_attrs, sqs_config, message, table)
         return None
 
 
-def _process_sqs_messages(update_events, scheduler_module, sqs_config, table, queue):
-    if not update_events:
+def _process_sqs_messages(
+    update_events, scheduler_module, sqs_config, table, queue, max_cluster_size, update_max_cluster_size
+):
+    # Update the scheduler only when there are messages from the queue or
+    # tha ASG max size got updated.
+    if not update_events and not update_max_cluster_size:
         return
 
     failed_events, succeeded_events = scheduler_module.update_cluster(
-        sqs_config.max_queue_size, sqs_config.cluster_user, update_events
+        max_cluster_size, sqs_config.cluster_user, update_events
     )
 
     for event in list(succeeded_events):
@@ -297,7 +285,15 @@ def _process_sqs_messages(update_events, scheduler_module, sqs_config, table, qu
         event.message.delete()
 
 
-def _poll_queue(sqs_config, queue, table):
+def _retrieve_max_cluster_size(sqs_config, asg_name, fallback):
+    try:
+        _, _, max_size = get_asg_settings(sqs_config.region, sqs_config.proxy_config, asg_name, log)
+        return max_size
+    except Exception:
+        return fallback
+
+
+def _poll_queue(sqs_config, queue, table, asg_name):
     """
     Poll SQS queue.
 
@@ -307,10 +303,21 @@ def _poll_queue(sqs_config, queue, table):
     """
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
 
+    max_cluster_size = sqs_config.max_queue_size
     while True:
+        new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, max_cluster_size)
         messages = _retrieve_all_sqs_messages(queue)
-        update_events = _parse_sqs_messages(messages, sqs_config, table)
-        _process_sqs_messages(update_events, scheduler_module, sqs_config, table, queue)
+        update_events = _parse_sqs_messages(messages, table)
+        _process_sqs_messages(
+            update_events,
+            scheduler_module,
+            sqs_config,
+            table,
+            queue,
+            new_max_cluster_size,
+            new_max_cluster_size != max_cluster_size,
+        )
+        max_cluster_size = new_max_cluster_size
         time.sleep(30)
 
 
@@ -321,8 +328,9 @@ def main():
     config = _get_config()
     queue = _setup_queue(config.region, config.sqsqueue, config.proxy_config)
     table = _setup_ddb_table(config.region, config.table_name, config.proxy_config)
+    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
-    _poll_queue(config, queue, table)
+    _poll_queue(config, queue, table, asg_name)
 
 
 if __name__ == "__main__":
