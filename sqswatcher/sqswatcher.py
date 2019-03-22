@@ -26,18 +26,10 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from retrying import retry
 
-from common.utils import get_asg_name, get_asg_settings, load_module
-
-
-class HostRemovalError(Exception):
-    pass
+from common.utils import CriticalError, get_asg_name, get_asg_settings, load_module
 
 
 class QueryConfigError(Exception):
-    pass
-
-
-class CriticalError(Exception):
     pass
 
 
