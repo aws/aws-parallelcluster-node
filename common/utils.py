@@ -12,9 +12,13 @@
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
 
+import os
+import shlex
+import subprocess
 import sys
 
 import boto3
+from future.moves.subprocess import check_output
 from retrying import retry
 
 
@@ -78,4 +82,53 @@ def get_asg_settings(region, proxy_config, asg_name, log):
         return min_size, desired_capacity, max_size
     except Exception as e:
         log.error("Failed when retrieving data for ASG %s with exception %s", asg_name, e)
+        raise
+
+
+def check_command_output(command, env, log):
+    """
+    Execute shell command and retrieve command output.
+
+    :param command: command to execute
+    :param env: a dictionary containing environment variables
+    :param log: logger
+    :return: the command output
+    :raise: subprocess.CalledProcessError if the command fails
+    """
+    try:
+        if isinstance(command, str) or isinstance(command, unicode):
+            command = shlex.split(command.encode("ascii"))
+        env.update(os.environ.copy())
+        log.debug("Executing command: %s" % command)
+        return check_output(command, env=env, stderr=subprocess.STDOUT, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        # CalledProcessError.__str__ already produces a significant error message
+        log.error(e)
+        raise
+    except OSError as e:
+        log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
+        raise
+
+
+def run_command(command, env, log):
+    """
+    Execute shell command.
+
+    :param command: command to execute
+    :param env: a dictionary containing environment variables
+    :param log: logger
+    :raise: subprocess.CalledProcessError if the command fails
+    """
+    try:
+        if isinstance(command, str) or isinstance(command, unicode):
+            command = shlex.split(command.encode("ascii"))
+        env.update(os.environ.copy())
+        log.debug("Executing command: %s" % command)
+        subprocess.check_call(command, env=env)
+    except subprocess.CalledProcessError as e:
+        # CalledProcessError.__str__ already produces a significant error message
+        log.error(e)
+        raise
+    except OSError as e:
+        log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
         raise

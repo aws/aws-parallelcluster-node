@@ -1,6 +1,6 @@
 import logging
 
-from utils import check_command_output
+from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
 
@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 def get_required_nodes(instance_properties):
     command = "/opt/sge/bin/lx-amd64/qstat -g d -s p -u '*'"
     _output = check_command_output(
-        command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}
+        command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
     )
     slots = 0
     output = _output.split("\n")[2:]
@@ -26,7 +26,7 @@ def get_required_nodes(instance_properties):
 def get_busy_nodes(instance_properties):
     command = "/opt/sge/bin/lx-amd64/qstat -f"
     _output = check_command_output(
-        command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}
+        command, {'SGE_ROOT': '/opt/sge', 'PATH': '/opt/sge/bin:/opt/sge/bin/lx-amd64:/bin:/usr/bin'}, log
     )
     nodes = 0
     output = _output.split("\n")[2:]
