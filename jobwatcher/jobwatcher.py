@@ -22,6 +22,7 @@ import time
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from retrying import retry
 
 from common.utils import get_asg_name, load_module, get_asg_settings
 
@@ -228,22 +229,27 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
         time.sleep(60)
 
 
+@retry()
 def main():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s"
     )
     log.info("jobwatcher startup")
-    config = _get_config()
-    asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+    try:
+        config = _get_config()
+        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
 
-    # fetch the pricing file on startup
-    _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
+        # fetch the pricing file on startup
+        _fetch_pricing_file(config.pcluster_dir, config.region, config.proxy_config)
 
-    # load scheduler
-    scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
+        # load scheduler
+        scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
 
-    _poll_scheduler_status(config, asg_name, scheduler_module)
+        _poll_scheduler_status(config, asg_name, scheduler_module)
+    except Exception as e:
+        log.critical(e)
+        raise
 
 
 if __name__ == '__main__':
