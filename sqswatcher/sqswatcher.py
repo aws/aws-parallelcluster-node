@@ -143,7 +143,7 @@ def _setup_ddb_table(region, table_name, proxy_config):
 
 def _retry_on_request_limit_exceeded(func):
     @retry(
-        stop_max_attempt_number=3,
+        stop_max_attempt_number=5,
         wait_exponential_multiplier=5000,
         retry_on_exception=lambda exception: isinstance(exception, ClientError)
         and exception.response.get("Error").get("Code") == "RequestLimitExceeded",
@@ -251,6 +251,8 @@ def _process_instance_terminate_event(message_attrs, message, table):
 def _process_sqs_messages(
     update_events, scheduler_module, sqs_config, table, queue, max_cluster_size, update_max_cluster_size
 ):
+    # Update the scheduler only when there are messages from the queue or
+    # tha ASG max size got updated.
     if not update_events and not update_max_cluster_size:
         return
 
