@@ -79,8 +79,8 @@ def _get_metadata(metadata_path):
     """
     try:
         metadata_value = urllib2.urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read()
-    except urllib2.URLError:
-        error_msg = "Unable to get {0} metadata".format(metadata_path)
+    except urllib2.URLError as e:
+        error_msg = "Unable to get {0} metadata. Failed with exception: {1}".format(metadata_path, e)
         log.critical(error_msg)
         raise CriticalError(error_msg)
 
@@ -222,8 +222,9 @@ def _init_idletime():
 
 def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id):
     """
-    Verify instance and scheduler status and self-terminate the instance if not required and if gone over time.
+    Verify instance/scheduler status and self-terminate the instance.
 
+    The instance will be terminate if not required and exceeded the configured scaledown_idletime.
     :param config: NodewatcherConfig object
     :param scheduler_module: scheduler module
     :param asg_name: ASG name
@@ -284,7 +285,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                         _lock_host(scheduler_module, hostname, unlock=True)
 
 
-@retry()
+@retry(wait_fixed=60000)
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("nodewatcher startup")
@@ -300,7 +301,7 @@ def main():
 
         _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id)
     except Exception as e:
-        log.critical(e)
+        log.critical("An unexpected error occurred: %s", e)
         raise
 
 

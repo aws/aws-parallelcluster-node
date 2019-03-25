@@ -44,6 +44,7 @@ def load_module(module):
 @retry(
     stop_max_attempt_number=5,
     wait_exponential_multiplier=10000,
+    wait_exponential_max=80000,
     retry_on_exception=lambda exception: isinstance(exception, IndexError)
 )
 def get_asg_name(stack_name, region, proxy_config, log):
