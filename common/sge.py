@@ -28,10 +28,7 @@ def check_sge_command_output(command, log):
     :param log: logger
     :raise: subprocess.CalledProcessError if the command fails
     """
-    if isinstance(command, str) or isinstance(command, unicode):
-        command = SGE_BIN_DIR + command
-    else:
-        command = [SGE_BIN_DIR] + command
+    command = _prepend_sge_bin_dir(command)
     return check_command_output(command, log, SGE_ENV)
 
 
@@ -43,9 +40,14 @@ def run_sge_command(command, log):
     :param log: logger
     :raise: subprocess.CalledProcessError if the command fails
     """
+    command = _prepend_sge_bin_dir(command)
+    run_command(command, log, SGE_ENV)
+
+
+def _prepend_sge_bin_dir(command):
     if isinstance(command, str) or isinstance(command, unicode):
         command = SGE_BIN_DIR + command
     else:
-        command = [SGE_BIN_DIR] + command
-    run_command(command, log, SGE_ENV)
+        command[0] = SGE_BIN_DIR + command[0]
 
+    return command
