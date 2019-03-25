@@ -326,7 +326,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
         time.sleep(30)
 
 
-@retry()
+@retry(wait_fixed=30000)
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("sqswatcher startup")
@@ -339,7 +339,7 @@ def main():
 
         _poll_queue(config, queue, table, asg_name)
     except Exception as e:
-        log.critical(e)
+        log.critical("An unexpected error occurred: %s", e)
         raise
 
 

@@ -50,12 +50,15 @@ def _get_vcpus_from_pricing_file(config):
     """
     Read pricing file and get number of vcpus for the given instance type.
 
-    :param instance_type: the instance type to search for.
+    :param config: JobwatcherConfiguration object
     :return: the number of vcpus or -1 if the instance type cannot be found
     """
     _create_data_dir(config.pcluster_dir)
 
-    pricing_file = config.pcluster_dir + "instances.json"
+    folder = config.pcluster_dir
+    if not folder.endswith("/"):
+        folder += "/"
+    pricing_file = folder + "instances.json"
     _fetch_pricing_file(pricing_file, config.region, config.proxy_config)
 
     return _get_vcpus_by_instance_type(pricing_file, config.instance_type)
@@ -65,7 +68,7 @@ def _get_instance_properties(config):
     """
     Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
 
-    :param config: instance type to search for
+    :param config: JobwatcherConfiguration object
     :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
     """
     # get vcpus from the pricing file
@@ -256,7 +259,7 @@ def _poll_scheduler_status(config, asg_name, scheduler_module, instance_properti
         time.sleep(60)
 
 
-@retry()
+@retry(wait_fixed=60000)
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("jobwatcher startup")
@@ -269,7 +272,7 @@ def main():
 
         _poll_scheduler_status(config, asg_name, scheduler_module, instance_properties)
     except Exception as e:
-        log.critical(e)
+        log.critical("An unexpected error occurred: %s", e)
         raise
 
 
