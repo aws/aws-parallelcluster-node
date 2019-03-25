@@ -55,7 +55,7 @@ def _restart_master_node():
     else:
         command = ["/etc/init.d/slurm", "restart"]
     try:
-        run_command(command, {}, log)
+        run_command(command, log)
     except Exception as e:
         log.error("Failed when restarting slurm daemon on master node with exception %s", e)
         raise
@@ -105,7 +105,7 @@ def _reconfigure_nodes():
     log.info("Reconfiguring slurm")
     command = ["/opt/slurm/bin/scontrol", "reconfigure"]
     try:
-        run_command(command, {}, log)
+        run_command(command, log)
     except Exception as e:
         log.error("Failed when reconfiguring slurm daemon with exception %s", e)
 

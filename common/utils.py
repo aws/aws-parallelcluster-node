@@ -85,7 +85,7 @@ def get_asg_settings(region, proxy_config, asg_name, log):
         raise
 
 
-def check_command_output(command, env, log):
+def check_command_output(command, log, env=None):
     """
     Execute shell command and retrieve command output.
 
@@ -98,6 +98,9 @@ def check_command_output(command, env, log):
     try:
         if isinstance(command, str) or isinstance(command, unicode):
             command = shlex.split(command.encode("ascii"))
+        if env is None:
+            env = {}
+
         env.update(os.environ.copy())
         log.debug("Executing command: %s" % command)
         return check_output(command, env=env, stderr=subprocess.STDOUT, universal_newlines=True)
@@ -110,7 +113,7 @@ def check_command_output(command, env, log):
         raise
 
 
-def run_command(command, env, log):
+def run_command(command, log, env=None):
     """
     Execute shell command.
 
@@ -122,6 +125,9 @@ def run_command(command, env, log):
     try:
         if isinstance(command, str) or isinstance(command, unicode):
             command = shlex.split(command.encode("ascii"))
+        if env is None:
+            env = {}
+
         env.update(os.environ.copy())
         log.debug("Executing command: %s" % command)
         subprocess.check_call(command, env=env)

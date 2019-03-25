@@ -24,7 +24,7 @@ def hasJobs(hostname):
     # Checking for running jobs on the node
     command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
     try:
-        output = check_command_output(command, {}, log)
+        output = check_command_output(command, log)
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -40,7 +40,7 @@ def hasPendingJobs():
     #  Priority
     #  PartitionNodeLimit
     try:
-        output = check_command_output(command, {}, log)
+        output = check_command_output(command, log)
         has_pending = len(filter(lambda reason: reason in PENDING_RESOURCES_REASONS, output.split("\n"))) > 0
         error = False
     except subprocess.CalledProcessError:
@@ -72,6 +72,6 @@ def lockHost(hostname, unlock=False):
             'Reason="Shutting down"',
         ]
     try:
-        run_command(command, {}, log)
+        run_command(command, log)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)

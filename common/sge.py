@@ -32,7 +32,7 @@ def check_sge_command_output(command, log):
         command = SGE_BIN_DIR + command
     else:
         command = [SGE_BIN_DIR] + command
-    return check_command_output(command, SGE_ENV, log)
+    return check_command_output(command, log, SGE_ENV)
 
 
 def run_sge_command(command, log):
@@ -47,5 +47,5 @@ def run_sge_command(command, log):
         command = SGE_BIN_DIR + command
     else:
         command = [SGE_BIN_DIR] + command
-    run_command(command, SGE_ENV, log)
+    run_command(command, log, SGE_ENV)
 

@@ -20,7 +20,7 @@ def get_required_nodes(instance_properties):
     # 2.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5387     2      4       --   01:00:00 R  00:08:27
 
     status = ['Q']
-    _output = check_command_output(command, {}, log)
+    _output = check_command_output(command, log)
     output = _output.split("\n")[5:]
     slots_requested = []
     nodes_requested = []
@@ -52,7 +52,7 @@ def get_busy_nodes(instance_properties):
     #       <mom_manager_port>15003</mom_manager_port>
     #    </Node>
     # </Data>
-    _output = check_command_output(command, {}, log)
+    _output = check_command_output(command, log)
     root = ElementTree.fromstring(_output)
     count = 0
     # See how many nodes have jobs
