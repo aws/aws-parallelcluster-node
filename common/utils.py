@@ -86,43 +86,40 @@ def get_asg_settings(region, proxy_config, asg_name, log):
         raise
 
 
-def check_command_output(command, log, env=None):
+def check_command_output(command, log, env=None, raise_on_error=True):
     """
     Execute shell command and retrieve command output.
 
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param log: logger
+    :param raise_on_error: True to raise subprocess.CalledProcessError on errors
     :return: the command output
     :raise: subprocess.CalledProcessError if the command fails
     """
-    try:
-        if isinstance(command, str) or isinstance(command, unicode):
-            command = shlex.split(command.encode("ascii"))
-        if env is None:
-            env = {}
-
-        env.update(os.environ.copy())
-        log.debug("Executing command: %s" % command)
-        return check_output(command, env=env, stderr=subprocess.STDOUT, universal_newlines=True)
-    except subprocess.CalledProcessError as e:
-        # CalledProcessError.__str__ already produces a significant error message
-        log.error(e)
-        raise
-    except OSError as e:
-        log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
-        raise
+    return _run_command(
+        lambda _command, _env: check_output(_command, env=_env, stderr=subprocess.STDOUT, universal_newlines=True),
+        command,
+        log,
+        env,
+        raise_on_error,
+    )
 
 
-def run_command(command, log, env=None):
+def run_command(command, log, env=None, raise_on_error=True):
     """
     Execute shell command.
 
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param log: logger
+    :param raise_on_error: True to raise subprocess.CalledProcessError on errors
     :raise: subprocess.CalledProcessError if the command fails
     """
+    _run_command(lambda _command, _env: subprocess.check_call(_command, env=_env), command, log, env, raise_on_error)
+
+
+def _run_command(command_function, command, log, env=None, raise_on_error=True):
     try:
         if isinstance(command, str) or isinstance(command, unicode):
             command = shlex.split(command.encode("ascii"))
@@ -131,11 +128,15 @@ def run_command(command, log, env=None):
 
         env.update(os.environ.copy())
         log.debug("Executing command: %s" % command)
-        subprocess.check_call(command, env=env)
+        return command_function(command, env)
     except subprocess.CalledProcessError as e:
         # CalledProcessError.__str__ already produces a significant error message
-        log.error(e)
-        raise
+        if raise_on_error:
+            log.error(e)
+            raise
+        else:
+            log.warning(e)
+            return None
     except OSError as e:
         log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
         raise
