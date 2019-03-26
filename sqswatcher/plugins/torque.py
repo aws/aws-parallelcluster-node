@@ -36,8 +36,8 @@ def wakeupSchedOn(hostname):
     times = 20
     host_state = None
     while isHostInitState(host_state) and times > 0:
-        output = check_command_output(command, log)
         try:
+            output = check_command_output(command, log)
             # Ex.1: <Data><Node><name>ip-10-0-76-39</name><state>down,offline,MOM-list-not-sent</state><power_state>Running</power_state>
             #        <np>1</np><ntype>cluster</ntype><mom_service_port>15002</mom_service_port><mom_manager_port>15003</mom_manager_port></Node></Data>
             # Ex 2: <Data><Node><name>ip-10-0-76-39</name><state>free</state><power_state>Running</power_state><np>1</np><ntype>cluster</ntype>
@@ -57,7 +57,7 @@ def wakeupSchedOn(hostname):
 
     if host_state == "free":
         command = "/opt/torque/bin/qmgr -c \"set server scheduling=true\""
-        run_command(command, log)
+        run_command(command, log, raise_on_error=False)
     elif times == 0:
         log.error("Host %s is still in state %s" % (hostname, host_state))
     else:
@@ -68,10 +68,10 @@ def addHost(hostname, cluster_user, slots, max_cluster_size):
     log.info('Adding %s with %s slots' % (hostname, slots))
 
     command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
-    run_command(command, log)
+    run_command(command, log, raise_on_error=False)
 
     command = ('/opt/torque/bin/pbsnodes -c %s' % hostname)
-    run_command(command, log)
+    run_command(command, log, raise_on_error=False)
 
     # Connect and hostkey
     ssh = paramiko.SSHClient()
@@ -107,10 +107,10 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     log.info('Removing %s', hostname)
 
     command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)
-    run_command(command, log)
+    run_command(command, log, raise_on_error=False)
 
     command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
-    run_command(command, log)
+    run_command(command, log, raise_on_error=False)
 
 
 def update_cluster(max_cluster_size, cluster_user, update_events):
