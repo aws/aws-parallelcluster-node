@@ -27,7 +27,7 @@ console_scripts = [
     'nodewatcher = nodewatcher.nodewatcher:main',
     'jobwatcher = jobwatcher.jobwatcher:main',
 ]
-version = "2.2.1"
+version = "2.3.0"
 requires = ['boto3>=1.7.55', 'python-dateutil>=2.6.1', 'retrying>=1.3.3', 'future>=0.17.1']
 
 if sys.version_info[:2] == (2, 6):
