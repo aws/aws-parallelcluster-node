@@ -141,7 +141,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events):
     for event in update_events:
         if event.action == "REMOVE":
             node_name = "NodeName={0}".format(event.host.hostname)
-            node_list = [node for node in node_list if node.split()[0] == node_name]
+            node_list = [node for node in node_list if node.split()[0] != node_name]
         elif event.action == "ADD":
             # Add new node
             new_node = "NodeName={nodename} CPUs={cpus} State=UNKNOWN\n".format(
