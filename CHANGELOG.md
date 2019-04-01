@@ -3,6 +3,13 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.3.1
+-----
+
+**BUG FIXES**
+- `sqswatcher`: Slurm - Fix host removal
+
+
 2.3.0
 -----
 
