@@ -9,40 +9,24 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'dougalb'
-
-import subprocess as sub
-import os
-import paramiko
 import logging
-import shlex
-import time
-import xml.etree.ElementTree as xmltree
+import os
 import socket
+import time
+from xml.etree import ElementTree
+
+import paramiko
+
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
-
-def __runCommand(command):
-    log.debug(repr(command))
-    _command = shlex.split(str(command))
-    log.debug(_command)
-
-    DEV_NULL = open(os.devnull, "rb")
-    try:
-        process = sub.Popen(_command, env=dict(os.environ), stdout=sub.PIPE, stderr=sub.STDOUT, stdin=DEV_NULL)
-        stdout = process.communicate()[0]
-        exitcode = process.poll()
-        if exitcode != 0:
-            log.error("Failed to run %s:\n%s" % (_command, stdout))
-        return stdout
-    finally:
-        DEV_NULL.close()
 
 
 def isHostInitState(host_state):
     # Node states http://docs.adaptivecomputing.com/torque/6-0-2/adminGuide/help.htm#topics/torque/8-resources/resources.htm#nodeStates
     init_states = ("down", "offline", "unknown", str(None))
     return str(host_state).startswith(init_states)
+
 
 def wakeupSchedOn(hostname):
     log.info('Waking up scheduler on host %s', hostname)
@@ -52,8 +36,8 @@ def wakeupSchedOn(hostname):
     times = 20
     host_state = None
     while isHostInitState(host_state) and times > 0:
-        output = __runCommand(command)
         try:
+            output = check_command_output(command, log)
             # Ex.1: <Data><Node><name>ip-10-0-76-39</name><state>down,offline,MOM-list-not-sent</state><power_state>Running</power_state>
             #        <np>1</np><ntype>cluster</ntype><mom_service_port>15002</mom_service_port><mom_manager_port>15003</mom_manager_port></Node></Data>
             # Ex 2: <Data><Node><name>ip-10-0-76-39</name><state>free</state><power_state>Running</power_state><np>1</np><ntype>cluster</ntype>
@@ -61,7 +45,7 @@ def wakeupSchedOn(hostname):
             #        ncpus=1,physmem=1017208kb,availmem=753728kb,totmem=1017208kb,idletime=856,nusers=1,nsessions=1,sessions=19698,
             #        uname=Linux ip-10-0-76-39 4.9.75-25.55.amzn1.x86_64 #1 SMP Fri Jan 5 23:50:27 UTC 2018 x86_64,opsys=linux</status>
             #        <mom_service_port>15002</mom_service_port><mom_manager_port>15003</mom_manager_port></Node></Data>
-            xmlnode = xmltree.XML(output)
+            xmlnode = ElementTree.XML(output)
             host_state = xmlnode.findtext("./Node/state")
         except:
             log.error("Error parsing XML from %s" % output)
@@ -73,20 +57,21 @@ def wakeupSchedOn(hostname):
 
     if host_state == "free":
         command = "/opt/torque/bin/qmgr -c \"set server scheduling=true\""
-        __runCommand(command)
+        run_command(command, log, raise_on_error=False)
     elif times == 0:
         log.error("Host %s is still in state %s" % (hostname, host_state))
     else:
         log.debug("Host %s is in state %s" % (hostname, host_state))
 
-def addHost(hostname,cluster_user,slots):
+
+def addHost(hostname, cluster_user, slots, max_cluster_size):
     log.info('Adding %s with %s slots' % (hostname, slots))
 
     command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
-    __runCommand(command)
+    run_command(command, log, raise_on_error=False)
 
     command = ('/opt/torque/bin/pbsnodes -c %s' % hostname)
-    __runCommand(command)
+    run_command(command, log, raise_on_error=False)
 
     # Connect and hostkey
     ssh = paramiko.SSHClient()
@@ -117,12 +102,31 @@ def addHost(hostname,cluster_user,slots):
 
     wakeupSchedOn(hostname)
 
-def removeHost(hostname, cluster_user):
+
+def removeHost(hostname, cluster_user, max_cluster_size):
     log.info('Removing %s', hostname)
 
     command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)
-    __runCommand(command)
+    run_command(command, log, raise_on_error=False)
 
     command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
-    __runCommand(command)
+    run_command(command, log, raise_on_error=False)
 
+
+def update_cluster(max_cluster_size, cluster_user, update_events):
+    failed = []
+    succeeded = []
+    for event in update_events:
+        try:
+            if event.action == "REMOVE":
+                removeHost(event.host.hostname, cluster_user, max_cluster_size)
+            elif event.action == "ADD":
+                addHost(event.host.hostname, cluster_user, event.host.slots, max_cluster_size)
+            succeeded.append(event)
+        except Exception as e:
+            log.error(
+                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e,
+            )
+            failed.append(event)
+
+    return failed, succeeded

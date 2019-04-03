@@ -9,10 +9,11 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import subprocess
 import logging
-import shlex
-import os
+import subprocess
+
+from common.slurm import PENDING_RESOURCES_REASONS
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
 
@@ -21,46 +22,56 @@ def hasJobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split('.')[0]
     # Checking for running jobs on the node
-    _command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
+    command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
     try:
-        output = subprocess.Popen(_command, stdout=subprocess.PIPE).communicate()[0]
+        output = check_command_output(command, log)
+        has_jobs = output != ""
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % _command)
-        _output = ""
+        has_jobs = False
 
-    if output == "":
-        _jobs = False
-    else:
-        _jobs = True
+    return has_jobs
 
-    return _jobs
 
 def hasPendingJobs():
-    command = "/opt/slurm/bin/squeue -t PD --noheader"
+    command = "/opt/slurm/bin/squeue -t PD --noheader -o '%r'"
 
     # Command outputs the pending jobs in the queue in the following format
-    #  71   compute   job.sh ec2-user PD       0:00      1 (Resources)
-    #  72   compute   job.sh ec2-user PD       0:00      1 (Priority)
-    #  73   compute   job.sh ec2-user PD       0:00      1 (Priority)
-
-    _command = shlex.split(command)
-    error = False
-    has_pending = False
-
+    #  Resources
+    #  Priority
+    #  PartitionNodeLimit
     try:
-        process = subprocess.Popen(_command, env=dict(os.environ),
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        output = check_command_output(command, log)
+        has_pending = len(filter(lambda reason: reason in PENDING_RESOURCES_REASONS, output.split("\n"))) > 0
+        error = False
     except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % command)
         error = True
-
-    output = process.communicate()[0]
-    lines = filter(None, output.split("\n"))
-
-    if len(lines) > 0:
-        has_pending = True
+        has_pending = False
 
     return has_pending, error
 
+
 def lockHost(hostname, unlock=False):
-    pass
+    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
+    hostname = hostname.split(".")[0]
+    if unlock:
+        log.info("Unlocking host %s", hostname)
+        command = [
+            "/opt/slurm/bin/scontrol",
+            "update",
+            "NodeName={0}".format(hostname),
+            "State=RESUME",
+            'Reason="Unlocking"',
+        ]
+    else:
+        log.info("Locking host %s", hostname)
+        command = [
+            "/opt/slurm/bin/scontrol",
+            "update",
+            "NodeName={0}".format(hostname),
+            "State=DRAIN",
+            'Reason="Shutting down"',
+        ]
+    try:
+        run_command(command, log)
+    except subprocess.CalledProcessError:
+        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)

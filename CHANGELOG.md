@@ -3,6 +3,35 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.3.1
+-----
+
+**BUG FIXES**
+- `sqswatcher`: Slurm - Fix host removal
+
+
+2.3.0
+-----
+
+**CHANGES**
+- `sqswatcher`: Slurm - dynamically adjust max cluster size based on ASG settings
+- `sqswatcher`: Slurm - use FUTURE state for dummy nodes to prevent Slurm daemon from contacting unexisting nodes
+- `sqswatcher`: Slurm - dynamically change the number of configured FUTURE nodes based on the actual nodes that
+  join the cluster. The max size of the cluster seen by the scheduler always matches the max capacity of the ASG.
+- `sqswatcher`: Slurm - process nodes added to or removed from the cluster in batches. This speeds up cluster scaling
+  which is able to react with a delay of less than 1 minute to variations in the ASG capacity.
+- `sqswatcher`: Slurm - add support for job dependencies and pending reasons. The cluster won't scale up if the job
+  cannot start due to an unsatisfied dependency.
+- Slurm - set `ReturnToService=1` in scheduler config in order to recover instances that were initially marked as down
+  due to a transient issue.
+- `sqswatcher`: remove DynamoDB table creation
+- improve and standardize shell command execution
+- add retries on failures and exceptions
+
+**BUG FIXES**
+- `sqswatcher`: Slurm - set compute nodes to DRAIN state before removing them from cluster. This prevents the scheduler
+  from submitting a job to a node that is being terminated.
+
 2.2.1
 -----
 
