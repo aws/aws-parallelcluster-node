@@ -14,5 +14,8 @@
 
 PENDING_RESOURCES_REASONS = [
     "Resources",
-    "Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions"
+    "Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions",
+    "BeginTime",
+    "NodeDown",
+    "Priority"
 ]
