@@ -297,7 +297,7 @@ def main():
         instance_id = _get_metadata("instance-id")
         hostname = _get_metadata("local-hostname")
         log.info("Instance id is %s, hostname is %s", instance_id, hostname)
-        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config)
 
         _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id)
     except Exception as e:

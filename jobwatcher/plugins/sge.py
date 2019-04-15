@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 # get nodes requested from pending jobs
 def get_required_nodes(instance_properties):
     command = "qstat -g d -s p -u '*'"
-    _output = check_sge_command_output(command, log)
+    _output = check_sge_command_output(command)
     slots = 0
     output = _output.split("\n")[2:]
     for line in output:
@@ -23,7 +23,7 @@ def get_required_nodes(instance_properties):
 # if a host has 1 or more job running on it, it'll be marked busy
 def get_busy_nodes(instance_properties):
     command = "qstat -f"
-    _output = check_sge_command_output(command, log)
+    _output = check_sge_command_output(command)
     nodes = 0
     output = _output.split("\n")[2:]
     for line in output:

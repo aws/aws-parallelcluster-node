@@ -309,7 +309,7 @@ def _process_sqs_messages(
 
 def _retrieve_max_cluster_size(sqs_config, asg_name, fallback):
     try:
-        _, _, max_size = get_asg_settings(sqs_config.region, sqs_config.proxy_config, asg_name, log)
+        _, _, max_size = get_asg_settings(sqs_config.region, sqs_config.proxy_config, asg_name)
         return max_size
     except Exception:
         return fallback
@@ -352,7 +352,7 @@ def main():
         config = _get_config()
         queue = _get_sqs_queue(config.region, config.sqsqueue, config.proxy_config)
         table = _get_ddb_table(config.region, config.table_name, config.proxy_config)
-        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config)
 
         _poll_queue(config, queue, table, asg_name)
     except Exception as e:

@@ -184,7 +184,7 @@ def _get_vcpus_by_instance_type(pricing_file, instance_type):
 
 
 def _get_compute_instance_type(config):
-    parameters = get_cloudformation_stack_parameters(config.region, config.proxy_config, config.stack_name, log)
+    parameters = get_cloudformation_stack_parameters(config.region, config.proxy_config, config.stack_name)
     return parameters["ComputeInstanceType"]
 
 
@@ -256,7 +256,7 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
             log.info("%d nodes requested, %d nodes running", pending, running)
 
             # get current limits
-            _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name, log)
+            _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
 
             # Check to make sure requested number of instances is within ASG limits
             required = running + pending
@@ -288,7 +288,7 @@ def main():
     log.info("jobwatcher startup")
     try:
         config = _get_config()
-        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
+        asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config)
 
         scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
 

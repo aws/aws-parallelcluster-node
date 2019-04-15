@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 
 def _is_host_configured(command, hostname):
-    output = check_sge_command_output(command, log)
+    output = check_sge_command_output(command)
     # Expected output
     # ip-172-31-66-16.ec2.internal
     # ip-172-31-74-69.ec2.internal
@@ -39,14 +39,14 @@ def addHost(hostname, cluster_user, slots, max_cluster_size):
     # Adding host as administrative host
     try:
         command = ("qconf -ah %s" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.warning("Unable to add host %s as administrative host", hostname)
 
     # Adding host as submit host
     try:
         command = ("qconf -as %s" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.warning("Unable to add host %s as submission host", hostname)
 
@@ -71,7 +71,7 @@ report_variables      NONE
         # Add host as an execution host
         try:
             command = ("qconf -Ae %s" % t.name)
-            run_sge_command(command, log)
+            run_sge_command(command)
         except subprocess.CalledProcessError:
             log.warning("Unable to add host %s as execution host", hostname)
 
@@ -111,14 +111,14 @@ report_variables      NONE
     # Add the host to the all.q
     try:
         command = ("qconf -aattr hostgroup hostlist %s @allhosts" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.warning("Unable to add host %s to all.q", hostname)
 
     # Set the numbers of slots for the host
     try:
         command = ('qconf -aattr queue slots ["%s=%s"] all.q' % (hostname, slots))
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.warning("Unable to set the number of slots for the host %s", hostname)
 
@@ -131,7 +131,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     if _is_host_configured(command, hostname):
         # Removing host as administrative host
         command = ("qconf -dh %s" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     else:
         log.info('Host %s is not administrative host', hostname)
 
@@ -139,7 +139,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     # Purge hostname from all.q
     try:
         command = ("qconf -purge queue '*' all.q@%s" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.warning("Unable to remove host %s from all.q", hostname)
 
@@ -147,7 +147,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     # Remove host from @allhosts group
     try:
         command = ("qconf -dattr hostgroup hostlist %s @allhosts" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.warning("Unable to remove host %s from @allhosts group", hostname)
 
@@ -156,7 +156,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     if _is_host_configured(command, hostname):
         # Removing host as execution host
         command = ("qconf -de %s" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     else:
         log.info('Host %s is not execution host', hostname)
 
@@ -165,7 +165,7 @@ def removeHost(hostname, cluster_user, max_cluster_size):
     if _is_host_configured(command, hostname):
         # Removing host as submission host
         command = ("qconf -ds %s" % hostname)
-        run_sge_command(command, log)
+        run_sge_command(command)
     else:
         log.info('Host %s is not submission host', hostname)
 
