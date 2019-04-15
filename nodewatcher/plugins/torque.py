@@ -58,7 +58,7 @@ def hasPendingJobs():
     # batch                0     24   yes   yes    24     0     0     0     0     0 E     0
     # test1                0     26   yes   yes    26     0     0     0     0     0 E     0
     try:
-        output = check_command_output(command, log)
+        output = check_command_output(command)
         lines = filter(None, output.split("\n"))
         if len(lines) < 3:
             log.error("Unable to check pending jobs. The command '%s' does not return a valid output", command)
@@ -85,6 +85,6 @@ def lockHost(hostname, unlock=False):
     mod = unlock and '-c' or '-o'
     command = ['/opt/torque/bin/pbsnodes', mod, hostname]
     try:
-        run_command(command, log)
+        run_command(command)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)

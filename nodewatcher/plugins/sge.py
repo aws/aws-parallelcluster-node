@@ -32,7 +32,7 @@ def hasJobs(hostname):
     # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 2
 
     try:
-        output = check_sge_command_output(command, log)
+        output = check_sge_command_output(command)
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -52,7 +52,7 @@ def hasPendingJobs():
     #      73 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
 
     try:
-        output = check_sge_command_output(command, log)
+        output = check_sge_command_output(command)
         lines = filter(None, output.split("\n"))
         has_pending = True if len(lines) > 1 else False
         error = False
@@ -68,6 +68,6 @@ def lockHost(hostname, unlock=False):
     command = ["qmod", mod, "all.q@%s" % hostname]
 
     try:
-        run_sge_command(command, log)
+        run_sge_command(command)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)

@@ -16,7 +16,7 @@ def get_required_nodes(instance_properties):
     # 2-PD-1-24-Licenses
     # 3-PD-1-24-PartitionNodeLimit
     # 4-R-1-24-
-    output = check_command_output(command, log)
+    output = check_command_output(command)
     slots_requested = []
     nodes_requested = []
     output = output.split("\n")
@@ -39,7 +39,7 @@ def get_busy_nodes(instance_properties):
     # 2 mix
     # 4 alloc
     # 10 idle
-    output = check_command_output(command, log)
+    output = check_command_output(command)
     nodes = 0
     output = output.split("\n")
     for line in output:
