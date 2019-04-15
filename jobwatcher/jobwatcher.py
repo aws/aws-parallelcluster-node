@@ -24,7 +24,13 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from retrying import retry
 
-from common.utils import CriticalError, get_asg_name, load_module, get_asg_settings
+from common.utils import (
+    CriticalError,
+    get_asg_name,
+    load_module,
+    get_asg_settings,
+    get_cloudformation_stack_parameters
+)
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +52,7 @@ def _read_cfnconfig():
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
-def _get_vcpus_from_pricing_file(config):
+def _get_vcpus_from_pricing_file(config, instance_type):
     """
     Read pricing file and get number of vcpus for the given instance type.
 
@@ -59,12 +65,19 @@ def _get_vcpus_from_pricing_file(config):
     if not folder.endswith("/"):
         folder += "/"
     pricing_file = folder + "instances.json"
-    _fetch_pricing_file(pricing_file, config.region, config.proxy_config)
+    if not os.path.isfile(pricing_file) or not _pricing_file_has_instance_type(instance_type, pricing_file):
+        _fetch_pricing_file(pricing_file, config.region, config.proxy_config)
 
-    return _get_vcpus_by_instance_type(pricing_file, config.instance_type)
+    return _get_vcpus_by_instance_type(pricing_file, instance_type)
 
 
-def _get_instance_properties(config):
+def _pricing_file_has_instance_type(instance_type, pricing_file):
+    with open(pricing_file) as f:
+        instances = json.load(f)
+        return instance_type in instances
+
+
+def _get_instance_properties(config, instance_type):
     """
     Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
 
@@ -72,7 +85,7 @@ def _get_instance_properties(config):
     :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
     """
     # get vcpus from the pricing file
-    vcpus = _get_vcpus_from_pricing_file(config)
+    vcpus = _get_vcpus_from_pricing_file(config, instance_type)
 
     try:
         cfnconfig_params = _read_cfnconfig()
@@ -82,16 +95,16 @@ def _get_instance_properties(config):
         cfn_scheduler_slots = "vcpus"
 
     if cfn_scheduler_slots == "cores":
-        log.info("Instance %s will use number of cores as slots based on configuration." % config.instance_type)
+        log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
         slots = -(-vcpus//2)
 
     elif cfn_scheduler_slots == "vcpus":
-        log.info("Instance %s will use number of vcpus as slots based on configuration." % config.instance_type)
+        log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
         slots = vcpus
 
     elif cfn_scheduler_slots.isdigit():
         slots = int(cfn_scheduler_slots)
-        log.info("Instance %s will use %s slots based on configuration." % (config.instance_type, slots))
+        log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
 
         if slots <= 0:
             log.error(
@@ -170,8 +183,13 @@ def _get_vcpus_by_instance_type(pricing_file, instance_type):
         raise CriticalError(error_msg)
 
 
+def _get_compute_instance_type(config):
+    parameters = get_cloudformation_stack_parameters(config.region, config.proxy_config, config.stack_name, log)
+    return parameters["ComputeInstanceType"]
+
+
 JobwatcherConfig = collections.namedtuple(
-    "JobwatcherConfig", ["region", "scheduler", "stack_name", "instance_type", "pcluster_dir", "proxy_config"]
+    "JobwatcherConfig", ["region", "scheduler", "stack_name", "pcluster_dir", "proxy_config"]
 )
 
 
@@ -193,7 +211,6 @@ def _get_config():
     region = config.get("jobwatcher", "region")
     scheduler = config.get("jobwatcher", "scheduler")
     stack_name = config.get("jobwatcher", "stack_name")
-    instance_type = config.get("jobwatcher", "compute_instance_type")
     pcluster_dir = config.get("jobwatcher", "cfncluster_dir")
 
     _proxy = config.get("jobwatcher", "proxy")
@@ -202,22 +219,28 @@ def _get_config():
         proxy_config = Config(proxies={"https": _proxy})
 
     log.info(
-        "Configured parameters: region=%s scheduler=%s stack_name=%s instance_type=%s pcluster_dir=%s proxy=%s",
-        region, scheduler, stack_name, instance_type, pcluster_dir, _proxy
+        "Configured parameters: region=%s scheduler=%s stack_name=%s pcluster_dir=%s proxy=%s",
+        region, scheduler, stack_name, pcluster_dir, _proxy
     )
-    return JobwatcherConfig(region, scheduler, stack_name, instance_type, pcluster_dir, proxy_config)
+    return JobwatcherConfig(region, scheduler, stack_name, pcluster_dir, proxy_config)
 
 
-def _poll_scheduler_status(config, asg_name, scheduler_module, instance_properties):
+def _poll_scheduler_status(config, asg_name, scheduler_module):
     """
     Verify scheduler status and ask the ASG new nodes, if required.
 
     :param config: JobwatcherConfig object
     :param asg_name: ASG name
     :param scheduler_module: scheduler module
-    :param instance_properties: instance properties
     """
+    instance_type = None
     while True:
+        # Get instance properties
+        new_instance_type = _get_compute_instance_type(config)
+        if new_instance_type != instance_type:
+            instance_type = new_instance_type
+            instance_properties = _get_instance_properties(config, instance_type)
+
         # Get number of nodes requested
         pending = scheduler_module.get_required_nodes(instance_properties)
 
@@ -266,11 +289,10 @@ def main():
     try:
         config = _get_config()
         asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config, log)
-        instance_properties = _get_instance_properties(config)
 
         scheduler_module = load_module("jobwatcher.plugins." + config.scheduler)
 
-        _poll_scheduler_status(config, asg_name, scheduler_module, instance_properties)
+        _poll_scheduler_status(config, asg_name, scheduler_module)
     except Exception as e:
         log.critical("An unexpected error occurred: %s", e)
         raise

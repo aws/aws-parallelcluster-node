@@ -140,3 +140,17 @@ def _run_command(command_function, command, log, env=None, raise_on_error=True):
     except OSError as e:
         log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
         raise
+
+
+def get_cloudformation_stack_parameters(region, proxy_config, stack_name, log):
+    try:
+        cfn_client = boto3.client("cloudformation", region_name=region, config=proxy_config)
+        response = cfn_client.describe_stacks(StackName=stack_name)
+        parameters = {}
+        for parameter in response["Stacks"][0]["Parameters"]:
+            parameters[parameter["ParameterKey"]] = parameter["ParameterValue"]
+
+        return parameters
+    except Exception as e:
+        log.error("Failed when retrieving stack parameters for stack %s with exception %s", stack_name, e)
+        raise
