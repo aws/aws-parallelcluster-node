@@ -26,7 +26,14 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from retrying import retry
 
-from common.utils import CriticalError, get_asg_name, get_asg_settings, load_module
+from common.utils import (
+    CriticalError,
+    get_asg_name,
+    get_asg_settings,
+    load_module,
+    get_compute_instance_type,
+    get_instance_properties,
+)
 
 
 class QueryConfigError(Exception):
@@ -269,15 +276,22 @@ def _process_instance_terminate_event(message_attrs, message, table):
 
 
 def _process_sqs_messages(
-    update_events, scheduler_module, sqs_config, table, queue, max_cluster_size, update_max_cluster_size
+    update_events,
+    scheduler_module,
+    sqs_config,
+    table,
+    queue,
+    max_cluster_size,
+    instance_properties,
+    force_cluster_update,
 ):
     # Update the scheduler only when there are messages from the queue or
     # tha ASG max size got updated.
-    if not update_events and not update_max_cluster_size:
+    if not update_events and not force_cluster_update:
         return
 
     failed_events, succeeded_events = scheduler_module.update_cluster(
-        max_cluster_size, sqs_config.cluster_user, update_events
+        max_cluster_size, sqs_config.cluster_user, update_events, instance_properties
     )
 
     for event in update_events:
@@ -326,8 +340,17 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
 
     max_cluster_size = sqs_config.max_queue_size
+    instance_type = None
     while True:
         new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, max_cluster_size)
+        # Get instance properties
+        new_instance_type = get_compute_instance_type(sqs_config.region, sqs_config.proxy_config, sqs_config.stack_name)
+        force_cluster_update = new_max_cluster_size != max_cluster_size or new_instance_type != instance_type
+        if new_instance_type != instance_type:
+            instance_type = new_instance_type
+            instance_properties = get_instance_properties(sqs_config.region, sqs_config.proxy_config, instance_type)
+        max_cluster_size = new_max_cluster_size
+
         messages = _retrieve_all_sqs_messages(queue)
         update_events = _parse_sqs_messages(messages, table)
         _process_sqs_messages(
@@ -337,9 +360,9 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             table,
             queue,
             new_max_cluster_size,
-            new_max_cluster_size != max_cluster_size,
+            instance_properties,
+            force_cluster_update,
         )
-        max_cluster_size = new_max_cluster_size
         time.sleep(30)
 
 

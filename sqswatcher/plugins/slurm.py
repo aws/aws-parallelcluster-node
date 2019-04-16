@@ -120,11 +120,13 @@ def _read_node_list():
     return nodes
 
 
-def _write_node_list(node_list, max_cluster_size):
+def _write_node_list(node_list, max_cluster_size, instance_properties):
     dummy_nodes_count = max_cluster_size - len(node_list)
     fh, abs_path = mkstemp()
     if dummy_nodes_count > 0:
-        os.write(fh, "NodeName=dummy-compute[1-{0}] CPUs=2048 State=FUTURE\n".format(dummy_nodes_count))
+        os.write(fh, "NodeName=dummy-compute[1-{0}] CPUs={1} State=FUTURE\n".format(
+            dummy_nodes_count, instance_properties["slots"]
+        ))
     for node in node_list:
         os.write(fh, "{0}".format(node))
 
@@ -135,7 +137,7 @@ def _write_node_list(node_list, max_cluster_size):
     move(abs_path, PCLUSTER_NODES_CONFIG)
 
 
-def update_cluster(max_cluster_size, cluster_user, update_events):
+def update_cluster(max_cluster_size, cluster_user, update_events, instance_properties):
     # Get the current node list
     node_list = _read_node_list()
     nodes_to_restart = []
@@ -154,7 +156,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events):
             nodes_to_restart.append(event.host.hostname)
 
     try:
-        _write_node_list(node_list, max_cluster_size)
+        _write_node_list(node_list, max_cluster_size, instance_properties)
         _restart_master_node()
         results = _restart_multiple_compute_nodes(nodes_to_restart, cluster_user)
         _reconfigure_nodes()
