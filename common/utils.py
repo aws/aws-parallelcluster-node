@@ -11,6 +11,7 @@
 # or in the "LICENSE.txt" file accompanying this file.
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
+import json
 import logging
 import os
 import shlex
@@ -153,3 +154,123 @@ def get_cloudformation_stack_parameters(region, proxy_config, stack_name):
     except Exception as e:
         log.error("Failed when retrieving stack parameters for stack %s with exception %s", stack_name, e)
         raise
+
+
+def _read_cfnconfig():
+    """
+    Read configuration file.
+
+    :return: a dictionary containing the configuration parameters
+    """
+    cfnconfig_params = {}
+    cfnconfig_file = "/opt/parallelcluster/cfnconfig"
+    log.info("Reading %s", cfnconfig_file)
+    with open(cfnconfig_file) as f:
+        for kvp in f:
+            key, value = kvp.partition('=')[::2]
+            cfnconfig_params[key.strip()] = value.strip()
+    return cfnconfig_params
+
+
+def _get_vcpus_from_pricing_file(region, proxy_config, instance_type):
+    """
+    Read pricing file and get number of vcpus for the given instance type.
+
+    :return: the number of vcpus or -1 if the instance type cannot be found
+    """
+    instances = _fetch_pricing_file(region, proxy_config)
+
+    return _get_vcpus_by_instance_type(instances, instance_type)
+
+
+def get_instance_properties(region, proxy_config, instance_type):
+    """
+    Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
+
+    :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
+    """
+    # get vcpus from the pricing file
+    vcpus = _get_vcpus_from_pricing_file(region, proxy_config, instance_type)
+
+    try:
+        cfnconfig_params = _read_cfnconfig()
+        cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
+    except KeyError:
+        log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
+        cfn_scheduler_slots = "vcpus"
+
+    if cfn_scheduler_slots == "cores":
+        log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
+        slots = -(-vcpus//2)
+
+    elif cfn_scheduler_slots == "vcpus":
+        log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
+        slots = vcpus
+
+    elif cfn_scheduler_slots.isdigit():
+        slots = int(cfn_scheduler_slots)
+        log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
+
+        if slots <= 0:
+            log.error(
+                "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
+                    cfn_scheduler_slots
+                )
+            )
+            slots = vcpus
+    else:
+        log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
+        slots = vcpus
+
+    return {'slots': slots}
+
+
+@retry(stop_max_attempt_number=3, wait_fixed=5000)
+def _fetch_pricing_file(region, proxy_config):
+    """
+    Download pricing file.
+
+    :param region: AWS Region
+    :param proxy_config: Proxy Configuration
+    :raise Exception if unable to download the pricing file.
+    """
+    bucket_name = '%s-aws-parallelcluster' % region
+    try:
+        s3 = boto3.resource('s3', region_name=region, config=proxy_config)
+        instances_file_content = s3.Object(bucket_name, 'instances/instances.json').get()["Body"].read()
+        return json.loads(instances_file_content)
+    except Exception as e:
+        log.critical("Could not load instance mapping file from S3 bucket {0}. Failed with exception: {1}".format(
+            bucket_name, e)
+        )
+        raise
+
+
+def _get_vcpus_by_instance_type(instances, instance_type):
+    """
+    Get vcpus for the given instance type from the pricing file.
+
+    :param instances: dictionary conatining the content of the instances file
+    :param instance_type: The instance type to search for
+    :return: the number of vcpus for the given instance type
+    :raise CriticalError if unable to find the given instance or whatever error.
+    """
+    try:
+        vcpus = int(instances[instance_type]["vcpus"])
+        log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
+        return vcpus
+    except KeyError:
+        error_msg = "Unable to get vcpus from instances file. Instance type {0} not found.".format(instance_type)
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
+    except Exception as e:
+        error_msg = "Unable to get vcpus for the instance type {0} from file. Failed with exception {1}".format(
+            instance_type, e
+        )
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
+
+
+def get_compute_instance_type(region, proxy_config, stack_name):
+    parameters = get_cloudformation_stack_parameters(region, proxy_config, stack_name)
+    return parameters["ComputeInstanceType"]

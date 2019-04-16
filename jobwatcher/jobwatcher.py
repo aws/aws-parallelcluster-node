@@ -14,178 +14,22 @@
 
 import ConfigParser
 import collections
-import json
 import logging
-import os
 import time
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
 from retrying import retry
 
 from common.utils import (
-    CriticalError,
     get_asg_name,
     load_module,
     get_asg_settings,
-    get_cloudformation_stack_parameters
+    get_compute_instance_type,
+    get_instance_properties
 )
 
 log = logging.getLogger(__name__)
-
-
-def _read_cfnconfig():
-    """
-    Read configuration file.
-
-    :return: a dictionary containing the configuration parameters
-    """
-    cfnconfig_params = {}
-    cfnconfig_file = "/opt/parallelcluster/cfnconfig"
-    log.info("Reading %s", cfnconfig_file)
-    with open(cfnconfig_file) as f:
-        for kvp in f:
-            key, value = kvp.partition('=')[::2]
-            cfnconfig_params[key.strip()] = value.strip()
-    return cfnconfig_params
-
-
-@retry(stop_max_attempt_number=3, wait_fixed=5000)
-def _get_vcpus_from_pricing_file(config, instance_type):
-    """
-    Read pricing file and get number of vcpus for the given instance type.
-
-    :param config: JobwatcherConfiguration object
-    :return: the number of vcpus or -1 if the instance type cannot be found
-    """
-    _create_data_dir(config.pcluster_dir)
-
-    folder = config.pcluster_dir
-    if not folder.endswith("/"):
-        folder += "/"
-    pricing_file = folder + "instances.json"
-    if not os.path.isfile(pricing_file) or not _pricing_file_has_instance_type(instance_type, pricing_file):
-        _fetch_pricing_file(pricing_file, config.region, config.proxy_config)
-
-    return _get_vcpus_by_instance_type(pricing_file, instance_type)
-
-
-def _pricing_file_has_instance_type(instance_type, pricing_file):
-    with open(pricing_file) as f:
-        instances = json.load(f)
-        return instance_type in instances
-
-
-def _get_instance_properties(config, instance_type):
-    """
-    Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
-
-    :param config: JobwatcherConfiguration object
-    :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
-    """
-    # get vcpus from the pricing file
-    vcpus = _get_vcpus_from_pricing_file(config, instance_type)
-
-    try:
-        cfnconfig_params = _read_cfnconfig()
-        cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
-    except KeyError:
-        log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
-        cfn_scheduler_slots = "vcpus"
-
-    if cfn_scheduler_slots == "cores":
-        log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
-        slots = -(-vcpus//2)
-
-    elif cfn_scheduler_slots == "vcpus":
-        log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
-        slots = vcpus
-
-    elif cfn_scheduler_slots.isdigit():
-        slots = int(cfn_scheduler_slots)
-        log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
-
-        if slots <= 0:
-            log.error(
-                "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
-                    cfn_scheduler_slots
-                )
-            )
-            slots = vcpus
-    else:
-        log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
-        slots = vcpus
-
-    return {'slots': slots}
-
-
-def _create_data_dir(pcluster_dir):
-    """
-    Create jobwatcher data dir.
-
-    :param pcluster_dir: the folder to create.
-    :raise CriticalError if unable to create the folder.
-    """
-    try:
-        if not os.path.exists(pcluster_dir):
-            os.makedirs(pcluster_dir)
-    except OSError as e:
-        log.critical("Could not create directory {0}. Failed with exception: {1}".format(pcluster_dir, e))
-        raise
-
-
-def _fetch_pricing_file(pricing_file, region, proxy_config):
-    """
-    Download pricing file.
-
-    :param pricing_file: pricing file path
-    :param region: AWS Region
-    :param proxy_config: Proxy Configuration
-    :raise ClientError if unable to download the pricing file.
-    """
-    bucket_name = '%s-aws-parallelcluster' % region
-    try:
-        s3 = boto3.resource('s3', region_name=region, config=proxy_config)
-        s3.Bucket(bucket_name).download_file('instances/instances.json', pricing_file)
-    except ClientError as e:
-        log.critical("Could not save instance mapping file {0} from S3 bucket {1}. Failed with exception: {2}".format(
-            pricing_file, bucket_name, e)
-        )
-        raise
-
-
-def _get_vcpus_by_instance_type(pricing_file, instance_type):
-    """
-    Get vcpus for the given instance type from the pricing file.
-
-    :param pricing_file: pricing file path
-    :param instance_type: The instance type to search for
-    :return: the number of vcpus for the given instance type
-    :raise CriticalError if unable to find the given instance or whatever error.
-    """
-    try:
-        # read vcpus value from file
-        with open(pricing_file) as f:
-            instances = json.load(f)
-            vcpus = int(instances[instance_type]["vcpus"])
-            log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
-            return vcpus
-    except KeyError:
-        error_msg = "Unable to get vcpus from file {0}. Instance type {1} not found.".format(
-            pricing_file, instance_type
-        )
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-    except Exception:
-        error_msg = "Unable to get vcpus for the instance type {0} from file {1}".format(instance_type, pricing_file)
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-
-
-def _get_compute_instance_type(config):
-    parameters = get_cloudformation_stack_parameters(config.region, config.proxy_config, config.stack_name)
-    return parameters["ComputeInstanceType"]
 
 
 JobwatcherConfig = collections.namedtuple(
@@ -236,10 +80,10 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
     instance_type = None
     while True:
         # Get instance properties
-        new_instance_type = _get_compute_instance_type(config)
+        new_instance_type = get_compute_instance_type(config.region, config.proxy_config, config.stack_name)
         if new_instance_type != instance_type:
             instance_type = new_instance_type
-            instance_properties = _get_instance_properties(config, instance_type)
+            instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
 
         # Get number of nodes requested
         pending = scheduler_module.get_required_nodes(instance_properties)
