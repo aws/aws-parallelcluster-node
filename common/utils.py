@@ -271,6 +271,12 @@ def _get_vcpus_by_instance_type(instances, instance_type):
         raise CriticalError(error_msg)
 
 
-def get_compute_instance_type(region, proxy_config, stack_name):
-    parameters = get_cloudformation_stack_parameters(region, proxy_config, stack_name)
-    return parameters["ComputeInstanceType"]
+@retry(stop_max_attempt_number=3, wait_fixed=5000)
+def get_compute_instance_type(region, proxy_config, stack_name, fallback):
+    try:
+        parameters = get_cloudformation_stack_parameters(region, proxy_config, stack_name)
+        return parameters["ComputeInstanceType"]
+    except Exception:
+        if fallback:
+            return fallback
+        raise

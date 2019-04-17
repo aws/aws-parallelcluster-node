@@ -340,9 +340,11 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     max_cluster_size = None
     instance_type = None
     while True:
-        new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, max_cluster_size)
-        # Get instance properties
-        new_instance_type = get_compute_instance_type(sqs_config.region, sqs_config.proxy_config, sqs_config.stack_name)
+        # dynamically retrieve max_cluster_size and compute_instance_type
+        new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, fallback=max_cluster_size)
+        new_instance_type = get_compute_instance_type(
+            sqs_config.region, sqs_config.proxy_config, sqs_config.stack_name, fallback=instance_type
+        )
         force_cluster_update = new_max_cluster_size != max_cluster_size or new_instance_type != instance_type
         if new_instance_type != instance_type:
             instance_type = new_instance_type
