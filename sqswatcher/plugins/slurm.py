@@ -74,9 +74,7 @@ def _restart_compute_daemons(hostname, cluster_user):
     # This blocks until command completes
     return_code = stdout.channel.recv_exit_status()
     if return_code != 0:
-        error_message = "Failed when restarting slurmd on compute node {0}".format(hostname)
-        log.error(error_message)
-        raise Exception(error_message)
+        raise Exception("Failed when restarting slurmd on compute node %s", hostname)
     ssh_client.close()
 
 
