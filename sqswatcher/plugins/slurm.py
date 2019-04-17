@@ -64,18 +64,23 @@ def _restart_master_node():
 @retry(stop_max_attempt_number=3, wait_fixed=2000)
 def _restart_compute_daemons(hostname, cluster_user):
     log.info("Restarting slurm on compute node %s", hostname)
-    ssh_client = _ssh_connect(hostname, cluster_user)
-    command = (
-        "if [ -f /etc/systemd/system/slurmd.service ]; "
-        "then sudo systemctl restart slurmd.service; "
-        'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
-    )
-    stdin, stdout, stderr = ssh_client.exec_command(command)
-    # This blocks until command completes
-    return_code = stdout.channel.recv_exit_status()
-    if return_code != 0:
-        raise Exception("Failed when restarting slurmd on compute node %s", hostname)
-    ssh_client.close()
+    try:
+        ssh_client = _ssh_connect(hostname, cluster_user)
+        command = (
+            "if [ -f /etc/systemd/system/slurmd.service ]; "
+            "then sudo systemctl restart slurmd.service; "
+            'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
+        )
+        stdin, stdout, stderr = ssh_client.exec_command(command)
+        # This blocks until command completes
+        return_code = stdout.channel.recv_exit_status()
+        if return_code != 0:
+            raise Exception("Failed when restarting slurmd on compute node %s", hostname)
+    finally:
+        try:
+            ssh_client.close()
+        except Exception:
+            pass
 
 
 def _restart_compute_node_worker(args):
