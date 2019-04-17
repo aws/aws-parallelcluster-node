@@ -80,7 +80,9 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
     instance_type = None
     while True:
         # Get instance properties
-        new_instance_type = get_compute_instance_type(config.region, config.proxy_config, config.stack_name)
+        new_instance_type = get_compute_instance_type(
+            config.region, config.proxy_config, config.stack_name, fallback=instance_type
+        )
         if new_instance_type != instance_type:
             instance_type = new_instance_type
             instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
