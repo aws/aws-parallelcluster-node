@@ -61,7 +61,7 @@ def _restart_master_node():
         raise
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=10000)
+@retry(stop_max_attempt_number=3, wait_fixed=2000)
 def _restart_compute_daemons(hostname, cluster_user):
     log.info("Restarting slurm on compute node %s", hostname)
     ssh_client = _ssh_connect(hostname, cluster_user)
@@ -74,7 +74,9 @@ def _restart_compute_daemons(hostname, cluster_user):
     # This blocks until command completes
     return_code = stdout.channel.recv_exit_status()
     if return_code != 0:
-        log.error("Failed when restarting slurmd on compute node %s", hostname)
+        error_message = "Failed when restarting slurmd on compute node {0}".format(hostname)
+        log.error(error_message)
+        raise Exception(error_message)
     ssh_client.close()
 
 
@@ -83,7 +85,8 @@ def _restart_compute_node_worker(args):
     try:
         _restart_compute_daemons(*args)
         return hostname, True
-    except Exception:
+    except Exception as e:
+        log.error("Failed when restarting compute node %s with error %s", hostname, e)
         return hostname, False
 
 
