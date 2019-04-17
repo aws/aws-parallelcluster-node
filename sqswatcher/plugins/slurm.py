@@ -70,7 +70,7 @@ def _restart_compute_daemons(hostname, cluster_user):
         "then sudo systemctl restart slurmd.service; "
         'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
     )
-    stdin, stdout, stderr = ssh_client.exec_command(command, timeout=15)
+    stdin, stdout, stderr = ssh_client.exec_command(command)
     # This blocks until command completes
     return_code = stdout.channel.recv_exit_status()
     if return_code != 0:
