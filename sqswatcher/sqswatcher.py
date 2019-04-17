@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 
 SQSWatcherConfig = collections.namedtuple(
     "SQSWatcherConfig",
-    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "max_queue_size", "stack_name"],
+    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "stack_name"],
 )
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
@@ -73,7 +73,6 @@ def _get_config():
     sqsqueue = config.get("sqswatcher", "sqsqueue")
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
-    max_queue_size = int(config.get("sqswatcher", "max_queue_size"))
     stack_name = config.get("sqswatcher", "stack_name")
 
     _proxy = config.get("sqswatcher", "proxy")
@@ -83,18 +82,17 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
-        "proxy=%s max_queue_size=%d stack_name=%s",
+        "proxy=%s stack_name=%s",
         region,
         scheduler,
         sqsqueue,
         table_name,
         cluster_user,
         _proxy,
-        max_queue_size,
         stack_name,
     )
     return SQSWatcherConfig(
-        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, max_queue_size, stack_name
+        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name
     )
 
 
@@ -339,7 +337,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     """
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
 
-    max_cluster_size = sqs_config.max_queue_size
+    max_cluster_size = None
     instance_type = None
     while True:
         new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, max_cluster_size)
@@ -359,7 +357,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             sqs_config,
             table,
             queue,
-            new_max_cluster_size,
+            max_cluster_size,
             instance_properties,
             force_cluster_update,
         )
