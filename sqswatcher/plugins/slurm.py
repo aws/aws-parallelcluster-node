@@ -16,6 +16,8 @@
 import logging
 import os
 import os.path
+import time
+
 from math import ceil
 from multiprocessing import Pool
 from shutil import move
@@ -61,7 +63,10 @@ def _restart_master_node():
         raise
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=2000)
+# Each _restart_compute_daemons execution has a timeout of 5 seconds + the time needed to
+# establish the ssh connection. The total time allowed to retry needs to be lower than the
+# minimum thread pool timeout (20 seconds).
+@retry(stop_max_attempt_number=2, wait_fixed=5000)
 def _restart_compute_daemons(hostname, cluster_user):
     log.info("Restarting slurm on compute node %s", hostname)
     try:
@@ -72,10 +77,18 @@ def _restart_compute_daemons(hostname, cluster_user):
             'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
         )
         stdin, stdout, stderr = ssh_client.exec_command(command)
-        # This blocks until command completes
+        # Allow a timeout of 5 seconds to reboot compute daemons.
+        timeout = 5
+        # Using the non-blocking exit_status_ready to avoid being stuck forever on recv_exit_status
+        # especially when a compute node is terminated during this operation
+        while timeout > 0 and not stdout.channel.exit_status_ready():
+            timeout = timeout - 1
+            time.sleep(1)
+        if not stdout.channel.exit_status_ready():
+            raise Exception("Timeout occurred when restarting compute node {0}".format(hostname))
         return_code = stdout.channel.recv_exit_status()
         if return_code != 0:
-            raise Exception("Failed when restarting slurmd on compute node %s", hostname)
+            raise Exception("Failed when restarting slurmd on compute node {0}".format(hostname))
     finally:
         try:
             ssh_client.close()
@@ -100,7 +113,9 @@ def _restart_multiple_compute_nodes(hostnames, cluster_user, parallelism=10):
     pool = Pool(parallelism)
     try:
         r = pool.map_async(_restart_compute_node_worker, [(hostname, cluster_user) for hostname in hostnames])
-        results = r.get(timeout=int(ceil(len(hostnames) / float(parallelism)) * 10))
+        # The pool timeout is computed by adding 20 seconds for each batch of hosts that is
+        # processed in sequence. Where the size of a batch is given by the degree of parallelism.
+        results = r.get(timeout=int(ceil(len(hostnames) / float(parallelism)) * 20))
     finally:
         pool.terminate()
 
