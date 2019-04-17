@@ -280,21 +280,24 @@ def _process_sqs_messages(
         max_cluster_size, sqs_config.cluster_user, update_events
     )
 
-    for event in list(succeeded_events):
+    for event in update_events:
         try:
+            # Add an item to the table also in case of failures to handle host removal correctly
             if event.action == "ADD":
                 _retry_on_request_limit_exceeded(
                     lambda: table.put_item(Item={"instanceId": event.host.instance_id, "hostname": event.host.hostname})
                 )
-            elif event.action == "REMOVE":
+            # Remove item from table only in case of success
+            elif event.action == "REMOVE" and event in succeeded_events:
                 _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
             log.debug("Successfully processed event %s", event)
         except Exception as e:
             log.error(
                 "Failed when updating dynamo db table for instance %s with exception %s", event.host.instance_id, e
             )
-            failed_events.append(event)
-            succeeded_events.remove(event)
+            if event not in failed_events:
+                failed_events.append(event)
+                succeeded_events.remove(event)
 
     for event in failed_events:
         _requeue_message(queue, event.message)
