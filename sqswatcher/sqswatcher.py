@@ -166,7 +166,22 @@ def _requeue_message(queue, message):
     :param queue: the queue where to send the message
     :param message: the message to requeue
     """
-    queue.send_message(MessageBody=message.body, DelaySeconds=60)
+    max_retries = 2
+    message_body = json.loads(message.body)
+    if "TTL" not in message_body:
+        message_body["TTL"] = max_retries
+    else:
+        message_body["TTL"] = message_body["TTL"] - 1
+        if message_body["TTL"] < 1:
+            log.warning(
+                "Discarding the following message since exceeded the number of max retries (%d): %s",
+                max_retries,
+                message_body,
+            )
+            return
+    message_body_string = json.dumps(message_body)
+    log.warning("Re-queuing failed event %s", message_body_string)
+    queue.send_message(MessageBody=message_body_string, DelaySeconds=60)
 
 
 def _retrieve_all_sqs_messages(queue):
@@ -282,7 +297,6 @@ def _process_sqs_messages(
             succeeded_events.remove(event)
 
     for event in failed_events:
-        log.warning("Re-queuing failed event %s", event)
         _requeue_message(queue, event.message)
 
     for event in itertools.chain(failed_events, succeeded_events):
