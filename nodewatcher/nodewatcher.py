@@ -12,8 +12,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ConfigParser
 import collections
+import ConfigParser
 import json
 import logging
 import os
@@ -65,7 +65,11 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s stack_name=%s scaledown_idletime=%s proxy=%s",
-        region, scheduler, stack_name, scaledown_idletime, _proxy
+        region,
+        scheduler,
+        stack_name,
+        scaledown_idletime,
+        _proxy,
     )
     return NodewatcherConfig(region, scheduler, stack_name, scaledown_idletime, proxy_config)
 
@@ -147,15 +151,15 @@ def _maintain_size(asg_name, asg_client):
     :param asg_client: ASG boto3 client
     :return: True if the desired capacity is lower than the configured min size.
     """
-    asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
-    _capacity = asg.get('DesiredCapacity')
-    _min_size = asg.get('MinSize')
+    asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get("AutoScalingGroups")[0]
+    _capacity = asg.get("DesiredCapacity")
+    _min_size = asg.get("MinSize")
     log.info("DesiredCapacity is %d, MinSize is %d" % (_capacity, _min_size))
     if _capacity > _min_size:
-        log.debug('Capacity greater than min size.')
+        log.debug("Capacity greater than min size.")
         return False
     else:
-        log.debug('Capacity less than or equal to min size.')
+        log.debug("Capacity less than or equal to min size.")
         return True
 
 
@@ -168,10 +172,10 @@ def _is_stack_ready(stack_name, region, proxy_config):
     :param proxy_config: Proxy configuration
     :return: true if the stack is in the *_COMPLETE status
     """
-    log.info('Checking for status of the stack %s' % stack_name)
-    cfn_client = boto3.client('cloudformation', region_name=region, config=proxy_config)
+    log.info("Checking for status of the stack %s" % stack_name)
+    cfn_client = boto3.client("cloudformation", region_name=region, config=proxy_config)
     stacks = cfn_client.describe_stacks(StackName=stack_name)
-    return stacks['Stacks'][0]['StackStatus'] in ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE']
+    return stacks["Stacks"][0]["StackStatus"] in ["CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"]
 
 
 def _init_data_dir():
@@ -262,8 +266,9 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                 if idletime >= config.scaledown_idletime:
                     has_pending_jobs, error = _has_pending_jobs(scheduler_module)
                     if error:
-                        log.info("Encountered an error while polling queue for pending jobs. "
-                                 "Not terminating instance")
+                        log.info(
+                            "Encountered an error while polling queue for pending jobs. " "Not terminating instance"
+                        )
                     elif has_pending_jobs:
                         log.info("Queue has pending jobs. Not terminating instance")
                         continue

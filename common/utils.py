@@ -1,5 +1,4 @@
 #!/usr/bin/env python2.6
-
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
@@ -11,6 +10,8 @@
 # or in the "LICENSE.txt" file accompanying this file.
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
+from future.moves.subprocess import check_output
+
 import json
 import logging
 import os
@@ -19,15 +20,14 @@ import subprocess
 import sys
 
 import boto3
-from future.moves.subprocess import check_output
 from retrying import retry
-
 
 log = logging.getLogger(__name__)
 
 
 class CriticalError(Exception):
     """Critical error for the daemon."""
+
     pass
 
 
@@ -49,7 +49,7 @@ def load_module(module):
     stop_max_attempt_number=5,
     wait_exponential_multiplier=10000,
     wait_exponential_max=80000,
-    retry_on_exception=lambda exception: isinstance(exception, IndexError)
+    retry_on_exception=lambda exception: isinstance(exception, IndexError),
 )
 def get_asg_name(stack_name, region, proxy_config):
     """
@@ -77,10 +77,10 @@ def get_asg_name(stack_name, region, proxy_config):
 def get_asg_settings(region, proxy_config, asg_name):
     try:
         asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
-        asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get('AutoScalingGroups')[0]
-        min_size = asg.get('MinSize')
-        desired_capacity = asg.get('DesiredCapacity')
-        max_size = asg.get('MaxSize')
+        asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get("AutoScalingGroups")[0]
+        min_size = asg.get("MinSize")
+        desired_capacity = asg.get("DesiredCapacity")
+        max_size = asg.get("MaxSize")
 
         log.info("min/desired/max %d/%d/%d" % (min_size, desired_capacity, max_size))
         return min_size, desired_capacity, max_size
@@ -167,7 +167,7 @@ def _read_cfnconfig():
     log.info("Reading %s", cfnconfig_file)
     with open(cfnconfig_file) as f:
         for kvp in f:
-            key, value = kvp.partition('=')[::2]
+            key, value = kvp.partition("=")[::2]
             cfnconfig_params[key.strip()] = value.strip()
     return cfnconfig_params
 
@@ -201,7 +201,7 @@ def get_instance_properties(region, proxy_config, instance_type):
 
     if cfn_scheduler_slots == "cores":
         log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
-        slots = -(-vcpus//2)
+        slots = -(-vcpus // 2)
 
     elif cfn_scheduler_slots == "vcpus":
         log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
@@ -222,7 +222,7 @@ def get_instance_properties(region, proxy_config, instance_type):
         log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
         slots = vcpus
 
-    return {'slots': slots}
+    return {"slots": slots}
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
@@ -234,14 +234,14 @@ def _fetch_pricing_file(region, proxy_config):
     :param proxy_config: Proxy Configuration
     :raise Exception if unable to download the pricing file.
     """
-    bucket_name = '%s-aws-parallelcluster' % region
+    bucket_name = "%s-aws-parallelcluster" % region
     try:
-        s3 = boto3.resource('s3', region_name=region, config=proxy_config)
-        instances_file_content = s3.Object(bucket_name, 'instances/instances.json').get()["Body"].read()
+        s3 = boto3.resource("s3", region_name=region, config=proxy_config)
+        instances_file_content = s3.Object(bucket_name, "instances/instances.json").get()["Body"].read()
         return json.loads(instances_file_content)
     except Exception as e:
-        log.critical("Could not load instance mapping file from S3 bucket {0}. Failed with exception: {1}".format(
-            bucket_name, e)
+        log.critical(
+            "Could not load instance mapping file from S3 bucket {0}. Failed with exception: {1}".format(bucket_name, e)
         )
         raise
 

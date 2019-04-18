@@ -12,4 +12,11 @@ install:
 
 sudo: false
 
+matrix:
+  include:
+    - name: Code Checks
+      python: 3.6
+      stage: linters
+      env: TOXENV=code-linters
+
 script: tox

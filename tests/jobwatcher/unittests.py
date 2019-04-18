@@ -1,7 +1,8 @@
-from jobwatcher.plugins import utils
 import unittest
 
-instance_properties = {'slots': 8}
+from jobwatcher.plugins import utils
+
+instance_properties = {"slots": 8}
 
 
 class optimal_node_count_tests(unittest.TestCase):
@@ -28,13 +29,17 @@ class optimal_node_count_tests(unittest.TestCase):
     def test_each_node_one_vcpu_except_max(self):
         nodes = utils.get_optimal_nodes([1, 5, 3], [1, 40, 1], instance_properties)
         expected = 8
-        self.assertEqual(nodes, expected, "test_each_node_one_vcpu_except_max failed: Got %s; Expected: %s" % (nodes, expected))
+        self.assertEqual(
+            nodes, expected, "test_each_node_one_vcpu_except_max failed: Got %s; Expected: %s" % (nodes, expected)
+        )
 
     def test_each_node_partial_capacity(self):
         nodes = utils.get_optimal_nodes([1, 5, 3, 2], [6, 35, 1, 1], instance_properties)
         expected = 6
-        self.assertEqual(nodes, expected, "test_each_node_partial_capacity failed: Got %s; Expected: %s" % (nodes, expected))
+        self.assertEqual(
+            nodes, expected, "test_each_node_partial_capacity failed: Got %s; Expected: %s" % (nodes, expected)
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,7 @@ def get_required_nodes(instance_properties):
     # 1.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5340     3      6       --   01:00:00 R  00:08:14
     # 2.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5387     2      4       --   01:00:00 R  00:08:27
 
-    status = ['Q']
+    status = ["Q"]
     _output = check_command_output(command)
     output = _output.split("\n")[5:]
     slots_requested = []
@@ -38,7 +38,7 @@ def get_required_nodes(instance_properties):
 def get_busy_nodes(instance_properties):
     command = "/opt/torque/bin/pbsnodes -x"
     # The output of the command
-    #<?xml version="1.0" encoding="UTF-8"?>
+    # <?xml version="1.0" encoding="UTF-8"?>
     # <Data>
     #    <Node>
     #       <name>ip-172-31-11-1</name>
@@ -56,7 +56,7 @@ def get_busy_nodes(instance_properties):
     root = ElementTree.fromstring(_output)
     count = 0
     # See how many nodes have jobs
-    for node in root.findall('Node'):
-        if len(node.findall('jobs')) != 0:
+    for node in root.findall("Node"):
+        if len(node.findall("jobs")) != 0:
             count += 1
     return count

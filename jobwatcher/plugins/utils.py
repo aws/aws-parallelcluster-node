@@ -12,7 +12,7 @@ def get_optimal_nodes(nodes_requested, slots_requested, instance_properties):
     :param instance_properties: instance properties, i.e. number of slots available per node
     :return: The optimal number of nodes required to satisfy the input queue.
     """
-    vcpus = instance_properties.get('slots')
+    vcpus = instance_properties.get("slots")
     slots_remaining_per_node = []
 
     for node_idx, num_of_nodes in enumerate(nodes_requested):

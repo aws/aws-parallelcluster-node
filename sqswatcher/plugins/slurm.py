@@ -17,7 +17,6 @@ import logging
 import os
 import os.path
 import time
-
 from math import ceil
 from multiprocessing import Pool
 from shutil import move
@@ -144,9 +143,12 @@ def _write_node_list(node_list, max_cluster_size, instance_properties):
     dummy_nodes_count = max_cluster_size - len(node_list)
     fh, abs_path = mkstemp()
     if dummy_nodes_count > 0:
-        os.write(fh, "NodeName=dummy-compute[1-{0}] CPUs={1} State=FUTURE\n".format(
-            dummy_nodes_count, instance_properties["slots"]
-        ))
+        os.write(
+            fh,
+            "NodeName=dummy-compute[1-{0}] CPUs={1} State=FUTURE\n".format(
+                dummy_nodes_count, instance_properties["slots"]
+            ),
+        )
     for node in node_list:
         os.write(fh, "{0}".format(node))
 

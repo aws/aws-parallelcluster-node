@@ -20,9 +20,9 @@ log = logging.getLogger(__name__)
 
 def hasJobs(hostname):
     # Slurm won't use FQDN
-    short_name = hostname.split('.')[0]
+    short_name = hostname.split(".")[0]
     # Checking for running jobs on the node
-    command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
+    command = ["/opt/slurm/bin/squeue", "-w", short_name, "-h"]
     try:
         output = check_command_output(command)
         has_jobs = output != ""

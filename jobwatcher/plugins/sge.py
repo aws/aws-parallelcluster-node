@@ -15,7 +15,7 @@ def get_required_nodes(instance_properties):
         line_arr = line.split()
         if len(line_arr) >= 8:
             slots += int(line_arr[7])
-    vcpus = instance_properties.get('slots')
+    vcpus = instance_properties.get("slots")
     return -(-slots // vcpus)
 
 
@@ -30,8 +30,7 @@ def get_busy_nodes(instance_properties):
         line_arr = line.split()
         if len(line_arr) == 5:
             # resv/used/tot.
-            (resv, used, total) = line_arr[2].split('/')
+            (resv, used, total) = line_arr[2].split("/")
             if int(used) > 0 or int(resv) > 0:
                 nodes += 1
     return nodes
-

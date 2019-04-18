@@ -12,8 +12,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ConfigParser
 import collections
+import ConfigParser
 import logging
 import time
 
@@ -21,13 +21,7 @@ import boto3
 from botocore.config import Config
 from retrying import retry
 
-from common.utils import (
-    get_asg_name,
-    load_module,
-    get_asg_settings,
-    get_compute_instance_type,
-    get_instance_properties
-)
+from common.utils import get_asg_name, get_asg_settings, get_compute_instance_type, get_instance_properties, load_module
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +58,11 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s stack_name=%s pcluster_dir=%s proxy=%s",
-        region, scheduler, stack_name, pcluster_dir, _proxy
+        region,
+        scheduler,
+        stack_name,
+        pcluster_dir,
+        _proxy,
     )
     return JobwatcherConfig(region, scheduler, stack_name, pcluster_dir, proxy_config)
 
@@ -122,7 +120,7 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
                 requested = min(required, max_size)
 
                 # update ASG
-                asg_client = boto3.client('autoscaling', region_name=config.region, config=config.proxy_config)
+                asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
                 asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
         time.sleep(60)
@@ -144,5 +142,5 @@ def main():
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
