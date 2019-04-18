@@ -30,9 +30,9 @@ from common.utils import (
     CriticalError,
     get_asg_name,
     get_asg_settings,
-    load_module,
     get_compute_instance_type,
     get_instance_properties,
+    load_module,
 )
 
 
@@ -44,8 +44,7 @@ log = logging.getLogger(__name__)
 
 
 SQSWatcherConfig = collections.namedtuple(
-    "SQSWatcherConfig",
-    ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "stack_name"],
+    "SQSWatcherConfig", ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "stack_name"]
 )
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
@@ -91,9 +90,7 @@ def _get_config():
         _proxy,
         stack_name,
     )
-    return SQSWatcherConfig(
-        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name
-    )
+    return SQSWatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name)
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
@@ -121,7 +118,7 @@ def _get_sqs_queue(region, queue_name, proxy_config):
 @retry(
     stop_max_attempt_number=3,
     wait_fixed=5000,
-    retry_on_exception=lambda exception: not isinstance(exception, CriticalError)
+    retry_on_exception=lambda exception: not isinstance(exception, CriticalError),
 )
 def _get_ddb_table(region, table_name, proxy_config):
     """

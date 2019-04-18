@@ -19,26 +19,26 @@ log = logging.getLogger(__name__)
 
 def runPipe(cmds):
     try:
-        p1 = subprocess.Popen(cmds[0].split(' '), stdin = None, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+        p1 = subprocess.Popen(cmds[0].split(" "), stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         prev = p1
         for cmd in cmds[1:]:
-            p = subprocess.Popen(cmd.split(' '), stdin = prev.stdout, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+            p = subprocess.Popen(cmd.split(" "), stdin=prev.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             prev = p
         stdout, stderr = p.communicate()
         p.wait()
         returncode = p.returncode
-    except Exception, e:
+    except Exception as e:
         stderr = str(e)
         returncode = -1
     if returncode == 0:
-        return (True, stdout.strip().split('\n'))
+        return (True, stdout.strip().split("\n"))
     else:
         return (False, stderr)
 
 
 def hasJobs(hostname):
     # Checking for running jobs on the node
-    commands = ['/opt/torque/bin/qstat -r -t -n -1', ('grep ' + hostname.split('.')[0])]
+    commands = ["/opt/torque/bin/qstat -r -t -n -1", ("grep " + hostname.split(".")[0])]
     try:
         status, output = runPipe(commands)
         has_jobs = output != ""
@@ -82,8 +82,8 @@ def hasPendingJobs():
 
 def lockHost(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
-    mod = unlock and '-c' or '-o'
-    command = ['/opt/torque/bin/pbsnodes', mod, hostname]
+    mod = unlock and "-c" or "-o"
+    command = ["/opt/torque/bin/pbsnodes", mod, hostname]
     try:
         run_command(command)
     except subprocess.CalledProcessError:

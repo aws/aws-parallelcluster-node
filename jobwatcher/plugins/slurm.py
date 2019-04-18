@@ -22,7 +22,7 @@ def get_required_nodes(instance_properties):
     output = output.split("\n")
     for line in output:
         line_arr = line.split("-")
-        if len(line_arr) == 5 and line_arr[1] == 'PD':
+        if len(line_arr) == 5 and line_arr[1] == "PD":
             if line_arr[4] in PENDING_RESOURCES_REASONS:
                 slots_requested.append(int(line_arr[3]))
                 nodes_requested.append(int(line_arr[2]))
@@ -44,6 +44,6 @@ def get_busy_nodes(instance_properties):
     output = output.split("\n")
     for line in output:
         line_arr = line.split()
-        if len(line_arr) == 2 and (line_arr[1] in ['mix', 'alloc', 'drain', 'drain*']):
+        if len(line_arr) == 2 and (line_arr[1] in ["mix", "alloc", "drain", "drain*"]):
             nodes += int(line_arr[0])
     return nodes

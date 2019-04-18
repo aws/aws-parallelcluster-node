@@ -29,8 +29,8 @@ def isHostInitState(host_state):
 
 
 def wakeupSchedOn(hostname):
-    log.info('Waking up scheduler on host %s', hostname)
-    command = ("/opt/torque/bin/pbsnodes -x %s" % (hostname))
+    log.info("Waking up scheduler on host %s", hostname)
+    command = "/opt/torque/bin/pbsnodes -x %s" % (hostname)
 
     sleep_time = 3
     times = 20
@@ -56,7 +56,7 @@ def wakeupSchedOn(hostname):
             times -= 1
 
     if host_state == "free":
-        command = "/opt/torque/bin/qmgr -c \"set server scheduling=true\""
+        command = '/opt/torque/bin/qmgr -c "set server scheduling=true"'
         run_command(command, raise_on_error=False)
     elif times == 0:
         log.error("Host %s is still in state %s" % (hostname, host_state))
@@ -65,33 +65,33 @@ def wakeupSchedOn(hostname):
 
 
 def addHost(hostname, cluster_user, slots, max_cluster_size):
-    log.info('Adding %s with %s slots' % (hostname, slots))
+    log.info("Adding %s with %s slots" % (hostname, slots))
 
-    command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
+    command = "/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots)
     run_command(command, raise_on_error=False)
 
-    command = ('/opt/torque/bin/pbsnodes -c %s' % hostname)
+    command = "/opt/torque/bin/pbsnodes -c %s" % hostname
     run_command(command, raise_on_error=False)
 
     # Connect and hostkey
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    hosts_key_file = os.path.expanduser("~" + cluster_user) + '/.ssh/known_hosts'
-    user_key_file = os.path.expanduser("~" + cluster_user) + '/.ssh/id_rsa'
-    iter=0
-    connected=False
+    hosts_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/known_hosts"
+    user_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/id_rsa"
+    iter = 0
+    connected = False
     while iter < 3 and connected == False:
         try:
-            log.info('Connecting to host: %s iter: %d' % (hostname, iter))
+            log.info("Connecting to host: %s iter: %d" % (hostname, iter))
             ssh.connect(hostname, username=cluster_user, key_filename=user_key_file)
-            connected=True
-        except socket.error, e:
-            log.info('Socket error: %s' % e)
+            connected = True
+        except socket.error as e:
+            log.info("Socket error: %s" % e)
             time.sleep(10 + iter)
             iter = iter + 1
             if iter == 3:
-               log.info("Unable to provison host")
-               return
+                log.info("Unable to provison host")
+                return
     try:
         ssh.load_host_keys(hosts_key_file)
     except IOError:
@@ -104,12 +104,12 @@ def addHost(hostname, cluster_user, slots, max_cluster_size):
 
 
 def removeHost(hostname, cluster_user, max_cluster_size):
-    log.info('Removing %s', hostname)
+    log.info("Removing %s", hostname)
 
-    command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)
+    command = "/opt/torque/bin/pbsnodes -o %s" % hostname
     run_command(command, raise_on_error=False)
 
-    command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
+    command = "/opt/torque/bin/qmgr -c 'delete node %s'" % hostname
     run_command(command, raise_on_error=False)
 
 
@@ -125,7 +125,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
             succeeded.append(event)
         except Exception as e:
             log.error(
-                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e,
+                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e
             )
             failed.append(event)
 
