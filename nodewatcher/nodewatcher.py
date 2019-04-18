@@ -17,6 +17,7 @@ import ConfigParser
 import json
 import logging
 import os
+import sys
 import time
 import urllib2
 
@@ -138,9 +139,13 @@ def _self_terminate(asg_name, asg_client, instance_id):
     :param asg_client: ASG boto3 client
     :param instance_id: the instnace to terminate
     """
-    if not _maintain_size(asg_name, asg_client):
-        log.info("Self terminating %s" % instance_id)
-        asg_client.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
+    if _maintain_size(asg_name, asg_client):
+        log.info("Not terminating due to min cluster size reached")
+        return False
+
+    log.info("Self terminating %s" % instance_id)
+    asg_client.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
+    return True
 
 
 def _maintain_size(asg_name, asg_client):
@@ -163,7 +168,8 @@ def _maintain_size(asg_name, asg_client):
         return True
 
 
-def _is_stack_ready(stack_name, region, proxy_config):
+@retry(wait_fixed=10000, retry_on_result=lambda result: result is False)
+def _wait_for_stack_ready(stack_name, region, proxy_config):
     """
     Verify if the Stack is in one of the *_COMPLETE states.
 
@@ -172,10 +178,12 @@ def _is_stack_ready(stack_name, region, proxy_config):
     :param proxy_config: Proxy configuration
     :return: true if the stack is in the *_COMPLETE status
     """
-    log.info("Checking for status of the stack %s" % stack_name)
+    log.info("Waiting for stack %s to be ready", stack_name)
     cfn_client = boto3.client("cloudformation", region_name=region, config=proxy_config)
     stacks = cfn_client.describe_stacks(StackName=stack_name)
-    return stacks["Stacks"][0]["StackStatus"] in ["CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"]
+    stack_status = stacks["Stacks"][0]["StackStatus"]
+    log.info("Stack %s is in status: %s", stack_name, stack_status)
+    return stack_status in ["CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"]
 
 
 def _init_data_dir():
@@ -235,44 +243,36 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param hostname: current hostname
     :param instance_id: current instance id
     """
+    _wait_for_stack_ready(config.stack_name, config.region, config.proxy_config)
+
     idletime = _init_idletime()
-    stack_ready = False
-    termination_in_progress = False
     while True:
-        # if this node is terminating sleep for a long time and wait for termination
-        if termination_in_progress:
-            time.sleep(300)
-            log.info("Instance is still terminating")
-            continue
+        _store_idletime(idletime)
         time.sleep(60)
-        if not stack_ready:
-            stack_ready = _is_stack_ready(config.stack_name, config.region, config.proxy_config)
-            log.info("Stack %s ready: %s" % (config.stack_name, stack_ready))
-            continue
-        asg_conn = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
             log.info("Instance has active jobs.")
             idletime = 0
         else:
+            asg_conn = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
             if _maintain_size(asg_name, asg_conn):
-                continue
+                idletime = 0
             else:
+                has_pending_jobs, error = _has_pending_jobs(scheduler_module)
+                if error:
+                    log.warning(
+                        "Encountered an error while polling queue for pending jobs. Skipping pending jobs check"
+                    )
+                elif has_pending_jobs:
+                    log.info("Queue has pending jobs. Not terminating instance")
+                    idletime = 0
+                    continue
+
                 idletime += 1
                 log.info("Instance had no job for the past %s minute(s)", idletime)
-                _store_idletime(idletime)
 
                 if idletime >= config.scaledown_idletime:
-                    has_pending_jobs, error = _has_pending_jobs(scheduler_module)
-                    if error:
-                        log.info(
-                            "Encountered an error while polling queue for pending jobs. " "Not terminating instance"
-                        )
-                    elif has_pending_jobs:
-                        log.info("Queue has pending jobs. Not terminating instance")
-                        continue
-
                     _lock_host(scheduler_module, hostname)
                     has_jobs = _has_jobs(scheduler_module, hostname)
                     if has_jobs:
@@ -282,15 +282,17 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                         continue
 
                     try:
-                        _self_terminate(asg_name, asg_conn, instance_id)
-                        termination_in_progress = True
+                        succeeded = _self_terminate(asg_name, asg_conn, instance_id)
+                        if succeeded:
+                            sys.exit(0)
+                        idletime = 0
                     except ClientError as ex:
                         log.error("Failed to terminate instance with exception %s" % ex)
-                        termination_in_progress = False
-                        _lock_host(scheduler_module, hostname, unlock=True)
+
+                    _lock_host(scheduler_module, hostname, unlock=True)
 
 
-@retry(wait_fixed=60000)
+@retry(wait_fixed=60000, retry_on_exception=lambda exception: not isinstance(exception, SystemExit))
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("nodewatcher startup")
