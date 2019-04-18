@@ -1,4 +1,4 @@
-import utils
+from jobwatcher.plugins import utils
 import unittest
 
 instance_properties = {'slots': 8}
