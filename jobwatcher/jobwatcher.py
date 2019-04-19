@@ -92,7 +92,7 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
             log.critical("Error detecting number of required nodes. The cluster will not scale up.")
 
         elif pending == 0:
-            log.info("There are no pending jobs. Noop.")
+            log.info("There are no pending jobs or the requirements on pending jobs cannot be satisfied. Noop.")
 
         else:
             # Get current number of nodes
