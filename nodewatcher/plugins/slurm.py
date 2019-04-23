@@ -33,15 +33,26 @@ def hasJobs(hostname):
 
 
 def hasPendingJobs():
-    command = "/opt/slurm/bin/squeue -t PD --noheader -o '%r'"
+    command = "/opt/slurm/bin/squeue -t PD --noheader -o '%c-%r'"
 
     # Command outputs the pending jobs in the queue in the following format
-    #  Resources
-    #  Priority
-    #  PartitionNodeLimit
+    #  8-Resources
+    #  8-Priority
+    #  8-PartitionNodeLimit
     try:
+        node_slots = _get_node_slots()
         output = check_command_output(command)
-        has_pending = len(filter(lambda reason: reason in PENDING_RESOURCES_REASONS, output.split("\n"))) > 0
+        has_pending = False
+        for line in output.split("\n"):
+            line_arr = line.split("-")
+            if len(line_arr) == 2:
+                required_slots = int(line_arr[0])
+                pending_code = line_arr[1]
+                log.info("required_slots %s pending_code %s", required_slots, pending_code)
+                if pending_code in PENDING_RESOURCES_REASONS and required_slots <= node_slots:
+                    has_pending = True
+                    break
+
         error = False
     except subprocess.CalledProcessError:
         error = True
@@ -75,3 +86,10 @@ def lockHost(hostname, unlock=False):
         run_command(command)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+
+
+def _get_node_slots():
+    hostname = check_command_output("hostname")
+    command = "/opt/slurm/bin/sinfo -o '%c' -n {0} -h".format(hostname)
+    output = check_command_output(command)
+    return int(output)
