@@ -56,7 +56,8 @@ def hasPendingJobs():
         lines = filter(None, output.split("\n"))
         has_pending = True if len(lines) > 1 else False
         error = False
-    except subprocess.CalledProcessError:
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
         error = True
         has_pending = False
 
