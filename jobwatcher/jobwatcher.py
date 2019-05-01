@@ -96,8 +96,8 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
 
         else:
             # Get current number of nodes
-            running = scheduler_module.get_busy_nodes(instance_properties)
-            log.info("%d nodes requested, %d nodes running", pending, running)
+            running = scheduler_module.get_busy_nodes()
+            log.info("%d nodes requested, %d nodes busy or unavailable", pending, running)
 
             # get current limits
             _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
