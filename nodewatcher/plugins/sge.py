@@ -72,3 +72,9 @@ def lockHost(hostname, unlock=False):
         run_sge_command(command)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+
+
+def is_node_down():
+    """Check if node is down according to scheduler"""
+    # ToDo: to be implemented
+    return False
