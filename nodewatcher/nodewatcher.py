@@ -14,18 +14,20 @@
 
 import collections
 import ConfigParser
+import errno
 import json
 import logging
 import os
 import sys
+import tarfile
 import time
 import urllib2
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
-from retrying import retry
+from retrying import RetryError, retry
 
+from common.time_utils import minutes, seconds
 from common.utils import CriticalError, get_asg_name, load_module
 
 log = logging.getLogger(__name__)
@@ -131,21 +133,23 @@ def _lock_host(scheduler_module, hostname, unlock=False):
     time.sleep(15)  # allow for some settling
 
 
-def _self_terminate(asg_name, asg_client, instance_id):
+def _self_terminate(asg_client, instance_id, decrement_desired=True):
     """
     Terminate the given instance and decrease ASG desired capacity.
 
-    :param asg_name: ASG name
     :param asg_client: ASG boto3 client
-    :param instance_id: the instnace to terminate
+    :param instance_id: the instance to terminate
+    :param decrement_desired: if True decrements ASG desired by 1
     """
-    if _maintain_size(asg_name, asg_client):
-        log.info("Not terminating due to min cluster size reached")
+    try:
+        log.info("Self terminating %s" % instance_id)
+        asg_client.terminate_instance_in_auto_scaling_group(
+            InstanceId=instance_id, ShouldDecrementDesiredCapacity=decrement_desired
+        )
+        sys.exit(0)
+    except Exception as e:
+        log.error("Failed when self terminating instance with exception %s.", e)
         return False
-
-    log.info("Self terminating %s" % instance_id)
-    asg_client.terminate_instance_in_auto_scaling_group(InstanceId=instance_id, ShouldDecrementDesiredCapacity=True)
-    return True
 
 
 def _maintain_size(asg_name, asg_client):
@@ -156,19 +160,61 @@ def _maintain_size(asg_name, asg_client):
     :param asg_client: ASG boto3 client
     :return: True if the desired capacity is lower than the configured min size.
     """
-    asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get("AutoScalingGroups")[0]
-    _capacity = asg.get("DesiredCapacity")
-    _min_size = asg.get("MinSize")
-    log.info("DesiredCapacity is %d, MinSize is %d" % (_capacity, _min_size))
-    if _capacity > _min_size:
-        log.debug("Capacity greater than min size.")
+    try:
+        asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get("AutoScalingGroups")[0]
+        _capacity = asg.get("DesiredCapacity")
+        _min_size = asg.get("MinSize")
+        log.info("DesiredCapacity is %d, MinSize is %d" % (_capacity, _min_size))
+        if _capacity > _min_size:
+            log.debug("Capacity greater than min size.")
+            return False
+        else:
+            log.debug("Capacity less than or equal to min size.")
+            return True
+    except Exception as e:
+        log.error(
+            "Failed when checking min cluster size with exception %s. Assuming capacity is greater than min size.", e
+        )
         return False
-    else:
-        log.debug("Capacity less than or equal to min size.")
-        return True
 
 
-@retry(wait_fixed=10000, retry_on_result=lambda result: result is False)
+def _dump_logs(instance_id):
+    """Dump gzipped /var/log dir to /home/logs/compute/$instance_id.tar.gz"""
+    logs_dir = "/home/logs/compute"
+    filename = "{0}/{1}.tar.gz".format(logs_dir, instance_id)
+    try:
+        try:
+            os.makedirs(logs_dir)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise
+        log.info("Dumping logs to %s", filename)
+        with tarfile.open(filename, "w|gz") as archive:
+            archive.add("/var/log", recursive=True)
+    except Exception as e:
+        log.warning("Failed while dumping logs to %s with exception %s.", filename, e)
+
+
+def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait):
+    """Check that node is correctly attached to scheduler otherwise terminate the instance"""
+    asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
+
+    @retry(wait_fixed=seconds(10), retry_on_result=lambda result: result is True, stop_max_delay=max_wait)
+    def _poll_wait_for_node_ready():
+        return scheduler_module.is_node_down()
+
+    try:
+        _poll_wait_for_node_ready()
+    except RetryError:
+        log.error("Node is marked as down by scheduler or not attached correctly. Terminating...")
+        _dump_logs(instance_id)
+        # decrement asg desired only if not reached the min.
+        # jobwatcher already has the logic to request a new host in case of down nodes,
+        # which is done in order to speed up cluster recovery.
+        _self_terminate(asg_client, instance_id, decrement_desired=not _maintain_size(asg_name, asg_client))
+
+
+@retry(wait_fixed=seconds(10), retry_on_result=lambda result: result is False, stop_max_delay=minutes(10))
 def _wait_for_stack_ready(stack_name, region, proxy_config):
     """
     Verify if the Stack is in one of the *_COMPLETE states.
@@ -244,11 +290,13 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param instance_id: current instance id
     """
     _wait_for_stack_ready(config.stack_name, config.region, config.proxy_config)
+    _terminate_if_down(scheduler_module, config, asg_name, instance_id, minutes(3))
 
     idletime = _init_idletime()
     while True:
-        _store_idletime(idletime)
         time.sleep(60)
+        _store_idletime(idletime)
+        _terminate_if_down(scheduler_module, config, asg_name, instance_id, minutes(1))
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
@@ -257,6 +305,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
         else:
             asg_conn = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
             if _maintain_size(asg_name, asg_conn):
+                log.info("Not terminating due to min cluster size reached")
                 idletime = 0
             else:
                 has_pending_jobs, error = _has_pending_jobs(scheduler_module)
@@ -281,13 +330,11 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                         _lock_host(scheduler_module, hostname, unlock=True)
                         continue
 
-                    try:
-                        succeeded = _self_terminate(asg_name, asg_conn, instance_id)
-                        if succeeded:
-                            sys.exit(0)
+                    if _maintain_size(asg_name, asg_conn):
+                        log.info("Not terminating due to min cluster size reached")
                         idletime = 0
-                    except ClientError as ex:
-                        log.error("Failed to terminate instance with exception %s" % ex)
+                    else:
+                        _self_terminate(asg_conn, instance_id)
 
                     _lock_host(scheduler_module, hostname, unlock=True)
 
