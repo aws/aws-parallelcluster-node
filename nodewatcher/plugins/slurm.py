@@ -89,6 +89,24 @@ def lockHost(hostname, unlock=False):
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
 
 
+def is_node_down():
+    """Check if node is down according to scheduler"""
+    try:
+        # retrieves the state of a specific node
+        # https://slurm.schedmd.com/sinfo.html#lbAG
+        # Output format:
+        # down*
+        command = "/bin/bash -c \"/opt/slurm/bin/sinfo --noheader -o '%T' -n $(hostname)\""
+        output = check_command_output(command).strip()
+        log.info("Node is in state: '{0}'".format(output))
+        if output and all(state not in output for state in ["down", "drained", "fail"]):
+            return False
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
+
+    return True
+
+
 def _get_node_slots():
     hostname = check_command_output("hostname")
     # retrieves number of slots for a specific node in the cluster.
