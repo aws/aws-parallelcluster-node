@@ -73,7 +73,8 @@ def hasPendingJobs():
 
         has_pending = pending > 0
         error = False
-    except (subprocess.CalledProcessError, CriticalError):
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
         error = True
         has_pending = False
 

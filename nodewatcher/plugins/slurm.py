@@ -54,7 +54,8 @@ def hasPendingJobs():
                     break
 
         error = False
-    except subprocess.CalledProcessError:
+    except Exception as e:
+        log.warning("Failed when checking for pending jobs with exception %s. Assuming no pending jobs.", e)
         error = True
         has_pending = False
 
@@ -90,6 +91,9 @@ def lockHost(hostname, unlock=False):
 
 def _get_node_slots():
     hostname = check_command_output("hostname")
+    # retrieves number of slots for a specific node in the cluster.
+    # Output format:
+    # 4
     command = "/opt/slurm/bin/sinfo -o '%c' -n {0} -h".format(hostname)
     output = check_command_output(command)
     return int(output)
