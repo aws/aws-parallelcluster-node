@@ -21,7 +21,7 @@ def get_required_nodes(instance_properties):
 
 # get nodes reserved by running jobs
 # if a host has 1 or more job running on it, it'll be marked busy
-def get_busy_nodes(instance_properties):
+def get_busy_nodes():
     command = "qstat -f"
     _output = check_sge_command_output(command)
     nodes = 0

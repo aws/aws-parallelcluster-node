@@ -35,7 +35,7 @@ def get_required_nodes(instance_properties):
 
 
 # get nodes reserved by running jobs
-def get_busy_nodes(instance_properties):
+def get_busy_nodes():
     command = "/opt/torque/bin/pbsnodes -x"
     # The output of the command
     # <?xml version="1.0" encoding="UTF-8"?>
