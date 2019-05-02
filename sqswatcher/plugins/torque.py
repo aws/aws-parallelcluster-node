@@ -16,7 +16,6 @@ import time
 from xml.etree import ElementTree
 
 import paramiko
-
 from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)

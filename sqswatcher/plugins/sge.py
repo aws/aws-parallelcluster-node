@@ -16,9 +16,8 @@ import subprocess
 import time
 from tempfile import NamedTemporaryFile
 
-import paramiko
-
 import common.sge as sge
+import paramiko
 from common.sge import check_sge_command_output, run_sge_command
 
 log = logging.getLogger(__name__)
