@@ -34,6 +34,10 @@ log = logging.getLogger(__name__)
 
 DATA_DIR = "/var/run/nodewatcher/"
 IDLETIME_FILE = DATA_DIR + "node_idletime.json"
+# Timeout used when nodewatcher starts. The node might not be attached to scheduler yet.
+INITIAL_TERMINATE_TIMEOUT = minutes(3)
+# Timeout used at every iteration of nodewatcher loop.
+TERMINATE_TIMEOUT = minutes(1)
 
 
 NodewatcherConfig = collections.namedtuple(
@@ -290,13 +294,13 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param instance_id: current instance id
     """
     _wait_for_stack_ready(config.stack_name, config.region, config.proxy_config)
-    _terminate_if_down(scheduler_module, config, asg_name, instance_id, minutes(3))
+    _terminate_if_down(scheduler_module, config, asg_name, instance_id, INITIAL_TERMINATE_TIMEOUT)
 
     idletime = _init_idletime()
     while True:
         time.sleep(60)
         _store_idletime(idletime)
-        _terminate_if_down(scheduler_module, config, asg_name, instance_id, minutes(1))
+        _terminate_if_down(scheduler_module, config, asg_name, instance_id, TERMINATE_TIMEOUT)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
