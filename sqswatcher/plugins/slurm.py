@@ -22,9 +22,9 @@ from multiprocessing import Pool
 from shutil import move
 from tempfile import mkstemp
 
-import paramiko
 from retrying import retry
 
+import paramiko
 from common.utils import run_command
 
 log = logging.getLogger(__name__)
