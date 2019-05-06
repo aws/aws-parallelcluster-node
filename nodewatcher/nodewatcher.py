@@ -22,6 +22,7 @@ import sys
 import tarfile
 import time
 import urllib2
+from contextlib import closing
 
 import boto3
 from botocore.config import Config
@@ -193,7 +194,7 @@ def _dump_logs(instance_id):
             if e.errno != errno.EEXIST:
                 raise
         log.info("Dumping logs to %s", filename)
-        with tarfile.open(filename, "w|gz") as archive:
+        with closing(tarfile.open(filename, "w|gz")) as archive:
             archive.add("/var/log", recursive=True)
     except Exception as e:
         log.warning("Failed while dumping logs to %s with exception %s.", filename, e)
