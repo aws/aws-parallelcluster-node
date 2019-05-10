@@ -136,7 +136,7 @@ def _run_command(command_function, command, env=None, raise_on_error=True):
             raise
         else:
             log.warning(e)
-            return None
+            return e.output
     except OSError as e:
         log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
         raise
