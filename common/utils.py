@@ -222,6 +222,7 @@ def get_instance_properties(region, proxy_config, instance_type):
         log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
         slots = vcpus
 
+    log.info("Number of slots computed for instance %s: %d", instance_type, slots)
     return {"slots": slots}
 
 

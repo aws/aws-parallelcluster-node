@@ -8,181 +8,179 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
+import collections
 import logging
-import os
-import socket
-import subprocess
-import time
-from tempfile import NamedTemporaryFile
+import re
 
 import common.sge as sge
-import paramiko
+from common.remote_command_executor import RemoteCommandExecutor
 from common.sge import check_sge_command_output, run_sge_command
 
 log = logging.getLogger(__name__)
 
-
-def _is_host_configured(command, hostname):
-    output = check_sge_command_output(command)
-    # Expected output
-    # ip-172-31-66-16.ec2.internal
-    # ip-172-31-74-69.ec2.internal
-    match = list(filter(lambda x: hostname in x.split(".")[0], output.split("\n")))
-    return True if len(match) > 0 else False
+QConfCommand = collections.namedtuple("QConfCommand", ["command_flags", "successful_messages", "description"])
 
 
-def addHost(hostname, cluster_user, slots, max_cluster_size):
-    log.info("Adding %s with %s slots" % (hostname, slots))
+QCONF_COMMANDS = {
+    "ADD_ADMINISTRATIVE_HOST": QConfCommand(
+        command_flags="-ah",
+        successful_messages=[r".* added to administrative host list", r'adminhost ".*" already exists'],
+        description="add administrative hosts",
+    ),
+    "ADD_SUBMIT_HOST": QConfCommand(
+        command_flags="-as",
+        successful_messages=[r".* added to submit host list", r'submithost ".*" already exists'],
+        description="add submit hosts",
+    ),
+    "REMOVE_ADMINISTRATIVE_HOST": QConfCommand(
+        command_flags="-dh",
+        successful_messages=[
+            r".* removed .* from administrative host list",
+            r'denied: administrative host ".*" does not exist',
+        ],
+        description="remove administrative hosts",
+    ),
+    "REMOVE_SUBMIT_HOST": QConfCommand(
+        command_flags="-ds",
+        successful_messages=[r".* removed .* from submit host list", r'denied: submit host ".*" does not exist'],
+        description="remove submission hosts",
+    ),
+    "REMOVE_EXECUTION_HOST": QConfCommand(
+        command_flags="-de",
+        successful_messages=[r".* removed .* from execution host list", r'denied: execution host ".*" does not exist'],
+        description="remove execution hosts",
+    ),
+}
 
-    # Adding host as administrative host
+
+def _exec_qconf_command(hosts, qhost_command):
+    if not hosts:
+        return []
+
+    hostnames = ",".join([host.hostname for host in hosts])
     try:
-        command = "qconf -ah %s" % hostname
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        log.warning("Unable to add host %s as administrative host", hostname)
+        log.info("Executing operation '%s' for hosts %s", qhost_command.description, hostnames)
+        command = "qconf {flags} {hostnames}".format(flags=qhost_command.command_flags, hostnames=hostnames)
+        output = check_sge_command_output(command, raise_on_error=False)
+        succeeded_hosts = []
+        for host, message in zip(hosts, output.split("\n")):
+            if any(re.match(pattern, message) is not None for pattern in qhost_command.successful_messages):
+                succeeded_hosts.append(host)
 
-    # Adding host as submit host
-    try:
-        command = "qconf -as %s" % hostname
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        log.warning("Unable to add host %s as submission host", hostname)
+        return succeeded_hosts
+    except Exception as e:
+        log.error(
+            "Unable to execute operation '%s' for hosts %s. Failed with exception %s",
+            qhost_command.description,
+            hostnames,
+            e,
+        )
+        return []
 
-    # Setup template to add execution host
-    qconf_Ae_template = """hostname              %s
-load_scaling          NONE
-complex_values        NONE
-user_lists            NONE
-xuser_lists           NONE
-projects              NONE
-xprojects             NONE
-usage_scaling         NONE
-report_variables      NONE
-"""
 
-    with NamedTemporaryFile() as t:
-        temp_template = open(t.name, "w")
-        temp_template.write(qconf_Ae_template % hostname)
-        temp_template.flush()
-        os.fsync(t.fileno())
-
-        # Add host as an execution host
+def _run_sge_command_on_multiple_hosts(hosts, command_template):
+    succeeded_hosts = []
+    for host in hosts:
         try:
-            command = "qconf -Ae %s" % t.name
-            run_sge_command(command)
-        except subprocess.CalledProcessError:
-            log.warning("Unable to add host %s as execution host", hostname)
+            command = command_template.format(hostname=host.hostname, slots=host.slots)
+            run_sge_command(command.format(hostname=host.hostname))
+            succeeded_hosts.append(host)
+        except Exception as e:
+            log.error("Failed when executing command %s with exception %s", command, e)
+    return succeeded_hosts
 
-    # Connect and start SGE
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    hosts_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/known_hosts"
-    user_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/id_rsa"
-    iter = 0
-    connected = False
-    while iter < 3 and connected is False:
-        try:
-            log.info("Connecting to host: %s iter: %d" % (hostname, iter))
-            ssh.connect(hostname, username=cluster_user, key_filename=user_key_file)
-            connected = True
-        except socket.error as e:
-            log.error("Socket error: %s" % e)
-            time.sleep(10 + iter)
-            iter = iter + 1
-            if iter == 3:
-                log.critical("Unable to provision host")
-                return
-    try:
-        ssh.load_host_keys(hosts_key_file)
-    except IOError:
-        ssh._host_keys_filename = None
-        pass
-    ssh.save_host_keys(hosts_key_file)
+
+def _add_hosts_to_group(hosts):
+    log.info("Adding %s to @allhosts group", ",".join([host.hostname for host in hosts]))
+    command = "qconf -aattr hostgroup hostlist {hostname} @allhosts"
+    return _run_sge_command_on_multiple_hosts(hosts, command)
+
+
+def _add_host_slots(hosts):
+    log.info("Adding %s to all.q queue", ",".join([host.hostname for host in hosts]))
+    command = 'qconf -aattr queue slots ["{hostname}={slots}"] all.q'
+    return _run_sge_command_on_multiple_hosts(hosts, command)
+
+
+def _remove_hosts_from_group(hosts):
+    log.info("Removing %s from @allhosts group", ",".join([host.hostname for host in hosts]))
+    command = "qconf -dattr hostgroup hostlist {hostname} @allhosts"
+    return _run_sge_command_on_multiple_hosts(hosts, command)
+
+
+def _remove_hosts_from_queue(hosts):
+    log.info("Removing %s from all.q queue", ",".join([host.hostname for host in hosts]))
+    command = "qconf -purge queue '*' all.q@{hostname}"
+    return _run_sge_command_on_multiple_hosts(hosts, command)
+
+
+def _install_compute(hosts, cluster_user):
     command = (
         "sudo sh -c 'cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf'"
     ).format(sge.SGE_ROOT)
-    stdin, stdout, stderr = ssh.exec_command(command)
-    while not stdout.channel.exit_status_ready():
-        time.sleep(1)
-    ssh.close()
+    hostnames = [host.hostname for host in hosts]
+    result = RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user)
 
-    # Add the host to the all.q
-    try:
-        command = "qconf -aattr hostgroup hostlist %s @allhosts" % hostname
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        log.warning("Unable to add host %s to all.q", hostname)
+    succeeded_hosts = []
+    for host in hosts:
+        if host.hostname in result and result[host.hostname]:
+            succeeded_hosts.append(host)
 
-    # Set the numbers of slots for the host
-    try:
-        command = 'qconf -aattr queue slots ["%s=%s"] all.q' % (hostname, slots)
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        log.warning("Unable to set the number of slots for the host %s", hostname)
+    return succeeded_hosts
 
 
-def removeHost(hostname, cluster_user, max_cluster_size):
-    log.info("Removing %s", hostname)
+def _add_hosts(hosts, cluster_user):
+    if not hosts:
+        return []
 
-    # Check if host is administrative host
-    command = "qconf -sh"
-    if _is_host_configured(command, hostname):
-        # Removing host as administrative host
-        command = "qconf -dh %s" % hostname
-        run_sge_command(command)
-    else:
-        log.info("Host %s is not administrative host", hostname)
+    succeeded_hosts = _exec_qconf_command(hosts, QCONF_COMMANDS["ADD_ADMINISTRATIVE_HOST"])
+    succeeded_hosts = _exec_qconf_command(succeeded_hosts, QCONF_COMMANDS["ADD_SUBMIT_HOST"])
+    succeeded_hosts = _add_hosts_to_group(succeeded_hosts)
+    succeeded_hosts = _add_host_slots(succeeded_hosts)
+    succeeded_hosts = _install_compute(succeeded_hosts, cluster_user)
+    return [host.hostname for host in succeeded_hosts]
 
-    # Check if host is in all.q (qconf -sq all.q)
-    # Purge hostname from all.q
-    try:
-        command = "qconf -purge queue '*' all.q@%s" % hostname
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        log.warning("Unable to remove host %s from all.q", hostname)
 
-    # Check if host is in @allhosts group (qconf -shgrp_resolved @allhosts)
-    # Remove host from @allhosts group
-    try:
-        command = "qconf -dattr hostgroup hostlist %s @allhosts" % hostname
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        log.warning("Unable to remove host %s from @allhosts group", hostname)
+def _remove_hosts(hosts):
+    if not hosts:
+        return []
 
-    # Check if host is execution host
-    command = "qconf -sel"
-    if _is_host_configured(command, hostname):
-        # Removing host as execution host
-        command = "qconf -de %s" % hostname
-        run_sge_command(command)
-    else:
-        log.info("Host %s is not execution host", hostname)
-
-    # Check if host is submission host
-    command = "qconf -ss"
-    if _is_host_configured(command, hostname):
-        # Removing host as submission host
-        command = "qconf -ds %s" % hostname
-        run_sge_command(command)
-    else:
-        log.info("Host %s is not submission host", hostname)
+    succeeded_hosts = set(hosts)
+    succeeded_hosts = succeeded_hosts.intersection(set(_remove_hosts_from_queue(hosts)))
+    succeeded_hosts = succeeded_hosts.intersection(set(_remove_hosts_from_group(hosts)))
+    succeeded_hosts = succeeded_hosts.intersection(
+        set(_exec_qconf_command(hosts, QCONF_COMMANDS["REMOVE_ADMINISTRATIVE_HOST"]))
+    )
+    succeeded_hosts = succeeded_hosts.intersection(
+        set(_exec_qconf_command(hosts, QCONF_COMMANDS["REMOVE_SUBMIT_HOST"]))
+    )
+    succeeded_hosts = succeeded_hosts.intersection(
+        set(_exec_qconf_command(hosts, QCONF_COMMANDS["REMOVE_EXECUTION_HOST"]))
+    )
+    return [host.hostname for host in succeeded_hosts]
 
 
 def update_cluster(max_cluster_size, cluster_user, update_events, instance_properties):
-    failed = []
-    succeeded = []
+    if not update_events:
+        return [], []
+
+    hosts_to_add = []
+    hosts_to_remove = []
     for event in update_events:
-        try:
-            if event.action == "REMOVE":
-                removeHost(event.host.hostname, cluster_user, max_cluster_size)
-            elif event.action == "ADD":
-                addHost(event.host.hostname, cluster_user, event.host.slots, max_cluster_size)
+        if event.action == "REMOVE":
+            hosts_to_remove.append(event.host)
+        elif event.action == "ADD":
+            hosts_to_add.append(event.host)
+
+    added_hosts = _add_hosts(hosts_to_add, cluster_user)
+    removed_hosts = _remove_hosts(hosts_to_remove)
+
+    succeeded = []
+    failed = []
+    for event in update_events:
+        if event.host.hostname in added_hosts or event.host.hostname in removed_hosts:
             succeeded.append(event)
-        except Exception as e:
-            log.error(
-                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e
-            )
+        else:
             failed.append(event)
 
     return failed, succeeded
