@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 def hasJobs(hostname):
     # Checking for running jobs on the node, with parallel job view expanded (-g t)
-    command = "qstat -g t -l hostname={0} -u '*'".format(hostname)
+    command = "qstat -s rs -g t -l hostname={0} -u '*'".format(hostname)
 
     # Command output
     # job-ID  prior   name       user         state submit/start at     queue                          master ja-task-ID
