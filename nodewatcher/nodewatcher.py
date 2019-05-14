@@ -206,7 +206,10 @@ def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait
 
     @retry(wait_fixed=seconds(10), retry_on_result=lambda result: result is True, stop_max_delay=max_wait)
     def _poll_wait_for_node_ready():
-        return scheduler_module.is_node_down()
+        is_down = scheduler_module.is_node_down()
+        if is_down:
+            log.warning("Node reported as down")
+        return is_down
 
     try:
         _poll_wait_for_node_ready()
