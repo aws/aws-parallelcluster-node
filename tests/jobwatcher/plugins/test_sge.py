@@ -1,7 +1,7 @@
 import pytest
 
 from assertpy import assert_that
-from common.schedulers.sge_commands import SgeHost, SgeJob
+from common.schedulers.sge_commands import SGE_HOLD_STATE, SgeHost, SgeJob
 from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
 
 
@@ -124,8 +124,9 @@ def test_get_busy_nodes(cluster_nodes, expected_busy_nodes, mocker):
             4,
         ),
         ([SgeJob(number="89", slots=40, state="qw")], 10),
+        ([SgeJob(number="89", slots=40, state="qwh"), SgeJob(number="90", slots=5, state="qw")], 2),
     ],
-    ids=["single_job", "max_cluster_size", "multiple_jobs", "max_size_job"],
+    ids=["single_job", "max_cluster_size", "multiple_jobs", "max_size_job", "hold_state"],
 )
 def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
     mock = mocker.patch("jobwatcher.plugins.sge.get_jobs_info", return_value=pending_jobs, autospec=True)

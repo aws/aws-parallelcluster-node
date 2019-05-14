@@ -1,6 +1,6 @@
 import logging
 
-from common.schedulers.sge_commands import SGE_BUSY_STATES, get_compute_nodes_info, get_jobs_info
+from common.schedulers.sge_commands import SGE_BUSY_STATES, SGE_HOLD_STATE, get_compute_nodes_info, get_jobs_info
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +18,8 @@ def _get_required_slots(instance_properties, max_size):
                 job.slots,
                 max_cluster_slots,
             )
+        elif SGE_HOLD_STATE in job.state:
+            log.info("Skipping job %s since in hold state (%s)", job.number, job.state)
         else:
             slots += job.slots
 
