@@ -64,10 +64,12 @@ SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "o"]
 # dependencies have been assigned to it job via the -hold_jid or -hold_jid_ad options of qsub(1) or qalter(1).
 SGE_HOLD_STATE = "h"
 
-# The state of the queue - one of u(nknown), a(larm), A(larm), C(alendar suspended), s(uspended),
-# S(ubordinate), d(isabled), D(isabled), E(rror), c(configuration ambiguous), o(rphaned), P(reempted),
-# or some combination thereof.
-# Refer to qstat man page for additional details.
+# If the state is u, the corresponding sge_execd(8) cannot be contacted.
+# An E(rror) state is displayed for a queue for various reasons such as failing to find executables or directories.
+# If an o(rphaned) state is displayed for a queue instance, it indicates that the queue instance is no longer demanded
+# by the current cluster queue configuration or the host group configuration. The queue instance is kept because jobs
+# which have not yet finished are still associated with it, and it will vanish from qstat output when these jobs have
+# finished.
 SGE_ERROR_STATES = ["u", "E", "o"]
 
 
@@ -177,11 +179,12 @@ def _run_qstat(full_format=False, hostname_filter=None, job_state_filter=None):
 def get_compute_nodes_info(hostname_filter=None, job_state_filter=None):
     output = _run_qstat(full_format=True, hostname_filter=hostname_filter, job_state_filter=job_state_filter)
     if not output:
-        return []
+        return {}
 
     root = ElementTree.fromstring(output)
     queue_info = root.findall("./queue_info/*")
-    return [SgeHost.from_xml(ElementTree.tostring(host)) for host in queue_info]
+    hosts_list = [SgeHost.from_xml(ElementTree.tostring(host)) for host in queue_info]
+    return {host.name: host for host in hosts_list}
 
 
 def get_jobs_info(hostname_filter=None, job_state_filter=None):

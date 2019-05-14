@@ -28,8 +28,8 @@ from tests.common import read_text
     [
         (
             "qstat_output_mix.xml",
-            [
-                SgeHost(
+            {
+                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
                     name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=3,
@@ -41,7 +41,7 @@ from tests.common import read_text
                         SgeJob(number="91", slots=1, state="r", node_type="MASTER", array_index=3, hostname=None),
                     ],
                 ),
-                SgeHost(
+                "all.q@ip-10-0-0-52.eu-west-1.compute.internal": SgeHost(
                     name="all.q@ip-10-0-0-52.eu-west-1.compute.internal",
                     slots_total=8,
                     slots_used=0,
@@ -49,7 +49,7 @@ from tests.common import read_text
                     state="d",
                     jobs=[],
                 ),
-                SgeHost(
+                "all.q@ip-10-0-0-116.eu-west-1.compute.internal": SgeHost(
                     name="all.q@ip-10-0-0-116.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
@@ -57,10 +57,10 @@ from tests.common import read_text
                     state="au",
                     jobs=[],
                 ),
-            ],
+            },
         ),
-        ("qstat_output_empty.xml", []),
-        ("qstat_output_empty_xml.xml", []),
+        ("qstat_output_empty.xml", {}),
+        ("qstat_output_empty_xml.xml", {}),
     ],
     ids=["mixed_output", "empty_output", "empty_xml_output"],
 )

@@ -10,10 +10,12 @@
 # limitations under the License.
 
 import logging
+import socket
 import subprocess
 
-from common.schedulers.sge_commands import lock_host, unlock_host
+from common.schedulers.sge_commands import SGE_ERROR_STATES, get_compute_nodes_info, lock_host, unlock_host
 from common.sge import check_sge_command_output
+from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +78,27 @@ def lockHost(hostname, unlock=False):
 
 
 def is_node_down():
-    """Check if node is down according to scheduler"""
-    # ToDo: to be implemented
-    return False
+    """
+    Check if node is down according to scheduler
+
+    The node is considered as down if:
+    - there is a failure contacting the scheduler
+    - node is not reported in the compute nodes list
+    - node is in one of the SGE_ERROR_STATES states
+    """
+    try:
+        hostname = check_command_output("hostname").strip()
+        host_fqdn = socket.getfqdn(hostname)
+        nodes = get_compute_nodes_info(hostname_filter=hostname)
+        if not any(host in nodes for host in ["all.q@" + hostname, "all.q@" + host_fqdn]):
+            log.warning("Node is not attached to scheduler. Reporting as down")
+            return True
+
+        node = nodes.get("all.q@" + host_fqdn, nodes.get("all.q@" + hostname))
+        log.info("Node is in state: '{0}'".format(node.state))
+        if all(error_state not in node.state for error_state in SGE_ERROR_STATES):
+            return False
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
+
+    return True
