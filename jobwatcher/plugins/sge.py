@@ -1,23 +1,34 @@
 import logging
 
-from common.schedulers.sge_commands import SGE_BUSY_STATES, get_compute_nodes_info
-from common.sge import check_sge_command_output
+from common.schedulers.sge_commands import SGE_BUSY_STATES, get_compute_nodes_info, get_jobs_info
 
 log = logging.getLogger(__name__)
 
 
-# get nodes requested from pending jobs
-def get_required_nodes(instance_properties):
-    command = "qstat -g d -s p -u '*'"
-    _output = check_sge_command_output(command)
+def _get_required_slots(instance_properties, max_size):
+    """Compute the total number of slots required by pending jobs."""
+    pending_jobs = get_jobs_info(job_state_filter="p")
+    max_cluster_slots = max_size * instance_properties.get("slots")
     slots = 0
-    output = _output.split("\n")[2:]
-    for line in output:
-        line_arr = line.split()
-        if len(line_arr) >= 8:
-            slots += int(line_arr[7])
+    for job in pending_jobs:
+        if job.slots > max_cluster_slots:
+            log.info(
+                "Skipping job %s since required slots (%d) exceed max cluster size (%d)",
+                job.number,
+                job.slots,
+                max_cluster_slots,
+            )
+        else:
+            slots += job.slots
+
+    return slots
+
+
+# get nodes requested from pending jobs
+def get_required_nodes(instance_properties, max_size):
+    required_slots = _get_required_slots(instance_properties, max_size)
     vcpus = instance_properties.get("slots")
-    return -(-slots // vcpus)
+    return -(-required_slots // vcpus)
 
 
 def get_busy_nodes():
