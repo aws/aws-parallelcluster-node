@@ -136,6 +136,18 @@ def install_sge_on_compute_nodes(hosts, cluster_user):
     return succeeded_hosts
 
 
+def lock_host(hostname):
+    logging.info("Locking host %s", hostname)
+    command = ["qmod", "-d", "all.q@{0}".format(hostname)]
+    run_sge_command(command)
+
+
+def unlock_host(hostname):
+    logging.info("Unlocking host %s", hostname)
+    command = ["qmod", "-e", "all.q@{0}".format(hostname)]
+    run_sge_command(command)
+
+
 def _run_sge_command_for_multiple_hosts(hosts, command_template):
     """Sequentially run an sge command on the master node for the given hostnames."""
     succeeded_hosts = []

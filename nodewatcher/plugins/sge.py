@@ -12,7 +12,8 @@
 import logging
 import subprocess
 
-from common.sge import check_sge_command_output, run_sge_command
+from common.schedulers.sge_commands import lock_host, unlock_host
+from common.sge import check_sge_command_output
 
 log = logging.getLogger(__name__)
 
@@ -65,11 +66,11 @@ def hasPendingJobs():
 
 
 def lockHost(hostname, unlock=False):
-    mod = unlock and "-e" or "-d"
-    command = ["qmod", mod, "all.q@%s" % hostname]
-
     try:
-        run_sge_command(command)
+        if unlock:
+            unlock_host(hostname)
+        else:
+            lock_host(hostname)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
 
