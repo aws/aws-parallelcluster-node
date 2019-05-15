@@ -61,8 +61,10 @@ def _exec_qconf_command(hosts, qhost_command):
     try:
         log.info("Executing operation '%s' for hosts %s", qhost_command.description, hostnames)
         command = "qconf {flags} {hostnames}".format(flags=qhost_command.command_flags, hostnames=hostnames)
+        # setting raise_on_error to False and evaluating command output to decide if the execution was successful
         output = check_sge_command_output(command, raise_on_error=False)
         succeeded_hosts = []
+        # assuming output contains a message line for each node the command is executed for.
         for host, message in zip(hosts, output.split("\n")):
             if any(re.match(pattern, message) is not None for pattern in qhost_command.successful_messages):
                 succeeded_hosts.append(host)
@@ -78,11 +80,12 @@ def _exec_qconf_command(hosts, qhost_command):
         return []
 
 
-def _run_sge_command_on_multiple_hosts(hosts, command_template):
+def _run_sge_command_for_multiple_hosts(hosts, command_template):
+    """Sequentially run an sge command on the master node for the given hostnames."""
     succeeded_hosts = []
     for host in hosts:
+        command = command_template.format(hostname=host.hostname, slots=host.slots)
         try:
-            command = command_template.format(hostname=host.hostname, slots=host.slots)
             run_sge_command(command.format(hostname=host.hostname))
             succeeded_hosts.append(host)
         except Exception as e:
@@ -93,28 +96,29 @@ def _run_sge_command_on_multiple_hosts(hosts, command_template):
 def _add_hosts_to_group(hosts):
     log.info("Adding %s to @allhosts group", ",".join([host.hostname for host in hosts]))
     command = "qconf -aattr hostgroup hostlist {hostname} @allhosts"
-    return _run_sge_command_on_multiple_hosts(hosts, command)
+    return _run_sge_command_for_multiple_hosts(hosts, command)
 
 
 def _add_host_slots(hosts):
     log.info("Adding %s to all.q queue", ",".join([host.hostname for host in hosts]))
     command = 'qconf -aattr queue slots ["{hostname}={slots}"] all.q'
-    return _run_sge_command_on_multiple_hosts(hosts, command)
+    return _run_sge_command_for_multiple_hosts(hosts, command)
 
 
 def _remove_hosts_from_group(hosts):
     log.info("Removing %s from @allhosts group", ",".join([host.hostname for host in hosts]))
     command = "qconf -dattr hostgroup hostlist {hostname} @allhosts"
-    return _run_sge_command_on_multiple_hosts(hosts, command)
+    return _run_sge_command_for_multiple_hosts(hosts, command)
 
 
 def _remove_hosts_from_queue(hosts):
     log.info("Removing %s from all.q queue", ",".join([host.hostname for host in hosts]))
     command = "qconf -purge queue '*' all.q@{hostname}"
-    return _run_sge_command_on_multiple_hosts(hosts, command)
+    return _run_sge_command_for_multiple_hosts(hosts, command)
 
 
 def _install_compute(hosts, cluster_user):
+    """Start sge on compute nodes in parallel."""
     command = (
         "sudo sh -c 'cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf'"
     ).format(sge.SGE_ROOT)
@@ -130,6 +134,15 @@ def _install_compute(hosts, cluster_user):
 
 
 def _add_hosts(hosts, cluster_user):
+    """
+    Add a list of compute nodes to the cluster.
+
+    If one of the steps fails then the procedure for the failing host is stopped.
+    All operations should be idempotent in order to allow retries in case the procedure
+    fails at any of the steps.
+
+    :return: the list of hostnames that were added correctly to the cluster
+    """
     if not hosts:
         return []
 
@@ -142,6 +155,17 @@ def _add_hosts(hosts, cluster_user):
 
 
 def _remove_hosts(hosts):
+    """
+    Remove a list of compute nodes from the cluster.
+
+    If one of the steps fails then the procedure for the failing host continues. This is done
+    to clean up as much as possible the scheduler configuration in case a node is terminated
+    but some of the steps are failing.
+    All operations should be idempotent in order to allow retries in case the procedure
+    fails at any of the steps.
+
+    :return: the list of hostnames that were removed correctly from the cluster
+    """
     if not hosts:
         return []
 

@@ -27,7 +27,7 @@ def check_sge_command_output(command, raise_on_error=True):
     :param command: command to execute
     :param raise_on_error: if True the method raises subprocess.CalledProcessError on errors
     :raise subprocess.CalledProcessError if the command fails
-    :return the
+    :return the stdout and stderr of the executed command.
     """
     command = _prepend_sge_bin_dir(command)
     return check_command_output(command, SGE_ENV, raise_on_error=raise_on_error)
