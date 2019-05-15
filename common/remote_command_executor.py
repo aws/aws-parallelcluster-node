@@ -55,7 +55,7 @@ class RemoteCommandExecutor:
 
     def run_remote_command(self, command, timeout=seconds(5), log_error=True, fail_on_error=True):
         """
-        Execute remote command on the cluster master node.
+        Execute remote command on the configured host.
 
         :param command: command to execute.
         :param log_error: log errors.
@@ -105,7 +105,7 @@ class RemoteCommandExecutor:
         pool = Pool(parallelism)
         try:
             r = pool.map_async(
-                _pickable_run_command,
+                _pickable_run_remote_command,
                 [(hostname, command, user, ssh_key_file, timeout, fail_on_error) for hostname in hostnames],
             )
             # The pool timeout is computed by adding 2 times the command timeout for each batch of hosts that is
@@ -117,9 +117,9 @@ class RemoteCommandExecutor:
         return dict(results)
 
 
-@retry(stop_max_attempt_number=2, wrap_exception=True)
-def _pickable_run_command(args):
-    """Pickable verison of the run_command method that can be used by a pool."""
+@retry(stop_max_attempt_number=2)
+def _pickable_run_remote_command(args):
+    """Pickable version of the run_command method that can be used by a pool."""
     (hostname, command, user, ssh_key_file, timeout, fail_on_error) = args
     try:
         remote_command_executor = RemoteCommandExecutor(hostname, user, ssh_key_file)
