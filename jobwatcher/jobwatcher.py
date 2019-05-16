@@ -13,12 +13,12 @@
 # limitations under the License.
 
 import collections
-import ConfigParser
 import logging
 import time
 
 import boto3
 from botocore.config import Config
+from configparser import ConfigParser
 from retrying import retry
 
 from common.utils import get_asg_name, get_asg_settings, get_compute_instance_type, get_instance_properties, load_module

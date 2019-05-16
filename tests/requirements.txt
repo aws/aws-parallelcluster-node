@@ -1,1 +1,8 @@
 discover # Needed for Python 2.6 compatibility
+pytest
+pytest-cov
+pytest-datadir
+pytest-html
+pytest-mock
+pytest-sugar
+assertpy
