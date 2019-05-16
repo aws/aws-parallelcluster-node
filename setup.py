@@ -30,7 +30,7 @@ console_scripts = [
     "jobwatcher = jobwatcher.jobwatcher:main",
 ]
 version = "2.3.2a1"
-requires = ["boto3>=1.7.55", "python-dateutil>=2.6.1", "retrying>=1.3.3", "future>=0.17.1"]
+requires = ["boto3>=1.7.55", "python-dateutil>=2.6.1", "retrying>=1.3.3", "future>=0.17.1", "configparser>=3.7.4"]
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
