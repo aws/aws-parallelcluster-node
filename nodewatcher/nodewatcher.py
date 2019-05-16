@@ -55,7 +55,7 @@ def _get_config():
     config_file = "/etc/nodewatcher.cfg"
     log.info("Reading %s", config_file)
 
-    config = ConfigParser.RawConfigParser()
+    config = ConfigParser()
     config.read(config_file)
     if config.has_option("nodewatcher", "loglevel"):
         lvl = logging._levelNames[config.get("nodewatcher", "loglevel")]

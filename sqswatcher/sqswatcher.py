@@ -61,7 +61,7 @@ def _get_config():
     config_file = "/etc/sqswatcher.cfg"
     log.info("Reading %s", config_file)
 
-    config = ConfigParser.RawConfigParser()
+    config = ConfigParser()
     config.read(config_file)
     if config.has_option("sqswatcher", "loglevel"):
         lvl = logging._levelNames[config.get("sqswatcher", "loglevel")]
