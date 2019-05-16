@@ -56,7 +56,7 @@ QCONF_COMMANDS = {
 # S(ubordinate), d(isabled), D(isabled), E(rror), c(configuration ambiguous), o(rphaned), P(reempted),
 # or some combination thereof.
 # Refer to qstat man page for additional details.
-SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "o"]
+SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "o", "P"]
 
 # The states q(ueued)/w(aiting) and h(old) only appear for pending jobs. Pending, unheld job`s are displayed as qw.
 # The h(old) state indicates that a job currently is not eligible for execution due to a hold state assigned to it
