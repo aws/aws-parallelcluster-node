@@ -32,7 +32,7 @@ def hasJobs(hostname):
     return has_jobs
 
 
-def hasPendingJobs():
+def hasPendingJobs(instance_properties, max_size):
     command = "/opt/slurm/bin/squeue -t PD --noheader -o '%c-%r'"
 
     # Command outputs the pending jobs in the queue in the following format

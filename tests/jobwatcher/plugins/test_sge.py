@@ -112,27 +112,27 @@ def test_get_busy_nodes(cluster_nodes, expected_busy_nodes, mocker):
 @pytest.mark.parametrize(
     "pending_jobs, expected_required_nodes",
     [
-        ([SgeJob(number="89", slots=1, state="qw")], 1),
-        ([SgeJob(number="89", slots=41, state="qw")], 0),
+        ([SgeJob(number="89", slots=3, state="qw")], 1),
         (
             [
                 SgeJob(number="89", slots=10, state="qw"),
                 SgeJob(number="90", slots=5, state="qw"),
                 SgeJob(number="91", slots=1, state="qw"),
-                SgeJob(number="92", slots=41, state="qw"),
+                SgeJob(number="92", slots=40, state="qw"),
             ],
-            4,
+            14,
         ),
-        ([SgeJob(number="89", slots=40, state="qw")], 10),
-        ([SgeJob(number="89", slots=40, state="qwh"), SgeJob(number="90", slots=5, state="qw")], 2),
+        ([], 0),
     ],
-    ids=["single_job", "max_cluster_size", "multiple_jobs", "max_size_job", "hold_state"],
+    ids=["single_job", "multiple_jobs", "no_jobs"],
 )
 def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
-    mock = mocker.patch("jobwatcher.plugins.sge.get_jobs_info", return_value=pending_jobs, autospec=True)
+    mock = mocker.patch("jobwatcher.plugins.sge.get_pending_jobs_info", return_value=pending_jobs, autospec=True)
 
     instance_properties = {"slots": 4}
     max_cluster_size = 10
 
     assert_that(get_required_nodes(instance_properties, max_cluster_size)).is_equal_to(expected_required_nodes)
-    mock.assert_called_with(job_state_filter="p")
+    mock.assert_called_with(
+        max_slots_filter=max_cluster_size * instance_properties["slots"], skip_if_state=SGE_HOLD_STATE
+    )

@@ -18,6 +18,7 @@ from common.schedulers.sge_commands import (
     exec_qconf_command,
     get_compute_nodes_info,
     get_jobs_info,
+    get_pending_jobs_info,
 )
 from sqswatcher.sqswatcher import Host
 from tests.common import read_text
@@ -284,3 +285,43 @@ def test_qconf_commands(qconf_output, command, expected_succeeded_hosts, mocker)
         raise_on_error=False,
     )
     assert_that([host.hostname for host in succeeded_hosts]).contains_only(*expected_succeeded_hosts)
+
+
+@pytest.mark.parametrize(
+    "pending_jobs, skip_if_state, max_slots, expected_filtered_jobs",
+    [
+        ([SgeJob(number="89", slots=1, state="qw")], None, None, [SgeJob(number="89", slots=1, state="qw")]),
+        ([SgeJob(number="89", slots=1, state="qw")], "a", None, [SgeJob(number="89", slots=1, state="qw")]),
+        ([SgeJob(number="89", slots=1, state="qwh")], "h", None, []),
+        ([SgeJob(number="89", slots=41, state="qw")], None, 40, []),
+        ([SgeJob(number="89", slots=41, state="qw")], None, 41, [SgeJob(number="89", slots=41, state="qw")]),
+        (
+            [
+                SgeJob(number="89", slots=10, state="qw"),
+                SgeJob(number="90", slots=5, state="qwh"),
+                SgeJob(number="91", slots=1, state="qw"),
+                SgeJob(number="92", slots=41, state="qwh"),
+            ],
+            "h",
+            None,
+            [SgeJob(number="89", slots=10, state="qw"), SgeJob(number="91", slots=1, state="qw")],
+        ),
+        (
+            [
+                SgeJob(number="89", slots=10, state="qw"),
+                SgeJob(number="90", slots=5, state="qwh"),
+                SgeJob(number="91", slots=1, state="qw"),
+                SgeJob(number="92", slots=41, state="qwh"),
+            ],
+            "h",
+            6,
+            [SgeJob(number="91", slots=1, state="qw")],
+        ),
+    ],
+    ids=["no_filter", "skip_not_present", "skip_present", "max_slots", "max_slots_no_filter", "mix_skip_state", "mix"],
+)
+def test_get_pending_jobs_info(pending_jobs, skip_if_state, max_slots, expected_filtered_jobs, mocker):
+    mock = mocker.patch("common.schedulers.sge_commands.get_jobs_info", return_value=pending_jobs, autospec=True)
+
+    assert_that(get_pending_jobs_info(max_slots, skip_if_state)).is_equal_to(expected_filtered_jobs)
+    mock.assert_called_with(job_state_filter="p")

@@ -197,6 +197,34 @@ def get_jobs_info(hostname_filter=None, job_state_filter=None):
     return [SgeJob.from_xml(ElementTree.tostring(host)) for host in job_info]
 
 
+def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None):
+    """
+    Retrieve the list of pending jobs.
+    :param max_slots_filter: discard jobs that require a number of slots bigger than the given value
+    :param skip_if_state: discard jobs that are in the given state
+    :return: the list of filtered pending jos.
+    """
+    pending_jobs = get_jobs_info(job_state_filter="p")
+    if max_slots_filter or skip_if_state:
+        filtered_jobs = []
+        for job in pending_jobs:
+            if max_slots_filter and job.slots > max_slots_filter:
+                logging.info(
+                    "Skipping job %s since required slots (%d) exceed max slots (%d)",
+                    job.number,
+                    job.slots,
+                    max_slots_filter,
+                )
+            elif skip_if_state and skip_if_state in job.state:
+                logging.info("Skipping job %s since in state %s", job.number, job.state)
+            else:
+                filtered_jobs.append(job)
+
+        return filtered_jobs
+    else:
+        return pending_jobs
+
+
 @add_metaclass(ABCMeta)
 class SgeObject:
     def __eq__(self, other):
