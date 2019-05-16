@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import collections
-import ConfigParser
 import errno
 import json
 import logging
@@ -26,6 +25,7 @@ from contextlib import closing
 
 import boto3
 from botocore.config import Config
+from configparser import ConfigParser
 from retrying import RetryError, retry
 
 from common.time_utils import minutes, seconds
