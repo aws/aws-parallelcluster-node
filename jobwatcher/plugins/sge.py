@@ -1,27 +1,22 @@
 import logging
 
-from common.schedulers.sge_commands import SGE_BUSY_STATES, SGE_HOLD_STATE, get_compute_nodes_info, get_jobs_info
+from common.schedulers.sge_commands import (
+    SGE_BUSY_STATES,
+    SGE_HOLD_STATE,
+    get_compute_nodes_info,
+    get_pending_jobs_info,
+)
 
 log = logging.getLogger(__name__)
 
 
 def _get_required_slots(instance_properties, max_size):
     """Compute the total number of slots required by pending jobs."""
-    pending_jobs = get_jobs_info(job_state_filter="p")
     max_cluster_slots = max_size * instance_properties.get("slots")
+    pending_jobs = get_pending_jobs_info(max_slots_filter=max_cluster_slots, skip_if_state=SGE_HOLD_STATE)
     slots = 0
     for job in pending_jobs:
-        if job.slots > max_cluster_slots:
-            log.info(
-                "Skipping job %s since required slots (%d) exceed max cluster size (%d)",
-                job.number,
-                job.slots,
-                max_cluster_slots,
-            )
-        elif SGE_HOLD_STATE in job.state:
-            log.info("Skipping job %s since in hold state (%s)", job.number, job.state)
-        else:
-            slots += job.slots
+        slots += job.slots
 
     return slots
 

@@ -1,8 +1,8 @@
 import pytest
 
 from assertpy import assert_that
-from common.schedulers.sge_commands import SgeHost
-from nodewatcher.plugins.sge import is_node_down
+from common.schedulers.sge_commands import SGE_HOLD_STATE, SgeHost, SgeJob
+from nodewatcher.plugins.sge import hasJobs, hasPendingJobs, is_node_down
 
 
 @pytest.mark.parametrize(
@@ -64,3 +64,53 @@ def test_terminate_if_down(hostname, compute_nodes_output, expected_result, mock
 
     assert_that(is_node_down()).is_equal_to(expected_result)
     mock.assert_called_with(hostname)
+
+
+@pytest.mark.parametrize(
+    "pending_jobs, expected_result",
+    [
+        ([SgeJob(number="89", slots=1, state="qw")], (True, False)),
+        (
+            [
+                SgeJob(number="89", slots=10, state="qw"),
+                SgeJob(number="90", slots=5, state="qw"),
+                SgeJob(number="91", slots=1, state="qw"),
+                SgeJob(number="92", slots=40, state="qw"),
+            ],
+            (True, False),
+        ),
+        ([], (False, False)),
+        (Exception, (False, True)),
+    ],
+    ids=["single_job", "multiple_jobs", "no_jobs", "failure"],
+)
+def test_has_pending_jobs(pending_jobs, expected_result, mocker):
+    if pending_jobs is Exception:
+        mock = mocker.patch("nodewatcher.plugins.sge.get_pending_jobs_info", side_effect=Exception(), autospec=True)
+    else:
+        mock = mocker.patch("nodewatcher.plugins.sge.get_pending_jobs_info", return_value=pending_jobs, autospec=True)
+
+    instance_properties = {"slots": 4}
+    max_cluster_size = 10
+
+    assert_that(hasPendingJobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
+    mock.assert_called_with(
+        max_slots_filter=max_cluster_size * instance_properties["slots"], skip_if_state=SGE_HOLD_STATE
+    )
+
+
+@pytest.mark.parametrize(
+    "jobs, expected_result",
+    [([SgeJob(number="89", slots=1, state="qw")], True), ([], False), (Exception, False)],
+    ids=["single_job", "no_jobs", "failure"],
+)
+def test_jobs(jobs, expected_result, mocker):
+    if jobs is Exception:
+        mock = mocker.patch("nodewatcher.plugins.sge.get_jobs_info", side_effect=Exception(), autospec=True)
+    else:
+        mock = mocker.patch("nodewatcher.plugins.sge.get_jobs_info", return_value=jobs, autospec=True)
+
+    hostname = "ip-1-0-0-1"
+
+    assert_that(hasJobs(hostname)).is_equal_to(expected_result)
+    mock.assert_called_with(hostname_filter=hostname, job_state_filter="rs")
