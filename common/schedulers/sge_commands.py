@@ -11,11 +11,13 @@
 import collections
 import logging
 import re
+from abc import ABCMeta
 from xml.etree import ElementTree
 
 from common import sge
 from common.remote_command_executor import RemoteCommandExecutor
 from common.sge import check_sge_command_output, run_sge_command
+from six import add_metaclass
 
 QConfCommand = collections.namedtuple("QConfCommand", ["command_flags", "successful_messages", "description"])
 
@@ -159,3 +161,174 @@ def _run_sge_command_for_multiple_hosts(hosts, command_template):
         except Exception as e:
             logging.error("Failed when executing command %s with exception %s", command, e)
     return succeeded_hosts
+
+
+def _run_qstat(full_format=False, hostname_filter=None, job_state_filter=None):
+    command = "qstat -xml -g dt -u '*'"
+    if full_format:
+        command += " -f"
+    if hostname_filter:
+        command += " -l hostname={0}".format(hostname_filter)
+    if job_state_filter:
+        command += " -s {0}".format(job_state_filter)
+    return check_sge_command_output(command)
+
+
+def get_compute_nodes_info(hostname_filter=None, job_state_filter=None):
+    output = _run_qstat(full_format=True, hostname_filter=hostname_filter, job_state_filter=job_state_filter)
+    if not output:
+        return []
+
+    root = ElementTree.fromstring(output)
+    queue_info = root.findall("./queue_info/*")
+    return [SgeHost.from_xml(ElementTree.tostring(host)) for host in queue_info]
+
+
+def get_jobs_info(hostname_filter=None, job_state_filter=None):
+    output = _run_qstat(full_format=False, hostname_filter=hostname_filter, job_state_filter=job_state_filter)
+    if not output:
+        return []
+
+    root = ElementTree.fromstring(output)
+    job_info = root.findall(".//job_list")
+    return [SgeJob.from_xml(ElementTree.tostring(host)) for host in job_info]
+
+
+@add_metaclass(ABCMeta)
+class SgeObject:
+    def __eq__(self, other):
+        if type(other) is type(self):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
+        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
+
+
+class SgeJob(SgeObject):
+    # <job_list state="running">
+    #     <JB_job_number>89</JB_job_number>
+    #     <JAT_prio>0.60500</JAT_prio>
+    #     <JB_name>STDIN</JB_name>
+    #     <JB_owner>centos</JB_owner>
+    #     <state>sr</state>
+    #     <JAT_start_time>2019-05-15T13:16:51</JAT_start_time>
+    #     <master>SLAVE</master>
+    #     <slots>1</slots>
+    # </job_list>
+    MAPPINGS = {
+        "JB_job_number": {"field": "number"},
+        "slots": {"field": "slots", "transformation": int},
+        "state": {"field": "state"},
+        "master": {"field": "node_type"},
+        "tasks": {"field": "array_index", "transformation": lambda x: int(x) if x is not None else None},
+        "queue_name": {"field": "hostname"},
+    }
+
+    def __init__(self, number=None, slots=0, state="", node_type=None, array_index=None, hostname=None):
+        self.number = number
+        self.slots = slots
+        self.state = state
+        self.node_type = node_type
+        self.array_index = array_index
+        self.hostname = hostname
+
+    @staticmethod
+    def from_xml(xml):
+        return _from_xml_to_obj(xml, SgeJob)
+
+
+class SgeHost(SgeObject):
+    # <Queue-List>
+    #     <name>all.q@ip-10-0-0-166.eu-west-1.compute.internal</name>
+    #     <qtype>BIP</qtype>
+    #     <slots_used>2</slots_used>
+    #     <slots_resv>0</slots_resv>
+    #     <slots_total>4</slots_total>
+    #     <load_avg>0.01000</load_avg>
+    #     <arch>lx-amd64</arch>
+    #     <job_list state="running">
+    #         <JB_job_number>89</JB_job_number>
+    #         <JAT_prio>0.60500</JAT_prio>
+    #         <JB_name>STDIN</JB_name>
+    #         <JB_owner>centos</JB_owner>
+    #         <state>r</state>
+    #         <JAT_start_time>2019-05-15T13:16:51</JAT_start_time>
+    #         <master>MASTER</master>
+    #         <slots>1</slots>
+    #     </job_list>
+    #     <job_list state="running">
+    #         <JB_job_number>95</JB_job_number>
+    #         <JAT_prio>0.60500</JAT_prio>
+    #         <JB_name>STDIN</JB_name>
+    #         <JB_owner>centos</JB_owner>
+    #         <state>s</state>
+    #         <JAT_start_time>2019-05-15T13:16:51</JAT_start_time>
+    #         <slots>1</slots>
+    #     </job_list>
+    # </Queue-List>
+    MAPPINGS = {
+        "name": {"field": "name"},
+        "slots_used": {"field": "slots_used", "transformation": int},
+        "slots_total": {"field": "slots_total", "transformation": int},
+        "slots_resv": {"field": "slots_reserved", "transformation": int},
+        "state": {"field": "state"},
+        "job_list": {
+            "field": "jobs",
+            "transformation": lambda job: SgeJob.from_xml(ElementTree.tostring(job)),
+            "xml_elem_type": "xml",
+        },
+    }
+
+    def __init__(self, name=None, slots_total=0, slots_used=0, slots_reserved=0, state="", jobs=None):
+        self.name = name
+        self.slots_total = slots_total
+        self.slots_used = slots_used
+        self.slots_reserved = slots_reserved
+        self.state = state
+        self.jobs = jobs or []
+
+    @staticmethod
+    def from_xml(xml):
+        return _from_xml_to_obj(xml, SgeHost)
+
+
+def _from_xml_to_obj(xml, obj_type):
+    """
+    Maps a given xml document into a python object.
+
+    The python object you want to map the xml into needs to define a MAPPINGS dictionary which declare how
+    to map each tag of the xml doc into the object itself.
+    Each entry of the MAPPINGS dictionary is composed as follow:
+    - key: name of the xml tag to map
+    - value: a dict containing:
+        - field: name of the object attribute you want to map the value to
+        - transformation: a function that will be called on the value before assigning this to the object attribute.
+        - xml_elem_type: how to interpret the tag content. values: {text, xml}, defaults to text
+    Default values can be defined in the class __init__ definition.
+
+    :param xml: string containing the xml doc to parse
+    :param obj_type: type of the object you want to map the xml into
+    :return: an instance of obj_type containing the xml data
+    """
+    obj = obj_type()
+    root = ElementTree.fromstring(xml)
+    for tag, mapping in obj_type.MAPPINGS.items():
+        results = root.findall(tag)
+        transformation_func = mapping.get("transformation")
+        xml_elem_type = mapping.get("xml_elem_type", "text")
+        values = []
+        for result in results:
+            if xml_elem_type == "xml":
+                input = result
+            else:
+                input = result.text
+            values.append(input if transformation_func is None else transformation_func(input))
+        if values:
+            setattr(obj, mapping["field"], values[0] if len(values) == 1 else values)
+
+    return obj
