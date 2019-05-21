@@ -184,7 +184,7 @@ def get_compute_nodes_info(hostname_filter=None, job_state_filter=None):
     root = ElementTree.fromstring(output)
     queue_info = root.findall("./queue_info/*")
     hosts_list = [SgeHost.from_xml(ElementTree.tostring(host)) for host in queue_info]
-    return {host.name: host for host in hosts_list}
+    return dict((host.name, host) for host in hosts_list)
 
 
 def get_jobs_info(hostname_filter=None, job_state_filter=None):
