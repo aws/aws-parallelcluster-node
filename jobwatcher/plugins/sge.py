@@ -3,6 +3,7 @@ import logging
 from common.schedulers.sge_commands import (
     SGE_BUSY_STATES,
     SGE_HOLD_STATE,
+    SGE_ORPHANED_STATE,
     get_compute_nodes_info,
     get_pending_jobs_info,
 )
@@ -40,6 +41,13 @@ def get_busy_nodes():
             or int(node.slots_used) > 0
             or int(node.slots_reserved) > 0
         ):
-            busy_nodes += 1
+            if SGE_ORPHANED_STATE in node.state:
+                logging.info(
+                    "Skipping host %s since in orphaned state, hence not in ASG. "
+                    "Host will disappear when assigned jobs are deleted.",
+                    node.name,
+                )
+            else:
+                busy_nodes += 1
 
     return busy_nodes

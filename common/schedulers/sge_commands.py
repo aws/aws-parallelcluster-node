@@ -56,7 +56,14 @@ QCONF_COMMANDS = {
 # S(ubordinate), d(isabled), D(isabled), E(rror), c(configuration ambiguous), o(rphaned), P(reempted),
 # or some combination thereof.
 # Refer to qstat man page for additional details.
-SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "o", "P"]
+# o(rphaned) is not considered as busy since we assume a node in orphaned state is not present in ASG anymore
+SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "P"]
+
+# If an o(rphaned) state is displayed for a queue instance, it indicates that the queue instance is no longer demanded
+# by the current cluster queue configuration or the host group configuration. The queue instance is kept because jobs
+# which have not yet finished are still associated with it, and it will vanish from qstat output when these jobs
+# have finished.
+SGE_ORPHANED_STATE = "o"
 
 # The states q(ueued)/w(aiting) and h(old) only appear for pending jobs. Pending, unheld job`s are displayed as qw.
 # The h(old) state indicates that a job currently is not eligible for execution due to a hold state assigned to it
