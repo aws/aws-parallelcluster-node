@@ -30,8 +30,8 @@ from tests.common import read_text
         (
             "qstat_output_mix.xml",
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=3,
                     slots_reserved=0,
@@ -42,16 +42,16 @@ from tests.common import read_text
                         SgeJob(number="91", slots=1, state="r", node_type="MASTER", array_index=3, hostname=None),
                     ],
                 ),
-                "all.q@ip-10-0-0-52.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-52.eu-west-1.compute.internal",
+                "ip-10-0-0-52.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-52.eu-west-1.compute.internal",
                     slots_total=8,
                     slots_used=0,
                     slots_reserved=0,
                     state="d",
                     jobs=[],
                 ),
-                "all.q@ip-10-0-0-116.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-116.eu-west-1.compute.internal",
+                "ip-10-0-0-116.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-116.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
@@ -89,7 +89,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="hr",
                     node_type="MASTER",
                     array_index=3,
-                    hostname="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-166.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="96",
@@ -97,7 +97,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="r",
                     node_type="MASTER",
                     array_index=None,
-                    hostname="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-166.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="96",
@@ -105,7 +105,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="r",
                     node_type="SLAVE",
                     array_index=None,
-                    hostname="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-166.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="96",
@@ -113,7 +113,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="r",
                     node_type="SLAVE",
                     array_index=None,
-                    hostname="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-166.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="73",
@@ -121,7 +121,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="s",
                     node_type="MASTER",
                     array_index=None,
-                    hostname="all.q@ip-10-0-0-52.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-52.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="94",
@@ -129,7 +129,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="r",
                     node_type="MASTER",
                     array_index=None,
-                    hostname="all.q@ip-10-0-0-52.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-52.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="95",
@@ -137,7 +137,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="hr",
                     node_type="MASTER",
                     array_index=1,
-                    hostname="all.q@ip-10-0-0-52.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-52.eu-west-1.compute.internal",
                 ),
                 SgeJob(
                     number="95",
@@ -145,7 +145,7 @@ def test_get_compute_nodes_info(qstat_mocked_response, expected_output, test_dat
                     state="hr",
                     node_type="MASTER",
                     array_index=2,
-                    hostname="all.q@ip-10-0-0-52.eu-west-1.compute.internal",
+                    hostname="ip-10-0-0-52.eu-west-1.compute.internal",
                 ),
                 SgeJob(number="97", slots=3, state="qw", node_type=None, array_index=None, hostname=None),
                 SgeJob(number="72", slots=8, state="hqw", node_type=None, array_index=None, hostname=None),
@@ -189,7 +189,7 @@ def test_sge_job_parsing(sge_job_xml, expected_output, test_datadir):
         (
             "host.xml",
             SgeHost(
-                name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                name="ip-10-0-0-166.eu-west-1.compute.internal",
                 slots_total=4,
                 slots_used=4,
                 slots_reserved=0,
@@ -205,7 +205,7 @@ def test_sge_job_parsing(sge_job_xml, expected_output, test_datadir):
         (
             "host_no_jobs.xml",
             SgeHost(
-                name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                name="ip-10-0-0-166.eu-west-1.compute.internal",
                 slots_total=4,
                 slots_used=0,
                 slots_reserved=0,
