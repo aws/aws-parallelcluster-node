@@ -21,8 +21,8 @@ from nodewatcher.plugins.sge import hasJobs, hasPendingJobs, is_node_down
         (
             "ip-10-0-0-166",
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
@@ -35,8 +35,8 @@ from nodewatcher.plugins.sge import hasJobs, hasPendingJobs, is_node_down
         (
             "ip-10-0-0-166",
             {
-                "all.q@ip-10-0-0-166": SgeHost(
-                    name="all.q@ip-10-0-0-166", slots_total=4, slots_used=0, slots_reserved=0, state="", jobs=[]
+                "ip-10-0-0-166": SgeHost(
+                    name="ip-10-0-0-166", slots_total=4, slots_used=0, slots_reserved=0, state="", jobs=[]
                 )
             },
             False,
@@ -45,8 +45,8 @@ from nodewatcher.plugins.sge import hasJobs, hasPendingJobs, is_node_down
         (
             "ip-10-0-0-166",
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,

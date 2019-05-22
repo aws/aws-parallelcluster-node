@@ -20,8 +20,8 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
     [
         (
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=3,
                     slots_reserved=0,
@@ -33,8 +33,8 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
         ),
         (
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
@@ -46,16 +46,16 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
         ),
         (
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
                     state="a",
                     jobs=[],
                 ),
-                "all.q@ip-10-0-0-167.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-167.eu-west-1.compute.internal",
+                "ip-10-0-0-167.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-167.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
@@ -67,48 +67,48 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
         ),
         (
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
                     state="a",
                     jobs=[],
                 ),
-                "all.q@ip-10-0-0-167.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-167.eu-west-1.compute.internal",
+                "ip-10-0-0-167.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-167.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
                     state="",
                     jobs=[],
                 ),
-                "all.q@ip-10-0-0-168.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-168.eu-west-1.compute.internal",
+                "ip-10-0-0-168.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-168.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=1,
                     state="",
                     jobs=[],
                 ),
-                "all.q@ip-10-0-0-169.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-169.eu-west-1.compute.internal",
+                "ip-10-0-0-169.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-169.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=3,
                     slots_reserved=0,
                     state="",
                     jobs=[SgeJob(number="89", slots=1, state="r", node_type="MASTER", array_index=None, hostname=None)],
                 ),
-                "all.q@ip-10-0-0-170.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-170.eu-west-1.compute.internal",
+                "ip-10-0-0-170.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-170.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,
                     state="d",
                     jobs=[],
                 ),
-                "all.q@ip-10-0-0-171.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-171.eu-west-1.compute.internal",
+                "ip-10-0-0-171.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-171.eu-west-1.compute.internal",
                     slots_total=0,
                     slots_used=0,
                     slots_reserved=0,
@@ -120,8 +120,8 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
         ),
         (
             {
-                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-166.eu-west-1.compute.internal",
                     slots_total=4,
                     slots_used=0,
                     slots_reserved=0,

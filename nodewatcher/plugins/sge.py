@@ -71,11 +71,11 @@ def is_node_down():
         hostname = check_command_output("hostname").strip()
         host_fqdn = socket.getfqdn(hostname)
         nodes = get_compute_nodes_info(hostname_filter=hostname)
-        if not any(host in nodes for host in ["all.q@" + hostname, "all.q@" + host_fqdn]):
+        if not any(host in nodes for host in [hostname, host_fqdn]):
             log.warning("Node is not attached to scheduler. Reporting as down")
             return True
 
-        node = nodes.get("all.q@" + host_fqdn, nodes.get("all.q@" + hostname))
+        node = nodes.get(host_fqdn, nodes.get(hostname))
         log.info("Node is in state: '{0}'".format(node.state))
         if all(error_state not in node.state for error_state in SGE_ERROR_STATES):
             return False

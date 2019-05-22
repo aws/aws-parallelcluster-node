@@ -264,7 +264,7 @@ class SgeJob(SgeObject):
         "state": {"field": "state"},
         "master": {"field": "node_type"},
         "tasks": {"field": "array_index", "transformation": lambda x: int(x) if x is not None else None},
-        "queue_name": {"field": "hostname"},
+        "queue_name": {"field": "hostname", "transformation": lambda name: name.split("@", 1)[1] if name else None},
     }
 
     def __init__(self, number=None, slots=0, state="", node_type=None, array_index=None, hostname=None):
@@ -310,7 +310,7 @@ class SgeHost(SgeObject):
     #     </job_list>
     # </Queue-List>
     MAPPINGS = {
-        "name": {"field": "name"},
+        "name": {"field": "name", "transformation": lambda name: name.split("@", 1)[1] if name else None},
         "slots_used": {"field": "slots_used", "transformation": int},
         "slots_total": {"field": "slots_total", "transformation": int},
         "slots_resv": {"field": "slots_reserved", "transformation": int},
