@@ -107,11 +107,32 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
                     state="d",
                     jobs=[],
                 ),
+                "all.q@ip-10-0-0-171.eu-west-1.compute.internal": SgeHost(
+                    name="all.q@ip-10-0-0-171.eu-west-1.compute.internal",
+                    slots_total=0,
+                    slots_used=0,
+                    slots_reserved=0,
+                    state="ao",
+                    jobs=[],
+                ),
             },
             3,
         ),
+        (
+            {
+                "all.q@ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
+                    name="all.q@ip-10-0-0-166.eu-west-1.compute.internal",
+                    slots_total=4,
+                    slots_used=0,
+                    slots_reserved=0,
+                    state="auo",
+                    jobs=[],
+                )
+            },
+            0,
+        ),
     ],
-    ids=["single_running_job", "unavailable_node", "available_nodes", "mixed_nodes"],
+    ids=["single_running_job", "unavailable_node", "available_nodes", "mixed_nodes", "orphaned_node"],
 )
 def test_get_busy_nodes(cluster_nodes, expected_busy_nodes, mocker):
     mocker.patch("jobwatcher.plugins.sge.get_compute_nodes_info", return_value=cluster_nodes, autospec=True)
