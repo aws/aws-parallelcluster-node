@@ -1,0 +1,2 @@
+JOBID|NODES|CPUS|REASON
+87|10|10|PartitionNodeLimit
