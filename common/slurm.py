@@ -18,4 +18,5 @@ PENDING_RESOURCES_REASONS = [
     "BeginTime",
     "NodeDown",
     "Priority",
+    "ReqNodeNotAvail, May be reserved for other job",
 ]
