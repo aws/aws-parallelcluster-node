@@ -1,0 +1,8 @@
+JOBID|ST|NODES|CPUS|MIN_CPUS|REASON
+72|PD|2|5|1|Resources
+84|R|3|10|1|Resources
+86|PD|10|40|4|PartitionConfig
+87|PD|10|10|1|PartitionNodeLimit
+90_1|PD|4|15|3|Resources
+90_2|PD|4|15|3|Resources
+90_3|PD|4|15|3|Resources
