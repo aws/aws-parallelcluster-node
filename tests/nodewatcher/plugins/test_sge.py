@@ -114,7 +114,7 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
     [([SgeJob(number="89", slots=1, state="qw")], True), ([], False), (Exception, False)],
     ids=["single_job", "no_jobs", "failure"],
 )
-def test_jobs(jobs, expected_result, mocker):
+def test_has_jobs(jobs, expected_result, mocker):
     if jobs is Exception:
         mock = mocker.patch("nodewatcher.plugins.sge.get_jobs_info", side_effect=Exception(), autospec=True)
     else:
