@@ -136,7 +136,7 @@ def _run_command(command_function, command, env=None, raise_on_error=True):
             raise
         else:
             log.warning(e)
-            return None
+            return e.output
     except OSError as e:
         log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
         raise
@@ -222,6 +222,7 @@ def get_instance_properties(region, proxy_config, instance_type):
         log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
         slots = vcpus
 
+    log.info("Number of slots computed for instance %s: %d", instance_type, slots)
     return {"slots": slots}
 
 

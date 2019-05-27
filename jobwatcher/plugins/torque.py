@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 
 # get nodes requested from pending jobs
-def get_required_nodes(instance_properties):
+def get_required_nodes(instance_properties, max_size):
     command = "/opt/torque/bin/qstat -at"
 
     # Example output of torque

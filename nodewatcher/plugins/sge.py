@@ -10,71 +10,76 @@
 # limitations under the License.
 
 import logging
+import socket
 import subprocess
 
-from common.sge import check_sge_command_output, run_sge_command
+from common.schedulers.sge_commands import (
+    SGE_ERROR_STATES,
+    SGE_HOLD_STATE,
+    get_compute_nodes_info,
+    get_jobs_info,
+    get_pending_jobs_info,
+    lock_host,
+    unlock_host,
+)
+from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
 
 
 def hasJobs(hostname):
-    # Checking for running jobs on the node, with parallel job view expanded (-g t)
-    command = "qstat -g t -l hostname={0} -u '*'".format(hostname)
-
-    # Command output
-    # job-ID  prior   name       user         state submit/start at     queue                          master ja-task-ID
-    # ------------------------------------------------------------------------------------------------------------------
-    # 16 0.6 0500 job.sh     ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte SLAVE
-    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
-    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
-    #                                                               all.q@ip-172-31-68-26.ec2.inte SLAVE
-    # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 1
-    # 17 0.50500 STDIN      ec2-user     r     02/06/2019 11:06:30 all.q@ip-172-31-68-26.ec2.inte MASTER 2
-
     try:
-        output = check_sge_command_output(command)
-        has_jobs = output != ""
-    except subprocess.CalledProcessError:
-        has_jobs = False
-
-    return has_jobs
-
-
-def hasPendingJobs():
-    command = "qstat -g d -s p -u '*'"
-
-    # Command outputs the pending jobs in the queue in the following format
-    # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
-    # -----------------------------------------------------------------------------------------------------------------
-    #      70 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:24                                    1
-    #      71 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:24                                    1
-    #      72 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
-    #      73 0.55500 job.sh     ec2-user     qw    08/08/2018 22:37:25                                    1
-
-    try:
-        output = check_sge_command_output(command)
-        lines = filter(None, output.split("\n"))
-        has_pending = True if len(lines) > 1 else False
-        error = False
+        # Checking for running or suspended jobs on the node
+        # According to the manual (man sge_status) h(old) state only appears in conjunction with r(unning) or p(ending)
+        jobs = get_jobs_info(hostname_filter=hostname, job_state_filter="rs")
+        return len(jobs) > 0
     except Exception as e:
-        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
-        error = True
-        has_pending = False
+        log.error("Failed when checking for running jobs with exception %s", e)
+        return False
 
-    return has_pending, error
+
+def hasPendingJobs(instance_properties, max_size):
+    try:
+        max_cluster_slots = max_size * instance_properties.get("slots")
+        pending_jobs = get_pending_jobs_info(max_slots_filter=max_cluster_slots, skip_if_state=SGE_HOLD_STATE)
+        return len(pending_jobs) > 0, False
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting no pending jobs.", e)
+        return False, True
 
 
 def lockHost(hostname, unlock=False):
-    mod = unlock and "-e" or "-d"
-    command = ["qmod", mod, "all.q@%s" % hostname]
-
     try:
-        run_sge_command(command)
+        if unlock:
+            unlock_host(hostname)
+        else:
+            lock_host(hostname)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
 
 
 def is_node_down():
-    """Check if node is down according to scheduler"""
-    # ToDo: to be implemented
-    return False
+    """
+    Check if node is down according to scheduler
+
+    The node is considered as down if:
+    - there is a failure contacting the scheduler
+    - node is not reported in the compute nodes list
+    - node is in one of the SGE_ERROR_STATES states
+    """
+    try:
+        hostname = check_command_output("hostname").strip()
+        host_fqdn = socket.getfqdn(hostname)
+        nodes = get_compute_nodes_info(hostname_filter=hostname)
+        if not any(host in nodes for host in [hostname, host_fqdn]):
+            log.warning("Node is not attached to scheduler. Reporting as down")
+            return True
+
+        node = nodes.get(host_fqdn, nodes.get(hostname))
+        log.info("Node is in state: '{0}'".format(node.state))
+        if all(error_state not in node.state for error_state in SGE_ERROR_STATES):
+            return False
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
+
+    return True

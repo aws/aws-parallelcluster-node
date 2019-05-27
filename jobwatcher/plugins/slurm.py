@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 
 # get nodes requested from pending jobs
-def get_required_nodes(instance_properties):
+def get_required_nodes(instance_properties, max_size):
     log.info("Computing number of required nodes for submitted jobs")
     command = "/opt/slurm/bin/squeue -r -h -o '%i-%t-%D-%C-%r'"
     # Example output of squeue

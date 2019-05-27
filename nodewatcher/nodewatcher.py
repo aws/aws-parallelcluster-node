@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import collections
-import ConfigParser
 import errno
 import json
 import logging
@@ -26,10 +25,18 @@ from contextlib import closing
 
 import boto3
 from botocore.config import Config
+from configparser import ConfigParser
 from retrying import RetryError, retry
 
 from common.time_utils import minutes, seconds
-from common.utils import CriticalError, get_asg_name, load_module
+from common.utils import (
+    CriticalError,
+    get_asg_name,
+    get_asg_settings,
+    get_compute_instance_type,
+    get_instance_properties,
+    load_module,
+)
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +62,7 @@ def _get_config():
     config_file = "/etc/nodewatcher.cfg"
     log.info("Reading %s", config_file)
 
-    config = ConfigParser.RawConfigParser()
+    config = ConfigParser()
     config.read(config_file)
     if config.has_option("nodewatcher", "loglevel"):
         lvl = logging._levelNames[config.get("nodewatcher", "loglevel")]
@@ -111,18 +118,6 @@ def _has_jobs(scheduler_module, hostname):
     _jobs = scheduler_module.hasJobs(hostname)
     log.debug("jobs=%s" % _jobs)
     return _jobs
-
-
-def _has_pending_jobs(scheduler_module):
-    """
-    Verify if there are penging jobs in the cluster.
-
-    :param scheduler_module: scheduler specific module to use
-    :return: true if there are pending jobs and the error code
-    """
-    _has_pending_jobs, _error = scheduler_module.hasPendingJobs()
-    log.debug("has_pending_jobs=%s, error=%s" % (_has_pending_jobs, _error))
-    return _has_pending_jobs, _error
 
 
 def _lock_host(scheduler_module, hostname, unlock=False):
@@ -206,7 +201,10 @@ def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait
 
     @retry(wait_fixed=seconds(10), retry_on_result=lambda result: result is True, stop_max_delay=max_wait)
     def _poll_wait_for_node_ready():
-        return scheduler_module.is_node_down()
+        is_down = scheduler_module.is_node_down()
+        if is_down:
+            log.warning("Node reported as down")
+        return is_down
 
     try:
         _poll_wait_for_node_ready()
@@ -298,10 +296,19 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     _terminate_if_down(scheduler_module, config, asg_name, instance_id, INITIAL_TERMINATE_TIMEOUT)
 
     idletime = _init_idletime()
+    instance_type = None
     while True:
         time.sleep(60)
         _store_idletime(idletime)
         _terminate_if_down(scheduler_module, config, asg_name, instance_id, TERMINATE_TIMEOUT)
+
+        # Get instance properties
+        new_instance_type = get_compute_instance_type(
+            config.region, config.proxy_config, config.stack_name, fallback=instance_type
+        )
+        if new_instance_type != instance_type:
+            instance_type = new_instance_type
+            instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
@@ -313,7 +320,8 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                 log.info("Not terminating due to min cluster size reached")
                 idletime = 0
             else:
-                has_pending_jobs, error = _has_pending_jobs(scheduler_module)
+                _, _, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
+                has_pending_jobs, error = scheduler_module.hasPendingJobs(instance_properties, max_size)
                 if error:
                     log.warning(
                         "Encountered an error while polling queue for pending jobs. Skipping pending jobs check"

@@ -49,7 +49,7 @@ def hasJobs(hostname):
     return has_jobs
 
 
-def hasPendingJobs():
+def hasPendingJobs(instance_properties, max_size):
     command = "/opt/torque/bin/qstat -Q"
 
     # Command outputs the status of the queue in the following format

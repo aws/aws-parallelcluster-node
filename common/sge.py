@@ -20,15 +20,17 @@ SGE_BIN_DIR = SGE_BIN_PATH + "/"
 SGE_ENV = {"SGE_ROOT": SGE_ROOT, "PATH": "{0}/bin:{1}:/bin:/usr/bin".format(SGE_ROOT, SGE_BIN_PATH)}
 
 
-def check_sge_command_output(command):
+def check_sge_command_output(command, raise_on_error=True):
     """
     Execute SGE shell command, by exporting the appropriate environment.
 
     :param command: command to execute
-    :raise: subprocess.CalledProcessError if the command fails
+    :param raise_on_error: if True the method raises subprocess.CalledProcessError on errors
+    :raise subprocess.CalledProcessError if the command fails
+    :return the stdout and stderr of the executed command.
     """
     command = _prepend_sge_bin_dir(command)
-    return check_command_output(command, SGE_ENV)
+    return check_command_output(command, SGE_ENV, raise_on_error=raise_on_error)
 
 
 def run_sge_command(command):

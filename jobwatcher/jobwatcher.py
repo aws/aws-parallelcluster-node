@@ -13,12 +13,12 @@
 # limitations under the License.
 
 import collections
-import ConfigParser
 import logging
 import time
 
 import boto3
 from botocore.config import Config
+from configparser import ConfigParser
 from retrying import retry
 
 from common.utils import get_asg_name, get_asg_settings, get_compute_instance_type, get_instance_properties, load_module
@@ -40,7 +40,7 @@ def _get_config():
     config_file = "/etc/jobwatcher.cfg"
     log.info("Reading %s", config_file)
 
-    config = ConfigParser.RawConfigParser()
+    config = ConfigParser()
     config.read(config_file)
     if config.has_option("jobwatcher", "loglevel"):
         lvl = logging._levelNames[config.get("jobwatcher", "loglevel")]
@@ -85,8 +85,11 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
             instance_type = new_instance_type
             instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
 
+        # get current limits
+        _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
+
         # Get number of nodes requested
-        pending = scheduler_module.get_required_nodes(instance_properties)
+        pending = scheduler_module.get_required_nodes(instance_properties, max_size)
 
         if pending < 0:
             log.critical("Error detecting number of required nodes. The cluster will not scale up.")
@@ -98,9 +101,6 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
             # Get current number of nodes
             running = scheduler_module.get_busy_nodes()
             log.info("%d nodes requested, %d nodes busy or unavailable", pending, running)
-
-            # get current limits
-            _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
 
             # Check to make sure requested number of instances is within ASG limits
             required = running + pending

@@ -15,7 +15,6 @@
 from future.moves.collections import OrderedDict
 
 import collections
-import ConfigParser
 import itertools
 import json
 import logging
@@ -24,6 +23,7 @@ import time
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from configparser import ConfigParser
 from retrying import retry
 
 from common.utils import (
@@ -61,7 +61,7 @@ def _get_config():
     config_file = "/etc/sqswatcher.cfg"
     log.info("Reading %s", config_file)
 
-    config = ConfigParser.RawConfigParser()
+    config = ConfigParser()
     config.read(config_file)
     if config.has_option("sqswatcher", "loglevel"):
         lvl = logging._levelNames[config.get("sqswatcher", "loglevel")]
