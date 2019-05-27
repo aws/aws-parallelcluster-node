@@ -12,7 +12,7 @@
 import logging
 import subprocess
 
-from common.slurm import PENDING_RESOURCES_REASONS
+from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, get_pending_jobs_info
 from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
@@ -33,33 +33,16 @@ def hasJobs(hostname):
 
 
 def hasPendingJobs(instance_properties, max_size):
-    command = "/opt/slurm/bin/squeue -t PD --noheader -o '%c-%r'"
-
-    # Command outputs the pending jobs in the queue in the following format
-    #  8-Resources
-    #  8-Priority
-    #  8-PartitionNodeLimit
     try:
-        node_slots = _get_node_slots()
-        output = check_command_output(command)
-        has_pending = False
-        for line in output.split("\n"):
-            line_arr = line.split("-")
-            if len(line_arr) == 2:
-                required_slots = int(line_arr[0])
-                pending_code = line_arr[1]
-                log.info("required_slots %s pending_code %s", required_slots, pending_code)
-                if pending_code in PENDING_RESOURCES_REASONS and required_slots <= node_slots:
-                    has_pending = True
-                    break
-
-        error = False
+        pending_jobs = get_pending_jobs_info(
+            max_slots_filter=instance_properties.get("slots"),
+            max_nodes_filter=max_size,
+            filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
+        )
+        return len(pending_jobs) > 0, False
     except Exception as e:
-        log.warning("Failed when checking for pending jobs with exception %s. Assuming no pending jobs.", e)
-        error = True
-        has_pending = False
-
-    return has_pending, error
+        log.error("Failed when checking if node is down with exception %s. Reporting no pending jobs.", e)
+        return False, True
 
 
 def lockHost(hostname, unlock=False):
