@@ -38,9 +38,9 @@ def _add_hosts(hosts, cluster_user):
 
     succeeded_hosts = exec_qconf_command(hosts, QCONF_COMMANDS["ADD_ADMINISTRATIVE_HOST"])
     succeeded_hosts = exec_qconf_command(succeeded_hosts, QCONF_COMMANDS["ADD_SUBMIT_HOST"])
+    succeeded_hosts = install_sge_on_compute_nodes(succeeded_hosts, cluster_user)
     succeeded_hosts = add_hosts_to_group(succeeded_hosts)
     succeeded_hosts = add_host_slots(succeeded_hosts)
-    succeeded_hosts = install_sge_on_compute_nodes(succeeded_hosts, cluster_user)
     return [host.hostname for host in succeeded_hosts]
 
 
