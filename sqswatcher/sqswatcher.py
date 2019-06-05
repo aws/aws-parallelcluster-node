@@ -26,6 +26,7 @@ from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from retrying import retry
 
+from common.time_utils import seconds
 from common.utils import (
     CriticalError,
     get_asg_name,
@@ -34,6 +35,9 @@ from common.utils import (
     get_instance_properties,
     load_module,
 )
+
+LOOP_TIME = 30
+CLUSTER_PROPERTIES_REFRESH_INTERVAL = 180
 
 
 class QueryConfigError(Exception):
@@ -336,17 +340,27 @@ def _poll_queue(sqs_config, queue, table, asg_name):
 
     max_cluster_size = None
     instance_type = None
+    cluster_properties_refresh_timer = 0
     while True:
+        force_cluster_update = False
         # dynamically retrieve max_cluster_size and compute_instance_type
-        new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, fallback=max_cluster_size)
-        new_instance_type = get_compute_instance_type(
-            sqs_config.region, sqs_config.proxy_config, sqs_config.stack_name, fallback=instance_type
-        )
-        force_cluster_update = new_max_cluster_size != max_cluster_size or new_instance_type != instance_type
-        if new_instance_type != instance_type:
-            instance_type = new_instance_type
-            instance_properties = get_instance_properties(sqs_config.region, sqs_config.proxy_config, instance_type)
-        max_cluster_size = new_max_cluster_size
+        if (
+            not max_cluster_size
+            or not instance_type
+            or cluster_properties_refresh_timer >= CLUSTER_PROPERTIES_REFRESH_INTERVAL
+        ):
+            cluster_properties_refresh_timer = 0
+            logging.info("Refreshing cluster properties")
+            new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, fallback=max_cluster_size)
+            new_instance_type = get_compute_instance_type(
+                sqs_config.region, sqs_config.proxy_config, sqs_config.stack_name, fallback=instance_type
+            )
+            force_cluster_update = new_max_cluster_size != max_cluster_size or new_instance_type != instance_type
+            if new_instance_type != instance_type:
+                instance_type = new_instance_type
+                instance_properties = get_instance_properties(sqs_config.region, sqs_config.proxy_config, instance_type)
+            max_cluster_size = new_max_cluster_size
+        cluster_properties_refresh_timer += LOOP_TIME
 
         messages = _retrieve_all_sqs_messages(queue)
         update_events = _parse_sqs_messages(messages, table)
@@ -360,10 +374,10 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             instance_properties,
             force_cluster_update,
         )
-        time.sleep(30)
+        time.sleep(LOOP_TIME)
 
 
-@retry(wait_fixed=30000)
+@retry(wait_fixed=seconds(LOOP_TIME))
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("sqswatcher startup")
