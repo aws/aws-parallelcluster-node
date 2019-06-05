@@ -296,19 +296,12 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     _terminate_if_down(scheduler_module, config, asg_name, instance_id, INITIAL_TERMINATE_TIMEOUT)
 
     idletime = _init_idletime()
-    instance_type = None
+    instance_type = get_compute_instance_type(config.region, config.proxy_config, config.stack_name)
+    instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
     while True:
         time.sleep(60)
         _store_idletime(idletime)
         _terminate_if_down(scheduler_module, config, asg_name, instance_id, TERMINATE_TIMEOUT)
-
-        # Get instance properties
-        new_instance_type = get_compute_instance_type(
-            config.region, config.proxy_config, config.stack_name, fallback=instance_type
-        )
-        if new_instance_type != instance_type:
-            instance_type = new_instance_type
-            instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
