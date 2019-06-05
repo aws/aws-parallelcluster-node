@@ -29,14 +29,7 @@ from configparser import ConfigParser
 from retrying import RetryError, retry
 
 from common.time_utils import minutes, seconds
-from common.utils import (
-    CriticalError,
-    get_asg_name,
-    get_asg_settings,
-    get_compute_instance_type,
-    get_instance_properties,
-    load_module,
-)
+from common.utils import CriticalError, get_asg_name, get_asg_settings, get_instance_properties, load_module
 
 log = logging.getLogger(__name__)
 
@@ -281,7 +274,7 @@ def _init_idletime():
     return idletime
 
 
-def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id):
+def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id, instance_type):
     """
     Verify instance/scheduler status and self-terminate the instance.
 
@@ -291,12 +284,12 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param asg_name: ASG name
     :param hostname: current hostname
     :param instance_id: current instance id
+    :param instance_type: current instance type
     """
     _wait_for_stack_ready(config.stack_name, config.region, config.proxy_config)
     _terminate_if_down(scheduler_module, config, asg_name, instance_id, INITIAL_TERMINATE_TIMEOUT)
 
     idletime = _init_idletime()
-    instance_type = get_compute_instance_type(config.region, config.proxy_config, config.stack_name)
     instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
     while True:
         time.sleep(60)
@@ -356,10 +349,11 @@ def main():
 
         instance_id = _get_metadata("instance-id")
         hostname = _get_metadata("local-hostname")
-        log.info("Instance id is %s, hostname is %s", instance_id, hostname)
+        instance_type = _get_metadata("instance-type")
+        log.info("Instance id is %s, hostname is %s, instance type is %s", instance_id, hostname, instance_type)
         asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config)
 
-        _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id)
+        _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id, instance_type)
     except Exception as e:
         log.critical("An unexpected error occurred: %s", e)
         raise

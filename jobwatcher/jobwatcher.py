@@ -21,7 +21,11 @@ from botocore.config import Config
 from configparser import ConfigParser
 from retrying import retry
 
+from common.time_utils import seconds
 from common.utils import get_asg_name, get_asg_settings, get_compute_instance_type, get_instance_properties, load_module
+
+LOOP_TIME = 60
+UPDATE_INSTANCE_PROPERTIES_INTERVAL = 180
 
 log = logging.getLogger(__name__)
 
@@ -76,14 +80,20 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
     :param scheduler_module: scheduler module
     """
     instance_type = None
+    instance_properties = None
+    update_instance_properties_timer = 0
     while True:
         # Get instance properties
-        new_instance_type = get_compute_instance_type(
-            config.region, config.proxy_config, config.stack_name, fallback=instance_type
-        )
-        if new_instance_type != instance_type:
-            instance_type = new_instance_type
-            instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
+        if not instance_properties or update_instance_properties_timer >= UPDATE_INSTANCE_PROPERTIES_INTERVAL:
+            logging.info("Refreshing compute instance properties")
+            update_instance_properties_timer = 0
+            new_instance_type = get_compute_instance_type(
+                config.region, config.proxy_config, config.stack_name, fallback=instance_type
+            )
+            if new_instance_type != instance_type:
+                instance_type = new_instance_type
+                instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
+        update_instance_properties_timer += LOOP_TIME
 
         # get current limits
         _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
@@ -123,10 +133,10 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
                 asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
                 asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
-        time.sleep(60)
+        time.sleep(LOOP_TIME)
 
 
-@retry(wait_fixed=60000)
+@retry(wait_fixed=seconds(LOOP_TIME))
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("jobwatcher startup")
