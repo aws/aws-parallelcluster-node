@@ -3,6 +3,39 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.4.0
+-----
+
+**ENHANCEMENTS**
+- Dynamically fetch compute instance type and cluster size in order to support updates
+- SGE:
+  - process nodes added to or removed from the cluster in batches in order to speed up cluster scaling.
+  - scale up only if required slots/nodes can be satisfied
+  - scale down if pending jobs have unsatisfiable CPU/nodes requirements
+  - add support for jobs in hold/suspended state (this includes job dependencies)
+  - automatically terminate and replace faulty or unresponsive compute nodes
+  - add retries in case of failures when adding or removing nodes
+- Slurm:
+  - scale up only if required slots/nodes can be satisfied
+  - scale down if pending jobs have unsatisfiable CPU/nodes requirements
+  - automatically terminate and replace faulty or unresponsive compute nodes
+- Dump logs of replaced failing compute nodes to shared home directory
+
+**CHANGES**
+- SQS messages that fail to be processed are re-queued only 3 times and not forever
+- Reset idletime to 0 when the host becomes essential for the cluster (because of min size of ASG or because there are
+  pending jobs in the scheduler queue)
+- SGE: a node is considered as busy when in one of the following states "u", "C", "s", "d", "D", "E", "P", "o".
+  This allows a quick replacement of the node without waiting for the `nodewatcher` to terminate it.
+
+**BUG FIXES**
+- Slurm: add "BeginTime", "NodeDown", "Priority" and "ReqNodeNotAvail" to the pending reasons that trigger
+  a cluster scaling
+- Add a timeout on remote commands execution so that the daemons are not stuck if the compute node is unresponsive
+- Fix an edge case that was causing the `nodewatcher` to hang forever in case the node had become essential to the
+  cluster during a call to `self_terminate`.
+
+
 2.3.1
 -----
 
