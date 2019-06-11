@@ -12,7 +12,7 @@
 import logging
 import subprocess
 
-from common.slurm import PENDING_RESOURCES_REASONS
+from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, get_pending_jobs_info
 from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
@@ -20,11 +20,11 @@ log = logging.getLogger(__name__)
 
 def hasJobs(hostname):
     # Slurm won't use FQDN
-    short_name = hostname.split('.')[0]
+    short_name = hostname.split(".")[0]
     # Checking for running jobs on the node
-    command = ['/opt/slurm/bin/squeue', '-w', short_name, '-h']
+    command = ["/opt/slurm/bin/squeue", "-w", short_name, "-h"]
     try:
-        output = check_command_output(command, log)
+        output = check_command_output(command)
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -32,22 +32,17 @@ def hasJobs(hostname):
     return has_jobs
 
 
-def hasPendingJobs():
-    command = "/opt/slurm/bin/squeue -t PD --noheader -o '%r'"
-
-    # Command outputs the pending jobs in the queue in the following format
-    #  Resources
-    #  Priority
-    #  PartitionNodeLimit
+def hasPendingJobs(instance_properties, max_size):
     try:
-        output = check_command_output(command, log)
-        has_pending = len(filter(lambda reason: reason in PENDING_RESOURCES_REASONS, output.split("\n"))) > 0
-        error = False
-    except subprocess.CalledProcessError:
-        error = True
-        has_pending = False
-
-    return has_pending, error
+        pending_jobs = get_pending_jobs_info(
+            max_slots_filter=instance_properties.get("slots"),
+            max_nodes_filter=max_size,
+            filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
+        )
+        return len(pending_jobs) > 0, False
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting no pending jobs.", e)
+        return False, True
 
 
 def lockHost(hostname, unlock=False):
@@ -72,6 +67,34 @@ def lockHost(hostname, unlock=False):
             'Reason="Shutting down"',
         ]
     try:
-        run_command(command, log)
+        run_command(command)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+
+
+def is_node_down():
+    """Check if node is down according to scheduler"""
+    try:
+        # retrieves the state of a specific node
+        # https://slurm.schedmd.com/sinfo.html#lbAG
+        # Output format:
+        # down*
+        command = "/bin/bash -c \"/opt/slurm/bin/sinfo --noheader -o '%T' -n $(hostname)\""
+        output = check_command_output(command).strip()
+        log.info("Node is in state: '{0}'".format(output))
+        if output and all(state not in output for state in ["down", "drained", "fail"]):
+            return False
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
+
+    return True
+
+
+def _get_node_slots():
+    hostname = check_command_output("hostname")
+    # retrieves number of slots for a specific node in the cluster.
+    # Output format:
+    # 4
+    command = "/opt/slurm/bin/sinfo -o '%c' -n {0} -h".format(hostname)
+    output = check_command_output(command)
+    return int(output)

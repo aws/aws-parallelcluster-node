@@ -16,7 +16,6 @@ import time
 from xml.etree import ElementTree
 
 import paramiko
-
 from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
@@ -29,15 +28,15 @@ def isHostInitState(host_state):
 
 
 def wakeupSchedOn(hostname):
-    log.info('Waking up scheduler on host %s', hostname)
-    command = ("/opt/torque/bin/pbsnodes -x %s" % (hostname))
+    log.info("Waking up scheduler on host %s", hostname)
+    command = "/opt/torque/bin/pbsnodes -x %s" % (hostname)
 
     sleep_time = 3
     times = 20
     host_state = None
     while isHostInitState(host_state) and times > 0:
         try:
-            output = check_command_output(command, log)
+            output = check_command_output(command)
             # Ex.1: <Data><Node><name>ip-10-0-76-39</name><state>down,offline,MOM-list-not-sent</state><power_state>Running</power_state>
             #        <np>1</np><ntype>cluster</ntype><mom_service_port>15002</mom_service_port><mom_manager_port>15003</mom_manager_port></Node></Data>
             # Ex 2: <Data><Node><name>ip-10-0-76-39</name><state>free</state><power_state>Running</power_state><np>1</np><ntype>cluster</ntype>
@@ -56,8 +55,8 @@ def wakeupSchedOn(hostname):
             times -= 1
 
     if host_state == "free":
-        command = "/opt/torque/bin/qmgr -c \"set server scheduling=true\""
-        run_command(command, log, raise_on_error=False)
+        command = '/opt/torque/bin/qmgr -c "set server scheduling=true"'
+        run_command(command, raise_on_error=False)
     elif times == 0:
         log.error("Host %s is still in state %s" % (hostname, host_state))
     else:
@@ -65,33 +64,33 @@ def wakeupSchedOn(hostname):
 
 
 def addHost(hostname, cluster_user, slots, max_cluster_size):
-    log.info('Adding %s with %s slots' % (hostname, slots))
+    log.info("Adding %s with %s slots" % (hostname, slots))
 
-    command = ("/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots))
-    run_command(command, log, raise_on_error=False)
+    command = "/opt/torque/bin/qmgr -c 'create node %s np=%s'" % (hostname, slots)
+    run_command(command, raise_on_error=False)
 
-    command = ('/opt/torque/bin/pbsnodes -c %s' % hostname)
-    run_command(command, log, raise_on_error=False)
+    command = "/opt/torque/bin/pbsnodes -c %s" % hostname
+    run_command(command, raise_on_error=False)
 
     # Connect and hostkey
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    hosts_key_file = os.path.expanduser("~" + cluster_user) + '/.ssh/known_hosts'
-    user_key_file = os.path.expanduser("~" + cluster_user) + '/.ssh/id_rsa'
-    iter=0
-    connected=False
+    hosts_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/known_hosts"
+    user_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/id_rsa"
+    iter = 0
+    connected = False
     while iter < 3 and connected == False:
         try:
-            log.info('Connecting to host: %s iter: %d' % (hostname, iter))
+            log.info("Connecting to host: %s iter: %d" % (hostname, iter))
             ssh.connect(hostname, username=cluster_user, key_filename=user_key_file)
-            connected=True
-        except socket.error, e:
-            log.info('Socket error: %s' % e)
+            connected = True
+        except socket.error as e:
+            log.info("Socket error: %s" % e)
             time.sleep(10 + iter)
             iter = iter + 1
             if iter == 3:
-               log.info("Unable to provison host")
-               return
+                log.info("Unable to provison host")
+                return
     try:
         ssh.load_host_keys(hosts_key_file)
     except IOError:
@@ -104,16 +103,16 @@ def addHost(hostname, cluster_user, slots, max_cluster_size):
 
 
 def removeHost(hostname, cluster_user, max_cluster_size):
-    log.info('Removing %s', hostname)
+    log.info("Removing %s", hostname)
 
-    command = ('/opt/torque/bin/pbsnodes -o %s' % hostname)
-    run_command(command, log, raise_on_error=False)
+    command = "/opt/torque/bin/pbsnodes -o %s" % hostname
+    run_command(command, raise_on_error=False)
 
-    command = ("/opt/torque/bin/qmgr -c 'delete node %s'" % hostname)
-    run_command(command, log, raise_on_error=False)
+    command = "/opt/torque/bin/qmgr -c 'delete node %s'" % hostname
+    run_command(command, raise_on_error=False)
 
 
-def update_cluster(max_cluster_size, cluster_user, update_events):
+def update_cluster(max_cluster_size, cluster_user, update_events, instance_properties):
     failed = []
     succeeded = []
     for event in update_events:
@@ -125,7 +124,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events):
             succeeded.append(event)
         except Exception as e:
             log.error(
-                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e,
+                "Encountered error when processing %s event for host %s: %s", event.action, event.host.hostname, e
             )
             failed.append(event)
 

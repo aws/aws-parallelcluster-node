@@ -1,5 +1,3 @@
-#!/usr/bin/env python2.6
-
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
@@ -12,7 +10,12 @@
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
 
-PENDING_RESOURCES_REASONS = [
-    "Resources",
-    "Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions"
-]
+
+def minutes(min):
+    """Convert minutes to milliseconds."""
+    return min * seconds(60)
+
+
+def seconds(sec):
+    """Convert seconds to milliseconds"""
+    return sec * 1000

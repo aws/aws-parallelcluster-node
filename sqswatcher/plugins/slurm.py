@@ -16,35 +16,17 @@
 import logging
 import os
 import os.path
-from math import ceil
-from multiprocessing import Pool
 from shutil import move
 from tempfile import mkstemp
 
-import paramiko
 from retrying import retry
 
+from common.remote_command_executor import RemoteCommandExecutor
 from common.utils import run_command
 
 log = logging.getLogger(__name__)
 
 PCLUSTER_NODES_CONFIG = "/opt/slurm/etc/slurm_parallelcluster_nodes.conf"
-
-
-def _ssh_connect(hostname, cluster_user):
-    log.info("Connecting to host: %s" % (hostname))
-    ssh_client = paramiko.SSHClient()
-    ssh_client.load_system_host_keys()
-    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    user_key_file = os.path.expanduser("~" + cluster_user) + "/.ssh/id_rsa"
-
-    try:
-        ssh_client.connect(hostname=hostname, username=cluster_user, key_filename=user_key_file)
-    except Exception as e:
-        log.error("Failed when connecting to host %s with error: %s", hostname, e)
-        raise
-
-    return ssh_client
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=10000)
@@ -55,57 +37,26 @@ def _restart_master_node():
     else:
         command = ["/etc/init.d/slurm", "restart"]
     try:
-        run_command(command, log)
+        run_command(command)
     except Exception as e:
         log.error("Failed when restarting slurm daemon on master node with exception %s", e)
         raise
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=10000)
-def _restart_compute_daemons(hostname, cluster_user):
-    log.info("Restarting slurm on compute node %s", hostname)
-    ssh_client = _ssh_connect(hostname, cluster_user)
+def _restart_multiple_compute_nodes(hostnames, cluster_user):
     command = (
         "if [ -f /etc/systemd/system/slurmd.service ]; "
         "then sudo systemctl restart slurmd.service; "
         'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
     )
-    stdin, stdout, stderr = ssh_client.exec_command(command, timeout=15)
-    # This blocks until command completes
-    return_code = stdout.channel.recv_exit_status()
-    if return_code != 0:
-        log.error("Failed when restarting slurmd on compute node %s", hostname)
-    ssh_client.close()
-
-
-def _restart_compute_node_worker(args):
-    hostname = args[0]
-    try:
-        _restart_compute_daemons(*args)
-        return hostname, True
-    except Exception:
-        return hostname, False
-
-
-def _restart_multiple_compute_nodes(hostnames, cluster_user, parallelism=10):
-    if not hostnames:
-        return {}
-
-    pool = Pool(parallelism)
-    try:
-        r = pool.map_async(_restart_compute_node_worker, [(hostname, cluster_user) for hostname in hostnames])
-        results = r.get(timeout=int(ceil(len(hostnames) / float(parallelism)) * 10))
-    finally:
-        pool.terminate()
-
-    return dict(results)
+    return RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user)
 
 
 def _reconfigure_nodes():
     log.info("Reconfiguring slurm")
     command = ["/opt/slurm/bin/scontrol", "reconfigure"]
     try:
-        run_command(command, log)
+        run_command(command)
     except Exception as e:
         log.error("Failed when reconfiguring slurm daemon with exception %s", e)
 
@@ -119,11 +70,16 @@ def _read_node_list():
     return nodes
 
 
-def _write_node_list(node_list, max_cluster_size):
+def _write_node_list(node_list, max_cluster_size, instance_properties):
     dummy_nodes_count = max_cluster_size - len(node_list)
     fh, abs_path = mkstemp()
     if dummy_nodes_count > 0:
-        os.write(fh, "NodeName=dummy-compute[1-{0}] CPUs=2048 State=FUTURE\n".format(dummy_nodes_count))
+        os.write(
+            fh,
+            "NodeName=dummy-compute[1-{0}] CPUs={1} State=FUTURE\n".format(
+                dummy_nodes_count, instance_properties["slots"]
+            ),
+        )
     for node in node_list:
         os.write(fh, "{0}".format(node))
 
@@ -134,7 +90,7 @@ def _write_node_list(node_list, max_cluster_size):
     move(abs_path, PCLUSTER_NODES_CONFIG)
 
 
-def update_cluster(max_cluster_size, cluster_user, update_events):
+def update_cluster(max_cluster_size, cluster_user, update_events, instance_properties):
     # Get the current node list
     node_list = _read_node_list()
     nodes_to_restart = []
@@ -153,7 +109,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events):
             nodes_to_restart.append(event.host.hostname)
 
     try:
-        _write_node_list(node_list, max_cluster_size)
+        _write_node_list(node_list, max_cluster_size, instance_properties)
         _restart_master_node()
         results = _restart_multiple_compute_nodes(nodes_to_restart, cluster_user)
         _reconfigure_nodes()

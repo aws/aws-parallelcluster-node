@@ -9,8 +9,10 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os, sys
-from setuptools import setup, find_packages
+import os
+import sys
+
+from setuptools import find_packages, setup
 
 # Utility function to read the README file.
 # Used for the long_description.  It's nice, because now 1) we have a top level
@@ -23,23 +25,23 @@ def read(fname):
 
 
 console_scripts = [
-    'sqswatcher = sqswatcher.sqswatcher:main',
-    'nodewatcher = nodewatcher.nodewatcher:main',
-    'jobwatcher = jobwatcher.jobwatcher:main',
+    "sqswatcher = sqswatcher.sqswatcher:main",
+    "nodewatcher = nodewatcher.nodewatcher:main",
+    "jobwatcher = jobwatcher.jobwatcher:main",
 ]
-version = "2.3.1"
-requires = ['boto3>=1.7.55', 'python-dateutil>=2.6.1', 'retrying>=1.3.3', 'future>=0.17.1']
+version = "2.4.0"
+requires = ["boto3>=1.7.55", "python-dateutil>=2.6.1", "retrying>=1.3.3", "future>=0.17.1", "configparser>=3.7.4"]
 
 if sys.version_info[:2] == (2, 6):
     # For python2.6 we have to require argparse since it
     # was not in stdlib until 2.7.
-    requires.append('argparse>=1.4')
-    requires.append('idna==2.6')
-    requires.append('paramiko==2.3.3')
-    requires.append('cryptography==2.1.4')  # dependency of paramiko
-    requires.append('pycparser==2.18')
+    requires.append("argparse>=1.4")
+    requires.append("idna==2.6")
+    requires.append("paramiko==2.3.3")
+    requires.append("cryptography==2.1.4")  # dependency of paramiko
+    requires.append("pycparser==2.18")
 else:
-    requires.append('paramiko>=2.4.2')
+    requires.append("paramiko>=2.4.2")
 
 setup(
     name="aws-parallelcluster-node",
@@ -53,11 +55,11 @@ setup(
     entry_points=dict(console_scripts=console_scripts),
     include_package_data=True,
     zip_safe=False,
-    package_data={
-        '': ['examples/config'],
-    },
-    long_description=("aws-parallelcluster-node is the python package installed on the Amazon EC2 instances launched "
-                      "as part of AWS ParallelCluster."),
+    package_data={"": ["examples/config"]},
+    long_description=(
+        "aws-parallelcluster-node is the python package installed on the Amazon EC2 instances launched "
+        "as part of AWS ParallelCluster."
+    ),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Environment :: Console",
