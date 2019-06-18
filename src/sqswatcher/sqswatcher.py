@@ -13,6 +13,7 @@
 import collections
 import json
 import logging
+import os
 import time
 from collections import OrderedDict
 
@@ -22,6 +23,7 @@ from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from retrying import retry
 
+from common.ssh_keyscan import update_ssh_known_hosts
 from common.time_utils import seconds
 from common.utils import (
     CriticalError,
@@ -282,6 +284,9 @@ def _process_sqs_messages(
     # tha ASG max size got updated.
     if not update_events and not force_cluster_update:
         return
+
+    # Managing SSH host keys for the nodes joining and leaving the cluster
+    update_ssh_known_hosts(update_events, sqs_config.cluster_user)
 
     failed_events, succeeded_events = scheduler_module.update_cluster(
         max_cluster_size, sqs_config.cluster_user, update_events, instance_properties
