@@ -12,6 +12,7 @@
 import json
 import logging
 import os
+import pwd
 import shlex
 import subprocess
 import sys
@@ -87,29 +88,36 @@ def get_asg_settings(region, proxy_config, asg_name):
         raise
 
 
-def check_command_output(command, env=None, raise_on_error=True, log_error=True, timeout=60):
+def check_command_output(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60):
     """
     Execute shell command and retrieve command output.
 
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param raise_on_error: True to raise subprocess.CalledProcessError on errors
+    :param execute_as_user: the user executing the command
     :param log_error: control whether to log or not an error
     :return: the command output
     :raise: subprocess.CalledProcessError if the command fails
     """
     return _run_command(
-        lambda _command, _env: check_output(
-            _command, env=_env, stderr=subprocess.STDOUT, universal_newlines=True, timeout=timeout
+        lambda _command, _env, _preexec_fn: check_output(
+            _command,
+            env=_env,
+            preexec_fn=_preexec_fn,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            timeout=timeout,
         ),
         command,
         env,
         raise_on_error,
+        execute_as_user,
         log_error,
     )
 
 
-def run_command(command, env=None, raise_on_error=True, log_error=True, timeout=60):
+def run_command(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60):
     """
     Execute shell command.
 
@@ -120,15 +128,26 @@ def run_command(command, env=None, raise_on_error=True, log_error=True, timeout=
     :raise: subprocess.CalledProcessError if the command fails
     """
     _run_command(
-        lambda _command, _env: subprocess.check_call(_command, env=_env, timeout=timeout),
+        lambda _command, _env, _preexec_fn: subprocess.check_call(
+            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout
+        ),
         command,
         env,
         raise_on_error,
+        execute_as_user,
         log_error,
     )
 
 
-def _run_command(command_function, command, env=None, raise_on_error=True, log_error=True):
+def _demote(user_uid, user_gid):
+    def set_ids():
+        os.setgid(user_gid)
+        os.setuid(user_uid)
+
+    return set_ids
+
+
+def _run_command(command_function, command, env=None, raise_on_error=True, execute_as_user=None, log_error=True):
     try:
         if isinstance(command, str):
             command = shlex.split(command)
@@ -136,8 +155,16 @@ def _run_command(command_function, command, env=None, raise_on_error=True, log_e
             env = {}
 
         env.update(os.environ.copy())
-        log.debug("Executing command: %s" % command)
-        return command_function(command, env)
+        if execute_as_user:
+            log.debug("Executing command as user '{0}': {1}".format(execute_as_user, command))
+            pw_record = pwd.getpwnam(execute_as_user)
+            user_uid = pw_record.pw_uid
+            user_gid = pw_record.pw_gid
+            preexec_fn = _demote(user_uid, user_gid)
+            return command_function(command, env, preexec_fn)
+        else:
+            log.debug("Executing command: %s" % command)
+            return command_function(command, env, None)
     except subprocess.CalledProcessError as e:
         # CalledProcessError.__str__ already produces a significant error message
         if raise_on_error:
