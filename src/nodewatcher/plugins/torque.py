@@ -12,6 +12,7 @@
 import logging
 import subprocess
 
+from common.schedulers.torque_commands import TORQUE_NODE_ERROR_STATES, get_compute_nodes_info
 from common.utils import CriticalError, check_command_output, run_command
 
 log = logging.getLogger(__name__)
@@ -93,5 +94,16 @@ def lockHost(hostname, unlock=False):
 
 def is_node_down():
     """Check if node is down according to scheduler"""
-    # ToDo: to be implemented
-    return False
+    try:
+        hostname = check_command_output("hostname").strip()
+        node = get_compute_nodes_info(hostname_filter=[hostname]).get(hostname)
+        if node:
+            log.info("Node is in state: '{0}'".format(node.state))
+            if all(error_state not in node.state for error_state in TORQUE_NODE_ERROR_STATES):
+                return False
+        else:
+            log.warning("Node is not attached to scheduler. Reporting as down")
+    except Exception as e:
+        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
+
+    return True
