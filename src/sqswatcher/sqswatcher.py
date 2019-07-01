@@ -226,11 +226,11 @@ def _parse_sqs_messages(messages, table):
 
         instance_id = message_attrs.get("EC2InstanceId")
         if event_type == "parallelcluster:COMPUTE_READY":
-            log.info("Processing COMPUTE_READY event for instance %s", instance_id)
             update_event = _process_compute_ready_event(message_attrs, message)
+            log.info("Processing COMPUTE_READY event for instance %s", update_event.host)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-            log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", instance_id)
             update_event = _process_instance_terminate_event(message_attrs, message, table)
+            log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", update_event.host)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
             update_event = None
@@ -303,7 +303,7 @@ def _process_sqs_messages(
             # Remove item from table only in case of success
             elif event.action == "REMOVE" and event in succeeded_events:
                 _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
-            log.debug("Successfully processed event %s", event)
+            log.info("Successfully processed event %s for host %s", event.action, event.host)
         except Exception as e:
             log.error(
                 "Failed when updating dynamo db table for instance %s with exception %s", event.host.instance_id, e
@@ -313,6 +313,7 @@ def _process_sqs_messages(
                 succeeded_events.remove(event)
 
     for event in failed_events:
+        log.error("Failed when processing event %s for host %s", event.action, event.host)
         _requeue_message(queue, event.message)
 
     for event in itertools.chain(failed_events, succeeded_events):
