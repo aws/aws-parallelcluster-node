@@ -11,13 +11,12 @@
 import collections
 import logging
 import re
-from abc import ABCMeta
 from xml.etree import ElementTree
 
 from common import sge
 from common.remote_command_executor import RemoteCommandExecutor
+from common.schedulers.converters import ComparableObject, from_xml_to_obj
 from common.sge import check_sge_command_output, run_sge_command
-from six import add_metaclass
 
 QConfCommand = collections.namedtuple("QConfCommand", ["command_flags", "successful_messages", "description"])
 
@@ -232,22 +231,7 @@ def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None):
         return pending_jobs
 
 
-@add_metaclass(ABCMeta)
-class SgeObject:
-    def __eq__(self, other):
-        if type(other) is type(self):
-            return self.__dict__ == other.__dict__
-        return False
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __repr__(self):
-        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
-        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
-
-
-class SgeJob(SgeObject):
+class SgeJob(ComparableObject):
     # <job_list state="running">
     #     <JB_job_number>89</JB_job_number>
     #     <JAT_prio>0.60500</JAT_prio>
@@ -277,10 +261,10 @@ class SgeJob(SgeObject):
 
     @staticmethod
     def from_xml(xml):
-        return _from_xml_to_obj(xml, SgeJob)
+        return from_xml_to_obj(xml, SgeJob)
 
 
-class SgeHost(SgeObject):
+class SgeHost(ComparableObject):
     # <Queue-List>
     #     <name>all.q@ip-10-0-0-166.eu-west-1.compute.internal</name>
     #     <qtype>BIP</qtype>
@@ -332,41 +316,4 @@ class SgeHost(SgeObject):
 
     @staticmethod
     def from_xml(xml):
-        return _from_xml_to_obj(xml, SgeHost)
-
-
-def _from_xml_to_obj(xml, obj_type):
-    """
-    Maps a given xml document into a python object.
-
-    The python object you want to map the xml into needs to define a MAPPINGS dictionary which declare how
-    to map each tag of the xml doc into the object itself.
-    Each entry of the MAPPINGS dictionary is composed as follow:
-    - key: name of the xml tag to map
-    - value: a dict containing:
-        - field: name of the object attribute you want to map the value to
-        - transformation: a function that will be called on the value before assigning this to the object attribute.
-        - xml_elem_type: how to interpret the tag content. values: {text, xml}, defaults to text
-    Default values can be defined in the class __init__ definition.
-
-    :param xml: string containing the xml doc to parse
-    :param obj_type: type of the object you want to map the xml into
-    :return: an instance of obj_type containing the xml data
-    """
-    obj = obj_type()
-    root = ElementTree.fromstring(xml)
-    for tag, mapping in obj_type.MAPPINGS.items():
-        results = root.findall(tag)
-        transformation_func = mapping.get("transformation")
-        xml_elem_type = mapping.get("xml_elem_type", "text")
-        values = []
-        for result in results:
-            if xml_elem_type == "xml":
-                input = result
-            else:
-                input = result.text
-            values.append(input if transformation_func is None else transformation_func(input))
-        if values:
-            setattr(obj, mapping["field"], values[0] if len(values) == 1 else values)
-
-    return obj
+        return from_xml_to_obj(xml, SgeHost)

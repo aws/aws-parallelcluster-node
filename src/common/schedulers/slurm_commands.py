@@ -15,6 +15,7 @@ from __future__ import division
 import logging
 import math
 
+from common.schedulers.converters import ComparableObject, from_table_to_obj_list
 from common.utils import check_command_output
 
 PENDING_RESOURCES_REASONS = [
@@ -121,21 +122,7 @@ def _recompute_required_nodes_per_job(pending_jobs, node_slots):
             job.nodes = max(required_nodes, job.nodes)
 
 
-class SlurmObject:
-    def __eq__(self, other):
-        if type(other) is type(self):
-            return self.__dict__ == other.__dict__
-        return False
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __repr__(self):
-        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
-        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
-
-
-class SlurmJob(SlurmObject):
+class SlurmJob(ComparableObject):
     # JOBID|ST|NODES|CPUS|MIN_CPUS|REASON
     # 72|PD|2|5|1|Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions
     # 86|PD|10|40|4|PartitionConfig
@@ -159,40 +146,4 @@ class SlurmJob(SlurmObject):
 
     @staticmethod
     def from_table(table):
-        return _from_table_to_obj_list(table, SlurmJob)
-
-
-def _from_table_to_obj_list(table, obj_type, separator="|"):
-    """
-    Maps a given tabular output into a python object.
-
-    The python object you want to map the table into needs to define a MAPPINGS dictionary which declare how
-    to map each row element into the object itself.
-    Each entry of the MAPPINGS dictionary is composed as follow:
-    - key: name of the table column (specified in the header)
-    - value: a dict containing:
-        - field: name of the object attribute you want to map the value to
-        - transformation: a function that will be called on the value before assigning this to the object attribute.
-    Default values can be defined in the class __init__ definition.
-
-    :param table: string containing the table to parse
-    :param obj_type: type of the object you want to map the table into
-    :return: a list obj_type instances containing the parsed data
-    """
-    lines = table.splitlines()
-    results = []
-    if len(lines) > 1:
-        mappings = obj_type.MAPPINGS
-        columns = lines[0].split(separator)
-        rows = lines[1:]
-        for row in rows:
-            obj = obj_type()
-            for item, column in zip(row.split(separator), columns):
-                mapping = mappings.get(column)
-                if mapping:
-                    transformation_func = mapping.get("transformation")
-                    value = item if transformation_func is None else transformation_func(item)
-                    setattr(obj, mapping["field"], value)
-            results.append(obj)
-
-    return results
+        return from_table_to_obj_list(table, SlurmJob)
