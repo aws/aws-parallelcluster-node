@@ -355,7 +355,7 @@ def main():
 
         _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id, instance_type)
     except Exception as e:
-        log.critical("An unexpected error occurred: %s", e)
+        log.exception("An unexpected error occurred: %s", e)
         raise
 
 

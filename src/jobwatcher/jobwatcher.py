@@ -148,7 +148,7 @@ def main():
 
         _poll_scheduler_status(config, asg_name, scheduler_module)
     except Exception as e:
-        log.critical("An unexpected error occurred: %s", e)
+        log.exception("An unexpected error occurred: %s", e)
         raise
 
 
