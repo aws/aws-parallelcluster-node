@@ -390,7 +390,7 @@ def main():
 
         _poll_queue(config, queue, table, asg_name)
     except Exception as e:
-        log.critical("An unexpected error occurred: %s", e)
+        log.exception("An unexpected error occurred: %s", e)
         raise
 
 
