@@ -87,13 +87,14 @@ def get_asg_settings(region, proxy_config, asg_name):
         raise
 
 
-def check_command_output(command, env=None, raise_on_error=True):
+def check_command_output(command, env=None, raise_on_error=True, log_error=True):
     """
     Execute shell command and retrieve command output.
 
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param raise_on_error: True to raise subprocess.CalledProcessError on errors
+    :param log_error: control whether to log or not an error
     :return: the command output
     :raise: subprocess.CalledProcessError if the command fails
     """
@@ -102,22 +103,26 @@ def check_command_output(command, env=None, raise_on_error=True):
         command,
         env,
         raise_on_error,
+        log_error,
     )
 
 
-def run_command(command, env=None, raise_on_error=True):
+def run_command(command, env=None, raise_on_error=True, log_error=True):
     """
     Execute shell command.
 
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param raise_on_error: True to raise subprocess.CalledProcessError on errors
+    :param log_error: control whether to log or not an error
     :raise: subprocess.CalledProcessError if the command fails
     """
-    _run_command(lambda _command, _env: subprocess.check_call(_command, env=_env), command, env, raise_on_error)
+    _run_command(
+        lambda _command, _env: subprocess.check_call(_command, env=_env), command, env, raise_on_error, log_error
+    )
 
 
-def _run_command(command_function, command, env=None, raise_on_error=True):
+def _run_command(command_function, command, env=None, raise_on_error=True, log_error=True):
     try:
         if isinstance(command, str):
             command = shlex.split(command)
@@ -130,10 +135,12 @@ def _run_command(command_function, command, env=None, raise_on_error=True):
     except subprocess.CalledProcessError as e:
         # CalledProcessError.__str__ already produces a significant error message
         if raise_on_error:
-            log.error(e)
+            if log_error:
+                log.error(e)
             raise
         else:
-            log.warning(e)
+            if log_error:
+                log.warning(e)
             return e.output if hasattr(e, "output") else ""
     except OSError as e:
         log.error("Unable to execute the command %s. Failed with exception: %s", command, e)

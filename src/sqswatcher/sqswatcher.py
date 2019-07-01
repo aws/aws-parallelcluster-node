@@ -11,7 +11,6 @@
 # limitations under the License.
 
 import collections
-import itertools
 import json
 import logging
 import time
@@ -298,7 +297,6 @@ def _process_sqs_messages(
             # Remove item from table only in case of success
             elif event.action == "REMOVE" and event in succeeded_events:
                 _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
-            log.info("Successfully processed event %s for host %s", event.action, event.host)
         except Exception as e:
             log.error(
                 "Failed when updating dynamo db table for instance %s with exception %s", event.host.instance_id, e
@@ -307,12 +305,13 @@ def _process_sqs_messages(
                 failed_events.append(event)
                 succeeded_events.remove(event)
 
-    for event in failed_events:
-        log.error("Failed when processing event %s for host %s", event.action, event.host)
-        _requeue_message(queue, event.message)
+    for event in succeeded_events:
+        log.info("Successfully processed event %s for instance %s", event.action, event.host)
+        event.message.delete()
 
-    for event in itertools.chain(failed_events, succeeded_events):
-        log.debug("Removing event from queue: %s", event)
+    for event in failed_events:
+        log.error("Failed when processing event %s for instance %s", event.action, event.host)
+        _requeue_message(queue, event.message)
         event.message.delete()
 
 
