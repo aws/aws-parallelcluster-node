@@ -90,7 +90,7 @@ def test_wait_nodes_initialization(mocker, test_datadir):
     hosts = ["ip-10-0-1-242", "ip-10-0-0-196"]
     result = wait_nodes_initialization(hosts)
 
-    mock.assert_called_with("/opt/torque/bin/pbsnodes -x {0}".format(" ".join(hosts)))
+    mock.assert_called_with("/opt/torque/bin/pbsnodes -x {0}".format(" ".join(hosts)), raise_on_error=False)
     assert_that(result).is_true()
 
 
@@ -102,7 +102,7 @@ def test_get_compute_nodes_info(mocker, test_datadir):
 
     nodes = get_compute_nodes_info(hostname_filter=["host1"])
 
-    mock.assert_called_with("/opt/torque/bin/pbsnodes -x host1")
+    mock.assert_called_with("/opt/torque/bin/pbsnodes -x host1", raise_on_error=False)
     assert_that(nodes).is_equal_to(
         {
             "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="down,offline"),

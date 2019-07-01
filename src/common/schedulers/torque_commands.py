@@ -21,8 +21,8 @@ from common.schedulers.converters import ComparableObject, from_xml_to_obj
 from common.time_utils import minutes, seconds
 from common.utils import check_command_output, run_command
 
-ERROR_NODE_STATES = ("down", "offline", "unknown")
-NODE_STATES = (
+TORQUE_NODE_ERROR_STATES = ("down", "offline", "unknown")
+TORQUE_NODE_STATES = (
     "free",
     "offline",
     "down",
@@ -127,11 +127,16 @@ def get_compute_nodes_info(hostname_filter=None):
     if hostname_filter:
         command += " {0}".format(" ".join(hostname_filter))
 
-    output = check_command_output(command)
-    root = ElementTree.fromstring(output)
-    nodes = root.findall("./Node")
-    nodes_list = [TorqueHost.from_xml(ElementTree.tostring(node)) for node in nodes]
-    return dict((node.name, node) for node in nodes_list)
+    output = check_command_output(command, raise_on_error=False)
+    if output.startswith("<Data>"):
+        root = ElementTree.fromstring(output)
+        nodes = root.findall("./Node")
+        nodes_list = [TorqueHost.from_xml(ElementTree.tostring(node)) for node in nodes]
+        return dict((node.name, node) for node in nodes_list)
+    else:
+        if output != "":
+            logging.warning("Failed when running command %s with error %s", command, output)
+        return dict()
 
 
 @retry(wait_fixed=seconds(3), retry_on_result=lambda result: result is False, stop_max_delay=minutes(1))
@@ -139,7 +144,7 @@ def wait_nodes_initialization(hosts):
     """Wait for at least one host from hosts to become active"""
     torque_hosts = get_compute_nodes_info(hosts).values()
     for node in torque_hosts:
-        if not any(init_state in node.state for init_state in ERROR_NODE_STATES):
+        if not any(init_state in node.state for init_state in TORQUE_NODE_ERROR_STATES):
             return True
     return False
 
@@ -147,7 +152,7 @@ def wait_nodes_initialization(hosts):
 def wakeup_scheduler(added_hosts):
     torque_hosts = get_compute_nodes_info().values()
     for node in torque_hosts:
-        if not any(init_state in node.state for init_state in ERROR_NODE_STATES):
+        if not any(init_state in node.state for init_state in TORQUE_NODE_ERROR_STATES):
             if node.name not in added_hosts:
                 # Do not trigger scheduling cycle when there was already at least one active node.
                 return
