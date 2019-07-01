@@ -11,7 +11,7 @@
 
 import logging
 
-from common.schedulers.torque_commands import add_nodes, delete_nodes, wakeup_scheduler
+from common.schedulers.torque_commands import add_nodes, delete_nodes, update_cluster_limits, wakeup_scheduler
 
 log = logging.getLogger(__name__)
 
@@ -40,5 +40,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
                 succeeded.append(event)
             else:
                 failed.append(event)
+
+    update_cluster_limits(max_cluster_size, instance_properties["slots"])
 
     return failed, succeeded

@@ -95,6 +95,33 @@ def delete_nodes(hosts):
     return _qmgr_manage_nodes(operation="delete", hosts=hosts, error_messages_to_ignore=["Unknown node"])
 
 
+def update_cluster_limits(max_nodes, node_slots):
+    try:
+        logging.info("Updating cluster limits: max_nodes=%d, node_slots=%d", max_nodes, node_slots)
+        run_command('/opt/torque/bin/qmgr -c "set queue batch resources_available.nodect={0}"'.format(max_nodes))
+        run_command('/opt/torque/bin/qmgr -c "set server resources_available.nodect={0}"'.format(max_nodes))
+        run_command('/opt/torque/bin/qmgr -c "set queue batch resources_max.ncpus={0}"'.format(node_slots))
+        _update_master_np(max_nodes, node_slots)
+    except Exception as e:
+        logging.error("Failed when updating cluster limits with exception %s.", e)
+
+
+def _update_master_np(max_nodes, node_slots):
+    """Master np is dynamically based on the number of compute nodes that join the cluster."""
+    current_nodes_count = (
+        int(check_command_output("/bin/bash --login -c 'cat /var/spool/torque/server_priv/nodes | wc -l'")) - 1
+    )
+    # If cluster is at max size set the master np to 1 since 0 is not allowed.
+    master_node_np = max(1, (max_nodes - current_nodes_count) * node_slots)
+    master_hostname = check_command_output("hostname")
+    logging.info("Setting master np to: %d", master_node_np)
+    run_command(
+        '/opt/torque/bin/qmgr -c "set node {hostname} np = {slots}"'.format(
+            hostname=master_hostname, slots=master_node_np
+        )
+    )
+
+
 def get_compute_nodes_info(hostname_filter=None):
     command = "/opt/torque/bin/pbsnodes -x"
     if hostname_filter:
