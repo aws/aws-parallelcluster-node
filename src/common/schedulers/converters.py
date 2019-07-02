@@ -44,6 +44,8 @@ def from_xml_to_obj(xml, obj_type):
                 input = result
             else:
                 input = result.text
+                if input:
+                    input = input.strip()
             values.append(input if transformation_func is None else transformation_func(input))
         if values:
             setattr(obj, mapping["field"], values[0] if len(values) == 1 else values)

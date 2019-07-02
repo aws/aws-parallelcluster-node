@@ -1,6 +1,7 @@
 import logging
-from xml.etree import ElementTree
+from functools import reduce
 
+from common.schedulers.torque_commands import get_compute_nodes_info
 from common.utils import check_command_output
 
 from .utils import get_optimal_nodes
@@ -37,27 +38,5 @@ def get_required_nodes(instance_properties, max_size):
 
 # get nodes reserved by running jobs
 def get_busy_nodes():
-    command = "/opt/torque/bin/pbsnodes -x"
-    # The output of the command
-    # <?xml version="1.0" encoding="UTF-8"?>
-    # <Data>
-    #    <Node>
-    #       <name>ip-172-31-11-1</name>
-    #       <state>down</state>
-    #       <power_state>Running</power_state>
-    #       <np>1000</np>
-    #       <ntype>cluster</ntype>
-    #       <jobs>"job-id"</jobs>
-    #       <note>MasterServer</note>
-    #       <mom_service_port>15002</mom_service_port>
-    #       <mom_manager_port>15003</mom_manager_port>
-    #    </Node>
-    # </Data>
-    _output = check_command_output(command)
-    root = ElementTree.fromstring(_output)
-    count = 0
-    # See how many nodes have jobs
-    for node in root.findall("Node"):
-        if len(node.findall("jobs")) != 0:
-            count += 1
-    return count
+    nodes = get_compute_nodes_info()
+    return reduce(lambda count, node: count + 1 if node.jobs else count, nodes.values(), 0)
