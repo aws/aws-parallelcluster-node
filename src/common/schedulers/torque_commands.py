@@ -179,12 +179,18 @@ class TorqueHost(ComparableObject):
     #     <mom_service_port>15002</mom_service_port>
     #     <mom_manager_port>15003</mom_manager_port>
     # </Node>
-    MAPPINGS = {"name": {"field": "name"}, "np": {"field": "slots", "transformation": int}, "state": {"field": "state"}}
+    MAPPINGS = {
+        "name": {"field": "name"},
+        "np": {"field": "slots", "transformation": int},
+        "state": {"field": "state"},
+        "jobs": {"field": "jobs"},
+    }
 
-    def __init__(self, name=None, slots=0, state=""):
+    def __init__(self, name=None, slots=0, state="", jobs=None):
         self.name = name
         self.slots = slots
         self.state = state
+        self.jobs = jobs
 
     @staticmethod
     def from_xml(xml):

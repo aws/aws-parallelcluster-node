@@ -94,8 +94,30 @@ def test_wait_nodes_initialization(mocker, test_datadir):
     assert_that(result).is_true()
 
 
-def test_get_compute_nodes_info(mocker, test_datadir):
-    pbsnodes_output = read_text(test_datadir / "pbsnodes_output.xml")
+@pytest.mark.parametrize(
+    "pbsnodes_mocked_response, expected_output",
+    [
+        (
+            "pbsnodes_output.xml",
+            {
+                "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="down,offline", jobs=None),
+                "ip-10-0-1-242": TorqueHost(name="ip-10-0-1-242", slots=4, state="free", jobs=None),
+                "ip-10-0-1-237": TorqueHost(
+                    name="ip-10-0-1-237",
+                    slots=4,
+                    state="job-exclusive",
+                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    "0,3/138.ip-10-0-0-196.eu-west-1.compute.internal",
+                ),
+            },
+        ),
+        ("pbsnodes_empty.xml", {}),
+        ("pbsnodes_error.xml", {}),
+    ],
+    ids=["mixed_output", "empty_output", "errored_output"],
+)
+def test_get_compute_nodes_info(pbsnodes_mocked_response, expected_output, mocker, test_datadir):
+    pbsnodes_output = read_text(test_datadir / pbsnodes_mocked_response)
     mock = mocker.patch(
         "common.schedulers.torque_commands.check_command_output", return_value=pbsnodes_output, autospec=True
     )
@@ -103,9 +125,4 @@ def test_get_compute_nodes_info(mocker, test_datadir):
     nodes = get_compute_nodes_info(hostname_filter=["host1"])
 
     mock.assert_called_with("/opt/torque/bin/pbsnodes -x host1", raise_on_error=False)
-    assert_that(nodes).is_equal_to(
-        {
-            "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="down,offline"),
-            "ip-10-0-1-242": TorqueHost(name="ip-10-0-1-242", slots=4, state="free"),
-        }
-    )
+    assert_that(nodes).is_equal_to(expected_output)
