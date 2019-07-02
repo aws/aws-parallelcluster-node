@@ -182,7 +182,7 @@ class TorqueHost(ComparableObject):
     MAPPINGS = {
         "name": {"field": "name"},
         "np": {"field": "slots", "transformation": int},
-        "state": {"field": "state"},
+        "state": {"field": "state", "transformation": lambda states: states.split(",")},
         "jobs": {"field": "jobs"},
     }
 

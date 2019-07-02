@@ -100,12 +100,12 @@ def test_wait_nodes_initialization(mocker, test_datadir):
         (
             "pbsnodes_output.xml",
             {
-                "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="down,offline", jobs=None),
-                "ip-10-0-1-242": TorqueHost(name="ip-10-0-1-242", slots=4, state="free", jobs=None),
+                "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None),
+                "ip-10-0-1-242": TorqueHost(name="ip-10-0-1-242", slots=4, state=["free"], jobs=None),
                 "ip-10-0-1-237": TorqueHost(
                     name="ip-10-0-1-237",
                     slots=4,
-                    state="job-exclusive",
+                    state=["job-exclusive"],
                     jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
                     "0,3/138.ip-10-0-0-196.eu-west-1.compute.internal",
                 ),
