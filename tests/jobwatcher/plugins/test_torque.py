@@ -18,13 +18,13 @@ from jobwatcher.plugins.torque import get_busy_nodes
 @pytest.mark.parametrize(
     "compute_nodes, expected_busy_nodes",
     [
-        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="down,offline", jobs=None)}, 0),
+        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="free", jobs=None)}, 0),
         (
             {
                 "ip-10-0-0-196": TorqueHost(
                     name="ip-10-0-0-196",
                     slots=1000,
-                    state="down,offline",
+                    state="job-exclusive",
                     jobs="0/137.ip-10-0-0-196.eu-west-1.compute.internal",
                 )
             },
@@ -32,7 +32,7 @@ from jobwatcher.plugins.torque import get_busy_nodes
         ),
         (
             {
-                "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="down,offline", jobs=None),
+                "ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="free", jobs=None),
                 "ip-10-0-1-242": TorqueHost(
                     name="ip-10-0-1-242", slots=4, state="free", jobs="0/137.ip-10-0-0-196.eu-west-1.compute.internal"
                 ),
@@ -47,8 +47,17 @@ from jobwatcher.plugins.torque import get_busy_nodes
             2,
         ),
         ({}, 0),
+        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 1),
+        (
+            {
+                "ip-10-0-0-196": TorqueHost(
+                    name="ip-10-0-0-196", slots=1000, state=["down", "offline", "MOM-list-not-sent"], jobs=None
+                )
+            },
+            0,
+        ),
     ],
-    ids=["single_node_free", "single_node_busy", "multiple_nodes", "no_nodes"],
+    ids=["single_node_free", "single_node_busy", "multiple_nodes", "no_nodes", "offline", "initializing"],
 )
 def test_get_busy_nodes(compute_nodes, expected_busy_nodes, mocker):
     mock = mocker.patch("jobwatcher.plugins.torque.get_compute_nodes_info", return_value=compute_nodes, autospec=True)
