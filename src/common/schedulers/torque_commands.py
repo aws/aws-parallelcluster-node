@@ -9,7 +9,6 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-# In Python 2, division of two ints produces an int. In Python 3, it produces a float. Uniforming the behaviour.
 import logging
 import re
 import subprocess
@@ -33,6 +32,7 @@ TORQUE_NODE_STATES = (
     "time-shared",
     "state-unknown",
 )
+TORQUE_PENDING_JOBS_STATE = "Q"
 
 
 def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qmgr_args=""):
@@ -168,6 +168,42 @@ def wakeup_scheduler(added_hosts):
     run_command('/opt/torque/bin/qmgr -c "set server scheduling=true"', raise_on_error=False)
 
 
+def get_jobs_info():
+    command = "/opt/torque/bin/qstat -t -x"
+    output = check_command_output(command)
+    if not output:
+        return []
+
+    root = ElementTree.fromstring(output)
+    jobs = root.findall("./Job")
+    jobs_list = [TorqueJob.from_xml(ElementTree.tostring(job)) for job in jobs]
+    return jobs_list
+
+
+def get_pending_jobs_info(max_slots_filter=None):
+    jobs = get_jobs_info()
+    pending_jobs = []
+    for job in jobs:
+        if job.state == TORQUE_PENDING_JOBS_STATE:
+            # filtering of ncpus option is already done by the scheduler at job submission time
+            # see update_cluster_limits function
+            if (
+                max_slots_filter
+                and job.resources_list.nodes_resources
+                and any(ppn > max_slots_filter for _, ppn in job.resources_list.nodes_resources)
+            ):
+                logging.info(
+                    "Skipping job %s since required slots (%s) exceed max slots (%d)",
+                    job.id,
+                    job.resources_list.nodes_resources,
+                    max_slots_filter,
+                )
+            else:
+                pending_jobs.append(job)
+
+    return pending_jobs
+
+
 class TorqueHost(ComparableObject):
     # <Node>
     #     <name>ip-10-0-1-242</name>
@@ -195,3 +231,101 @@ class TorqueHost(ComparableObject):
     @staticmethod
     def from_xml(xml):
         return from_xml_to_obj(xml, TorqueHost)
+
+
+class TorqueJob(ComparableObject):
+    # <Job>
+    #     <Job_Id>149.ip-10-0-0-196.eu-west-1.compute.internal</Job_Id>
+    #     <Job_Name>STDIN</Job_Name>
+    #     <Job_Owner>centos@ip-10-0-0-196.eu-west-1.compute.internal</Job_Owner>
+    #     <job_state>R</job_state>
+    #     <queue>batch</queue>
+    #     <server>ip-10-0-0-196.eu-west-1.compute.internal</server>
+    #     <Checkpoint>u</Checkpoint>
+    #     <ctime>1562156185</ctime>
+    #     <Error_Path>ip-10-0-0-196.eu-west-1.compute.internal:/home/centos/STDIN.e149</Error_Path>
+    #     <exec_host>ip-10-0-1-168/0-1</exec_host>
+    #     <Hold_Types>n</Hold_Types>
+    #     <Join_Path>n</Join_Path>
+    #     <Keep_Files>n</Keep_Files>
+    #     <Mail_Points>a</Mail_Points>
+    #     <mtime>1562156185</mtime>
+    #     <Output_Path>ip-10-0-0-196.eu-west-1.compute.internal:/home/centos/STDIN.o149</Output_Path>
+    #     <Priority>0</Priority>
+    #     <qtime>1562156185</qtime>
+    #     <Rerunable>True</Rerunable>
+    #     <Resource_List>
+    #         <nodes>1:ppn=2</nodes>
+    #         <nodect>1</nodect>
+    #         <walltime>01:00:00</walltime>
+    #     </Resource_List>
+    #     <session_id>21782</session_id>
+    #     <Variable_List>PBS_O_QUEUE=batch,PBS_O_HOME=/home/centos,PBS_O_LOGNAME=centos,PBS_O_PATH=/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/torque/bin:/opt/torque/sbin:/home/centos/bin,PBS_O_MAIL=/var/spool/mail/centos,PBS_O_SHELL=/bin/bash,PBS_O_LANG=en_US.UTF-8,PBS_O_WORKDIR=/home/centos,PBS_O_HOST=ip-10-0-0-196.eu-west-1.compute.internal,PBS_O_SERVER=ip-10-0-0-196</Variable_List>
+    #     <euser>centos</euser>
+    #     <egroup>centos</egroup>
+    #     <queue_type>E</queue_type>
+    #     <comment>Job started on Wed Jul 03 at 12:16</comment>
+    #     <etime>1562156185</etime>
+    #     <submit_args>-l nodes=1:ppn=2</submit_args>
+    #     <start_time>1562156185</start_time>
+    #     <Walltime>
+    #         <Remaining>3580</Remaining>
+    #     </Walltime>
+    #     <start_count>1</start_count>
+    #     <fault_tolerant>False</fault_tolerant>
+    #     <job_radix>0</job_radix>
+    #     <submit_host>ip-10-0-0-196.eu-west-1.compute.internal</submit_host>
+    #     <init_work_dir>/home/centos</init_work_dir>
+    #     <request_version>1</request_version>
+    # </Job>
+    MAPPINGS = {
+        "Job_Id": {"field": "id"},
+        "job_state": {"field": "state"},
+        "Resource_List": {
+            "field": "resources_list",
+            "transformation": lambda res: TorqueResourceList.from_xml(ElementTree.tostring(res)),
+            "xml_elem_type": "xml",
+        },
+    }
+
+    def __init__(self, id=None, state=None, resources_list=None):
+        self.id = id
+        self.state = state
+        self.resources_list = resources_list
+
+    @staticmethod
+    def from_xml(xml):
+        return from_xml_to_obj(xml, TorqueJob)
+
+
+def _parse_node_resources(res):
+    # format is: 1:ppn=2+2:ppn=3 or 1+2 or 1
+    result = []
+    for item in res.split("+"):
+        nodes_ppn = item.split(":ppn=")
+        number_of_nodes = int(nodes_ppn[0])
+        ppn = int(nodes_ppn[1]) if len(nodes_ppn) > 1 else 1
+        result.append((number_of_nodes, ppn))
+    return result
+
+
+class TorqueResourceList(ComparableObject):
+    # <Resource_List>
+    #     <nodes>2</nodes>
+    #     <nodect>2</nodect>
+    #     <walltime>01:00:00</walltime>
+    # </Resource_List>
+    MAPPINGS = {
+        "nodes": {"field": "nodes_resources", "transformation": _parse_node_resources},
+        "nodect": {"field": "nodes_count", "transformation": int},
+        "ncpus": {"field": "ncpus", "transformation": int},
+    }
+
+    def __init__(self, nodes_resources=None, nodes_count=None, ncpus=None):
+        self.nodes_resources = nodes_resources
+        self.nodes_count = nodes_count
+        self.ncpus = ncpus
+
+    @staticmethod
+    def from_xml(xml):
+        return from_xml_to_obj(xml, TorqueResourceList)
