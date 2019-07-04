@@ -8,11 +8,12 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+
 import pytest
 
 from assertpy import assert_that
-from common.schedulers.torque_commands import TorqueHost
-from jobwatcher.plugins.torque import get_busy_nodes
+from common.schedulers.torque_commands import TorqueHost, TorqueJob, TorqueResourceList
+from jobwatcher.plugins.torque import get_busy_nodes, get_required_nodes
 
 
 @pytest.mark.parametrize(
@@ -66,3 +67,80 @@ def test_get_busy_nodes(compute_nodes, expected_busy_nodes, mocker):
 
     mock.assert_called_with()
     assert_that(count).is_equal_to(expected_busy_nodes)
+
+
+@pytest.mark.parametrize(
+    "pending_jobs, expected_required_nodes",
+    [
+        (
+            [
+                TorqueJob(
+                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
+                )
+            ],
+            1,
+        ),
+        (
+            [
+                # This is skipped cause ppn=5
+                TorqueJob(
+                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=[(1, 5)], nodes_count=2, ncpus=None),
+                ),
+                # This requires 1 full node
+                TorqueJob(
+                    id="150.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=4),
+                ),
+                # This requires 2 nodes
+                TorqueJob(
+                    id="151.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=[(1, 2), (1, 4)], nodes_count=2, ncpus=None),
+                ),
+                # This fits into existing node
+                TorqueJob(
+                    id="151.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
+                ),
+                # This fits into 2 node
+                TorqueJob(
+                    id="151.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=None, nodes_count=2, ncpus=None),
+                ),
+            ],
+            5,
+        ),
+        ([], 0),
+        (
+            [
+                TorqueJob(
+                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=[(2, 4)], nodes_count=2, ncpus=None),
+                ),
+                TorqueJob(
+                    id="150.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="Q",
+                    resources_list=TorqueResourceList(nodes_resources=None, nodes_count=1, ncpus=None),
+                ),
+            ],
+            3,
+        ),
+    ],
+    ids=["single_job", "multiple_jobs", "no_jobs", "three_full_nodes"],
+)
+def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
+    mocker.patch("jobwatcher.plugins.torque.get_pending_jobs_info", return_value=pending_jobs, autospec=True)
+
+    instance_properties = {"slots": 4}
+    max_cluster_size = 10
+
+    required_nodes = get_required_nodes(instance_properties, max_cluster_size)
+    assert_that(required_nodes).is_equal_to(expected_required_nodes)

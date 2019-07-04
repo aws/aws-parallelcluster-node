@@ -1,8 +1,16 @@
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance
+# with the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
 import logging
-from functools import reduce
 
-from common.schedulers.torque_commands import get_compute_nodes_info
-from common.utils import check_command_output
+from common.schedulers.torque_commands import get_compute_nodes_info, get_pending_jobs_info
 
 from .utils import get_optimal_nodes
 
@@ -11,27 +19,22 @@ log = logging.getLogger(__name__)
 
 # get nodes requested from pending jobs
 def get_required_nodes(instance_properties, max_size):
-    command = "/opt/torque/bin/qstat -at"
+    pending_jobs = get_pending_jobs_info(max_slots_filter=instance_properties.get("slots"))
+    logging.info("Found the following pending jobs:\n%s", pending_jobs)
 
-    # Example output of torque
-    #                                                                                   Req'd       Req'd       Elap
-    # Job ID                  Username    Queue    Jobname          SessID  NDS   TSK   Memory      Time    S   Time
-    # ----------------------- ----------- -------- ---------------- ------ ----- ------ --------- --------- - ---------
-    # 0.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5343     5     30       --   01:00:00 Q  00:04:58
-    # 1.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5340     3      6       --   01:00:00 R  00:08:14
-    # 2.ip-172-31-11-1.ec2.i  centos      batch    job.sh             5387     2      4       --   01:00:00 R  00:08:27
-
-    status = ["Q"]
-    _output = check_command_output(command)
-    output = _output.split("\n")[5:]
     slots_requested = []
     nodes_requested = []
-    for line in output:
-        line_arr = line.split()
-        if len(line_arr) >= 10 and line_arr[9] in status:
-            # if a job has been looked at to account for pending nodes, don't look at it again
-            slots_requested.append(int(line_arr[6]))
-            nodes_requested.append(int(line_arr[5]))
+    for job in pending_jobs:
+        if job.resources_list.nodes_resources:
+            for nodes, ppn in job.resources_list.nodes_resources:
+                nodes_requested.append(nodes)
+                slots_requested.append(ppn * nodes)
+        elif job.resources_list.ncpus:
+            nodes_requested.append(1)
+            slots_requested.append(job.resources_list.ncpus)
+        elif job.resources_list.nodes_count:
+            nodes_requested.append(job.resources_list.nodes_count)
+            slots_requested.append(1 * job.resources_list.nodes_count)
 
     return get_optimal_nodes(nodes_requested, slots_requested, instance_properties)
 
