@@ -133,60 +133,141 @@ def test_get_compute_nodes_info(pbsnodes_mocked_response, expected_output, mocke
 
 
 @pytest.mark.parametrize(
-    "qstat_mocked_response, expected_output",
+    "qstat_mocked_response, filter_by_states, filter_by_exec_hosts, expected_output",
     [
         (
             "qstat_output.xml",
+            None,
+            None,
             [
                 TorqueJob(
                     id="149.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168"]),
                 ),
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
                 ),
                 TorqueJob(
                     id="151.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=2),
+                    exec_hosts=set(["ip-10-0-1-168"]),
                 ),
                 TorqueJob(
                     id="152.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="Q",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2), (2, 3)], nodes_count=3, ncpus=None),
+                    exec_hosts=set(),
                 ),
                 TorqueJob(
                     id="166[1].ip-10-0-0-196.eu-west-1.compute.internal",
                     state="Q",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 4), (8, 1)], nodes_count=9, ncpus=None),
+                    exec_hosts=set(),
                 ),
                 TorqueJob(
                     id="166[2].ip-10-0-0-196.eu-west-1.compute.internal",
                     state="Q",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 4), (8, 1)], nodes_count=9, ncpus=None),
+                    exec_hosts=set(),
                 ),
                 TorqueJob(
                     id="166[3].ip-10-0-0-196.eu-west-1.compute.internal",
                     state="Q",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 4), (8, 1)], nodes_count=9, ncpus=None),
+                    exec_hosts=set(),
                 ),
             ],
         ),
-        ("qstat_empty_xml.xml", []),
-        ("qstat_empty.xml", []),
+        ("qstat_empty_xml.xml", None, None, []),
+        ("qstat_empty.xml", None, None, []),
+        (
+            "qstat_output.xml",
+            set(["R"]),
+            None,
+            [
+                TorqueJob(
+                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168"]),
+                ),
+                TorqueJob(
+                    id="150.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                ),
+                TorqueJob(
+                    id="151.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=2),
+                    exec_hosts=set(["ip-10-0-1-168"]),
+                ),
+            ],
+        ),
+        (
+            "qstat_output.xml",
+            None,
+            set(["ip-10-0-1-95"]),
+            [
+                TorqueJob(
+                    id="150.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                )
+            ],
+        ),
+        (
+            "qstat_output.xml",
+            set(["R"]),
+            set(["ip-10-0-1-168"]),
+            [
+                TorqueJob(
+                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168"]),
+                ),
+                TorqueJob(
+                    id="150.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
+                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                ),
+                TorqueJob(
+                    id="151.ip-10-0-0-196.eu-west-1.compute.internal",
+                    state="R",
+                    resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=2),
+                    exec_hosts=set(["ip-10-0-1-168"]),
+                ),
+            ],
+        ),
     ],
-    ids=["mixed_output", "emptyxml", "empty_output"],
+    ids=[
+        "mixed_output",
+        "emptyxml",
+        "empty_output",
+        "filter_states",
+        "filter_exec_hosts",
+        "filter_states_and_exec_hosts",
+    ],
 )
-def test_get_jobs_info(qstat_mocked_response, expected_output, mocker, test_datadir):
+def test_get_jobs_info(
+    qstat_mocked_response, filter_by_states, filter_by_exec_hosts, expected_output, mocker, test_datadir
+):
     qstat_output = read_text(test_datadir / qstat_mocked_response)
     mock = mocker.patch(
         "common.schedulers.torque_commands.check_command_output", return_value=qstat_output, autospec=True
     )
 
-    jobs = get_jobs_info()
+    jobs = get_jobs_info(filter_by_states, filter_by_exec_hosts)
 
     mock.assert_called_with("/opt/torque/bin/qstat -t -x")
     assert_that(jobs).is_equal_to(expected_output)
@@ -211,17 +292,6 @@ def test_get_jobs_info(qstat_mocked_response, expected_output, mocker, test_data
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
                 )
             ],
-        ),
-        (
-            [
-                TorqueJob(
-                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
-                    state="R",
-                    resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
-                )
-            ],
-            None,
-            [],
         ),
         (
             [
@@ -268,11 +338,6 @@ def test_get_jobs_info(qstat_mocked_response, expected_output, mocker, test_data
                     state="Q",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2), (1, 6)], nodes_count=2, ncpus=None),
                 ),
-                TorqueJob(
-                    id="14.ip-10-0-0-196.eu-west-1.compute.internal",
-                    state="R",
-                    resources_list=TorqueResourceList(nodes_resources=[(1, 2), (1, 5)], nodes_count=2, ncpus=None),
-                ),
             ],
             5,
             [
@@ -290,10 +355,10 @@ def test_get_jobs_info(qstat_mocked_response, expected_output, mocker, test_data
         ),
         ([], 5, []),
     ],
-    ids=["no_filter", "skip_state", "max_slots", "max_slots_no_filter", "mix", "empty"],
+    ids=["no_filter", "max_slots", "max_slots_no_filter", "mix", "empty"],
 )
 def test_get_pending_jobs_info(pending_jobs, max_slots, expected_filtered_jobs, mocker):
     mock = mocker.patch("common.schedulers.torque_commands.get_jobs_info", return_value=pending_jobs, autospec=True)
 
     assert_that(get_pending_jobs_info(max_slots)).is_equal_to(expected_filtered_jobs)
-    mock.assert_called_with()
+    mock.assert_called_with(filter_by_states=["Q"])

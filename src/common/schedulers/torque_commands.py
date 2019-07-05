@@ -32,7 +32,9 @@ TORQUE_NODE_STATES = (
     "time-shared",
     "state-unknown",
 )
-TORQUE_PENDING_JOBS_STATE = "Q"
+TORQUE_PENDING_JOB_STATE = "Q"
+TORQUE_SUSPENDED_JOB_STATE = "S"
+TORQUE_RUNNING_JOB_STATE = "R"
 
 
 def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qmgr_args=""):
@@ -168,7 +170,7 @@ def wakeup_scheduler(added_hosts):
     run_command('/opt/torque/bin/qmgr -c "set server scheduling=true"', raise_on_error=False)
 
 
-def get_jobs_info():
+def get_jobs_info(filter_by_states=None, filter_by_exec_hosts=None):
     command = "/opt/torque/bin/qstat -t -x"
     output = check_command_output(command)
     if not output:
@@ -176,30 +178,39 @@ def get_jobs_info():
 
     root = ElementTree.fromstring(output)
     jobs = root.findall("./Job")
-    jobs_list = [TorqueJob.from_xml(ElementTree.tostring(job)) for job in jobs]
+    jobs_list = []
+    for job in jobs:
+        parsed_job = TorqueJob.from_xml(ElementTree.tostring(job))
+        if filter_by_states and parsed_job.state not in filter_by_states:
+            continue
+        if filter_by_exec_hosts:
+            if any(host in parsed_job.exec_hosts for host in filter_by_exec_hosts):
+                jobs_list.append(parsed_job)
+        else:
+            jobs_list.append(parsed_job)
+
     return jobs_list
 
 
 def get_pending_jobs_info(max_slots_filter=None):
-    jobs = get_jobs_info()
+    jobs = get_jobs_info(filter_by_states=[TORQUE_PENDING_JOB_STATE])
     pending_jobs = []
     for job in jobs:
-        if job.state == TORQUE_PENDING_JOBS_STATE:
-            # filtering of ncpus option is already done by the scheduler at job submission time
-            # see update_cluster_limits function
-            if (
-                max_slots_filter
-                and job.resources_list.nodes_resources
-                and any(ppn > max_slots_filter for _, ppn in job.resources_list.nodes_resources)
-            ):
-                logging.info(
-                    "Skipping job %s since required slots (%s) exceed max slots (%d)",
-                    job.id,
-                    job.resources_list.nodes_resources,
-                    max_slots_filter,
-                )
-            else:
-                pending_jobs.append(job)
+        # filtering of ncpus option is already done by the scheduler at job submission time
+        # see update_cluster_limits function
+        if (
+            max_slots_filter
+            and job.resources_list.nodes_resources
+            and any(ppn > max_slots_filter for _, ppn in job.resources_list.nodes_resources)
+        ):
+            logging.info(
+                "Skipping job %s since required slots (%s) exceed max slots (%d)",
+                job.id,
+                job.resources_list.nodes_resources,
+                max_slots_filter,
+            )
+        else:
+            pending_jobs.append(job)
 
     return pending_jobs
 
@@ -244,7 +255,7 @@ class TorqueJob(ComparableObject):
     #     <Checkpoint>u</Checkpoint>
     #     <ctime>1562156185</ctime>
     #     <Error_Path>ip-10-0-0-196.eu-west-1.compute.internal:/home/centos/STDIN.e149</Error_Path>
-    #     <exec_host>ip-10-0-1-168/0-1</exec_host>
+    #     <exec_host>ip-10-0-1-90/0-1+ip-10-0-1-104/0-1</exec_host>
     #     <Hold_Types>n</Hold_Types>
     #     <Join_Path>n</Join_Path>
     #     <Keep_Files>n</Keep_Files>
@@ -286,12 +297,17 @@ class TorqueJob(ComparableObject):
             "transformation": lambda res: TorqueResourceList.from_xml(ElementTree.tostring(res)),
             "xml_elem_type": "xml",
         },
+        "exec_host": {
+            "field": "exec_hosts",
+            "transformation": lambda hosts: set(host.split("/")[0] for host in hosts.split("+")),
+        },
     }
 
-    def __init__(self, id=None, state=None, resources_list=None):
+    def __init__(self, id=None, state=None, resources_list=None, exec_hosts=None):
         self.id = id
         self.state = state
         self.resources_list = resources_list
+        self.exec_hosts = exec_hosts or set()
 
     @staticmethod
     def from_xml(xml):
