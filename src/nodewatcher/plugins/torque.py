@@ -12,74 +12,42 @@
 import logging
 import subprocess
 
-from common.schedulers.torque_commands import TORQUE_NODE_ERROR_STATES, get_compute_nodes_info
-from common.utils import CriticalError, check_command_output, run_command
+from common.schedulers.torque_commands import (
+    TORQUE_NODE_ERROR_STATES,
+    TORQUE_RUNNING_JOB_STATE,
+    TORQUE_SUSPENDED_JOB_STATE,
+    get_compute_nodes_info,
+    get_jobs_info,
+    get_pending_jobs_info,
+)
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
 
 
-def runPipe(cmds):
-    try:
-        p1 = subprocess.Popen(cmds[0].split(" "), stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        prev = p1
-        for cmd in cmds[1:]:
-            p = subprocess.Popen(cmd.split(" "), stdin=prev.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            prev = p
-        stdout, stderr = p.communicate()
-        p.wait()
-        returncode = p.returncode
-    except Exception as e:
-        stderr = str(e)
-        returncode = -1
-    if returncode == 0:
-        return (True, stdout.strip().split("\n"))
-    else:
-        return (False, stderr)
-
-
 def hasJobs(hostname):
-    # Checking for running jobs on the node
-    commands = ["/opt/torque/bin/qstat -r -t -n -1", ("grep " + hostname.split(".")[0])]
     try:
-        status, output = runPipe(commands)
-        has_jobs = output != ""
-    except subprocess.CalledProcessError:
-        log.error("Failed to run %s\n" % commands)
-        has_jobs = False
-
-    return has_jobs
+        short_name = hostname.split(".")[0]
+        # Checking for running jobs on the node
+        jobs = get_jobs_info(
+            filter_by_exec_hosts=set([short_name]),
+            filter_by_states=[TORQUE_RUNNING_JOB_STATE, TORQUE_SUSPENDED_JOB_STATE],
+        )
+        logging.info("Found the following running jobs:\n%s", jobs)
+        return len(jobs) > 0
+    except Exception as e:
+        log.error("Failed when checking for running jobs with exception %s. Reporting no running jobs.", e)
+        return False
 
 
 def hasPendingJobs(instance_properties, max_size):
-    command = "/opt/torque/bin/qstat -Q"
-
-    # Command outputs the status of the queue in the following format
-    # Queue              Max    Tot   Ena   Str   Que   Run   Hld   Wat   Trn   Ext T   Cpt
-    # ----------------   ---   ----    --    --   ---   ---   ---   ---   ---   --- -   ---
-    # batch                0     24   yes   yes    24     0     0     0     0     0 E     0
-    # test1                0     26   yes   yes    26     0     0     0     0     0 E     0
     try:
-        output = check_command_output(command)
-        lines = [_f for _f in output.split("\n") if _f]
-        if len(lines) < 3:
-            log.error("Unable to check pending jobs. The command '%s' does not return a valid output", command)
-            raise CriticalError
-
-        pending = 0
-        for idx, line in enumerate(lines):
-            if idx < 2:
-                continue
-            queue_status = line.split()
-            pending += int(queue_status[5])
-
-        has_pending = pending > 0
-        error = False
+        pending_jobs = get_pending_jobs_info(max_slots_filter=instance_properties.get("slots"))
+        logging.info("Found the following pending jobs:\n%s", pending_jobs)
+        return len(pending_jobs) > 0, False
     except Exception as e:
-        log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
-        error = True
-        has_pending = False
-
-    return has_pending, error
+        log.error("Failed when checking for pending jobs with exception %s. Reporting no pending jobs.", e)
+        return False, True
 
 
 def lockHost(hostname, unlock=False):
