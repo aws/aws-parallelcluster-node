@@ -134,7 +134,7 @@ def get_compute_nodes_info(hostname_filter=None):
         root = ElementTree.fromstring(output)
         nodes = root.findall("./Node")
         nodes_list = [TorqueHost.from_xml(ElementTree.tostring(node)) for node in nodes]
-        return dict((node.name, node) for node in nodes_list)
+        return dict((node.name, node) for node in nodes_list if node.note != "MasterServer")
     else:
         if output != "":
             logging.warning("Failed when running command %s with error %s", command, output)
@@ -222,6 +222,7 @@ class TorqueHost(ComparableObject):
     #     <power_state>Running</power_state>
     #     <np>4</np>
     #     <ntype>cluster</ntype>
+    #     <note>MasterServer</note>
     #     <status>opsys=linux,uname=Linux ip-10-0-1-242 4.4.111-1.el6.elrepo.x86_64...</status>
     #     <mom_service_port>15002</mom_service_port>
     #     <mom_manager_port>15003</mom_manager_port>
@@ -231,13 +232,15 @@ class TorqueHost(ComparableObject):
         "np": {"field": "slots", "transformation": int},
         "state": {"field": "state", "transformation": lambda states: states.split(",")},
         "jobs": {"field": "jobs"},
+        "note": {"field": "note"},
     }
 
-    def __init__(self, name=None, slots=0, state="", jobs=None):
+    def __init__(self, name=None, slots=0, state="", jobs=None, note=""):
         self.name = name
         self.slots = slots
         self.state = state
         self.jobs = jobs
+        self.note = note
 
     @staticmethod
     def from_xml(xml):
