@@ -1,4 +1,3 @@
-#!/usr/bin/env python2.6
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
@@ -121,7 +120,7 @@ def run_command(command, env=None, raise_on_error=True):
 
 def _run_command(command_function, command, env=None, raise_on_error=True):
     try:
-        if isinstance(command, str) or isinstance(command, unicode):
+        if isinstance(command, str):
             command = shlex.split(command.encode("ascii"))
         if env is None:
             env = {}

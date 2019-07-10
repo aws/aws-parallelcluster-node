@@ -35,7 +35,7 @@ def get_busy_nodes():
     """
     nodes = get_compute_nodes_info()
     busy_nodes = 0
-    for node in nodes.values():
+    for node in list(nodes.values()):
         if (
             any(busy_state in node.state for busy_state in SGE_BUSY_STATES)
             or int(node.slots_used) > 0

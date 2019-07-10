@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
@@ -244,7 +242,7 @@ def _parse_sqs_messages(messages, table):
             log.warning("Discarding message %s", message)
             message.delete()
 
-    return update_events.values()
+    return list(update_events.values())
 
 
 def _process_compute_ready_event(message_attrs, message):
