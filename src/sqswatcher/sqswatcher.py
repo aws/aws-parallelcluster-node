@@ -224,18 +224,16 @@ def _parse_sqs_messages(messages, table):
             message.delete()
             continue
 
-        instance_id = message_attrs.get("EC2InstanceId")
         if event_type == "parallelcluster:COMPUTE_READY":
             update_event = _process_compute_ready_event(message_attrs, message)
-            log.info("Processing COMPUTE_READY event for instance %s", update_event.host)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
             update_event = _process_instance_terminate_event(message_attrs, message, table)
-            log.info("Processing EC2_INSTANCE_TERMINATE event for instance %s", update_event.host)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
             update_event = None
 
         if update_event:
+            log.info("Processing %s event for instance %s", event_type, update_event.host)
             hostname = update_event.host.hostname
             if hostname in update_events:
                 # delete first to preserve messages order in dict
