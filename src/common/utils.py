@@ -9,14 +9,13 @@
 # or in the "LICENSE.txt" file accompanying this file.
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
-from future.moves.subprocess import check_output
-
 import json
 import logging
 import os
 import shlex
 import subprocess
 import sys
+from subprocess import check_output
 
 import boto3
 from retrying import retry
@@ -121,7 +120,7 @@ def run_command(command, env=None, raise_on_error=True):
 def _run_command(command_function, command, env=None, raise_on_error=True):
     try:
         if isinstance(command, str):
-            command = shlex.split(command.encode("ascii"))
+            command = shlex.split(command)
         if env is None:
             env = {}
 

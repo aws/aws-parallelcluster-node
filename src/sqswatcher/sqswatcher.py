@@ -10,13 +10,12 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-from future.moves.collections import OrderedDict
-
 import collections
 import itertools
 import json
 import logging
 import time
+from collections import OrderedDict
 
 import boto3
 from botocore.config import Config
@@ -242,7 +241,7 @@ def _parse_sqs_messages(messages, table):
             log.warning("Discarding message %s", message)
             message.delete()
 
-    return list(update_events.values())
+    return update_events.values()
 
 
 def _process_compute_ready_event(message_attrs, message):

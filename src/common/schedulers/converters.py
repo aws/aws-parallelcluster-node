@@ -34,7 +34,7 @@ def from_xml_to_obj(xml, obj_type):
     """
     obj = obj_type()
     root = ElementTree.fromstring(xml)
-    for tag, mapping in list(obj_type.MAPPINGS.items()):
+    for tag, mapping in obj_type.MAPPINGS.items():
         results = root.findall(tag)
         transformation_func = mapping.get("transformation")
         xml_elem_type = mapping.get("xml_elem_type", "text")
@@ -99,5 +99,5 @@ class ComparableObject:
         return not self.__eq__(other)
 
     def __repr__(self):
-        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in list(self.__dict__.items())])
+        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
         return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)

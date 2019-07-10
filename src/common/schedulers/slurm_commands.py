@@ -9,8 +9,6 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-# In Python 2, division of two ints produces an int. In Python 3, it produces a float. Uniforming the behaviour.
-
 
 import logging
 import math

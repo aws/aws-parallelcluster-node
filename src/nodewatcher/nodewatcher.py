@@ -18,7 +18,6 @@ import os
 import sys
 import tarfile
 import time
-import requests
 from contextlib import closing
 
 import boto3
@@ -26,6 +25,7 @@ from botocore.config import Config
 from configparser import ConfigParser
 from retrying import RetryError, retry
 
+import requests
 from common.time_utils import minutes, seconds
 from common.utils import CriticalError, get_asg_name, get_asg_settings, get_instance_properties, load_module
 
