@@ -2,6 +2,7 @@ import logging
 from xml.etree import ElementTree
 
 from common.utils import check_command_output
+
 from .utils import get_optimal_nodes
 
 log = logging.getLogger(__name__)
