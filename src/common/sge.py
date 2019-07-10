@@ -1,5 +1,3 @@
-#!/usr/bin/env python2.6
-
 # Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
@@ -45,7 +43,7 @@ def run_sge_command(command):
 
 
 def _prepend_sge_bin_dir(command):
-    if isinstance(command, str) or isinstance(command, unicode):
+    if isinstance(command, str):
         command = SGE_BIN_DIR + command
     else:
         command[0] = SGE_BIN_DIR + command[0]

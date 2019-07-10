@@ -10,7 +10,7 @@
 # limitations under the License.
 
 # In Python 2, division of two ints produces an int. In Python 3, it produces a float. Uniforming the behaviour.
-from __future__ import division
+
 
 import logging
 import math

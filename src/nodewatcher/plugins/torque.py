@@ -59,7 +59,7 @@ def hasPendingJobs(instance_properties, max_size):
     # test1                0     26   yes   yes    26     0     0     0     0     0 E     0
     try:
         output = check_command_output(command)
-        lines = filter(None, output.split("\n"))
+        lines = [_f for _f in output.split("\n") if _f]
         if len(lines) < 3:
             log.error("Unable to check pending jobs. The command '%s' does not return a valid output", command)
             raise CriticalError

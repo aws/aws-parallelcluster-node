@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
@@ -20,7 +18,7 @@ import os
 import sys
 import tarfile
 import time
-import urllib2
+import requests
 from contextlib import closing
 
 import boto3
@@ -90,8 +88,8 @@ def _get_metadata(metadata_path):
     :return the metadata value.
     """
     try:
-        metadata_value = urllib2.urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read()
-    except urllib2.URLError as e:
+        metadata_value = requests.get("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).text
+    except Exception as e:
         error_msg = "Unable to get {0} metadata. Failed with exception: {1}".format(metadata_path, e)
         log.critical(error_msg)
         raise CriticalError(error_msg)
