@@ -41,7 +41,7 @@ setup(
     license="Apache License 2.0",
     packages=find_packages("src", exclude=["tests"]),
     package_dir={"": "src"},
-    python_requires=">=3.4",
+    python_requires=">=3.5",
     install_requires=requires,
     entry_points=dict(console_scripts=console_scripts),
     include_package_data=True,
