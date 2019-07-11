@@ -153,19 +153,19 @@ def test_get_compute_nodes_info(pbsnodes_mocked_response, expected_output, mocke
                     id="149.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168"]),
+                    exec_hosts={"ip-10-0-1-168"},
                 ),
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                    exec_hosts={"ip-10-0-1-168", "ip-10-0-1-95"},
                 ),
                 TorqueJob(
                     id="151.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=2),
-                    exec_hosts=set(["ip-10-0-1-168"]),
+                    exec_hosts={"ip-10-0-1-168"},
                 ),
                 TorqueJob(
                     id="152.ip-10-0-0-196.eu-west-1.compute.internal",
@@ -197,64 +197,64 @@ def test_get_compute_nodes_info(pbsnodes_mocked_response, expected_output, mocke
         ("qstat_empty.xml", None, None, []),
         (
             "qstat_output.xml",
-            set(["R"]),
+            {"R"},
             None,
             [
                 TorqueJob(
                     id="149.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168"]),
+                    exec_hosts={"ip-10-0-1-168"},
                 ),
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                    exec_hosts={"ip-10-0-1-168", "ip-10-0-1-95"},
                 ),
                 TorqueJob(
                     id="151.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=2),
-                    exec_hosts=set(["ip-10-0-1-168"]),
+                    exec_hosts={"ip-10-0-1-168"},
                 ),
             ],
         ),
         (
             "qstat_output.xml",
             None,
-            set(["ip-10-0-1-95"]),
+            {"ip-10-0-1-95"},
             [
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                    exec_hosts={"ip-10-0-1-168", "ip-10-0-1-95"},
                 )
             ],
         ),
         (
             "qstat_output.xml",
-            set(["R"]),
-            set(["ip-10-0-1-168"]),
+            {"R"},
+            {"ip-10-0-1-168"},
             [
                 TorqueJob(
                     id="149.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(1, 2)], nodes_count=1, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168"]),
+                    exec_hosts={"ip-10-0-1-168"},
                 ),
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=[(2, 1)], nodes_count=2, ncpus=None),
-                    exec_hosts=set(["ip-10-0-1-168", "ip-10-0-1-95"]),
+                    exec_hosts={"ip-10-0-1-168", "ip-10-0-1-95"},
                 ),
                 TorqueJob(
                     id="151.ip-10-0-0-196.eu-west-1.compute.internal",
                     state="R",
                     resources_list=TorqueResourceList(nodes_resources=None, nodes_count=None, ncpus=2),
-                    exec_hosts=set(["ip-10-0-1-168"]),
+                    exec_hosts={"ip-10-0-1-168"},
                 ),
             ],
         ),

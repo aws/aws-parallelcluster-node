@@ -306,7 +306,7 @@ class TorqueJob(ComparableObject):
         },
         "exec_host": {
             "field": "exec_hosts",
-            "transformation": lambda hosts: set(host.split("/")[0] for host in hosts.split("+")),
+            "transformation": lambda hosts: {host.split("/")[0] for host in hosts.split("+")},
         },
     }
 
