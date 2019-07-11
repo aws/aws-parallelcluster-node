@@ -41,7 +41,7 @@ TORQUE_BIN_DIR = "/opt/torque/bin/"
 
 def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qmgr_args=""):
     if not hosts:
-        return []
+        return set()
 
     hostnames = ",".join(hosts)
     command = TORQUE_BIN_DIR + 'qmgr -c "{operation} node {hostnames} {additional_args}"'.format(
