@@ -48,9 +48,11 @@ def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qm
     try:
         output = check_command_output(command, log_error=False)
     except subprocess.CalledProcessError as e:
-        if not hasattr(e, "output") or e.output == "":
+        if not hasattr(e, "output") or not e.output or e.output == "":
             logging.error("Failed when executing operation %s on nodes %s with error %s", operation, hostnames, e)
             return set()
+        else:
+            output = e.output
 
     succeeded_hosts = set(hosts)
     # analyze command output to understand if failure can be ignored (e.g. already existing node)
@@ -62,9 +64,9 @@ def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qm
             return set()
 
         host, error = match.groups()
-        if any(error == message_to_ignore for message_to_ignore in error_messages_to_ignore):
+        if any(error.strip() == message_to_ignore for message_to_ignore in error_messages_to_ignore):
             logging.warning(
-                "Marking %s operation on node % as succeeded because of ignored error message %s",
+                "Marking %s operation on node %s as succeeded because of ignored error message %s",
                 operation,
                 host,
                 error,
@@ -72,6 +74,7 @@ def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qm
             continue
 
         try:
+            logging.error("Failed when executing operation %s on node %s with error %s", operation, host, error_message)
             succeeded_hosts.remove(host)
         except Exception as e:
             logging.error(
@@ -98,7 +101,15 @@ def delete_nodes(hosts):
     # rerun the job.
     if hosts:
         run_command("/opt/torque/bin/pbsnodes -o {0}".format(" ".join(hosts)), raise_on_error=False, log_error=False)
-    return _qmgr_manage_nodes(operation="delete", hosts=hosts, error_messages_to_ignore=["Unknown node"])
+    return _qmgr_manage_nodes(
+        operation="delete",
+        hosts=hosts,
+        error_messages_to_ignore=[
+            "Unknown node",
+            "The server was unable to communicate with the MOM to requeue or delete the job."
+            " The node has been deleted and all jobs on the node have been purged",
+        ],
+    )
 
 
 def update_cluster_limits(max_nodes, node_slots):
