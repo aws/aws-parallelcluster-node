@@ -30,8 +30,7 @@ def hasJobs(hostname):
         short_name = hostname.split(".")[0]
         # Checking for running jobs on the node
         jobs = get_jobs_info(
-            filter_by_exec_hosts=set([short_name]),
-            filter_by_states=[TORQUE_RUNNING_JOB_STATE, TORQUE_SUSPENDED_JOB_STATE],
+            filter_by_exec_hosts={short_name}, filter_by_states=[TORQUE_RUNNING_JOB_STATE, TORQUE_SUSPENDED_JOB_STATE]
         )
         logging.info("Found the following running jobs:\n%s", jobs)
         return len(jobs) > 0

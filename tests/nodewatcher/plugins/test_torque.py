@@ -135,4 +135,4 @@ def test_has_jobs(jobs, expected_result, mocker):
     hostname = "ip-1-0-0-1.eu-west-1.compute.internal"
 
     assert_that(hasJobs(hostname)).is_equal_to(expected_result)
-    mock.assert_called_with(filter_by_exec_hosts=set([hostname.split(".")[0]]), filter_by_states=["R", "S"])
+    mock.assert_called_with(filter_by_exec_hosts={hostname.split(".")[0]}, filter_by_states=["R", "S"])
