@@ -39,6 +39,12 @@ def hasJobs(hostname):
 
 
 def hasPendingJobs(instance_properties, max_size):
+    """
+    Check if there is any pending job in the queue.
+
+    :return: a pair (has_pending_job, has_error) where has_error communicates if there was
+             an error when checking for pending jobs.
+    """
     try:
         max_cluster_slots = max_size * instance_properties.get("slots")
         pending_jobs = get_pending_jobs_info(max_slots_filter=max_cluster_slots, skip_if_state=SGE_HOLD_STATE)
