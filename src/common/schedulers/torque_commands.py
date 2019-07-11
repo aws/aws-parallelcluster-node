@@ -94,6 +94,10 @@ def add_nodes(hosts, slots):
 
 
 def delete_nodes(hosts):
+    # Setting nodes to offline before deleting to workaround issue with pbs_mom unable to
+    # rerun the job.
+    if hosts:
+        run_command("/opt/torque/bin/pbsnodes -o {0}".format(" ".join(hosts)), raise_on_error=False, log_error=False)
     return _qmgr_manage_nodes(operation="delete", hosts=hosts, error_messages_to_ignore=["Unknown node"])
 
 
