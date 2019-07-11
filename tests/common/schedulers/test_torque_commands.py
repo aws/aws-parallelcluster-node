@@ -8,6 +8,8 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+import subprocess
+
 import pytest
 
 from assertpy import assert_that
@@ -68,13 +70,32 @@ def test_add_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
         ("qmgr obj=ip-10-0-0-157 svr=default: Error", ["ip-10-0-0-157", "ip-10-0-0-155"], ["ip-10-0-0-155"]),
         ("unexpected error message", ["ip-10-0-0-157", "ip-10-0-0-155"], []),
         ("", [], []),
+        (subprocess.CalledProcessError(1, "cmd", output="Unknown Error"), ["ip-10-0-0-157", "ip-10-0-0-155"], []),
+        (
+            subprocess.CalledProcessError(1, "cmd", output="qmgr obj=ip-10-0-1-57 svr=default: Unknown node"),
+            ["ip-10-0-1-57", "ip-10-0-0-155"],
+            ["ip-10-0-1-57", "ip-10-0-0-155"],
+        ),
     ],
-    ids=["all_successful", "already_existing", "failed_one_node", "unexpected_err_message", "no_nodes"],
+    ids=[
+        "all_successful",
+        "already_existing",
+        "failed_one_node",
+        "unexpected_err_message",
+        "no_nodes",
+        "exception",
+        "ignored_exception",
+    ],
 )
 def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
-    qmgr_mock = mocker.patch(
-        "common.schedulers.torque_commands.check_command_output", return_value=qmgr_output, autospec=True
-    )
+    if isinstance(qmgr_output, str):
+        qmgr_mock = mocker.patch(
+            "common.schedulers.torque_commands.check_command_output", return_value=qmgr_output, autospec=True
+        )
+    else:
+        qmgr_mock = mocker.patch(
+            "common.schedulers.torque_commands.check_command_output", side_effect=qmgr_output, autospec=True
+        )
     pbsnodes_mock = mocker.patch("common.schedulers.torque_commands.run_command", autospec=True)
     succeeded_hosts = delete_nodes(hosts)
 
