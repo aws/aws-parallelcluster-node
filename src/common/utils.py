@@ -87,7 +87,7 @@ def get_asg_settings(region, proxy_config, asg_name):
         raise
 
 
-def check_command_output(command, env=None, raise_on_error=True, log_error=True):
+def check_command_output(command, env=None, raise_on_error=True, log_error=True, timeout=60):
     """
     Execute shell command and retrieve command output.
 
@@ -99,7 +99,9 @@ def check_command_output(command, env=None, raise_on_error=True, log_error=True)
     :raise: subprocess.CalledProcessError if the command fails
     """
     return _run_command(
-        lambda _command, _env: check_output(_command, env=_env, stderr=subprocess.STDOUT, universal_newlines=True),
+        lambda _command, _env: check_output(
+            _command, env=_env, stderr=subprocess.STDOUT, universal_newlines=True, timeout=timeout
+        ),
         command,
         env,
         raise_on_error,
@@ -107,7 +109,7 @@ def check_command_output(command, env=None, raise_on_error=True, log_error=True)
     )
 
 
-def run_command(command, env=None, raise_on_error=True, log_error=True):
+def run_command(command, env=None, raise_on_error=True, log_error=True, timeout=60):
     """
     Execute shell command.
 
@@ -118,7 +120,11 @@ def run_command(command, env=None, raise_on_error=True, log_error=True):
     :raise: subprocess.CalledProcessError if the command fails
     """
     _run_command(
-        lambda _command, _env: subprocess.check_call(_command, env=_env), command, env, raise_on_error, log_error
+        lambda _command, _env: subprocess.check_call(_command, env=_env, timeout=timeout),
+        command,
+        env,
+        raise_on_error,
+        log_error,
     )
 
 
