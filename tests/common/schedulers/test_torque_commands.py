@@ -72,13 +72,22 @@ def test_add_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
     ids=["all_successful", "already_existing", "failed_one_node", "unexpected_err_message", "no_nodes"],
 )
 def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
-    mock = mocker.patch(
+    qmgr_mock = mocker.patch(
         "common.schedulers.torque_commands.check_command_output", return_value=qmgr_output, autospec=True
     )
+    pbsnodes_mock = mocker.patch("common.schedulers.torque_commands.run_command", autospec=True)
     succeeded_hosts = delete_nodes(hosts)
 
     if hosts:
-        mock.assert_called_with('/opt/torque/bin/qmgr -c "delete node {0} "'.format(",".join(hosts)), log_error=False)
+        qmgr_mock.assert_called_with(
+            '/opt/torque/bin/qmgr -c "delete node {0} "'.format(",".join(hosts)), log_error=False
+        )
+        pbsnodes_mock.assert_called_with(
+            "/opt/torque/bin/pbsnodes -o {0}".format(" ".join(hosts)), log_error=False, raise_on_error=False
+        )
+    else:
+        assert_that(qmgr_mock.called).is_false()
+        assert_that(pbsnodes_mock.called).is_false()
     if expected_succeeded_hosts:
         assert_that(succeeded_hosts).contains_only(*expected_succeeded_hosts)
     else:
