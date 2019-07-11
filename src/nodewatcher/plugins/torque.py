@@ -13,6 +13,7 @@ import logging
 import subprocess
 
 from common.schedulers.torque_commands import (
+    TORQUE_BIN_DIR,
     TORQUE_NODE_ERROR_STATES,
     TORQUE_RUNNING_JOB_STATE,
     TORQUE_SUSPENDED_JOB_STATE,
@@ -52,7 +53,7 @@ def hasPendingJobs(instance_properties, max_size):
 def lockHost(hostname, unlock=False):
     # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
     mod = unlock and "-c" or "-o"
-    command = ["/opt/torque/bin/pbsnodes", mod, hostname]
+    command = [TORQUE_BIN_DIR + "pbsnodes", mod, hostname]
     try:
         run_command(command)
     except subprocess.CalledProcessError:

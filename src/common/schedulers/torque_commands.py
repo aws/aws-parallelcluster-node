@@ -36,13 +36,15 @@ TORQUE_PENDING_JOB_STATE = "Q"
 TORQUE_SUSPENDED_JOB_STATE = "S"
 TORQUE_RUNNING_JOB_STATE = "R"
 
+TORQUE_BIN_DIR = "/opt/torque/bin/"
+
 
 def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qmgr_args=""):
     if not hosts:
         return []
 
     hostnames = ",".join(hosts)
-    command = '/opt/torque/bin/qmgr -c "{operation} node {hostnames} {additional_args}"'.format(
+    command = TORQUE_BIN_DIR + 'qmgr -c "{operation} node {hostnames} {additional_args}"'.format(
         operation=operation, hostnames=hostnames, additional_args=additional_qmgr_args
     )
     try:
@@ -100,7 +102,7 @@ def delete_nodes(hosts):
     # Setting nodes to offline before deleting to workaround issue with pbs_mom unable to
     # rerun the job.
     if hosts:
-        run_command("/opt/torque/bin/pbsnodes -o {0}".format(" ".join(hosts)), raise_on_error=False, log_error=False)
+        run_command(TORQUE_BIN_DIR + "pbsnodes -o {0}".format(" ".join(hosts)), raise_on_error=False, log_error=False)
     return _qmgr_manage_nodes(
         operation="delete",
         hosts=hosts,
@@ -115,9 +117,9 @@ def delete_nodes(hosts):
 def update_cluster_limits(max_nodes, node_slots):
     try:
         logging.info("Updating cluster limits: max_nodes=%d, node_slots=%d", max_nodes, node_slots)
-        run_command('/opt/torque/bin/qmgr -c "set queue batch resources_available.nodect={0}"'.format(max_nodes))
-        run_command('/opt/torque/bin/qmgr -c "set server resources_available.nodect={0}"'.format(max_nodes))
-        run_command('/opt/torque/bin/qmgr -c "set queue batch resources_max.ncpus={0}"'.format(node_slots))
+        run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_available.nodect={0}"'.format(max_nodes))
+        run_command(TORQUE_BIN_DIR + 'qmgr -c "set server resources_available.nodect={0}"'.format(max_nodes))
+        run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_max.ncpus={0}"'.format(node_slots))
         _update_master_np(max_nodes, node_slots)
     except Exception as e:
         logging.error("Failed when updating cluster limits with exception %s.", e)
@@ -133,14 +135,13 @@ def _update_master_np(max_nodes, node_slots):
     master_hostname = check_command_output("hostname")
     logging.info("Setting master np to: %d", master_node_np)
     run_command(
-        '/opt/torque/bin/qmgr -c "set node {hostname} np = {slots}"'.format(
-            hostname=master_hostname, slots=master_node_np
-        )
+        TORQUE_BIN_DIR
+        + 'qmgr -c "set node {hostname} np = {slots}"'.format(hostname=master_hostname, slots=master_node_np)
     )
 
 
 def get_compute_nodes_info(hostname_filter=None):
-    command = "/opt/torque/bin/pbsnodes -x"
+    command = TORQUE_BIN_DIR + "pbsnodes -x"
     if hostname_filter:
         command += " {0}".format(" ".join(hostname_filter))
 
@@ -182,11 +183,11 @@ def wakeup_scheduler(added_hosts):
 
     # Trigger a scheduling cycle. This is necessary when the first compute node gets added to the scheduler.
     logging.info("Triggering a scheduling cycle.")
-    run_command('/opt/torque/bin/qmgr -c "set server scheduling=true"', raise_on_error=False)
+    run_command(TORQUE_BIN_DIR + 'qmgr -c "set server scheduling=true"', raise_on_error=False)
 
 
 def get_jobs_info(filter_by_states=None, filter_by_exec_hosts=None):
-    command = "/opt/torque/bin/qstat -t -x"
+    command = TORQUE_BIN_DIR + "qstat -t -x"
     output = check_command_output(command)
     if not output:
         return []
