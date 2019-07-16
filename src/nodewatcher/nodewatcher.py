@@ -223,7 +223,13 @@ def _wait_for_stack_ready(stack_name, region, proxy_config):
     stacks = cfn_client.describe_stacks(StackName=stack_name)
     stack_status = stacks["Stacks"][0]["StackStatus"]
     log.info("Stack %s is in status: %s", stack_name, stack_status)
-    return stack_status in ["CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"]
+    return stack_status in [
+        "CREATE_COMPLETE",
+        "UPDATE_COMPLETE",
+        "UPDATE_ROLLBACK_COMPLETE",
+        "CREATE_FAILED",
+        "UPDATE_FAILED",
+    ]
 
 
 def _init_data_dir():
