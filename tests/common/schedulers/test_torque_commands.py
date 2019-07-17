@@ -22,7 +22,6 @@ from common.schedulers.torque_commands import (
     get_compute_nodes_info,
     get_jobs_info,
     get_pending_jobs_info,
-    wait_nodes_initialization,
 )
 from tests.common import read_text
 
@@ -113,19 +112,6 @@ def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
         assert_that(succeeded_hosts).contains_only(*expected_succeeded_hosts)
     else:
         assert_that(succeeded_hosts).is_empty()
-
-
-def test_wait_nodes_initialization(mocker, test_datadir):
-    pbsnodes_output = read_text(test_datadir / "pbsnodes_output.xml")
-    mock = mocker.patch(
-        "common.schedulers.torque_commands.check_command_output", return_value=pbsnodes_output, autospec=True
-    )
-
-    hosts = ["ip-10-0-1-242", "ip-10-0-0-196"]
-    result = wait_nodes_initialization(hosts)
-
-    mock.assert_called_with("/opt/torque/bin/pbsnodes -x {0}".format(" ".join(hosts)), raise_on_error=False)
-    assert_that(result).is_true()
 
 
 @pytest.mark.parametrize(

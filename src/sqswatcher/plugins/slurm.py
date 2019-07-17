@@ -127,3 +127,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     except Exception as e:
         log.error("Encountered error when processing events: %s", e)
         return update_events, []
+
+
+def init():
+    pass

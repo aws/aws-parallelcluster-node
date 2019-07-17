@@ -157,31 +157,10 @@ def get_compute_nodes_info(hostname_filter=None):
         return dict()
 
 
-@retry(wait_fixed=seconds(3), retry_on_result=lambda result: result is False, stop_max_delay=minutes(1))
-def wait_nodes_initialization(hosts):
-    """Wait for at least one host from hosts to become active"""
-    torque_hosts = get_compute_nodes_info(hosts).values()
-    for node in torque_hosts:
-        if not any(init_state in node.state for init_state in TORQUE_NODE_ERROR_STATES):
-            return True
-    return False
-
-
-def wakeup_scheduler(added_hosts):
-    torque_hosts = get_compute_nodes_info().values()
-    for node in torque_hosts:
-        if not any(init_state in node.state for init_state in TORQUE_NODE_ERROR_STATES):
-            if node.name not in added_hosts:
-                # Do not trigger scheduling cycle when there was already at least one active node.
-                return
-
-    try:
-        # Before triggering a scheduling cycle wait for at least one node to become active
-        wait_nodes_initialization(added_hosts)
-    except Exception as e:
-        logging.error("Failed while waiting for nodes initialization with exception %s", e)
-
-    # Trigger a scheduling cycle. This is necessary when the first compute node gets added to the scheduler.
+def wakeup_scheduler():
+    # Trigger a scheduling cycle. This is necessary when compute nodes are added to speed up jobs allocation.
+    # This is also necessary when the first compute node gets added to the scheduler otherwise the jobs are never
+    # started.
     logging.info("Triggering a scheduling cycle.")
     run_command(TORQUE_BIN_DIR + 'qmgr -c "set server scheduling=true"', raise_on_error=False)
 

@@ -96,3 +96,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
             failed.append(event)
 
     return failed, succeeded
+
+
+def init():
+    pass

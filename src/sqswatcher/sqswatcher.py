@@ -332,6 +332,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     :param table: DB table resource object
     """
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
+    scheduler_module.init()
 
     max_cluster_size = None
     instance_type = None

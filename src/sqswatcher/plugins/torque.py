@@ -10,8 +10,16 @@
 # limitations under the License.
 
 import logging
+import threading
+import time
 
-from common.schedulers.torque_commands import add_nodes, delete_nodes, update_cluster_limits, wakeup_scheduler
+from common.schedulers.torque_commands import (
+    add_nodes,
+    delete_nodes,
+    get_pending_jobs_info,
+    update_cluster_limits,
+    wakeup_scheduler,
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +40,6 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
         added_hosts = add_nodes(hosts_to_add, instance_properties["slots"])
         removed_hosts = delete_nodes(hosts_to_remove)
 
-        if added_hosts:
-            wakeup_scheduler(added_hosts)
-
         for event in update_events:
             if event.host.hostname in added_hosts or event.host.hostname in removed_hosts:
                 succeeded.append(event)
@@ -44,3 +49,21 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     update_cluster_limits(max_cluster_size, instance_properties["slots"])
 
     return failed, succeeded
+
+
+def init():
+    if hasattr(init, "wakeup_scheduler_worker_thread") and init.wakeup_scheduler_worker_thread.is_alive():
+        return
+    init.wakeup_scheduler_worker_thread = threading.Thread(target=_wakeup_scheduler_worker)
+    init.wakeup_scheduler_worker_thread.start()
+
+
+def _wakeup_scheduler_worker():
+    logging.info("Started wakeup_scheduler_worker")
+    while True:
+        try:
+            if len(get_pending_jobs_info()) > 0:
+                wakeup_scheduler()
+        except Exception as e:
+            log.warning("Encountered failure in wakeup_scheduler_worker: %s", e)
+        time.sleep(60)
