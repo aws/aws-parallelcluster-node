@@ -127,9 +127,7 @@ def update_cluster_limits(max_nodes, node_slots):
 
 def _update_master_np(max_nodes, node_slots):
     """Master np is dynamically based on the number of compute nodes that join the cluster."""
-    current_nodes_count = (
-        int(check_command_output("/bin/bash --login -c 'cat /var/spool/torque/server_priv/nodes | wc -l'")) - 1
-    )
+    current_nodes_count = len(check_command_output("cat /var/spool/torque/server_priv/nodes").strip().splitlines()) - 1
     # If cluster is at max size set the master np to 1 since 0 is not allowed.
     master_node_np = max(1, (max_nodes - current_nodes_count) * node_slots)
     master_hostname = check_command_output("hostname")
