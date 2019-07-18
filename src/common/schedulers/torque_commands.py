@@ -109,7 +109,7 @@ def delete_nodes(hosts):
         error_messages_to_ignore=[
             "Unknown node",
             "The server was unable to communicate with the MOM to requeue or delete the job."
-            " The node has been deleted and all jobs on the node have been purged",
+            " The node has been deleted and all jobs on the node have been purged.",
         ],
     )
 

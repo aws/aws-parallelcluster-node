@@ -68,6 +68,12 @@ def test_add_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
         ),
         ("qmgr obj=ip-10-0-0-157 svr=default: Error", ["ip-10-0-0-157", "ip-10-0-0-155"], ["ip-10-0-0-155"]),
         ("unexpected error message", ["ip-10-0-0-157", "ip-10-0-0-155"], []),
+        (
+            "qmgr obj=ip-10-0-0-157 svr=default: The server was unable to communicate with the MOM to requeue or "
+            "delete the job. The node has been deleted and all jobs on the node have been purged.",
+            ["ip-10-0-0-157", "ip-10-0-0-155"],
+            ["ip-10-0-0-157", "ip-10-0-0-155"],
+        ),
         ("", [], []),
         (subprocess.CalledProcessError(1, "cmd", output="Unknown Error"), ["ip-10-0-0-157", "ip-10-0-0-155"], []),
         (
@@ -81,6 +87,7 @@ def test_add_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
         "already_existing",
         "failed_one_node",
         "unexpected_err_message",
+        "ignore_failure",
         "no_nodes",
         "exception",
         "ignored_exception",
