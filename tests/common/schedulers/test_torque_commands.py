@@ -9,6 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import subprocess
+from unittest.mock import call
 
 import pytest
 
@@ -81,6 +82,7 @@ def test_add_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
             ["ip-10-0-1-57", "ip-10-0-0-155"],
             ["ip-10-0-1-57", "ip-10-0-0-155"],
         ),
+        ("", ["ip-10-0-0-" + str(i) for i in range(0, 88)], ["ip-10-0-0-" + str(i) for i in range(0, 88)]),
     ],
     ids=[
         "all_successful",
@@ -91,6 +93,7 @@ def test_add_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
         "no_nodes",
         "exception",
         "ignored_exception",
+        "88_nodes",
     ],
 )
 def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
@@ -106,9 +109,16 @@ def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
     succeeded_hosts = delete_nodes(hosts)
 
     if hosts:
-        qmgr_mock.assert_called_with(
-            '/opt/torque/bin/qmgr -c "delete node {0} "'.format(",".join(hosts)), log_error=False
-        )
+        chunk_size = 20
+        calls = []
+        for i in range(0, len(hosts), chunk_size):
+            calls.append(
+                call(
+                    '/opt/torque/bin/qmgr -c "delete node {0} "'.format(",".join(hosts[i : i + chunk_size])),
+                    log_error=False,
+                )
+            )
+        qmgr_mock.assert_has_calls(calls)
         pbsnodes_mock.assert_called_with(
             "/opt/torque/bin/pbsnodes -o {0}".format(" ".join(hosts)), log_error=False, raise_on_error=False
         )
