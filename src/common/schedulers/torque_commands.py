@@ -55,6 +55,9 @@ def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qm
             return set()
         else:
             output = e.output
+    except Exception as e:
+        logging.error("Failed when executing operation %s on nodes %s with error %s", operation, hostnames, e)
+        return set()
 
     succeeded_hosts = set(hosts)
     # analyze command output to understand if failure can be ignored (e.g. already existing node)
