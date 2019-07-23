@@ -57,7 +57,8 @@ def hasPendingJobs(instance_properties, max_size):
 
 
 def lockHost(hostname, unlock=False):
-    # https://lists.sdsc.edu/pipermail/npaci-rocks-discussion/2007-November/027919.html
+    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
+    hostname = hostname.split(".")[0]
     mod = unlock and "-c" or "-o"
     command = [TORQUE_BIN_DIR + "pbsnodes", mod, hostname]
     try:
