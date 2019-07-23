@@ -106,15 +106,24 @@ def delete_nodes(hosts):
     # rerun the job.
     if hosts:
         run_command(TORQUE_BIN_DIR + "pbsnodes -o {0}".format(" ".join(hosts)), raise_on_error=False, log_error=False)
-    return _qmgr_manage_nodes(
-        operation="delete",
-        hosts=hosts,
-        error_messages_to_ignore=[
-            "Unknown node",
-            "The server was unable to communicate with the MOM to requeue or delete the job."
-            " The node has been deleted and all jobs on the node have been purged.",
-        ],
-    )
+    # Process at most 20 concurrent deletions at a time since the required time linearly depends
+    # on the number of nodes that we try to remove
+    succeeded_hosts = set()
+    chunk_size = 20
+    for i in range(0, len(hosts), chunk_size):
+        succeeded_hosts.update(
+            _qmgr_manage_nodes(
+                operation="delete",
+                hosts=hosts[i : i + chunk_size],
+                error_messages_to_ignore=[
+                    "Unknown node",
+                    "The server was unable to communicate with the MOM to requeue or delete the job."
+                    " The node has been deleted and all jobs on the node have been purged.",
+                ],
+            )
+        )
+
+    return succeeded_hosts
 
 
 def update_cluster_limits(max_nodes, node_slots):
