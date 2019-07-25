@@ -12,16 +12,14 @@
 import base64
 import logging
 import os
+import socket
 from math import ceil
 from multiprocessing import Pool
 
-from retrying import retry
-
 from common.utils import run_command
-from paramiko import HostKeys, RSAKey, SSHException, Transport
+from paramiko import HostKeys, RSAKey, Transport
 
 
-@retry(stop_max_attempt_number=3)
 def _get_server_keys(hostname):
 
     server_keys = []
@@ -36,23 +34,28 @@ def _get_server_keys(hostname):
     key_type_list = ["ssh-rsa"]
 
     for key_type in key_type_list:
+        transport = None
         try:
-            transport = Transport(hostname)
+            sock = socket.socket()
+            sock.settimeout(5)
+            sock.connect((hostname, 22))
+            transport = Transport(sock)
             transport._preferred_keys = [key_type]
             transport.start_client()
             server_keys.append(transport.get_remote_server_key())
-        except Exception as e:
+        except Exception:
             pass
         finally:
-            transport.close()
+            if transport:
+                transport.close()
 
     if not server_keys:
-        logging.error("Failed retrieving server key from host '{0}'".format(hostname))
+        logging.error("Failed retrieving server key from host '%s'", hostname)
 
     return hostname, [(server_key.get_base64(), server_key.get_name()) for server_key in server_keys]
 
 
-def _get_server_key_on_multiple_hosts(hostnames, parallelism=25, timeout=5):
+def _get_server_key_on_multiple_hosts(hostnames, parallelism=25, timeout=7):
     if not hostnames:
         return {}
 
@@ -62,10 +65,12 @@ def _get_server_key_on_multiple_hosts(hostnames, parallelism=25, timeout=5):
         # The pool timeout is computed by adding 2 times the command timeout for each batch of hosts that is
         # processed in sequence. Where the size of a batch is given by the degree of parallelism.
         results = r.get(timeout=int(ceil(len(hostnames) / float(parallelism)) * (2 * timeout)))
+        return dict(results)
+    except Exception as e:
+        logging.error("Failed when retrieving keys from hosts %s with exception %s", ",".join(hostnames), e)
+        return dict()
     finally:
         pool.terminate()
-
-    return dict(results)
 
 
 def _add_keys_to_known_hosts(server_keys, host_keys_file):
