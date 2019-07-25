@@ -129,7 +129,7 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     _run_command(
         lambda _command, _env, _preexec_fn: subprocess.check_call(
-            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout
+            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, stdout=subprocess.DEVNULL
         ),
         command,
         env,
