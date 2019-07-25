@@ -3,6 +3,31 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.4.1
+-----
+
+**ENHANCEMENTS**
+- Torque:
+  - process nodes added to or removed from the cluster in batches in order to speed up cluster scaling.
+  - scale up only if required slots/nodes can be satisfied
+  - scale down if pending jobs have unsatisfiable CPU/nodes requirements
+  - add support for jobs in hold/suspended state (this includes job dependencies)
+  - automatically terminate and replace faulty or unresponsive compute nodes
+  - add retries in case of failures when adding or removing nodes
+  - add support for ncpus reservation and multi nodes resource allocation (e.g. -l nodes=2:ppn=3+3:ppn=6)
+
+**CHANGES**
+- Drop support for Python 2. Node daemons now support Python >= 3.5.
+- Torque: trigger a scheduling cycle every 1 minute when there are pending jobs in the queue. This is done in order
+  to speed up jobs scheduling with a dynamic cluster size.
+
+**BUG FIXES**
+- Restore logic that was automatically adding compute nodes identity to known_hosts file.
+- Slurm: fix issue that was causing the daemons to fail when the cluster is stopped and an empty compute nodes file
+  is imported in Slurm config.
+- Torque: fix command to disable hosts in the scheduler before termination.
+
+
 2.4.0
 -----
 
