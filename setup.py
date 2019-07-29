@@ -29,19 +29,8 @@ console_scripts = [
     "nodewatcher = nodewatcher.nodewatcher:main",
     "jobwatcher = jobwatcher.jobwatcher:main",
 ]
-version = "2.4.0"
-requires = ["boto3>=1.7.55", "python-dateutil>=2.6.1", "retrying>=1.3.3", "future>=0.17.1", "configparser>=3.7.4"]
-
-if sys.version_info[:2] == (2, 6):
-    # For python2.6 we have to require argparse since it
-    # was not in stdlib until 2.7.
-    requires.append("argparse>=1.4")
-    requires.append("idna==2.6")
-    requires.append("paramiko==2.3.3")
-    requires.append("cryptography==2.1.4")  # dependency of paramiko
-    requires.append("pycparser==2.18")
-else:
-    requires.append("paramiko>=2.4.2")
+version = "2.4.1"
+requires = ["requests>=2.21.0", "boto3>=1.7.55", "retrying>=1.3.3", "configparser>=3.7.4", "paramiko>=2.4.2"]
 
 setup(
     name="aws-parallelcluster-node",
@@ -50,7 +39,9 @@ setup(
     description="aws-parallelcluster-node provides the scripts for an AWS ParallelCluster node.",
     url="https://github.com/aws/aws-parallelcluster-node",
     license="Apache License 2.0",
-    packages=find_packages(),
+    packages=find_packages("src", exclude=["tests"]),
+    package_dir={"": "src"},
+    python_requires=">=3.5",
     install_requires=requires,
     entry_points=dict(console_scripts=console_scripts),
     include_package_data=True,
