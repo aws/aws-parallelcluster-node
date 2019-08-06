@@ -63,7 +63,7 @@ class RemoteCommandExecutor:
         """
         if isinstance(command, list):
             command = " ".join(command)
-        logging.info("Executing remote command command on {0}: {1}".format(self.__user_at_hostname, command))
+        logging.info("Executing remote command on {0}: {1}".format(self.__user_at_hostname, command))
         result = None
         try:
             stdin, stdout, stderr = self.__ssh_client.exec_command(command, get_pty=True)
