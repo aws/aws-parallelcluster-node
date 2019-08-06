@@ -56,7 +56,10 @@ QCONF_COMMANDS = {
 # or some combination thereof.
 # Refer to qstat man page for additional details.
 # o(rphaned) is not considered as busy since we assume a node in orphaned state is not present in ASG anymore
-SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "P"]
+SGE_BUSY_STATES = ["u", "C", "s", "D", "E", "P"]
+
+# This state is set by nodewatcher when the node is locked and is being terminated.
+SGE_DISABLED_STATE = "d"
 
 # If an o(rphaned) state is displayed for a queue instance, it indicates that the queue instance is no longer demanded
 # by the current cluster queue configuration or the host group configuration. The queue instance is kept because jobs

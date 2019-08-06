@@ -48,7 +48,7 @@ from jobwatcher.plugins.torque import get_busy_nodes, get_required_nodes
             2,
         ),
         ({}, 0),
-        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 1),
+        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 0),
         (
             {
                 "ip-10-0-0-196": TorqueHost(

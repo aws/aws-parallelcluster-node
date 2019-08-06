@@ -3,6 +3,14 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.x.x
+-----
+
+**BUG FIXES**
+- Fix jobwatcher behaviour that was marking nodes locked by the nodewatcher as busy even if they had been removed
+  already from the ASG Desired count. This was causing, in rare circumstances, a cluster overscaling.
+
+
 2.4.1
 -----
 

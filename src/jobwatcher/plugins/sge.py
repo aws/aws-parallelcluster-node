@@ -2,6 +2,7 @@ import logging
 
 from common.schedulers.sge_commands import (
     SGE_BUSY_STATES,
+    SGE_DISABLED_STATE,
     SGE_HOLD_STATE,
     SGE_ORPHANED_STATE,
     get_compute_nodes_info,
@@ -36,6 +37,8 @@ def get_busy_nodes():
     nodes = get_compute_nodes_info()
     busy_nodes = 0
     for node in nodes.values():
+        if SGE_DISABLED_STATE in node.state:
+            continue
         if (
             any(busy_state in node.state for busy_state in SGE_BUSY_STATES)
             or int(node.slots_used) > 0
