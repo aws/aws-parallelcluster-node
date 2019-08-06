@@ -106,7 +106,7 @@ def _has_jobs(scheduler_module, hostname):
     :param hostname: host to search for
     :return: true if the given host has running jobs
     """
-    _jobs = scheduler_module.hasJobs(hostname)
+    _jobs = scheduler_module.has_jobs(hostname)
     log.debug("jobs=%s" % _jobs)
     return _jobs
 
@@ -120,7 +120,7 @@ def _lock_host(scheduler_module, hostname, unlock=False):
     :param unlock: False to lock the host, True to unlock
     """
     log.debug("%s %s" % (unlock and "unlocking" or "locking", hostname))
-    scheduler_module.lockHost(hostname, unlock)
+    scheduler_module.lock_host(hostname, unlock)
     time.sleep(15)  # allow for some settling
 
 
@@ -311,7 +311,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                 idletime = 0
             else:
                 _, _, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
-                has_pending_jobs, error = scheduler_module.hasPendingJobs(instance_properties, max_size)
+                has_pending_jobs, error = scheduler_module.has_pending_jobs(instance_properties, max_size)
                 if error:
                     log.warning(
                         "Encountered an error while polling queue for pending jobs. Skipping pending jobs check"

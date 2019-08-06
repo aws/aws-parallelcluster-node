@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.torque_commands import TorqueHost, TorqueJob, TorqueResourceList
-from nodewatcher.plugins.torque import hasJobs, hasPendingJobs, is_node_down
+from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down
 
 
 @pytest.mark.parametrize(
@@ -104,7 +104,7 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
     instance_properties = {"slots": 4}
     max_cluster_size = 10
 
-    assert_that(hasPendingJobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
+    assert_that(has_pending_jobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
     mock.assert_called_with(max_slots_filter=instance_properties["slots"])
 
 
@@ -134,5 +134,5 @@ def test_has_jobs(jobs, expected_result, mocker):
 
     hostname = "ip-1-0-0-1.eu-west-1.compute.internal"
 
-    assert_that(hasJobs(hostname)).is_equal_to(expected_result)
+    assert_that(has_jobs(hostname)).is_equal_to(expected_result)
     mock.assert_called_with(filter_by_exec_hosts={hostname.split(".")[0]}, filter_by_states=["R", "S"])

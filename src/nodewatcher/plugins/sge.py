@@ -27,7 +27,7 @@ from common.utils import check_command_output
 log = logging.getLogger(__name__)
 
 
-def hasJobs(hostname):
+def has_jobs(hostname):
     try:
         # Checking for running or suspended jobs on the node
         # According to the manual (man sge_status) h(old) state only appears in conjunction with r(unning) or p(ending)
@@ -39,7 +39,7 @@ def hasJobs(hostname):
         return False
 
 
-def hasPendingJobs(instance_properties, max_size):
+def has_pending_jobs(instance_properties, max_size):
     """
     Check if there is any pending job in the queue.
 
@@ -56,7 +56,7 @@ def hasPendingJobs(instance_properties, max_size):
         return False, True
 
 
-def lockHost(hostname, unlock=False):
+def lock_host(hostname, unlock=False):
     try:
         if unlock:
             unlock_host(hostname)

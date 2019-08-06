@@ -18,7 +18,7 @@ from common.utils import check_command_output, run_command
 log = logging.getLogger(__name__)
 
 
-def hasJobs(hostname):
+def has_jobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split(".")[0]
     # Checking for running jobs on the node
@@ -33,7 +33,7 @@ def hasJobs(hostname):
     return has_jobs
 
 
-def hasPendingJobs(instance_properties, max_size):
+def has_pending_jobs(instance_properties, max_size):
     """
     Check if there is any pending job in the queue.
 
@@ -53,7 +53,7 @@ def hasPendingJobs(instance_properties, max_size):
         return False, True
 
 
-def lockHost(hostname, unlock=False):
+def lock_host(hostname, unlock=False):
     # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
     hostname = hostname.split(".")[0]
     if unlock:
