@@ -1,7 +1,7 @@
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
-# License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
 #
@@ -19,9 +19,9 @@ from common.schedulers.sge_commands import (
     get_compute_nodes_info,
     get_jobs_info,
     get_pending_jobs_info,
-    lock_host,
-    unlock_host,
 )
+from common.schedulers.sge_commands import lock_host as sge_lock_host
+from common.schedulers.sge_commands import unlock_host
 from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
@@ -61,14 +61,14 @@ def lock_host(hostname, unlock=False):
         if unlock:
             unlock_host(hostname)
         else:
-            lock_host(hostname)
+            sge_lock_host(hostname)
     except subprocess.CalledProcessError:
         log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
 
 
 def is_node_down():
     """
-    Check if node is down according to scheduler
+    Check if node is down according to scheduler.
 
     The node is considered as down if:
     - there is a failure contacting the scheduler

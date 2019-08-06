@@ -114,7 +114,9 @@ def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
         for i in range(0, len(hosts), chunk_size):
             calls.append(
                 call(
-                    '/opt/torque/bin/qmgr -c "delete node {0} "'.format(",".join(hosts[i : i + chunk_size])),
+                    '/opt/torque/bin/qmgr -c "delete node {0} "'.format(
+                        ",".join(hosts[i : i + chunk_size])  # noqa E203: incompatible with black
+                    ),
                     log_error=False,
                 )
             )
@@ -142,7 +144,8 @@ def test_delete_nodes(qmgr_output, hosts, expected_succeeded_hosts, mocker):
                     name="ip-10-0-1-237",
                     slots=4,
                     state=["job-exclusive"],
-                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    "2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
                     "0,3/138.ip-10-0-0-196.eu-west-1.compute.internal",
                     note="",
                 ),

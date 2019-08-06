@@ -5,7 +5,7 @@ from jobwatcher.plugins import utils
 instance_properties = {"slots": 8}
 
 
-class optimal_node_count_tests(unittest.TestCase):
+class OptimalNodeCountTests(unittest.TestCase):
     def test_empty_lists(self):
         nodes = utils.get_optimal_nodes([], [], instance_properties)
         expected = 0

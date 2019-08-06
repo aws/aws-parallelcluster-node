@@ -1,3 +1,13 @@
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
 import logging
 
 log = logging.getLogger(__name__)
@@ -39,7 +49,7 @@ def get_optimal_nodes(nodes_requested, slots_requested, instance_properties):
         log.info("After looking at already allocated nodes, %s more nodes are needed" % num_of_nodes)
 
         # Since the number of available slots were unable to run this job entirely, only add the necessary nodes.
-        for i in range(num_of_nodes):
+        for _ in range(num_of_nodes):
             log.info("Adding node. Using %s slots" % slots_required_per_node)
             slots_remaining_per_node.append(vcpus - slots_required_per_node)
 

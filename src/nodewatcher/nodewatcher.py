@@ -146,7 +146,7 @@ def _self_terminate(asg_client, instance_id, decrement_desired=True):
 def _maintain_size(asg_name, asg_client):
     """
     Verify if the desired capacity is lower than the configured min size.
-    
+
     :param asg_name: the ASG to query for
     :param asg_client: ASG boto3 client
     :return: True if the desired capacity is lower than the configured min size.
@@ -170,7 +170,7 @@ def _maintain_size(asg_name, asg_client):
 
 
 def _dump_logs(instance_id):
-    """Dump gzipped /var/log dir to /home/logs/compute/$instance_id.tar.gz"""
+    """Dump gzipped /var/log dir to /home/logs/compute/$instance_id.tar.gz."""
     logs_dir = "/home/logs/compute"
     filename = "{0}/{1}.tar.gz".format(logs_dir, instance_id)
     try:
@@ -187,7 +187,7 @@ def _dump_logs(instance_id):
 
 
 def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait):
-    """Check that node is correctly attached to scheduler otherwise terminate the instance"""
+    """Check that node is correctly attached to scheduler otherwise terminate the instance."""
     asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
 
     @retry(wait_fixed=seconds(10), retry_on_result=lambda result: result is True, stop_max_delay=max_wait)

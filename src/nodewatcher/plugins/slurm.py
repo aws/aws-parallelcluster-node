@@ -1,7 +1,7 @@
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
-# License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
 #
@@ -81,7 +81,7 @@ def lock_host(hostname, unlock=False):
 
 
 def is_node_down():
-    """Check if node is down according to scheduler"""
+    """Check if node is down according to scheduler."""
     try:
         # retrieves the state of a specific node
         # https://slurm.schedmd.com/sinfo.html#lbAG

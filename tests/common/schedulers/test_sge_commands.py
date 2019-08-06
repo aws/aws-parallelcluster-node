@@ -245,7 +245,7 @@ def test_sge_host_parsing(sge_host_xml, expected_output, test_datadir):
         ),
         (
             (
-                'root@ip-10-0-0-208.eu-west-1.compute.internal removed "ip-10-0-0-157.eu-west-1.compute.internal" from administrative host list\n'
+                'root@ip-10-0-0-208.eu-west-1.compute.internal removed "ip-10-0-0-157.eu-west-1.compute.internal" from administrative host list\n'  # noqa E501
                 'denied: administrative host "ip-10-0-0-155" does not exist\n'
                 'can\'t resolve hostname "ip-10-0-0"'
             ),
@@ -254,7 +254,7 @@ def test_sge_host_parsing(sge_host_xml, expected_output, test_datadir):
         ),
         (
             (
-                'root@ip-10-0-0-208.eu-west-1.compute.internal removed "ip-10-0-0-157.eu-west-1.compute.internal" from submit host list\n'
+                'root@ip-10-0-0-208.eu-west-1.compute.internal removed "ip-10-0-0-157.eu-west-1.compute.internal" from submit host list\n'  # noqa E501
                 'denied: submit host "ip-10-0-0-155" does not exist\n'
                 'can\'t resolve hostname "ip-10-0-0"'
             ),
@@ -263,7 +263,7 @@ def test_sge_host_parsing(sge_host_xml, expected_output, test_datadir):
         ),
         (
             (
-                'root@ip-10-0-0-208.eu-west-1.compute.internal removed "ip-10-0-0-157.eu-west-1.compute.internal" from execution host list\n'
+                'root@ip-10-0-0-208.eu-west-1.compute.internal removed "ip-10-0-0-157.eu-west-1.compute.internal" from execution host list\n'  # noqa E501
                 'denied: execution host "ip-10-0-0-155" does not exist\n'
                 'can\'t resolve hostname "ip-10-0-0"'
             ),

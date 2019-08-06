@@ -209,6 +209,7 @@ def get_jobs_info(hostname_filter=None, job_state_filter=None):
 def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None):
     """
     Retrieve the list of pending jobs.
+
     :param max_slots_filter: discard jobs that require a number of slots bigger than the given value
     :param skip_if_state: discard jobs that are in the given state
     :return: the list of filtered pending jos.

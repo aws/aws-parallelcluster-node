@@ -16,7 +16,7 @@ from six import add_metaclass
 
 def from_xml_to_obj(xml, obj_type):
     """
-    Maps a given xml document into a python object.
+    Map a given xml document into a python object.
 
     The python object you want to map the xml into needs to define a MAPPINGS dictionary which declare how
     to map each tag of the xml doc into the object itself.
@@ -55,7 +55,7 @@ def from_xml_to_obj(xml, obj_type):
 
 def from_table_to_obj_list(table, obj_type, separator="|"):
     """
-    Maps a given tabular output into a python object.
+    Map a given tabular output into a python object.
 
     The python object you want to map the table into needs to define a MAPPINGS dictionary which declare how
     to map each row element into the object itself.
