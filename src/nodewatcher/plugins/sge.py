@@ -32,6 +32,7 @@ def hasJobs(hostname):
         # Checking for running or suspended jobs on the node
         # According to the manual (man sge_status) h(old) state only appears in conjunction with r(unning) or p(ending)
         jobs = get_jobs_info(hostname_filter=hostname, job_state_filter="rs")
+        logging.info("Found the following running jobs:\n%s", jobs)
         return len(jobs) > 0
     except Exception as e:
         log.error("Failed when checking for running jobs with exception %s", e)
@@ -48,6 +49,7 @@ def hasPendingJobs(instance_properties, max_size):
     try:
         max_cluster_slots = max_size * instance_properties.get("slots")
         pending_jobs = get_pending_jobs_info(max_slots_filter=max_cluster_slots, skip_if_state=SGE_HOLD_STATE)
+        logging.info("Found the following pending jobs:\n%s", pending_jobs)
         return len(pending_jobs) > 0, False
     except Exception as e:
         log.error("Failed when checking for pending jobs with exception %s. Reporting no pending jobs.", e)

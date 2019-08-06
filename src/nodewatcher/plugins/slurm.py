@@ -25,6 +25,7 @@ def hasJobs(hostname):
     command = ["/opt/slurm/bin/squeue", "-w", short_name, "-h"]
     try:
         output = check_command_output(command)
+        logging.info("Found the following running jobs:\n%s", output.rstrip())
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -45,6 +46,7 @@ def hasPendingJobs(instance_properties, max_size):
             max_nodes_filter=max_size,
             filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         )
+        logging.info("Found the following pending jobs:\n%s", pending_jobs)
         return len(pending_jobs) > 0, False
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting no pending jobs.", e)

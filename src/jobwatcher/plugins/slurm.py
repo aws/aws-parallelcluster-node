@@ -15,6 +15,8 @@ def get_required_nodes(instance_properties, max_size):
         max_nodes_filter=max_size,
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
     )
+    logging.info("Found the following pending jobs:\n%s", pending_jobs)
+
     slots_requested = []
     nodes_requested = []
     for job in pending_jobs:
@@ -33,6 +35,7 @@ def get_busy_nodes():
     # 10 idle
     # 1 down*
     output = check_command_output(command)
+    logging.info("Found the following compute nodes:\n%s", output.rstrip())
     nodes = 0
     output = output.split("\n")
     for line in output:
