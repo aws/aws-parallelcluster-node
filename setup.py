@@ -1,7 +1,7 @@
 # Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
-# License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
 #
@@ -10,7 +10,6 @@
 # limitations under the License.
 
 import os
-import sys
 
 from setuptools import find_packages, setup
 

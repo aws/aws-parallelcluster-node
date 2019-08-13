@@ -1,7 +1,7 @@
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
-# License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
 #
@@ -26,7 +26,7 @@ from common.utils import check_command_output, run_command
 log = logging.getLogger(__name__)
 
 
-def hasJobs(hostname):
+def has_jobs(hostname):
     try:
         short_name = hostname.split(".")[0]
         # Checking for running jobs on the node
@@ -40,7 +40,7 @@ def hasJobs(hostname):
         return False
 
 
-def hasPendingJobs(instance_properties, max_size):
+def has_pending_jobs(instance_properties, max_size):
     """
     Check if there is any pending job in the queue.
 
@@ -56,7 +56,7 @@ def hasPendingJobs(instance_properties, max_size):
         return False, True
 
 
-def lockHost(hostname, unlock=False):
+def lock_host(hostname, unlock=False):
     # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
     hostname = hostname.split(".")[0]
     mod = unlock and "-c" or "-o"
@@ -68,7 +68,7 @@ def lockHost(hostname, unlock=False):
 
 
 def is_node_down():
-    """Check if node is down according to scheduler"""
+    """Check if node is down according to scheduler."""
     try:
         hostname = check_command_output("hostname").strip()
         node = get_compute_nodes_info(hostname_filter=[hostname]).get(hostname)

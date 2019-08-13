@@ -17,5 +17,5 @@ def minutes(min):
 
 
 def seconds(sec):
-    """Convert seconds to milliseconds"""
+    """Convert seconds to milliseconds."""
     return sec * 1000

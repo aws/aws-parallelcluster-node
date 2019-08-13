@@ -42,11 +42,12 @@ def get_required_nodes(instance_properties, max_size):
 # get nodes reserved by running jobs
 def get_busy_nodes():
     nodes = get_compute_nodes_info()
+    logging.info("Found the following compute nodes:\n%s", nodes)
     busy_nodes = 0
     for node in nodes.values():
         # when a node is added it transitions from down,offline,MOM-list-not-sent -> down -> free
         if node.jobs or (
-            any(state in ["offline", "state-unknown"] for state in node.state) and "MOM-list-not-sent" not in node.state
+            any(state in ["state-unknown"] for state in node.state) and "MOM-list-not-sent" not in node.state
         ):
             busy_nodes += 1
 

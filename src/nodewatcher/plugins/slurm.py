@@ -1,7 +1,7 @@
-# Copyright 2013-2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the
-# License. A copy of the License is located at
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
 #
 # http://aws.amazon.com/apache2.0/
 #
@@ -18,13 +18,14 @@ from common.utils import check_command_output, run_command
 log = logging.getLogger(__name__)
 
 
-def hasJobs(hostname):
+def has_jobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split(".")[0]
     # Checking for running jobs on the node
     command = ["/opt/slurm/bin/squeue", "-w", short_name, "-h"]
     try:
         output = check_command_output(command)
+        logging.info("Found the following running jobs:\n%s", output.rstrip())
         has_jobs = output != ""
     except subprocess.CalledProcessError:
         has_jobs = False
@@ -32,7 +33,7 @@ def hasJobs(hostname):
     return has_jobs
 
 
-def hasPendingJobs(instance_properties, max_size):
+def has_pending_jobs(instance_properties, max_size):
     """
     Check if there is any pending job in the queue.
 
@@ -45,13 +46,14 @@ def hasPendingJobs(instance_properties, max_size):
             max_nodes_filter=max_size,
             filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         )
+        logging.info("Found the following pending jobs:\n%s", pending_jobs)
         return len(pending_jobs) > 0, False
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting no pending jobs.", e)
         return False, True
 
 
-def lockHost(hostname, unlock=False):
+def lock_host(hostname, unlock=False):
     # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
     hostname = hostname.split(".")[0]
     if unlock:
@@ -79,7 +81,7 @@ def lockHost(hostname, unlock=False):
 
 
 def is_node_down():
-    """Check if node is down according to scheduler"""
+    """Check if node is down according to scheduler."""
     try:
         # retrieves the state of a specific node
         # https://slurm.schedmd.com/sinfo.html#lbAG

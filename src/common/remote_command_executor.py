@@ -33,6 +33,8 @@ class RemoteCommandExecutionError(Exception):
 class RemoteCommandExecutor:
     """Execute remote commands."""
 
+    DEFAULT_TIMEOUT = seconds(5)
+
     def __init__(self, hostname, user, ssh_key_file=None):
         try:
             if not ssh_key_file:
@@ -53,17 +55,19 @@ class RemoteCommandExecutor:
             # Catch all exceptions if we fail to close the clients
             logging.warning("Exception raised when closing remote clients: {0}".format(e))
 
-    def run_remote_command(self, command, timeout=seconds(5), log_error=True, fail_on_error=True):
+    def run_remote_command(self, command, timeout=DEFAULT_TIMEOUT, log_error=True, fail_on_error=True):
         """
         Execute remote command on the configured host.
 
         :param command: command to execute.
+        :param timeout: timeout for command execution in ms
         :param log_error: log errors.
+        :param fail_on_error: raise Exception on command execution failures
         :return: result of the execution.
         """
         if isinstance(command, list):
             command = " ".join(command)
-        logging.info("Executing remote command command on {0}: {1}".format(self.__user_at_hostname, command))
+        logging.info("Executing remote command on {0}: {1}".format(self.__user_at_hostname, command))
         result = None
         try:
             stdin, stdout, stderr = self.__ssh_client.exec_command(command, get_pty=True)

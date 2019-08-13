@@ -13,7 +13,6 @@
 import collections
 import json
 import logging
-import os
 import time
 from collections import OrderedDict
 
@@ -165,7 +164,7 @@ def _retry_on_request_limit_exceeded(func):
 
 def _requeue_message(queue, message):
     """
-    Requeue the given message into the specified queue
+    Requeue the given message into the specified queue.
 
     :param queue: the queue where to send the message
     :param message: the message to requeue

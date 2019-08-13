@@ -41,14 +41,15 @@ from jobwatcher.plugins.torque import get_busy_nodes, get_required_nodes
                     name="ip-10-0-1-237",
                     slots=4,
                     state="job-exclusive",
-                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    "2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
                     "0,3/138.ip-10-0-0-196.eu-west-1.compute.internal",
                 ),
             },
             2,
         ),
         ({}, 0),
-        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 1),
+        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 0),
         (
             {
                 "ip-10-0-0-196": TorqueHost(

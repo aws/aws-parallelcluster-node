@@ -14,10 +14,7 @@ import re
 import subprocess
 from xml.etree import ElementTree
 
-from retrying import retry
-
 from common.schedulers.converters import ComparableObject, from_xml_to_obj
-from common.time_utils import minutes, seconds
 from common.utils import check_command_output, run_command
 
 TORQUE_NODE_ERROR_STATES = ("down", "offline", "unknown")
@@ -59,13 +56,19 @@ def _qmgr_manage_nodes(operation, hosts, error_messages_to_ignore, additional_qm
         logging.error("Failed when executing operation %s on nodes %s with error %s", operation, hostnames, e)
         return set()
 
+    return _qmgr_process_command_output(operation, hosts, error_messages_to_ignore, output)
+
+
+def _qmgr_process_command_output(operation, hosts, error_messages_to_ignore, output):
     succeeded_hosts = set(hosts)
     # analyze command output to understand if failure can be ignored (e.g. already existing node)
     for error_message in output.splitlines():
         match = re.match(r"qmgr obj=(?P<host>.*) svr=default: (?P<error>.*)", error_message)
         if not match:
             # assume unexpected error and mark all as failed
-            logging.error("Failed when executing operation %s on nodes %s with error %s", operation, hostnames, output)
+            logging.error(
+                "Failed when executing operation %s on nodes %s with error %s", operation, ",".join(hosts), output
+            )
             return set()
 
         host, error = match.groups()
@@ -114,7 +117,7 @@ def delete_nodes(hosts):
         succeeded_hosts.update(
             _qmgr_manage_nodes(
                 operation="delete",
-                hosts=hosts[i : i + chunk_size],
+                hosts=hosts[i : i + chunk_size],  # noqa E203: incompatible with black
                 error_messages_to_ignore=[
                     "Unknown node",
                     "The server was unable to communicate with the MOM to requeue or delete the job."
