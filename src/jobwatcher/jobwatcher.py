@@ -13,6 +13,7 @@
 import collections
 import logging
 import time
+from datetime import datetime
 
 import boto3
 from botocore.config import Config
@@ -81,6 +82,8 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
     instance_properties = None
     update_instance_properties_timer = 0
     while True:
+        start_time = datetime.now()
+
         # Get instance properties
         if not instance_properties or update_instance_properties_timer >= UPDATE_INSTANCE_PROPERTIES_INTERVAL:
             logging.info("Refreshing compute instance properties")
@@ -131,7 +134,10 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
                 asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
                 asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
-        time.sleep(LOOP_TIME)
+        end_time = datetime.now()
+        time_delta = (end_time - start_time).total_seconds()
+        if time_delta < LOOP_TIME:
+            time.sleep(LOOP_TIME - time_delta)
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))

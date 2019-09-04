@@ -19,6 +19,7 @@ import sys
 import tarfile
 import time
 from contextlib import closing
+from datetime import datetime
 
 import boto3
 from botocore.config import Config
@@ -37,7 +38,7 @@ IDLETIME_FILE = DATA_DIR + "node_idletime.json"
 INITIAL_TERMINATE_TIMEOUT = minutes(3)
 # Timeout used at every iteration of nodewatcher loop.
 TERMINATE_TIMEOUT = minutes(1)
-
+LOOP_TIME = 60
 
 NodewatcherConfig = collections.namedtuple(
     "NodewatcherConfig", ["region", "scheduler", "stack_name", "scaledown_idletime", "proxy_config"]
@@ -295,8 +296,16 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
 
     idletime = _init_idletime()
     instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
+    start_time = None
     while True:
-        time.sleep(60)
+        end_time = datetime.now()
+        if not start_time:
+            start_time = end_time
+        time_delta = (end_time - start_time).total_seconds()
+        if time_delta < LOOP_TIME:
+            time.sleep(LOOP_TIME - time_delta)
+        start_time = datetime.now()
+
         _store_idletime(idletime)
         _terminate_if_down(scheduler_module, config, asg_name, instance_id, TERMINATE_TIMEOUT)
 
@@ -342,7 +351,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                     _lock_host(scheduler_module, hostname, unlock=True)
 
 
-@retry(wait_fixed=60000, retry_on_exception=lambda exception: not isinstance(exception, SystemExit))
+@retry(wait_fixed=seconds(LOOP_TIME), retry_on_exception=lambda exception: not isinstance(exception, SystemExit))
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("nodewatcher startup")
