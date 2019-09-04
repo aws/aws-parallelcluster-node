@@ -15,6 +15,7 @@ import json
 import logging
 import time
 from collections import OrderedDict
+from datetime import datetime
 
 import boto3
 from botocore.config import Config
@@ -342,6 +343,8 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     instance_type = None
     cluster_properties_refresh_timer = 0
     while True:
+        start_time = datetime.now()
+
         force_cluster_update = False
         # dynamically retrieve max_cluster_size and compute_instance_type
         if (
@@ -374,7 +377,11 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             instance_properties,
             force_cluster_update,
         )
-        time.sleep(LOOP_TIME)
+
+        end_time = datetime.now()
+        time_delta = (end_time - start_time).total_seconds()
+        if time_delta < LOOP_TIME:
+            time.sleep(LOOP_TIME - time_delta)
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))
