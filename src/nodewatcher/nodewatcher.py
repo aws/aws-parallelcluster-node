@@ -209,7 +209,12 @@ def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait
         _self_terminate(asg_client, instance_id, decrement_desired=not _maintain_size(asg_name, asg_client))
 
 
-@retry(wait_fixed=seconds(10), retry_on_result=lambda result: result is False, stop_max_delay=minutes(10))
+@retry(
+    wait_exponential_multiplier=seconds(1),
+    wait_exponential_max=seconds(10),
+    retry_on_result=lambda result: result is False,
+    stop_max_delay=minutes(10),
+)
 def _wait_for_stack_ready(stack_name, region, proxy_config):
     """
     Verify if the Stack is in one of the *_COMPLETE states.

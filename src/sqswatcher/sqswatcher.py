@@ -36,6 +36,7 @@ from common.utils import (
 
 LOOP_TIME = 30
 CLUSTER_PROPERTIES_REFRESH_INTERVAL = 180
+DEFAULT_MAX_PROCESSED_MESSAGES = 200
 
 
 class QueryConfigError(Exception):
@@ -46,7 +47,17 @@ log = logging.getLogger(__name__)
 
 
 SQSWatcherConfig = collections.namedtuple(
-    "SQSWatcherConfig", ["region", "scheduler", "sqsqueue", "table_name", "cluster_user", "proxy_config", "stack_name"]
+    "SQSWatcherConfig",
+    [
+        "region",
+        "scheduler",
+        "sqsqueue",
+        "table_name",
+        "cluster_user",
+        "proxy_config",
+        "stack_name",
+        "max_processed_messages",
+    ],
 )
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
@@ -75,6 +86,9 @@ def _get_config():
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
     stack_name = config.get("sqswatcher", "stack_name")
+    max_processed_messages = int(
+        config.get("sqswatcher", "max_processed_messages", fallback=DEFAULT_MAX_PROCESSED_MESSAGES)
+    )
 
     _proxy = config.get("sqswatcher", "proxy")
     proxy_config = Config()
@@ -83,7 +97,7 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
-        "proxy=%s stack_name=%s",
+        "proxy=%s stack_name=%s max_processed_messages=%s",
         region,
         scheduler,
         sqsqueue,
@@ -91,8 +105,11 @@ def _get_config():
         cluster_user,
         _proxy,
         stack_name,
+        max_processed_messages,
     )
-    return SQSWatcherConfig(region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name)
+    return SQSWatcherConfig(
+        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name, max_processed_messages
+    )
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
@@ -188,16 +205,17 @@ def _requeue_message(queue, message):
     queue.send_message(MessageBody=message_body_string, DelaySeconds=60)
 
 
-def _retrieve_all_sqs_messages(queue):
+def _retrieve_all_sqs_messages(queue, max_processed_messages):
     log.info("Retrieving messages from SQS queue")
     max_messages_per_call = 10
-    max_messages = 50
     messages = []
-    while len(messages) < max_messages:
+    while len(messages) < max_processed_messages:
         # setting WaitTimeSeconds in order to use Amazon SQS Long Polling.
         # when not using Long Polling with a small queue you might not receive any message
         # since only a subset of random machines is queried.
-        retrieved_messages = queue.receive_messages(MaxNumberOfMessages=max_messages_per_call, WaitTimeSeconds=2)
+        retrieved_messages = queue.receive_messages(
+            MaxNumberOfMessages=min(max_processed_messages - len(messages), max_messages_per_call), WaitTimeSeconds=2
+        )
         if len(retrieved_messages) > 0:
             messages.extend(retrieved_messages)
         else:
@@ -365,7 +383,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             max_cluster_size = new_max_cluster_size
         cluster_properties_refresh_timer += LOOP_TIME
 
-        messages = _retrieve_all_sqs_messages(queue)
+        messages = _retrieve_all_sqs_messages(queue, sqs_config.max_processed_messages)
         update_events = _parse_sqs_messages(messages, table)
         _process_sqs_messages(
             update_events,
