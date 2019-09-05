@@ -284,6 +284,22 @@ def _init_idletime():
     return idletime
 
 
+def _lock_and_terminate(scheduler_module, hostname, asg_name, asg_conn, instance_id):
+    _lock_host(scheduler_module, hostname)
+    has_jobs = _has_jobs(scheduler_module, hostname)
+    if has_jobs:
+        log.info("Instance has active jobs.")
+        _lock_host(scheduler_module, hostname, unlock=True)
+        return
+
+    if _maintain_size(asg_name, asg_conn):
+        log.info("Not terminating due to min cluster size reached")
+    else:
+        _self_terminate(asg_conn, instance_id)
+
+    _lock_host(scheduler_module, hostname, unlock=True)
+
+
 def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id, instance_type):
     """
     Verify instance/scheduler status and self-terminate the instance.
@@ -339,21 +355,9 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
                 log.info("Instance had no job for the past %s minute(s)", idletime)
 
                 if idletime >= config.scaledown_idletime:
-                    _lock_host(scheduler_module, hostname)
-                    has_jobs = _has_jobs(scheduler_module, hostname)
-                    if has_jobs:
-                        log.info("Instance has active jobs.")
-                        idletime = 0
-                        _lock_host(scheduler_module, hostname, unlock=True)
-                        continue
-
-                    if _maintain_size(asg_name, asg_conn):
-                        log.info("Not terminating due to min cluster size reached")
-                        idletime = 0
-                    else:
-                        _self_terminate(asg_conn, instance_id)
-
-                    _lock_host(scheduler_module, hostname, unlock=True)
+                    _lock_and_terminate(scheduler_module, hostname, asg_name, asg_conn, instance_id)
+                    # set idletime to 0 if termination is aborted
+                    idletime = 0
 
 
 @retry(wait_fixed=seconds(LOOP_TIME), retry_on_exception=lambda exception: not isinstance(exception, SystemExit))
