@@ -12,7 +12,6 @@
 
 import collections
 import logging
-import time
 from datetime import datetime
 
 import boto3
@@ -21,7 +20,14 @@ from configparser import ConfigParser
 from retrying import retry
 
 from common.time_utils import seconds
-from common.utils import get_asg_name, get_asg_settings, get_compute_instance_type, get_instance_properties, load_module
+from common.utils import (
+    get_asg_name,
+    get_asg_settings,
+    get_compute_instance_type,
+    get_instance_properties,
+    load_module,
+    sleep_remaining_loop_time,
+)
 
 LOOP_TIME = 60
 UPDATE_INSTANCE_PROPERTIES_INTERVAL = 180
@@ -134,10 +140,7 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
                 asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
                 asg_client.update_auto_scaling_group(AutoScalingGroupName=asg_name, DesiredCapacity=requested)
 
-        end_time = datetime.now()
-        time_delta = (end_time - start_time).total_seconds()
-        if time_delta < LOOP_TIME:
-            time.sleep(LOOP_TIME - time_delta)
+        sleep_remaining_loop_time(LOOP_TIME, start_time)
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))

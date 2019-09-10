@@ -13,7 +13,6 @@
 import collections
 import json
 import logging
-import time
 from collections import OrderedDict
 from datetime import datetime
 
@@ -32,6 +31,7 @@ from common.utils import (
     get_compute_instance_type,
     get_instance_properties,
     load_module,
+    sleep_remaining_loop_time,
 )
 
 LOOP_TIME = 30
@@ -396,10 +396,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             force_cluster_update,
         )
 
-        end_time = datetime.now()
-        time_delta = (end_time - start_time).total_seconds()
-        if time_delta < LOOP_TIME:
-            time.sleep(LOOP_TIME - time_delta)
+        sleep_remaining_loop_time(LOOP_TIME, start_time)
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))

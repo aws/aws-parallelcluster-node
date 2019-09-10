@@ -28,7 +28,14 @@ from retrying import RetryError, retry
 
 import requests
 from common.time_utils import minutes, seconds
-from common.utils import CriticalError, get_asg_name, get_asg_settings, get_instance_properties, load_module
+from common.utils import (
+    CriticalError,
+    get_asg_name,
+    get_asg_settings,
+    get_instance_properties,
+    load_module,
+    sleep_remaining_loop_time,
+)
 
 log = logging.getLogger(__name__)
 
@@ -286,8 +293,7 @@ def _init_idletime():
 
 def _lock_and_terminate(scheduler_module, hostname, asg_name, asg_conn, instance_id):
     _lock_host(scheduler_module, hostname)
-    has_jobs = _has_jobs(scheduler_module, hostname)
-    if has_jobs:
+    if _has_jobs(scheduler_module, hostname):
         log.info("Instance has active jobs.")
         _lock_host(scheduler_module, hostname, unlock=True)
         return
@@ -319,12 +325,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
     start_time = None
     while True:
-        end_time = datetime.now()
-        if not start_time:
-            start_time = end_time
-        time_delta = (end_time - start_time).total_seconds()
-        if time_delta < LOOP_TIME:
-            time.sleep(LOOP_TIME - time_delta)
+        sleep_remaining_loop_time(LOOP_TIME, start_time)
         start_time = datetime.now()
 
         _store_idletime(idletime)

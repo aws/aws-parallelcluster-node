@@ -16,6 +16,8 @@ import pwd
 import shlex
 import subprocess
 import sys
+import time
+from datetime import datetime
 from subprocess import check_output
 
 import boto3
@@ -319,3 +321,12 @@ def get_compute_instance_type(region, proxy_config, stack_name, fallback):
         if fallback:
             return fallback
         raise
+
+
+def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
+    end_time = datetime.now()
+    if not loop_start_time:
+        loop_start_time = end_time
+    time_delta = (end_time - loop_start_time).total_seconds()
+    if time_delta < total_loop_time:
+        time.sleep(total_loop_time - time_delta)
