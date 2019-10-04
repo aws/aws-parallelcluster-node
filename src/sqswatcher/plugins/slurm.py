@@ -109,24 +109,20 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
             # Restarting also if already in config cause it might have failed at the previous iteration
             nodes_to_restart.append(event.host.hostname)
 
-    try:
-        _write_node_list(node_list, max_cluster_size, instance_properties)
-        _restart_master_node()
-        results = _restart_multiple_compute_nodes(nodes_to_restart, cluster_user)
-        _reconfigure_nodes()
+    _write_node_list(node_list, max_cluster_size, instance_properties)
+    _restart_master_node()
+    results = _restart_multiple_compute_nodes(nodes_to_restart, cluster_user)
+    _reconfigure_nodes()
 
-        failed = []
-        succeeded = []
-        for event in update_events:
-            if results.get(event.host.hostname, True):
-                succeeded.append(event)
-            else:
-                failed.append(event)
+    failed = []
+    succeeded = []
+    for event in update_events:
+        if results.get(event.host.hostname, True):
+            succeeded.append(event)
+        else:
+            failed.append(event)
 
-        return failed, succeeded
-    except Exception as e:
-        log.error("Encountered error when processing events: %s", e)
-        return update_events, []
+    return failed, succeeded
 
 
 def init():

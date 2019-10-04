@@ -303,11 +303,8 @@ def _process_sqs_messages(
     if not update_events and not force_cluster_update:
         return
 
-    # Managing SSH host keys for the nodes joining and leaving the cluster
-    update_ssh_known_hosts(update_events, sqs_config.cluster_user)
-
-    failed_events, succeeded_events = scheduler_module.update_cluster(
-        max_cluster_size, sqs_config.cluster_user, update_events, instance_properties
+    failed_events, succeeded_events = update_cluster(
+        instance_properties, max_cluster_size, scheduler_module, sqs_config, update_events
     )
 
     for event in update_events:
@@ -336,6 +333,20 @@ def _process_sqs_messages(
         log.error("Failed when processing event %s for instance %s", event.action, event.host)
         _requeue_message(queue, event.message)
         event.message.delete()
+
+
+def update_cluster(instance_properties, max_cluster_size, scheduler_module, sqs_config, update_events):
+    # Managing SSH host keys for the nodes joining and leaving the cluster
+    update_ssh_known_hosts(update_events, sqs_config.cluster_user)
+    try:
+        failed_events, succeeded_events = scheduler_module.update_cluster(
+            max_cluster_size, sqs_config.cluster_user, update_events, instance_properties
+        )
+    except Exception as e:
+        log.error("Encountered error when processing events: %s", e)
+        failed_events = update_events
+        succeeded_events = []
+    return failed_events, succeeded_events
 
 
 def _retrieve_max_cluster_size(sqs_config, asg_name, fallback):
