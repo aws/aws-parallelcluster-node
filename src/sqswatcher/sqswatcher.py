@@ -60,7 +60,7 @@ SQSWatcherConfig = collections.namedtuple(
     ],
 )
 
-Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots"])
+Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
 
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 
@@ -228,7 +228,7 @@ def _retrieve_all_sqs_messages(queue, max_processed_messages):
     return messages
 
 
-def _parse_sqs_messages(messages, table):
+def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table):
     update_events = OrderedDict()
     for message in messages:
         message_text = json.loads(message.body)
@@ -241,7 +241,7 @@ def _parse_sqs_messages(messages, table):
             continue
 
         if event_type == "parallelcluster:COMPUTE_READY":
-            update_event = _process_compute_ready_event(message_attrs, message)
+            update_event = _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
             update_event = _process_instance_terminate_event(message_attrs, message, table)
         else:
@@ -263,11 +263,16 @@ def _parse_sqs_messages(messages, table):
     return update_events.values()
 
 
-def _process_compute_ready_event(message_attrs, message):
+def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message):
     instance_id = message_attrs.get("EC2InstanceId")
+    instance_type = message_attrs.get("EC2InstanceType")
+    # Get instances properties for each event because instance types
+    # from instance and CloudFormation could be out-of-sync
+    instance_properties = get_instance_properties(sqs_config_region, sqs_config_proxy, instance_type)
+    gpus = instance_properties["gpus"]
     slots = message_attrs.get("Slots")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
-    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots))
+    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots, gpus))
 
 
 def _process_instance_terminate_event(message_attrs, message, table):
@@ -282,7 +287,7 @@ def _process_instance_terminate_event(message_attrs, message, table):
 
     if item.get("Item") is not None:
         hostname = item.get("Item").get("hostname")
-        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None))
+        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None))
     else:
         log.error("Instance %s not found in the database.", instance_id)
         return None
@@ -395,7 +400,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
         cluster_properties_refresh_timer += LOOP_TIME
 
         messages = _retrieve_all_sqs_messages(queue, sqs_config.max_processed_messages)
-        update_events = _parse_sqs_messages(messages, table)
+        update_events = _parse_sqs_messages(sqs_config.region, sqs_config.proxy_config, messages, table)
         _process_sqs_messages(
             update_events,
             scheduler_module,
