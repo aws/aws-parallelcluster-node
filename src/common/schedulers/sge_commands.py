@@ -136,7 +136,8 @@ def remove_hosts_from_queue(hosts):
 def install_sge_on_compute_nodes(hosts, cluster_user):
     """Start sge on compute nodes in parallel."""
     command = (
-        "sudo sh -c 'cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf'"
+        "sudo sh -c 'ps aux | grep [s]ge_execd || "
+        "(cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf)'"
     ).format(sge.SGE_ROOT)
     hostnames = [host.hostname for host in hosts]
     result = RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user)
