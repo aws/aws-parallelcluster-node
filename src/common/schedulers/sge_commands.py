@@ -140,7 +140,7 @@ def install_sge_on_compute_nodes(hosts, cluster_user):
         "(cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf)'"
     ).format(sge.SGE_ROOT)
     hostnames = [host.hostname for host in hosts]
-    result = RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user)
+    result = RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user, timeout=20)
 
     succeeded_hosts = []
     for host in hosts:
