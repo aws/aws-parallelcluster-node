@@ -18,7 +18,6 @@ from multiprocessing import Pool
 
 from retrying import retry
 
-from common.time_utils import seconds
 from paramiko import AutoAddPolicy, SSHClient
 
 RemoteCommandResult = collections.namedtuple("RemoteCommandResult", ["return_code", "stdout", "stderr"])
@@ -33,7 +32,7 @@ class RemoteCommandExecutionError(Exception):
 class RemoteCommandExecutor:
     """Execute remote commands."""
 
-    DEFAULT_TIMEOUT = seconds(5)
+    DEFAULT_TIMEOUT = 10
 
     def __init__(self, hostname, user, ssh_key_file=None):
         try:
@@ -60,7 +59,7 @@ class RemoteCommandExecutor:
         Execute remote command on the configured host.
 
         :param command: command to execute.
-        :param timeout: timeout for command execution in ms
+        :param timeout: timeout for command execution in sec
         :param log_error: log errors.
         :param fail_on_error: raise Exception on command execution failures
         :return: result of the execution.
