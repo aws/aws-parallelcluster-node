@@ -12,6 +12,7 @@
 
 import logging
 import math
+from textwrap import wrap
 
 from common.schedulers.converters import ComparableObject, from_table_to_obj_list
 from common.utils import check_command_output
@@ -25,6 +26,10 @@ PENDING_RESOURCES_REASONS = [
     "ReqNodeNotAvail, May be reserved for other job",
 ]
 
+SQUEUE_FIELD_SIZE = 200
+_SQUEUE_FIELDS = ["jobid", "statecompact", "numnodes", "numcpus", "mincpus", "reason", "tres-per-job", "tres-per-task"]
+SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
+
 
 def get_jobs_info(job_state_filter=None):
     """
@@ -33,7 +38,7 @@ def get_jobs_info(job_state_filter=None):
     :param job_state_filter: filter jobs by the given state
     :return: a list of SlurmJob objects representing the submitted jobs.
     """
-    command = "/opt/slurm/bin/squeue -r -o '%i|%t|%D|%C|%c|%r'"
+    command = "/opt/slurm/bin/squeue -r -O '{0}'".format(SQUEUE_FIELD_STRING)
     if job_state_filter:
         command += " --states {0}".format(job_state_filter)
 
@@ -112,7 +117,7 @@ def _recompute_required_nodes_per_job(pending_jobs, node_slots):
             # check the max number of slots I can fill with tasks of size cpus_min_per_node
             usable_slots_per_node = node_slots - (node_slots % job.cpus_min_per_node)
             # compute number of nodes by considering nodes of size usable_slots_per_node
-            required_nodes = int(math.ceil(job.cpus_total / usable_slots_per_node))
+            required_nodes = int(math.ceil(float(job.cpus_total) / usable_slots_per_node))
             # setting nodes to the max between the computed required nodes and the number of nodes given by
             # the squeue output. This is done to handle job submissions with the -N option where the user can
             # specify a number of nodes that is bigger than the min required.
@@ -120,11 +125,23 @@ def _recompute_required_nodes_per_job(pending_jobs, node_slots):
             job.nodes = max(required_nodes, job.nodes)
 
 
+def transform_tres_to_dict(value):
+    if value == "N/A":
+        return {}
+
+    tres_dict = {}
+    for tres in value.split(","):
+        resource, value = tres.split(":")
+        tres_dict[resource] = int(value)
+    return tres_dict
+
+
 class SlurmJob(ComparableObject):
-    # JOBID|ST|NODES|CPUS|MIN_CPUS|REASON
-    # 72|PD|2|5|1|Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions
-    # 86|PD|10|40|4|PartitionConfig
-    # 87|PD|10|10|1|PartitionNodeLimit
+    # This is the format after being processed by reformat_table function
+    # JOBID|ST|NODES|CPUS|MIN_CPUS|REASON|TRES_PER_JOB|TRES_PER_TASK
+    # 72|PD|2|5|1|Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions|N/A|N/A
+    # 86|PD|10|40|4|PartitionConfig|gpu:12|N/A
+    # 87|PD|10|10|1|PartitionNodeLimit|N/A|gpu:4
     MAPPINGS = {
         "JOBID": {"field": "id"},
         "ST": {"field": "state"},
@@ -132,16 +149,46 @@ class SlurmJob(ComparableObject):
         "CPUS": {"field": "cpus_total", "transformation": int},
         "MIN_CPUS": {"field": "cpus_min_per_node", "transformation": int},
         "REASON": {"field": "pending_reason"},
+        "TRES_PER_JOB": {"field": "tres_per_job", "transformation": transform_tres_to_dict},
+        "TRES_PER_TASK": {"field": "tres_per_task", "transformation": transform_tres_to_dict},
     }
 
-    def __init__(self, id=None, state="", nodes=0, cpus_total=0, cpus_min_per_node=0, pending_reason=""):
+    def __init__(
+        self,
+        id=None,
+        state="",
+        nodes=0,
+        cpus_total=0,
+        cpus_min_per_node=0,
+        pending_reason="",
+        tres_per_job=None,
+        tres_per_task=None,
+    ):
         self.id = id
         self.state = state
         self.nodes = nodes
         self.cpus_total = cpus_total
         self.cpus_min_per_node = cpus_min_per_node
         self.pending_reason = pending_reason
+        self.tres_per_job = tres_per_job or {}
+        self.tres_per_task = tres_per_task or {}
+
+    @staticmethod
+    def reformat_table(table):
+        """
+        Reformat the output of squeue command.
+
+        The -O option used with squeue only supports fixed width formatting and is not as flexible as -o.
+        This function removes all empty spaces and compresses the table in a format that is suitable for
+        from_table_to_obj_list function
+        :param table: the output of squeue -O command
+        :return: the compressed table with "|" used as delimiter
+        """
+        lines = table.splitlines()
+        for i in range(0, len(lines)):
+            lines[i] = "|".join(wrap(lines[i], SQUEUE_FIELD_SIZE))
+        return "\n".join(lines)
 
     @staticmethod
     def from_table(table):
-        return from_table_to_obj_list(table, SlurmJob)
+        return from_table_to_obj_list(SlurmJob.reformat_table(table), SlurmJob)
