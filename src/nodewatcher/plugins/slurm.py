@@ -43,6 +43,7 @@ def has_pending_jobs(instance_properties, max_size):
     try:
         pending_jobs = get_pending_jobs_info(
             max_slots_filter=instance_properties.get("slots"),
+            max_gpus_per_node=instance_properties.get("gpus"),
             max_nodes_filter=max_size,
             filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         )

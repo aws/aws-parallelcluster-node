@@ -54,7 +54,7 @@ def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
     mocker.patch("common.schedulers.slurm_commands.get_jobs_info", return_value=pending_jobs, autospec=True)
     spy = mocker.patch("jobwatcher.plugins.slurm.get_pending_jobs_info", wraps=get_pending_jobs_info)
 
-    instance_properties = {"slots": 4}
+    instance_properties = {"slots": 4, "gpus": 0}
     max_cluster_size = 10
 
     assert_that(get_required_nodes(instance_properties, max_cluster_size)).is_equal_to(expected_required_nodes)
@@ -62,4 +62,5 @@ def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
         max_slots_filter=instance_properties["slots"],
+        max_gpus_per_node=instance_properties["gpus"],
     )
