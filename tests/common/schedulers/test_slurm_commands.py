@@ -199,10 +199,14 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             [],
         ),
         (
-            [SlurmJob(id="72", state="PD", nodes=2, cpus_total=5, cpus_min_per_node=1, pending_reason="Priority")],
+            [
+                SlurmJob(
+                    id="72", state="PD", nodes=2, cpus_total=2, cpus_min_per_node=1, pending_reason="PartitionNodeLimit"
+                )
+            ],
             2,
-            1,
-            [],
+            2,
+            ["Priority"],
             [],
         ),
         (
