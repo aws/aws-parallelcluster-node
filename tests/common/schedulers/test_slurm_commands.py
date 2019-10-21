@@ -159,13 +159,14 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
 
 
 @pytest.mark.parametrize(
-    "pending_jobs, max_slots_filter, max_nodes_filter, filter_by_pending_reasons, expected_output",
+    "pending_jobs, max_slots_filter, max_nodes_filter, filter_by_pending_reasons, max_gpus_per_node, expected_output",
     [
         (
             [SlurmJob(id="72", state="PD", nodes=2, cpus_total=5, cpus_min_per_node=1, pending_reason="Priority")],
             4,
             2,
             ["Priority"],
+            0,
             [SlurmJob(id="72", state="PD", nodes=2, cpus_total=5, cpus_min_per_node=1, pending_reason="Priority")],
         ),
         (
@@ -179,6 +180,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             2,
             2,
             ["Priority"],
+            0,
             [
                 SlurmJob(id="72", state="PD", nodes=2, cpus_total=4, cpus_min_per_node=2, pending_reason="Priority"),
                 SlurmJob(id="74", state="PD", nodes=1, cpus_total=2, cpus_min_per_node=1, pending_reason="Priority"),
@@ -189,6 +191,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             1,
             1,
             ["Priority"],
+            0,
             [],
         ),
         (
@@ -196,6 +199,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             4,
             2,
             ["Priority"],
+            0,
             [],
         ),
         (
@@ -207,6 +211,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             2,
             2,
             ["Priority"],
+            0,
             [],
         ),
         (
@@ -214,6 +219,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             4,
             5,
             [],
+            0,
             [
                 SlurmJob(
                     id="72",
@@ -230,6 +236,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             4,
             4,
             [],
+            0,
             [],
         ),
         (
@@ -237,7 +244,380 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
             None,
             None,
             None,
+            None,
             [SlurmJob(id="72", state="PD", nodes=4, cpus_total=15, cpus_min_per_node=3, pending_reason="Priority")],
+        ),
+        (
+            [
+                # sbatch --gpus=3 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=1,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 3},
+                    tres_per_task={},
+                ),
+                # sbatch --gpus=12 - recompute number of nodes
+                SlurmJob(
+                    id="2",
+                    state="PD",
+                    nodes=3,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 12},
+                    tres_per_task={},
+                ),
+                # sbatch --gpus=13 - recompute number of nodes and discard
+                SlurmJob(
+                    id="3",
+                    state="PD",
+                    nodes=1,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 13},
+                    tres_per_task={},
+                ),
+                # sbatch --gpus=4 -N 2 - no changes required
+                SlurmJob(
+                    id="4",
+                    state="PD",
+                    nodes=2,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 4},
+                    tres_per_task={},
+                ),
+            ],
+            32,
+            3,
+            ["Priority"],
+            4,
+            [
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=1,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 3},
+                    tres_per_task={},
+                ),
+                SlurmJob(
+                    id="2",
+                    state="PD",
+                    nodes=3,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 12},
+                    tres_per_task={},
+                ),
+                SlurmJob(
+                    id="4",
+                    state="PD",
+                    nodes=2,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 4},
+                    tres_per_task={},
+                ),
+            ],
+        ),
+        (
+            [
+                # sbatch --gpus-per-task=2 -n 2 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=1,
+                    tasks=2,
+                    cpus_per_task=1,
+                    cpus_total=2,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --gpus-per-task=2 -n 3 - recompute number of nodes
+                SlurmJob(
+                    id="2",
+                    state="PD",
+                    nodes=1,
+                    tasks=3,
+                    cpus_per_task=1,
+                    cpus_total=3,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --wrap "sleep 100" --gpus-per-task=2 -n 3 -N 3 - no changes required
+                SlurmJob(
+                    id="3",
+                    state="PD",
+                    nodes=3,
+                    tasks=3,
+                    cpus_per_task=1,
+                    cpus_total=3,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --wrap "sleep 100" --gpus-per-task=2 -n 3 -c 22 - no changes required
+                SlurmJob(
+                    id="4",
+                    state="PD",
+                    nodes=3,
+                    tasks=3,
+                    cpus_per_task=22,
+                    cpus_total=66,
+                    cpus_min_per_node=22,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --gpus-per-task=2 -n 3 - recompute number of nodes and discard
+                SlurmJob(
+                    id="5",
+                    state="PD",
+                    nodes=1,
+                    tasks=7,
+                    cpus_per_task=1,
+                    cpus_total=7,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+            ],
+            32,
+            3,
+            ["Priority"],
+            4,
+            [
+                # sbatch --gpus-per-task=2 -n 2 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=1,
+                    tasks=2,
+                    cpus_per_task=1,
+                    cpus_total=2,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --gpus-per-task=2 -n 3 - recompute number of nodes
+                SlurmJob(
+                    id="2",
+                    state="PD",
+                    nodes=2,
+                    tasks=3,
+                    cpus_per_task=1,
+                    cpus_total=3,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --wrap "sleep 100" --gpus-per-task=2 -n 3 -N 3 - no changes required
+                SlurmJob(
+                    id="3",
+                    state="PD",
+                    nodes=3,
+                    tasks=3,
+                    cpus_per_task=1,
+                    cpus_total=3,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+                # sbatch --wrap "sleep 100" --gpus-per-task=2 -n 3 -c 22 - no changes required
+                SlurmJob(
+                    id="4",
+                    state="PD",
+                    nodes=3,
+                    tasks=3,
+                    cpus_per_task=22,
+                    cpus_total=66,
+                    cpus_min_per_node=22,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 2},
+                ),
+            ],
+        ),
+        (
+            [
+                # sbatch --gpus-per-task=5 -n 3 - nodes recomputed
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=1,
+                    tasks=3,
+                    cpus_per_task=1,
+                    cpus_total=3,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 5},
+                )
+            ],
+            32,
+            3,
+            ["Priority"],
+            8,
+            [
+                # sbatch --gpus-per-task=5 -n 3 - nodes recomputed
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=3,
+                    tasks=3,
+                    cpus_per_task=1,
+                    cpus_total=3,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={"gpu": 5},
+                )
+            ],
+        ),
+        (
+            [
+                # sbatch --wrap "sleep 100" -n 40 --gpus-per-node=1 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=2,
+                    tasks=40,
+                    cpus_per_task=1,
+                    cpus_total=40,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={},
+                ),
+                # sbatch --wrap "sleep 100" --gres=gpu:4 -n 2 -c 20 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=2,
+                    tasks=2,
+                    cpus_per_task=20,
+                    cpus_total=40,
+                    cpus_min_per_node=20,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={},
+                ),
+            ],
+            32,
+            3,
+            ["Priority"],
+            4,
+            [
+                # sbatch --wrap "sleep 100" -n 40 --gpus-per-node=1 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=2,
+                    tasks=40,
+                    cpus_per_task=1,
+                    cpus_total=40,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={},
+                ),
+                # sbatch --wrap "sleep 100" --gres=gpu:4 -n 2 -c 20 - no changes required
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=2,
+                    tasks=2,
+                    cpus_per_task=20,
+                    cpus_total=40,
+                    cpus_min_per_node=20,
+                    pending_reason="Priority",
+                    tres_per_job={},
+                    tres_per_task={},
+                ),
+            ],
+        ),
+        (
+            [
+                # sbatch --wrap "sleep 100" --gpus=4 --gpus-per-node=1 - discarded
+                SlurmJob(
+                    id="1",
+                    state="PD",
+                    nodes=4,
+                    tasks=1,
+                    cpus_per_task=1,
+                    cpus_total=4,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 4},
+                    tres_per_task={},
+                ),
+                # sbatch --wrap "sleep 100" --gpus=5 --gpus-per-task=1 - recomputed number of nodes
+                SlurmJob(
+                    id="2",
+                    state="PD",
+                    nodes=1,
+                    tasks=5,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 5},
+                    tres_per_task={"gpu": 1},
+                ),
+            ],
+            32,
+            3,
+            ["Priority"],
+            4,
+            [
+                # sbatch --wrap "sleep 100" --gpus=5 --gpus-per-task=1 - recomputed number of nodes
+                SlurmJob(
+                    id="2",
+                    state="PD",
+                    nodes=2,
+                    tasks=5,
+                    cpus_per_task=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    pending_reason="Priority",
+                    tres_per_job={"gpu": 5},
+                    tres_per_task={"gpu": 1},
+                )
+            ],
         ),
     ],
     ids=[
@@ -249,14 +629,27 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
         "additional_node_required",
         "discarded_after_node_adjustment",
         "no_filters",
+        "gpus_per_job",
+        "gpus_per_task",
+        "gpus_per_task_2",
+        "gpus_per_node",
+        "gpus_mix",
     ],
 )
 def test_get_pending_jobs_info(
-    pending_jobs, max_slots_filter, max_nodes_filter, filter_by_pending_reasons, expected_output, mocker
+    pending_jobs,
+    max_slots_filter,
+    max_nodes_filter,
+    filter_by_pending_reasons,
+    max_gpus_per_node,
+    expected_output,
+    mocker,
 ):
     mock = mocker.patch("common.schedulers.slurm_commands.get_jobs_info", return_value=pending_jobs, autospec=True)
 
-    pending_jobs = get_pending_jobs_info(max_slots_filter, max_nodes_filter, filter_by_pending_reasons)
+    pending_jobs = get_pending_jobs_info(
+        max_slots_filter, max_nodes_filter, filter_by_pending_reasons, max_gpus_per_node
+    )
 
     mock.assert_called_with(job_state_filter="PD")
     assert_that(pending_jobs).is_equal_to(expected_output)

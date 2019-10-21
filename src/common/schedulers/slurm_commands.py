@@ -57,7 +57,9 @@ def get_jobs_info(job_state_filter=None):
     return SlurmJob.from_table(output)
 
 
-def get_pending_jobs_info(max_slots_filter=None, max_nodes_filter=None, filter_by_pending_reasons=None):
+def get_pending_jobs_info(
+    max_slots_filter=None, max_nodes_filter=None, filter_by_pending_reasons=None, max_gpus_per_node=0
+):
     """
     Retrieve the list of pending jobs from the Slurm scheduler.
 
@@ -73,7 +75,8 @@ def get_pending_jobs_info(max_slots_filter=None, max_nodes_filter=None, filter_b
     """
     pending_jobs = get_jobs_info(job_state_filter="PD")
     if max_slots_filter:
-        _recompute_required_nodes_per_job(pending_jobs, max_slots_filter)
+        _recompute_required_nodes_by_slots_reservation(pending_jobs, max_slots_filter)
+        _recompute_required_nodes_by_gpu_reservation(pending_jobs, max_gpus_per_node)
     if max_slots_filter or filter_by_pending_reasons or max_nodes_filter:
         filtered_jobs = []
         for job in pending_jobs:
@@ -101,9 +104,9 @@ def get_pending_jobs_info(max_slots_filter=None, max_nodes_filter=None, filter_b
         return pending_jobs
 
 
-def _recompute_required_nodes_per_job(pending_jobs, node_slots):
+def _recompute_required_nodes_by_slots_reservation(pending_jobs, node_slots):
     """
-    Adjust the number of required nodes if necessary.
+    Adjust the number of required nodes if necessary based on the required slots.
 
     According to squeue manual page:
     %D    Number of nodes allocated to the job or the minimum number of nodes required by a pending job.
@@ -134,6 +137,46 @@ def _recompute_required_nodes_per_job(pending_jobs, node_slots):
             # specify a number of nodes that is bigger than the min required.
             # e.g. sbatch -c 1 -N 2 -n 2 => (cpus_min_per_node=1, cpus_total=2, nodes=2)
             job.nodes = max(required_nodes, job.nodes)
+
+
+def _recompute_required_nodes_by_gpu_reservation(pending_jobs, gpus_per_node):
+    """
+    Adjust the number of required nodes if necessary based on the required GPUs.
+
+    When using --gpus option or --gpus-per-task without explicitly specifying the number of nodes Slurm will not
+    display the correct number of required nodes in the squeue output. The actual number needs to be recomputed
+    based on TRES_PER_JOB and TRES_PER_TASK data.
+
+    See examples below (Note output has been compressed):
+    ubuntu@ip-10-0-0-64:~$ sbatch --wrap "sleep 100" --gpus=12
+    Submitted batch job 79
+    ubuntu@ip-10-0-0-64:~$ /opt/slurm/bin/squeue -r -O 'jobid,statecompact,numnodes,numcpus,cpus-per-task,reason,
+        tres-per-job,tres-per-task'
+    JOBID|ST|NODES|CPUS|CPUS_PER_TASK|REASON|TRES_PER_JOB|TRES_PER_TASK
+    79|PD|1|1|1|ReqNodeNotAvail, Maygpu:12|N/A
+    ubuntu@ip-10-0-0-64:~$ sbatch --wrap "sleep 100" --gpus-per-task=2 -n 3
+    Submitted batch job 92
+    ubuntu@ip-10-0-0-64:~$ /opt/slurm/bin/squeue -r -O 'jobid,statecompact,numnodes,numcpus,cpus-per-task,reason,
+        tres-per-job,tres-per-task'
+    JOBID|ST|NODES|CPUS|CPUS_PER_TASK|REASON|TRES_PER_JOB|TRES_PER_TASK
+    92|PD|1|3|1|ReqNodeNotAvail, May|N/A|gpu:2
+
+    :param pending_jobs: array of SlurmJob
+    :param gpus_per_node: max gpus per compute node
+    """
+    if gpus_per_node <= 0:
+        # do not process any filtering since we assume scheduler rejects all jobs that require GPUs
+        return
+
+    for job in pending_jobs:
+        gpus_per_job = job.tres_per_job.get("gpu")
+        if gpus_per_job:
+            job.nodes = max(int(math.ceil(float(gpus_per_job) / gpus_per_node)), job.nodes)
+
+        gpus_per_task = job.tres_per_task.get("gpu")
+        if gpus_per_task:
+            tasks_schedulable_per_node = float(gpus_per_node) // gpus_per_task
+            job.nodes = max(int(math.ceil(float(job.tasks) / tasks_schedulable_per_node)), job.nodes)
 
 
 def transform_tres_to_dict(value):
