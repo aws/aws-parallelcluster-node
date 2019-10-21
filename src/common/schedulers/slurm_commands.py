@@ -27,7 +27,18 @@ PENDING_RESOURCES_REASONS = [
 ]
 
 SQUEUE_FIELD_SIZE = 200
-_SQUEUE_FIELDS = ["jobid", "statecompact", "numnodes", "numcpus", "mincpus", "reason", "tres-per-job", "tres-per-task"]
+_SQUEUE_FIELDS = [
+    "jobid",
+    "statecompact",
+    "numnodes",
+    "numcpus",
+    "numtasks",
+    "cpus-per-task",
+    "mincpus",
+    "reason",
+    "tres-per-job",
+    "tres-per-task",
+]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 
 
@@ -138,15 +149,17 @@ def transform_tres_to_dict(value):
 
 class SlurmJob(ComparableObject):
     # This is the format after being processed by reformat_table function
-    # JOBID|ST|NODES|CPUS|MIN_CPUS|REASON|TRES_PER_JOB|TRES_PER_TASK
-    # 72|PD|2|5|1|Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions|N/A|N/A
-    # 86|PD|10|40|4|PartitionConfig|gpu:12|N/A
-    # 87|PD|10|10|1|PartitionNodeLimit|N/A|gpu:4
+    # JOBID|ST|NODES|CPUS|TASKS|CPUS_PER_TASK|MIN_CPUS|REASON|TRES_PER_JOB|TRES_PER_TASK
+    # 72|PD|2|5|5|1|1|Resources|N/A|N/A
+    # 86|PD|10|40|4|4|4|PartitionConfig|gpu:12|N/A
+    # 87|PD|10|10|10|1|1|PartitionNodeLimit|N/A|gpu:4
     MAPPINGS = {
         "JOBID": {"field": "id"},
         "ST": {"field": "state"},
         "NODES": {"field": "nodes", "transformation": int},
         "CPUS": {"field": "cpus_total", "transformation": int},
+        "TASKS": {"field": "tasks", "transformation": int},
+        "CPUS_PER_TASK": {"field": "cpus_per_task", "transformation": int},
         "MIN_CPUS": {"field": "cpus_min_per_node", "transformation": int},
         "REASON": {"field": "pending_reason"},
         "TRES_PER_JOB": {"field": "tres_per_job", "transformation": transform_tres_to_dict},
@@ -159,6 +172,8 @@ class SlurmJob(ComparableObject):
         state="",
         nodes=0,
         cpus_total=0,
+        tasks=0,
+        cpus_per_task=0,
         cpus_min_per_node=0,
         pending_reason="",
         tres_per_job=None,
@@ -168,6 +183,8 @@ class SlurmJob(ComparableObject):
         self.state = state
         self.nodes = nodes
         self.cpus_total = cpus_total
+        self.tasks = tasks
+        self.cpus_per_task = cpus_per_task
         self.cpus_min_per_node = cpus_min_per_node
         self.pending_reason = pending_reason
         self.tres_per_job = tres_per_job or {}
