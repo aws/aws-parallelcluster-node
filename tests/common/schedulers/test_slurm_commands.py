@@ -24,8 +24,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=5,
                     cpus_min_per_node=1,
+                    cpus_per_task=1,
                     state="PD",
                     nodes=2,
+                    tasks=5,
                     id="72",
                     pending_reason="Resources",
                     tres_per_job={},
@@ -34,8 +36,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=10,
                     cpus_min_per_node=1,
+                    cpus_per_task=1,
                     state="R",
                     nodes=3,
+                    tasks=10,
                     id="84",
                     pending_reason="Resources",
                     tres_per_job={"gpu": 12},
@@ -44,8 +48,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=40,
                     cpus_min_per_node=4,
+                    cpus_per_task=4,
                     state="PD",
                     nodes=10,
+                    tasks=10,
                     id="86",
                     pending_reason="ReqNodeNotAvail, May be reserved for other job",
                     tres_per_job={},
@@ -54,8 +60,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=10,
                     cpus_min_per_node=1,
+                    cpus_per_task=1,
                     state="PD",
                     nodes=10,
+                    tasks=10,
                     id="87",
                     pending_reason="ReqNodeNotAvail, May be reserved for other job",
                     tres_per_job={"gpu": 12},
@@ -64,8 +72,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=15,
                     cpus_min_per_node=3,
+                    cpus_per_task=3,
                     state="PD",
                     nodes=4,
+                    tasks=5,
                     id="90_1",
                     pending_reason="PartitionConfig",
                     tres_per_job={"gpu": 12},
@@ -74,8 +84,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=15,
                     cpus_min_per_node=3,
+                    cpus_per_task=3,
                     state="PD",
                     nodes=4,
+                    tasks=5,
                     id="90_2",
                     pending_reason="PartitionNodeLimit",
                     tres_per_job={"gpu": 12},
@@ -84,8 +96,10 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=15,
                     cpus_min_per_node=3,
+                    cpus_per_task=3,
                     state="PD",
                     nodes=4,
+                    tasks=5,
                     id="90_3",
                     pending_reason="Resources",
                     tres_per_job={"gpu": 12},
@@ -95,7 +109,18 @@ from tests.common import read_text
         ),
         (
             "squeue_output_extra_column.txt",
-            [SlurmJob(id="72", state="PD", nodes=2, cpus_total=5, cpus_min_per_node=1, pending_reason="Resources")],
+            [
+                SlurmJob(
+                    id="72",
+                    state="PD",
+                    nodes=2,
+                    tasks=5,
+                    cpus_total=5,
+                    cpus_min_per_node=1,
+                    cpus_per_task=1,
+                    pending_reason="Resources",
+                )
+            ],
         ),
         (
             "squeue_output_missing_column.txt",
@@ -103,10 +128,12 @@ from tests.common import read_text
                 SlurmJob(
                     cpus_total=5,
                     tres_per_job=None,
-                    cpus_min_per_node=1,
+                    cpus_min_per_node=0,
+                    cpus_per_task=1,
                     tres_per_task=None,
                     state="",
                     nodes=2,
+                    tasks=5,
                     id="72",
                     pending_reason="Resources",
                 )
@@ -125,8 +152,8 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
     jobs = get_jobs_info(job_state_filter="PD,R")
 
     mock.assert_called_with(
-        "/opt/slurm/bin/squeue -r -O 'jobid:200,statecompact:200,numnodes:200,numcpus:200,"
-        "mincpus:200,reason:200,tres-per-job:200,tres-per-task:200' --states PD,R"
+        "/opt/slurm/bin/squeue -r -O 'jobid:200,statecompact:200,numnodes:200,numcpus:200,numtasks:200,"
+        "cpus-per-task:200,mincpus:200,reason:200,tres-per-job:200,tres-per-task:200' --states PD,R"
     )
     assert_that(jobs).is_equal_to(expected_output)
 
