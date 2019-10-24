@@ -173,6 +173,13 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     """Update and write node lists( and gres_nodes if instance has GPU); restart relevant nodes."""
     node_list, nodes_to_restart = _update_node_lists(update_events)
     _add_dummy_to_node_list(node_list, max_cluster_size, instance_properties)
+    # Add a dummy node if node_list is empty so that slurm can start when cluster is stopped
+    if not node_list:
+        node_list.append(
+            "NodeName=dummy-compute-stop CPUs={1} State=DOWN Reason=Cluster is stopped or max size is 0.\n".format(
+                instance_properties["slots"]
+            )
+        )
     _write_node_list_to_file(node_list, PCLUSTER_NODES_CONFIG)
     # Always update gres.conf
     gres_node_list = _update_gres_node_lists(update_events)
