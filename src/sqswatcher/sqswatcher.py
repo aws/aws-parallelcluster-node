@@ -60,8 +60,9 @@ SQSWatcherConfig = collections.namedtuple(
     ],
 )
 
-Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus", "hw_info"])
-HWInfo = collections.namedtuple("HWInfo", ["memory"])
+Host = collections.namedtuple(
+    "Host", ["instance_id", "hostname", "slots", "gpus", "memory", "sockets", "cores_per_socket", "threads_per_core"]
+)
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 
 
@@ -269,11 +270,17 @@ def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_at
     # from instance and CloudFormation could be out-of-sync
     instance_properties = get_instance_properties(sqs_config_region, sqs_config_proxy, instance_type)
     gpus = instance_properties["gpus"]
-    memory = instance_properties["memory"]
+    # Convert real memory to MB
+    memory = int(float(message_attrs.get("RealMemory")) / 1024)
     slots = message_attrs.get("Slots")
+    sockets = message_attrs.get("Sockets")
+    cores_per_socket = message_attrs.get("CoresPerSocket")
+    threads_per_core = message_attrs.get("ThreadsPerCore")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
     _retry_on_request_limit_exceeded(lambda: table.put_item(Item={"instanceId": instance_id, "hostname": hostname}))
-    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots, gpus))
+    return UpdateEvent(
+        "ADD", message, Host(instance_id, hostname, slots, gpus, memory, sockets, cores_per_socket, threads_per_core)
+    )
 
 
 def _process_instance_terminate_event(message_attrs, message, table, queue):
@@ -289,7 +296,7 @@ def _process_instance_terminate_event(message_attrs, message, table, queue):
 
     if item.get("Item") is not None:
         hostname = item.get("Item").get("hostname")
-        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None, HWInfo(None)))
+        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None, None, None, None, None))
     else:
         log.error("Instance %s not found in the database.", instance_id)
         _requeue_message(queue, message)

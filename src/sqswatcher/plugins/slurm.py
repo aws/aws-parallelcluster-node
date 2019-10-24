@@ -130,8 +130,17 @@ def _update_node_lists(update_events):
         elif event.action == "ADD":
             # Only include GPU info if instance has GPU
             gpu_info = "Gres=gpu:tesla:{gpus} ".format(gpus=event.host.gpus) if event.host.gpus != 0 else ""
-            new_node = "NodeName={nodename} RealMemory={memory} CPUs={cpus} {gpu_info}State=UNKNOWN\n".format(
-                nodename=event.host.hostname, memory=event.host.hw_info.memory, cpus=event.host.slots, gpu_info=gpu_info
+            new_node = (
+                "NodeName={nodename} Sockets={sockets} CoresPerSocket={cores_per_socket} "
+                "ThreadsPerCore={threads_per_core} RealMemory={memory} CPUs={cpus} {gpu_info}State=UNKNOWN\n"
+            ).format(
+                nodename=event.host.hostname,
+                sockets=event.host.sockets,
+                cores_per_socket=event.host.cores_per_socket,
+                threads_per_core=event.host.threads_per_core,
+                memory=event.host.memory,
+                cpus=event.host.slots,
+                gpu_info=gpu_info,
             )
 
             if new_node not in node_list:

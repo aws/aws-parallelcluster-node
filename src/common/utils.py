@@ -228,8 +228,13 @@ def _get_instance_info_from_pricing_file(region, proxy_config, instance_type):
         log.critical(error_msg)
         raise CriticalError(error_msg)
 
-    vcpus, memory = _get_vcpus_mem_by_instance_type(instances, instance_type)
-    return vcpus, memory, _get_gpus_by_instance_type(instances, instance_type)
+    # Retrieve CPU, memory, and GPU information from pricing file
+    # GPU is set to 0 if an instance has no GPU
+    return (
+        _get_vcpus_by_instance_type(instances, instance_type),
+        int(float(instances[instance_type].get("memory")) * 1000),
+        int(instances[instance_type].get("gpu", 0)),
+    )
 
 
 def get_instance_properties(region, proxy_config, instance_type):
@@ -305,26 +310,18 @@ def _fetch_pricing_file(region, proxy_config):
         raise
 
 
-def _get_vcpus_mem_by_instance_type(instances, instance_type):
+def _get_vcpus_by_instance_type(instances, instance_type):
     """
-    Get vcpus and memory for the given instance type from the pricing file.
+    Get vcpus for the given instance type from the pricing file.
 
     :param instances: dictionary conatining the content of the instances file
     :param instance_type: The instance type to search for
-    :return: the number of vcpus for the given instance type, memory(in MiB) for the instance type
+    :return: the number of vcpus for the given instance type
     :raise CriticalError if unable to find the given instance or whatever error.
     """
     try:
         vcpus = int(instances[instance_type]["vcpus"])
-        log.info("Instance {0} has {1} vcpus.".format(instance_type, vcpus))
-        # Rounding down on memory in each conversion step to avoid "low real_memory" error in slurm
-        memory = instances[instance_type]["memory"]
-        # Get memory in GiB
-        memory = int(memory.split(" ")[0])
-        # Convert to MiB
-        memory *= 1000
-        log.info("Instance {0} has {1} MiB memory.".format(instance_type, memory))
-        return vcpus, int(memory)
+        return vcpus
     except KeyError:
         error_msg = "Unable to get vcpus from instances file. Instance type {0} not found.".format(instance_type)
         log.critical(error_msg)
@@ -335,23 +332,6 @@ def _get_vcpus_mem_by_instance_type(instances, instance_type):
         )
         log.critical(error_msg)
         raise CriticalError(error_msg)
-
-
-def _get_gpus_by_instance_type(instances, instance_type):
-    """
-    Get gpus for the given instance type from the pricing file.
-
-    :param instances: dictionary conatining the content of the instances file
-    :param instance_type: The instance type to search for
-    :return: the number of GPU for the given instance type
-    :raise CriticalError if unable to find the given instance or whatever error.
-    """
-    try:
-        gpus = int(instances[instance_type]["gpu"])
-        return gpus
-    except KeyError:
-        # If instance has no GPU, return 0
-        return 0
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)

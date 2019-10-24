@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from sqswatcher.plugins.slurm import _update_gres_node_lists, _update_node_lists
-from sqswatcher.sqswatcher import Host, HWInfo, UpdateEvent
+from sqswatcher.sqswatcher import Host, UpdateEvent
 
 
 # Input: existing gres_node_list, events to be processed.
@@ -23,9 +23,9 @@ from sqswatcher.sqswatcher import Host, HWInfo, UpdateEvent
         (
             ["NodeName=ip-10-0-000-111 Name=gpu Type=tesla File=/dev/nvidia[0-15]\n"],
             [
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
             ],
             [
                 "NodeName=ip-10-0-000-111 Name=gpu Type=tesla File=/dev/nvidia[0-15]\n",
@@ -35,8 +35,8 @@ from sqswatcher.sqswatcher import Host, HWInfo, UpdateEvent
         (
             ["NodeName=ip-10-0-000-111 Name=gpu Type=tesla File=/dev/nvidia[0-15]\n"],
             [
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, HWInfo(1))),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, 1, 1, 1, 1)),
             ],
             [],
         ),
@@ -44,8 +44,8 @@ from sqswatcher.sqswatcher import Host, HWInfo, UpdateEvent
             # GPU files should be updated after remove/add sequence
             ["NodeName=ip-10-0-000-111 Name=gpu Type=tesla File=/dev/nvidia[0-1]\n"],
             [
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
             ],
             ["NodeName=ip-10-0-000-111 Name=gpu Type=tesla File=/dev/nvidia[0-15]\n"],
         ),
@@ -64,16 +64,21 @@ def test_update_gres_node_lists(gres_node_list, events, expected_result, mocker)
     "gpu_node_list, events, expected_result",
     [
         (
-            ["NodeName=ip-10-0-000-111 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n"],
             [
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
+                "NodeName=ip-10-0-000-111 Sockets=1 CoresPerSocket=1 "
+                "ThreadsPerCore=1 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n"
+            ],
+            [
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
             ],
             (
                 [
-                    "NodeName=ip-10-0-000-111 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n",
-                    "NodeName=ip-10-0-000-222 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n",
+                    "NodeName=ip-10-0-000-111 Sockets=1 CoresPerSocket=1 "
+                    "ThreadsPerCore=1 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n",
+                    "NodeName=ip-10-0-000-222 Sockets=1 CoresPerSocket=1 "
+                    "ThreadsPerCore=1 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n",
                 ],
                 # Note nodes_to_restart list is expected to be repetitive because we want to restart with every ADD
                 ["ip-10-0-000-111", "ip-10-0-000-222", "ip-10-0-000-111"],
@@ -82,19 +87,28 @@ def test_update_gres_node_lists(gres_node_list, events, expected_result, mocker)
         (
             ["NodeName=ip-10-0-000-111 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n"],
             [
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, HWInfo(1))),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 16, 1, 1, 1, 1)),
             ],
             ([], []),
         ),
         (
             # CPU/GPU information should be updated after remove/add sequence
-            ["NodeName=ip-10-0-000-111 RealMemory=10 CPUs=8 Gres=gpu:tesla:1 State=UNKNOWN\n"],
             [
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, HWInfo(1))),
+                "NodeName=ip-10-0-000-111 Sockets=10 CoresPerSocket=10 "
+                "ThreadsPerCore=10 RealMemory=10 CPUs=8 Gres=gpu:tesla:1 State=UNKNOWN\n"
             ],
-            (["NodeName=ip-10-0-000-111 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n"], ["ip-10-0-000-111"]),
+            [
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 16, 1, 1, 1, 1)),
+            ],
+            (
+                [
+                    "NodeName=ip-10-0-000-111 Sockets=1 CoresPerSocket=1 "
+                    "ThreadsPerCore=1 RealMemory=1 CPUs=32 Gres=gpu:tesla:16 State=UNKNOWN\n"
+                ],
+                ["ip-10-0-000-111"],
+            ),
         ),
     ],
     ids=["repetitive_add", "remove_nonexisting_node", "reusing_nodename"],
@@ -111,16 +125,21 @@ def test_gpu_update_node_lists(gpu_node_list, events, expected_result, mocker):
     "node_list, events, expected_result",
     [
         (
-            ["NodeName=ip-10-0-000-111 RealMemory=1 CPUs=32 State=UNKNOWN\n"],
             [
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 0, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, HWInfo(1))),
+                "NodeName=ip-10-0-000-111 Sockets=1 CoresPerSocket=1 "
+                "ThreadsPerCore=1 RealMemory=1 CPUs=32 State=UNKNOWN\n"
+            ],
+            [
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 0, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, 1, 1, 1, 1)),
             ],
             (
                 [
-                    "NodeName=ip-10-0-000-111 RealMemory=1 CPUs=32 State=UNKNOWN\n",
-                    "NodeName=ip-10-0-000-222 RealMemory=1 CPUs=32 State=UNKNOWN\n",
+                    "NodeName=ip-10-0-000-111 Sockets=1 CoresPerSocket=1 "
+                    "ThreadsPerCore=1 RealMemory=1 CPUs=32 State=UNKNOWN\n",
+                    "NodeName=ip-10-0-000-222 Sockets=1 CoresPerSocket=1 "
+                    "ThreadsPerCore=1 RealMemory=1 CPUs=32 State=UNKNOWN\n",
                 ],
                 # Note nodes_to_restart list is expected to be repetitive because we want to restart with every ADD
                 ["ip-10-0-000-111", "ip-10-0-000-222", "ip-10-0-000-111"],
@@ -129,19 +148,28 @@ def test_gpu_update_node_lists(gpu_node_list, events, expected_result, mocker):
         (
             ["NodeName=ip-10-0-000-111 CPUs=32 State=UNKNOWN\n"],
             [
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, HWInfo(1))),
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 0, HWInfo(1))),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, 1, 1, 1, 1)),
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-222", "32", 0, 1, 1, 1, 1)),
             ],
             ([], []),
         ),
         (
             # CPU information should be updated after remove/add sequence
-            ["NodeName=ip-10-0-000-111 RealMemory=10 CPUs=8 State=UNKNOWN\n"],
             [
-                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, HWInfo(1))),
-                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, HWInfo(1))),
+                "NodeName=ip-10-0-000-111 Sockets=10 CoresPerSocket=10 "
+                "ThreadsPerCore=10 RealMemory=10 CPUs=8 State=UNKNOWN\n"
             ],
-            (["NodeName=ip-10-0-000-111 RealMemory=1 CPUs=32 State=UNKNOWN\n"], ["ip-10-0-000-111"]),
+            [
+                UpdateEvent("REMOVE", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, 1, 1, 1, 1)),
+                UpdateEvent("ADD", "some message", Host("i-0c1234567", "ip-10-0-000-111", "32", 0, 1, 1, 1, 1)),
+            ],
+            (
+                [
+                    "NodeName=ip-10-0-000-111 Sockets=1 CoresPerSocket=1 "
+                    "ThreadsPerCore=1 RealMemory=1 CPUs=32 State=UNKNOWN\n"
+                ],
+                ["ip-10-0-000-111"],
+            ),
         ),
     ],
     ids=["repetitive_add", "remove_nonexisting_node", "reusing_nodename"],
