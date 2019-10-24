@@ -228,7 +228,8 @@ def _get_instance_info_from_pricing_file(region, proxy_config, instance_type):
         log.critical(error_msg)
         raise CriticalError(error_msg)
 
-    return _get_vcpus_by_instance_type(instances, instance_type), _get_gpus_by_instance_type(instances, instance_type)
+    vcpus, memory = _get_vcpus_mem_by_instance_type(instances, instance_type)
+    return vcpus, memory, _get_gpus_by_instance_type(instances, instance_type)
 
 
 def get_instance_properties(region, proxy_config, instance_type):
@@ -243,7 +244,7 @@ def get_instance_properties(region, proxy_config, instance_type):
 
     if instance_type not in get_instance_properties.cache:
         # get vcpus and gpus from the pricing file, gpus = 0 if instance does not have GPU
-        vcpus, gpus = _get_instance_info_from_pricing_file(region, proxy_config, instance_type)
+        vcpus, memory, gpus = _get_instance_info_from_pricing_file(region, proxy_config, instance_type)
 
         try:
             cfnconfig_params = _read_cfnconfig()
@@ -276,7 +277,7 @@ def get_instance_properties(region, proxy_config, instance_type):
             slots = vcpus
 
         log.info("Added instance type: {0} to get_instance_properties cache".format(instance_type))
-        get_instance_properties.cache[instance_type] = {"slots": slots, "gpus": int(gpus)}
+        get_instance_properties.cache[instance_type] = {"slots": slots, "memory": memory, "gpus": int(gpus)}
 
     log.info("Retrieved instance properties: {0}".format(get_instance_properties.cache[instance_type]))
     return get_instance_properties.cache[instance_type]
@@ -304,18 +305,26 @@ def _fetch_pricing_file(region, proxy_config):
         raise
 
 
-def _get_vcpus_by_instance_type(instances, instance_type):
+def _get_vcpus_mem_by_instance_type(instances, instance_type):
     """
-    Get vcpus for the given instance type from the pricing file.
+    Get vcpus and memory for the given instance type from the pricing file.
 
     :param instances: dictionary conatining the content of the instances file
     :param instance_type: The instance type to search for
-    :return: the number of vcpus for the given instance type
+    :return: the number of vcpus for the given instance type, memory(in MiB) for the instance type
     :raise CriticalError if unable to find the given instance or whatever error.
     """
     try:
         vcpus = int(instances[instance_type]["vcpus"])
-        return vcpus
+        log.info("Instance {0} has {1} vcpus.".format(instance_type, vcpus))
+        # Rounding down on memory in each conversion step to avoid "low real_memory" error in slurm
+        memory = instances[instance_type]["memory"]
+        # Get memory in GiB
+        memory = int(memory.split(" ")[0])
+        # Convert to MiB
+        memory *= 1000
+        log.info("Instance {0} has {1} MiB memory.".format(instance_type, memory))
+        return vcpus, int(memory)
     except KeyError:
         error_msg = "Unable to get vcpus from instances file. Instance type {0} not found.".format(instance_type)
         log.critical(error_msg)

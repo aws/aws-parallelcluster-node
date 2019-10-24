@@ -130,8 +130,8 @@ def _update_node_lists(update_events):
         elif event.action == "ADD":
             # Only include GPU info if instance has GPU
             gpu_info = "Gres=gpu:tesla:{gpus} ".format(gpus=event.host.gpus) if event.host.gpus != 0 else ""
-            new_node = "NodeName={nodename} CPUs={cpus} {gpu_info}State=UNKNOWN\n".format(
-                nodename=event.host.hostname, cpus=event.host.slots, gpu_info=gpu_info
+            new_node = "NodeName={nodename} RealMemory={memory} CPUs={cpus} {gpu_info}State=UNKNOWN\n".format(
+                nodename=event.host.hostname, memory=event.host.hw_info.memory, cpus=event.host.slots, gpu_info=gpu_info
             )
 
             if new_node not in node_list:
@@ -152,8 +152,8 @@ def _add_dummy_to_node_list(node_list, max_cluster_size, instance_properties):
             gpu_info = "Gres=gpu:tesla:{0} ".format(instance_properties["gpus"])
         node_list.insert(
             0,
-            "NodeName=dummy-compute[1-{0}] CPUs={1} {2}State=FUTURE\n".format(
-                dummy_nodes_count, instance_properties["slots"], gpu_info
+            "NodeName=dummy-compute[1-{0}] RealMemory={1} CPUs={2} {3}State=FUTURE\n".format(
+                dummy_nodes_count, instance_properties["memory"], instance_properties["slots"], gpu_info
             ),
         )
 
