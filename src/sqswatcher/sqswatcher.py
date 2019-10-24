@@ -60,8 +60,8 @@ SQSWatcherConfig = collections.namedtuple(
     ],
 )
 
-Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
-
+Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus", "hw_info"])
+HWInfo = collections.namedtuple("HWInfo", ["memory"])
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 
 
@@ -270,9 +270,12 @@ def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_at
     # from instance and CloudFormation could be out-of-sync
     instance_properties = get_instance_properties(sqs_config_region, sqs_config_proxy, instance_type)
     gpus = instance_properties["gpus"]
+    # RealMemory from message is in kB, convert to MB
+    # Rounding down to avoid low real memory error from slurm
+    memory = int(float(message_attrs.get("RealMemory")) / 10000) * 10
     slots = message_attrs.get("Slots")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
-    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots, gpus))
+    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots, gpus, HWInfo(memory)))
 
 
 def _process_instance_terminate_event(message_attrs, message, table):
@@ -287,7 +290,7 @@ def _process_instance_terminate_event(message_attrs, message, table):
 
     if item.get("Item") is not None:
         hostname = item.get("Item").get("hostname")
-        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None))
+        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None, HWInfo(None)))
     else:
         log.error("Instance %s not found in the database.", instance_id)
         return None

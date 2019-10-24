@@ -20,7 +20,7 @@ from common.schedulers.sge_commands import (
     get_jobs_info,
     get_pending_jobs_info,
 )
-from sqswatcher.sqswatcher import Host
+from sqswatcher.sqswatcher import Host, HWInfo
 from tests.common import read_text
 
 
@@ -277,7 +277,11 @@ def test_qconf_commands(qconf_output, command, expected_succeeded_hosts, mocker)
     mock = mocker.patch(
         "common.schedulers.sge_commands.check_sge_command_output", return_value=qconf_output, autospec=True
     )
-    hosts = [Host("id", "ip-10-0-0-157", 1, 0), Host("id", "ip-10-0-0-155", 1, 0), Host("id", "ip-10-0-0", 1, 0)]
+    hosts = [
+        Host("id", "ip-10-0-0-157", 1, 0, HWInfo(1)),
+        Host("id", "ip-10-0-0-155", 1, 0, HWInfo(1)),
+        Host("id", "ip-10-0-0", 1, 0, HWInfo(1)),
+    ]
     succeeded_hosts = exec_qconf_command(hosts, QCONF_COMMANDS[command])
 
     mock.assert_called_with(
