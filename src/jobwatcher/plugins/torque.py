@@ -28,13 +28,13 @@ def get_required_nodes(instance_properties, max_size):
         if job.resources_list.nodes_resources:
             for nodes, ppn in job.resources_list.nodes_resources:
                 nodes_requested.append(nodes)
-                slots_requested.append(ppn * nodes)
+                slots_requested.append({"slots": ppn * nodes})
         elif job.resources_list.ncpus:
             nodes_requested.append(1)
-            slots_requested.append(job.resources_list.ncpus)
+            slots_requested.append({"slots": job.resources_list.ncpus})
         elif job.resources_list.nodes_count:
             nodes_requested.append(job.resources_list.nodes_count)
-            slots_requested.append(1 * job.resources_list.nodes_count)
+            slots_requested.append({"slots": 1 * job.resources_list.nodes_count})
 
     return get_optimal_nodes(nodes_requested, slots_requested, instance_properties)
 

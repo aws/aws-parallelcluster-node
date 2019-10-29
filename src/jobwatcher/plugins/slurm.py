@@ -28,13 +28,27 @@ def get_required_nodes(instance_properties, max_size):
     )
     logging.info("Found the following pending jobs:\n%s", pending_jobs)
 
-    slots_requested = []
+    resources_requested = []
     nodes_requested = []
     for job in pending_jobs:
-        slots_requested.append(job.cpus_total)
+        resources_for_job = {}
+        resources_for_job["slots"] = job.cpus_total
+        resources_for_job["gpus"] = _process_gpus_nodes_slots_for_job(job)
+        resources_requested.append(resources_for_job)
         nodes_requested.append(job.nodes)
 
-    return get_optimal_nodes(nodes_requested, slots_requested, instance_properties)
+    return get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
+
+
+def _process_gpus_nodes_slots_for_job(job):
+    if job.tres_per_node:
+        return job.tres_per_node["gpu"] * job.nodes
+    if job.tres_per_task:
+        return job.tres_per_task["gpu"] * job.tasks
+    if job.tres_per_job:
+        return job.tres_per_job["gpu"]
+
+    return 0
 
 
 # get nodes reserved by running jobs
