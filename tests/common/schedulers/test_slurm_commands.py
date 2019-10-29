@@ -68,6 +68,7 @@ from tests.common import read_text
                     pending_reason="ReqNodeNotAvail, May be reserved for other job",
                     tres_per_job={"gpu": 12},
                     tres_per_task={"gpu": 4},
+                    tres_per_node={"gpu": 6},
                 ),
                 SlurmJob(
                     cpus_total=15,
@@ -80,6 +81,7 @@ from tests.common import read_text
                     pending_reason="PartitionConfig",
                     tres_per_job={"gpu": 12},
                     tres_per_task={"gpu": 4},
+                    tres_per_node={"gpu": 6},
                 ),
                 SlurmJob(
                     cpus_total=15,
@@ -92,6 +94,7 @@ from tests.common import read_text
                     pending_reason="PartitionNodeLimit",
                     tres_per_job={"gpu": 12},
                     tres_per_task={"gpu": 4},
+                    tres_per_node={"gpu": 6},
                 ),
                 SlurmJob(
                     cpus_total=15,
@@ -104,6 +107,7 @@ from tests.common import read_text
                     pending_reason="Resources",
                     tres_per_job={"gpu": 12},
                     tres_per_task={"gpu": 4},
+                    tres_per_node={"gpu": 6},
                 ),
             ],
         ),
@@ -153,7 +157,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
 
     mock.assert_called_with(
         "/opt/slurm/bin/squeue -r -O 'jobid:200,statecompact:200,numnodes:200,numcpus:200,numtasks:200,"
-        "cpus-per-task:200,mincpus:200,reason:200,tres-per-job:200,tres-per-task:200' --states PD,R"
+        "cpus-per-task:200,mincpus:200,reason:200,tres-per-job:200,tres-per-task:200,tres-per-node:200' --states PD,R"
     )
     assert_that(jobs).is_equal_to(expected_output)
 
@@ -611,7 +615,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
                     nodes=2,
                     tasks=5,
                     cpus_per_task=1,
-                    cpus_total=1,
+                    cpus_total=2,
                     cpus_min_per_node=1,
                     pending_reason="Priority",
                     tres_per_job={"gpu": 5},

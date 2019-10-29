@@ -38,6 +38,7 @@ _SQUEUE_FIELDS = [
     "reason",
     "tres-per-job",
     "tres-per-task",
+    "tres-per-node",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 
@@ -171,12 +172,20 @@ def _recompute_required_nodes_by_gpu_reservation(pending_jobs, gpus_per_node):
     for job in pending_jobs:
         gpus_per_job = job.tres_per_job.get("gpu")
         if gpus_per_job:
-            job.nodes = max(int(math.ceil(float(gpus_per_job) / gpus_per_node)), job.nodes)
+            new_min_nodes = int(math.ceil(float(gpus_per_job) / gpus_per_node))
+            if new_min_nodes > job.nodes:
+                job.nodes = new_min_nodes
+                if job.cpus_total < job.nodes * job.cpus_min_per_node:
+                    job.cpus_total = job.nodes * job.cpus_min_per_node
 
         gpus_per_task = job.tres_per_task.get("gpu")
         if gpus_per_task:
             tasks_schedulable_per_node = float(gpus_per_node) // gpus_per_task
-            job.nodes = max(int(math.ceil(float(job.tasks) / tasks_schedulable_per_node)), job.nodes)
+            new_min_nodes = int(math.ceil(float(job.tasks) / tasks_schedulable_per_node))
+            if new_min_nodes > job.nodes:
+                job.nodes = new_min_nodes
+                if job.cpus_total < job.nodes * job.cpus_min_per_node:
+                    job.cpus_total = job.nodes * job.cpus_min_per_node
 
 
 def transform_tres_to_dict(value):
@@ -207,6 +216,7 @@ class SlurmJob(ComparableObject):
         "REASON": {"field": "pending_reason"},
         "TRES_PER_JOB": {"field": "tres_per_job", "transformation": transform_tres_to_dict},
         "TRES_PER_TASK": {"field": "tres_per_task", "transformation": transform_tres_to_dict},
+        "TRES_PER_NODE": {"field": "tres_per_node", "transformation": transform_tres_to_dict},
     }
 
     def __init__(
@@ -221,6 +231,7 @@ class SlurmJob(ComparableObject):
         pending_reason="",
         tres_per_job=None,
         tres_per_task=None,
+        tres_per_node=None,
     ):
         self.id = id
         self.state = state
@@ -232,6 +243,7 @@ class SlurmJob(ComparableObject):
         self.pending_reason = pending_reason
         self.tres_per_job = tres_per_job or {}
         self.tres_per_task = tres_per_task or {}
+        self.tres_per_node = tres_per_node or {}
 
     @staticmethod
     def reformat_table(table):
