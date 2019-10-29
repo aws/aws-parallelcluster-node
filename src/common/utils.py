@@ -212,58 +212,71 @@ def _read_cfnconfig():
     return cfnconfig_params
 
 
-def _get_vcpus_from_pricing_file(region, proxy_config, instance_type):
+def _get_instance_info_from_pricing_file(region, proxy_config, instance_type):
     """
-    Read pricing file and get number of vcpus for the given instance type.
+    Read pricing file and get number of vcpus and gpus for the given instance type.
 
-    :return: the number of vcpus or -1 if the instance type cannot be found
+    :return: (the number of vcpus or -1 if the instance type cannot be found,
+                number of gpus or None if the instance does not have gpu)
     """
     instances = _fetch_pricing_file(region, proxy_config)
+    if instance_type not in instances:
+        error_msg = "Instance type {0} not found in instances.json file.".format(instance_type)
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
 
-    return _get_vcpus_by_instance_type(instances, instance_type)
+    return _get_vcpus_by_instance_type(instances, instance_type), _get_gpus_by_instance_type(instances, instance_type)
 
 
 def get_instance_properties(region, proxy_config, instance_type):
     """
     Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
 
-    :return: a dictionary containing the instance properties. E.g. {'slots': <slots>}
+    :return: a dictionary containing the instance properties. E.g. {'slots': slots, 'gpus': gpus}
     """
-    # get vcpus from the pricing file
-    vcpus = _get_vcpus_from_pricing_file(region, proxy_config, instance_type)
+    # Caching mechanism to avoid repetitively retrieving info from pricing file
+    if not hasattr(get_instance_properties, "cache"):
+        get_instance_properties.cache = {}
 
-    try:
-        cfnconfig_params = _read_cfnconfig()
-        cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
-    except KeyError:
-        log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
-        cfn_scheduler_slots = "vcpus"
+    if instance_type not in get_instance_properties.cache:
+        # get vcpus and gpus from the pricing file, gpus = 0 if instance does not have GPU
+        vcpus, gpus = _get_instance_info_from_pricing_file(region, proxy_config, instance_type)
 
-    if cfn_scheduler_slots == "cores":
-        log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
-        slots = -(-vcpus // 2)
+        try:
+            cfnconfig_params = _read_cfnconfig()
+            cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
+        except KeyError:
+            log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
+            cfn_scheduler_slots = "vcpus"
 
-    elif cfn_scheduler_slots == "vcpus":
-        log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
-        slots = vcpus
+        if cfn_scheduler_slots == "cores":
+            log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
+            slots = -(-vcpus // 2)
 
-    elif cfn_scheduler_slots.isdigit():
-        slots = int(cfn_scheduler_slots)
-        log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
-
-        if slots <= 0:
-            log.error(
-                "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
-                    cfn_scheduler_slots
-                )
-            )
+        elif cfn_scheduler_slots == "vcpus":
+            log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
             slots = vcpus
-    else:
-        log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
-        slots = vcpus
 
-    log.info("Number of slots computed for instance %s: %d", instance_type, slots)
-    return {"slots": slots}
+        elif cfn_scheduler_slots.isdigit():
+            slots = int(cfn_scheduler_slots)
+            log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
+
+            if slots <= 0:
+                log.error(
+                    "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
+                        cfn_scheduler_slots
+                    )
+                )
+                slots = vcpus
+        else:
+            log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
+            slots = vcpus
+
+        log.info("Added instance type: {0} to get_instance_properties cache".format(instance_type))
+        get_instance_properties.cache[instance_type] = {"slots": slots, "gpus": int(gpus)}
+
+    log.info("Retrieved instance properties: {0}".format(get_instance_properties.cache[instance_type]))
+    return get_instance_properties.cache[instance_type]
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
@@ -276,6 +289,7 @@ def _fetch_pricing_file(region, proxy_config):
     :raise Exception if unable to download the pricing file.
     """
     bucket_name = "%s-aws-parallelcluster" % region
+
     try:
         s3 = boto3.resource("s3", region_name=region, config=proxy_config)
         instances_file_content = s3.Object(bucket_name, "instances/instances.json").get()["Body"].read()
@@ -298,7 +312,6 @@ def _get_vcpus_by_instance_type(instances, instance_type):
     """
     try:
         vcpus = int(instances[instance_type]["vcpus"])
-        log.info("Instance %s has %s vcpus." % (instance_type, vcpus))
         return vcpus
     except KeyError:
         error_msg = "Unable to get vcpus from instances file. Instance type {0} not found.".format(instance_type)
@@ -310,6 +323,23 @@ def _get_vcpus_by_instance_type(instances, instance_type):
         )
         log.critical(error_msg)
         raise CriticalError(error_msg)
+
+
+def _get_gpus_by_instance_type(instances, instance_type):
+    """
+    Get gpus for the given instance type from the pricing file.
+
+    :param instances: dictionary conatining the content of the instances file
+    :param instance_type: The instance type to search for
+    :return: the number of GPU for the given instance type
+    :raise CriticalError if unable to find the given instance or whatever error.
+    """
+    try:
+        gpus = int(instances[instance_type]["gpu"])
+        return gpus
+    except KeyError:
+        # If instance has no GPU, return 0
+        return 0
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
