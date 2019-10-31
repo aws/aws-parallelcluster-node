@@ -15,7 +15,7 @@ import math
 from textwrap import wrap
 
 from common.schedulers.converters import ComparableObject, from_table_to_obj_list
-from common.utils import check_command_output
+from common.utils import check_command_output, process_gpus_total_for_job
 
 PENDING_RESOURCES_REASONS = [
     "Resources",
@@ -39,6 +39,7 @@ _SQUEUE_FIELDS = [
     "tres-per-job",
     "tres-per-task",
     "tres-per-node",
+    "cpus-per-tres",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 
@@ -128,6 +129,7 @@ def _recompute_required_nodes_by_slots_reservation(pending_jobs, node_slots):
     :param node_slots: max slots per compute node
     """
     for job in pending_jobs:
+        _validate_cpus_total_with_gpus_total(job, process_gpus_total_for_job(job))
         if node_slots >= job.cpus_min_per_node:
             # check the max number of slots I can fill with tasks of size cpus_min_per_node
             usable_slots_per_node = node_slots - (node_slots % job.cpus_min_per_node)
@@ -188,6 +190,17 @@ def _recompute_required_nodes_by_gpu_reservation(pending_jobs, gpus_per_node):
                     job.cpus_total = job.nodes * job.cpus_min_per_node
 
 
+def _validate_cpus_total_with_gpus_total(job, gpus_total):
+    """
+    Need to validate CPUs requested with GPU against total CPUs for a pending job.
+
+    i.e. For this job: sbatch --wrap="sleep 1" -G 2 --cpus-per-gpu=2, we are requesting 4 CPUs total
+    but when this job is pending, the cpus_total from scheduler is 1.
+    """
+    if job.cpus_per_tres and "gpu" in job.cpus_per_tres:
+        job.cpus_total = max(job.cpus_total, job.cpus_per_tres["gpu"] * gpus_total)
+
+
 def transform_tres_to_dict(value):
     if value == "N/A":
         return {}
@@ -217,6 +230,7 @@ class SlurmJob(ComparableObject):
         "TRES_PER_JOB": {"field": "tres_per_job", "transformation": transform_tres_to_dict},
         "TRES_PER_TASK": {"field": "tres_per_task", "transformation": transform_tres_to_dict},
         "TRES_PER_NODE": {"field": "tres_per_node", "transformation": transform_tres_to_dict},
+        "CPUS_PER_TRES": {"field": "cpus_per_tres", "transformation": transform_tres_to_dict},
     }
 
     def __init__(
@@ -232,6 +246,7 @@ class SlurmJob(ComparableObject):
         tres_per_job=None,
         tres_per_task=None,
         tres_per_node=None,
+        cpus_per_tres=None,
     ):
         self.id = id
         self.state = state
@@ -244,6 +259,7 @@ class SlurmJob(ComparableObject):
         self.tres_per_job = tres_per_job or {}
         self.tres_per_task = tres_per_task or {}
         self.tres_per_node = tres_per_node or {}
+        self.cpus_per_tres = cpus_per_tres or {}
 
     @staticmethod
     def reformat_table(table):
