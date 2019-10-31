@@ -42,9 +42,9 @@ log = logging.getLogger(__name__)
 DATA_DIR = "/var/run/nodewatcher/"
 IDLETIME_FILE = DATA_DIR + "node_idletime.json"
 # Timeout used when nodewatcher starts. The node might not be attached to scheduler yet.
-INITIAL_TERMINATE_TIMEOUT = minutes(3)
+INITIAL_TERMINATE_TIMEOUT = minutes(5)
 # Timeout used at every iteration of nodewatcher loop.
-TERMINATE_TIMEOUT = minutes(1)
+TERMINATE_TIMEOUT = minutes(5)
 LOOP_TIME = 60
 
 NodewatcherConfig = collections.namedtuple(
