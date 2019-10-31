@@ -61,8 +61,7 @@ def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
     spy.assert_called_with(
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
-        max_slots_filter=instance_properties["slots"],
-        max_gpus_per_node=instance_properties["gpus"],
+        instance_properties=instance_properties,
     )
 
 
@@ -271,8 +270,7 @@ def test_get_required_nodes_gpu(pending_jobs, expected_required_nodes, mocker):
     spy.assert_called_with(
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
-        max_slots_filter=instance_properties["slots"],
-        max_gpus_per_node=instance_properties["gpus"],
+        instance_properties=instance_properties,
     )
 
 
@@ -367,6 +365,5 @@ def test_get_required_nodes_mix(pending_jobs, expected_required_nodes, mocker):
     spy.assert_called_with(
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
-        max_slots_filter=instance_properties["slots"],
-        max_gpus_per_node=instance_properties["gpus"],
+        instance_properties=instance_properties,
     )

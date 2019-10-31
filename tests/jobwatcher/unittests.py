@@ -16,11 +16,6 @@ class OptimalNodeCountTests(unittest.TestCase):
         expected = 9
         self.assertEqual(nodes, expected)
 
-    def test_slots_requested_greater_than_available(self):
-        nodes = utils.get_optimal_nodes([1], [{"slots": 9}], instance_properties)
-        expected = 0
-        self.assertEqual(nodes, expected)
-
     def test_each_node_half_capacity(self):
         nodes = utils.get_optimal_nodes([1, 5, 3], [{"slots": 4}, {"slots": 20}, {"slots": 12}], instance_properties)
         expected = 5

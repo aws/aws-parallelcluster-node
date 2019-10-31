@@ -85,12 +85,6 @@ def test_get_busy_nodes(compute_nodes, expected_busy_nodes, mocker):
         ),
         (
             [
-                # This is skipped cause ppn=5
-                TorqueJob(
-                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
-                    state="Q",
-                    resources_list=TorqueResourceList(nodes_resources=[(1, 5)], nodes_count=2, ncpus=None),
-                ),
                 # This requires 1 full node
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",
