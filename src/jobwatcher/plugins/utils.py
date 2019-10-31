@@ -19,7 +19,7 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
     Get the optimal number of nodes required to satisfy the number of nodes and slots requested.
 
     :param nodes_requested: Array containing the number of nodes requested by the ith job
-    :param resources_requested: Array containing dict of all resources requested by the ith job, 
+    :param resources_requested: Array containing dict of all resources requested by the ith job,
         i.e. {"slots": 4, "gpus": 4}
     :param instance_properties: instance properties, i.e. slots/gpu/memory available per node
     :return: The optimal number of nodes required to satisfy the input queue.

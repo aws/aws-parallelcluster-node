@@ -229,8 +229,36 @@ def test_get_required_nodes(pending_jobs, expected_required_nodes, mocker):
             ],
             4,
         ),
+        (
+            [
+                SlurmJob(
+                    id="75",
+                    state="PD",
+                    nodes=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    tres_per_job={"gpu": 2},
+                    cpus_per_tres={"gpu": 3},
+                    pending_reason="Priority",
+                ),
+                # Nodes/resources available after processing this job:
+                # [{cpu:1, gpu:1}, {cpu:1, gpu:1}]
+                SlurmJob(
+                    id="76",
+                    state="PD",
+                    nodes=1,
+                    cpus_total=1,
+                    cpus_min_per_node=1,
+                    cpus_per_tres={"gpu": 4},  # Invalid if we don't specify GPU
+                    pending_reason="Resources",
+                ),
+                # Nodes/resources available after processing this job:
+                # [{cpu:0, gpu:1}, {cpu:1, gpu:1}]
+            ],
+            2,
+        ),
     ],
-    ids=["job_only", "task_only", "node_only", "mix"],
+    ids=["job_only", "task_only", "node_only", "mix", "cpus_per_tres"],
 )
 def test_get_required_nodes_gpu(pending_jobs, expected_required_nodes, mocker):
     mocker.patch("common.schedulers.slurm_commands.get_jobs_info", return_value=pending_jobs, autospec=True)

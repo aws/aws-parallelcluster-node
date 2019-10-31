@@ -360,3 +360,14 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     time_delta = (end_time - loop_start_time).total_seconds()
     if time_delta < total_loop_time:
         time.sleep(total_loop_time - time_delta)
+
+
+def process_gpus_total_for_job(job):
+    if job.tres_per_node:
+        return job.tres_per_node["gpu"] * job.nodes
+    if job.tres_per_task:
+        return job.tres_per_task["gpu"] * job.tasks
+    if job.tres_per_job:
+        return job.tres_per_job["gpu"]
+
+    return 0
