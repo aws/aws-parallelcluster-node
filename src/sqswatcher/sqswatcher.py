@@ -228,7 +228,7 @@ def _retrieve_all_sqs_messages(queue, max_processed_messages):
     return messages
 
 
-def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table):
+def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, queue):
     update_events = OrderedDict()
     for message in messages:
         message_text = json.loads(message.body)
@@ -241,9 +241,11 @@ def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table):
             continue
 
         if event_type == "parallelcluster:COMPUTE_READY":
-            update_event = _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message)
+            update_event = _process_compute_ready_event(
+                sqs_config_region, sqs_config_proxy, message_attrs, message, table
+            )
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-            update_event = _process_instance_terminate_event(message_attrs, message, table)
+            update_event = _process_instance_terminate_event(message_attrs, message, table, queue)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
             update_event = None
@@ -263,7 +265,7 @@ def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table):
     return update_events.values()
 
 
-def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message):
+def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message, table):
     instance_id = message_attrs.get("EC2InstanceId")
     instance_type = message_attrs.get("EC2InstanceType")
     # Get instances properties for each event because instance types
@@ -272,10 +274,11 @@ def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_at
     gpus = instance_properties["gpus"]
     slots = message_attrs.get("Slots")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
+    _retry_on_request_limit_exceeded(lambda: table.put_item(Item={"instanceId": instance_id, "hostname": hostname}))
     return UpdateEvent("ADD", message, Host(instance_id, hostname, slots, gpus))
 
 
-def _process_instance_terminate_event(message_attrs, message, table):
+def _process_instance_terminate_event(message_attrs, message, table, queue):
     instance_id = message_attrs.get("EC2InstanceId")
     try:
         item = _retry_on_request_limit_exceeded(
@@ -283,6 +286,7 @@ def _process_instance_terminate_event(message_attrs, message, table):
         )
     except Exception as e:
         log.error("Failed when retrieving instance data for instance %s from db with exception %s", instance_id, e)
+        _requeue_message(queue, message)
         return None
 
     if item.get("Item") is not None:
@@ -290,6 +294,7 @@ def _process_instance_terminate_event(message_attrs, message, table):
         return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None))
     else:
         log.error("Instance %s not found in the database.", instance_id)
+        _requeue_message(queue, message)
         return None
 
 
@@ -314,13 +319,7 @@ def _process_sqs_messages(
 
     for event in update_events:
         try:
-            # Add an item to the table also in case of failures to handle host removal correctly
-            if event.action == "ADD":
-                _retry_on_request_limit_exceeded(
-                    lambda: table.put_item(Item={"instanceId": event.host.instance_id, "hostname": event.host.hostname})
-                )
-            # Remove item from table only in case of success
-            elif event.action == "REMOVE" and event in succeeded_events:
+            if event.action == "REMOVE" and event in succeeded_events:
                 _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
         except Exception as e:
             log.error(
@@ -400,7 +399,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
         cluster_properties_refresh_timer += LOOP_TIME
 
         messages = _retrieve_all_sqs_messages(queue, sqs_config.max_processed_messages)
-        update_events = _parse_sqs_messages(sqs_config.region, sqs_config.proxy_config, messages, table)
+        update_events = _parse_sqs_messages(sqs_config.region, sqs_config.proxy_config, messages, table, queue)
         _process_sqs_messages(
             update_events,
             scheduler_module,
