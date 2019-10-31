@@ -175,19 +175,13 @@ def _recompute_required_nodes_by_gpu_reservation(pending_jobs, gpus_per_node):
         gpus_per_job = job.tres_per_job.get("gpu")
         if gpus_per_job:
             new_min_nodes = int(math.ceil(float(gpus_per_job) / gpus_per_node))
-            if new_min_nodes > job.nodes:
-                job.nodes = new_min_nodes
-                if job.cpus_total < job.nodes * job.cpus_min_per_node:
-                    job.cpus_total = job.nodes * job.cpus_min_per_node
+            _update_job_nodes_and_cpus_total(job, new_min_nodes)
 
         gpus_per_task = job.tres_per_task.get("gpu")
         if gpus_per_task:
             tasks_schedulable_per_node = float(gpus_per_node) // gpus_per_task
             new_min_nodes = int(math.ceil(float(job.tasks) / tasks_schedulable_per_node))
-            if new_min_nodes > job.nodes:
-                job.nodes = new_min_nodes
-                if job.cpus_total < job.nodes * job.cpus_min_per_node:
-                    job.cpus_total = job.nodes * job.cpus_min_per_node
+            _update_job_nodes_and_cpus_total(job, new_min_nodes)
 
 
 def _validate_cpus_total_with_gpus_total(job, gpus_total):
@@ -199,6 +193,21 @@ def _validate_cpus_total_with_gpus_total(job, gpus_total):
     """
     if job.cpus_per_tres and "gpu" in job.cpus_per_tres:
         job.cpus_total = max(job.cpus_total, job.cpus_per_tres["gpu"] * gpus_total)
+
+
+def _update_job_nodes_and_cpus_total(job, new_min_nodes):
+    """
+    Update job.nodes and check/change job.cpus_total.
+
+    We need to do this check for GPU jobs.
+    i.e. we have 2 GPUs per node, we submit "sbatch --wrap='sleep 1' -G 4".
+    When we read in this job, job.nodes=1, job.cpus_total=1, job.cpus_min_per_node=1
+    We update job.nodes=2 in the previous step, but we also need to change job.cpus_total from 1 to 2
+    """
+    if new_min_nodes > job.nodes:
+        job.nodes = new_min_nodes
+        if job.cpus_total < job.nodes * job.cpus_min_per_node:
+            job.cpus_total = job.nodes * job.cpus_min_per_node
 
 
 def transform_tres_to_dict(value):
@@ -279,4 +288,5 @@ class SlurmJob(ComparableObject):
 
     @staticmethod
     def from_table(table):
+        logging.info("Retrieved following jobs from scheduler: {0}".format(SlurmJob.reformat_table(table)))
         return from_table_to_obj_list(SlurmJob.reformat_table(table), SlurmJob)

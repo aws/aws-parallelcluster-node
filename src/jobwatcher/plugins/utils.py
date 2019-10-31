@@ -24,7 +24,6 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
     :param instance_properties: instance properties, i.e. slots/gpu/memory available per node
     :return: The optimal number of nodes required to satisfy the input queue.
     """
-    # vcpus = instance_properties.get("slots")
     resources_remaining_per_node = []
 
     for job_resources, num_of_nodes in zip(resources_requested, nodes_requested):
@@ -39,7 +38,7 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
         for resource_type in job_resources:
             job_resources_per_node[resource_type] = -(-job_resources[resource_type] // num_of_nodes)
 
-        job_valid = _validate_job_against_all_resources(job_resources_per_node, instance_properties)
+        job_valid = _job_runnable_on_given_node(job_resources_per_node, instance_properties, existing_node=False)
         if not job_valid:
             continue
 
@@ -48,7 +47,9 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
             if num_of_nodes == 0:
                 break
             # Check if node represented by slot_idx can be used to run this job
-            job_runnable_on_node = _job_runnable_on_existing_node(job_resources_per_node, resources_available)
+            job_runnable_on_node = _job_runnable_on_given_node(
+                job_resources_per_node, resources_available, existing_node=True
+            )
             if job_runnable_on_node:
                 for resource_type in job_resources:
                     resources_remaining_per_node[slot_idx][resource_type] -= job_resources_per_node[resource_type]
@@ -68,33 +69,29 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
     return len(resources_remaining_per_node)
 
 
-def _validate_job_against_all_resources(job_resources_per_node, instance_properties):
+def _job_runnable_on_given_node(job_resources_per_node, resources_available, existing_node=False):
+    """Check to see if job can be run on a given node."""
     for resource_type in job_resources_per_node:
         try:
-            if job_resources_per_node[resource_type] > instance_properties[resource_type]:
-                log.warning(
-                    (
-                        "Resource:{0} required per node ({1}) is greater than resources "
-                        "available on single node ({2}), skipping job..."
-                    ).format(resource_type, job_resources_per_node[resource_type], instance_properties[resource_type])
-                )
+            if resources_available[resource_type] < job_resources_per_node[resource_type]:
+                if existing_node:
+                    log.info(
+                        "Resource:{0} unavailable in existing node or not enough to satisfy job requirement".format(
+                            resource_type
+                        )
+                    )
+                else:
+                    log.warning(
+                        (
+                            "Resource:{0} required per node ({1}) is greater than resources "
+                            "available on single node ({2}), skipping job..."
+                        ).format(
+                            resource_type, job_resources_per_node[resource_type], resources_available[resource_type]
+                        )
+                    )
                 return False
         except KeyError as e:
             log.warning(e)
             return False
 
-    return True
-
-
-def _job_runnable_on_existing_node(job_resources_per_node, resources_available):
-    for resource_type in job_resources_per_node:
-        if resources_available[resource_type] < job_resources_per_node[resource_type]:
-            log.info(
-                "Resource:{0} unavailable in existing node or not enough to satisfy job requirement".format(
-                    resource_type
-                )
-            )
-            return False
-
-    log.info("All resources required available in existing node")
     return True

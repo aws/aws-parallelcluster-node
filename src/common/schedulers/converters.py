@@ -83,6 +83,10 @@ def from_table_to_obj_list(table, obj_type, separator="|"):
                 mapping = mappings.get(column)
                 if mapping:
                     transformation_func = mapping.get("transformation")
+                    # Adding check to avoid error for jobwatcher
+                    # cpus_per_task will be N/A if -c is not specified
+                    if mapping.get("field") == "cpus_per_task" and item == "N/A":
+                        item = 0
                     value = item if transformation_func is None else transformation_func(item)
                     setattr(obj, mapping["field"], value)
             results.append(obj)

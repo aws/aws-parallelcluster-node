@@ -363,6 +363,7 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
 
 
 def process_gpus_total_for_job(job):
+    """Calculate the total number of GPUs needed by a job."""
     if job.tres_per_node:
         return job.tres_per_node["gpu"] * job.nodes
     if job.tres_per_task:
