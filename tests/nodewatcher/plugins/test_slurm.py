@@ -60,6 +60,5 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
     mock.assert_called_with(
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
-        max_slots_filter=instance_properties["slots"],
-        max_gpus_per_node=instance_properties["gpus"],
+        instance_properties=instance_properties,
     )

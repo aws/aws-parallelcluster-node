@@ -10,8 +10,12 @@
 # limitations under the License.
 import logging
 
-from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, get_pending_jobs_info
-from common.utils import check_command_output, process_gpus_total_for_job
+from common.schedulers.slurm_commands import (
+    PENDING_RESOURCES_REASONS,
+    get_pending_jobs_info,
+    process_gpus_total_for_job,
+)
+from common.utils import check_command_output
 from jobwatcher.plugins.utils import get_optimal_nodes
 
 log = logging.getLogger(__name__)
@@ -21,8 +25,7 @@ log = logging.getLogger(__name__)
 def get_required_nodes(instance_properties, max_size):
     log.info("Computing number of required nodes for submitted jobs")
     pending_jobs = get_pending_jobs_info(
-        max_slots_filter=instance_properties.get("slots"),
-        max_gpus_per_node=instance_properties.get("gpus"),
+        instance_properties=instance_properties,
         max_nodes_filter=max_size,
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
     )
