@@ -66,10 +66,11 @@ def _reconfigure_nodes():
 
 def _read_node_list(config_file):
     nodes = []
-    with open(config_file) as slurm_config:
-        for line in slurm_config:
-            if line.startswith("NodeName") and "dummy-compute" not in line:
-                nodes.append(line)
+    if os.path.exists(config_file):
+        with open(config_file) as slurm_config:
+            for line in slurm_config:
+                if line.startswith("NodeName") and "dummy-compute" not in line:
+                    nodes.append(line)
     return nodes
 
 
