@@ -23,6 +23,8 @@ from subprocess import check_output
 import boto3
 from retrying import retry
 
+from common.time_utils import seconds
+
 log = logging.getLogger(__name__)
 
 
@@ -75,6 +77,7 @@ def get_asg_name(stack_name, region, proxy_config):
         raise CriticalError("Unable to get ASG for stack {0}. Failed with exception: {1}".format(stack_name, e))
 
 
+@retry(stop_max_attempt_number=5, wait_exponential_multiplier=seconds(0.5), wait_exponential_max=seconds(10))
 def get_asg_settings(region, proxy_config, asg_name):
     try:
         asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
@@ -83,7 +86,7 @@ def get_asg_settings(region, proxy_config, asg_name):
         desired_capacity = asg.get("DesiredCapacity")
         max_size = asg.get("MaxSize")
 
-        log.info("min/desired/max %d/%d/%d" % (min_size, desired_capacity, max_size))
+        log.info("ASG min/desired/max: %d/%d/%d" % (min_size, desired_capacity, max_size))
         return min_size, desired_capacity, max_size
     except Exception as e:
         log.error("Failed when retrieving data for ASG %s with exception %s", asg_name, e)
@@ -360,3 +363,18 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     time_delta = (end_time - loop_start_time).total_seconds()
     if time_delta < total_loop_time:
         time.sleep(total_loop_time - time_delta)
+
+
+def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
+    try:
+        _, _, max_size = get_asg_settings(region, proxy_config, asg_name)
+        return max_size
+    except Exception as e:
+        if fallback:
+            logging.warning("Failed when retrieving max cluster size with error %s. Returning fallback value", e)
+            return fallback
+        error_msg = "Unable to retrieve max size from ASG. Failed with error {0}. No fallback value available.".format(
+            e
+        )
+        log.critical(error_msg)
+        raise CriticalError(error_msg)

@@ -23,6 +23,7 @@ from datetime import datetime
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from retrying import RetryError, retry
 
@@ -34,6 +35,7 @@ from common.utils import (
     get_asg_settings,
     get_instance_properties,
     load_module,
+    retrieve_max_cluster_size,
     sleep_remaining_loop_time,
 )
 
@@ -46,6 +48,7 @@ INITIAL_TERMINATE_TIMEOUT = minutes(5)
 # Timeout used at every iteration of nodewatcher loop.
 TERMINATE_TIMEOUT = minutes(5)
 LOOP_TIME = 60
+CLUSTER_PROPERTIES_REFRESH_INTERVAL = 300
 
 NodewatcherConfig = collections.namedtuple(
     "NodewatcherConfig", ["region", "scheduler", "stack_name", "scaledown_idletime", "proxy_config"]
@@ -146,9 +149,13 @@ def _self_terminate(asg_client, instance_id, decrement_desired=True):
             InstanceId=instance_id, ShouldDecrementDesiredCapacity=decrement_desired
         )
         sys.exit(0)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ValidationError":
+            log.info("Min ASG size reached. Not terminating.")
+        else:
+            log.error("Failed when self terminating instance with error %s.", e.response)
     except Exception as e:
         log.error("Failed when self terminating instance with exception %s.", e)
-        return False
 
 
 def _maintain_size(asg_name, asg_client):
@@ -194,7 +201,7 @@ def _dump_logs(instance_id):
         log.warning("Failed while dumping logs to %s with exception %s.", filename, e)
 
 
-def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait):
+def _terminate_if_down(scheduler_module, config, instance_id, max_wait):
     """Check that node is correctly attached to scheduler otherwise terminate the instance."""
     asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
 
@@ -210,10 +217,9 @@ def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait
     except RetryError:
         log.error("Node is marked as down by scheduler or not attached correctly. Terminating...")
         _dump_logs(instance_id)
-        # decrement asg desired only if not reached the min.
         # jobwatcher already has the logic to request a new host in case of down nodes,
         # which is done in order to speed up cluster recovery.
-        _self_terminate(asg_client, instance_id, decrement_desired=not _maintain_size(asg_name, asg_client))
+        _self_terminate(asg_client, instance_id, decrement_desired=True)
 
 
 @retry(
@@ -291,19 +297,40 @@ def _init_idletime():
     return idletime
 
 
-def _lock_and_terminate(scheduler_module, hostname, asg_name, asg_conn, instance_id):
+def _lock_and_terminate(region, proxy_config, scheduler_module, hostname, instance_id):
     _lock_host(scheduler_module, hostname)
     if _has_jobs(scheduler_module, hostname):
         log.info("Instance has active jobs.")
         _lock_host(scheduler_module, hostname, unlock=True)
         return
 
-    if _maintain_size(asg_name, asg_conn):
-        log.info("Not terminating due to min cluster size reached")
-    else:
-        _self_terminate(asg_conn, instance_id)
-
+    asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
+    _self_terminate(asg_client, instance_id)
+    # _self_terminate exits on success
     _lock_host(scheduler_module, hostname, unlock=True)
+
+
+def _refresh_cluster_properties(region, proxy_config, asg_name):
+    """
+    Return dynamic cluster properties (at the moment only max cluster size).
+
+    The properties are fetched every CLUSTER_PROPERTIES_REFRESH_INTERVAL otherwise a cached value is returned.
+    """
+    if not hasattr(_refresh_cluster_properties, "cluster_properties_refresh_timer"):
+        _refresh_cluster_properties.cluster_properties_refresh_timer = 0
+        _refresh_cluster_properties.cached_max_cluster_size = None
+
+    _refresh_cluster_properties.cluster_properties_refresh_timer += LOOP_TIME
+    if (
+        not _refresh_cluster_properties.cached_max_cluster_size
+        or _refresh_cluster_properties.cluster_properties_refresh_timer >= CLUSTER_PROPERTIES_REFRESH_INTERVAL
+    ):
+        _refresh_cluster_properties.cluster_properties_refresh_timer = 0
+        logging.info("Refreshing cluster properties")
+        _refresh_cluster_properties.cached_max_cluster_size = retrieve_max_cluster_size(
+            region, proxy_config, asg_name, fallback=_refresh_cluster_properties.cached_max_cluster_size
+        )
+    return _refresh_cluster_properties.cached_max_cluster_size
 
 
 def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance_id, instance_type):
@@ -319,7 +346,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param instance_type: current instance type
     """
     _wait_for_stack_ready(config.stack_name, config.region, config.proxy_config)
-    _terminate_if_down(scheduler_module, config, asg_name, instance_id, INITIAL_TERMINATE_TIMEOUT)
+    _terminate_if_down(scheduler_module, config, instance_id, INITIAL_TERMINATE_TIMEOUT)
 
     idletime = _init_idletime()
     instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
@@ -328,35 +355,42 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
         sleep_remaining_loop_time(LOOP_TIME, start_time)
         start_time = datetime.now()
 
+        max_cluster_size = _refresh_cluster_properties(config.region, config.proxy_config, asg_name)
+
         _store_idletime(idletime)
-        _terminate_if_down(scheduler_module, config, asg_name, instance_id, TERMINATE_TIMEOUT)
+        _terminate_if_down(scheduler_module, config, instance_id, TERMINATE_TIMEOUT)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
             log.info("Instance has active jobs.")
             idletime = 0
         else:
-            asg_conn = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
-            if _maintain_size(asg_name, asg_conn):
+            has_pending_jobs, error = scheduler_module.has_pending_jobs(instance_properties, max_cluster_size)
+            if error:
+                # In case of failure _terminate_if_down will take care of removing the node
+                log.warning("Encountered an error while polling queue for pending jobs. Considering node as busy")
+                continue
+            elif has_pending_jobs:
+                log.info("Queue has pending jobs. Not terminating instance")
+                idletime = 0
+                continue
+
+            try:
+                min_size, desired_capacity, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
+            except Exception as e:
+                logging.error("Failed when retrieving ASG settings with exception %s", e)
+                continue
+
+            if desired_capacity <= min_size:
                 log.info("Not terminating due to min cluster size reached")
                 idletime = 0
             else:
-                _, _, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
-                has_pending_jobs, error = scheduler_module.has_pending_jobs(instance_properties, max_size)
-                if error:
-                    log.warning(
-                        "Encountered an error while polling queue for pending jobs. Skipping pending jobs check"
-                    )
-                elif has_pending_jobs:
-                    log.info("Queue has pending jobs. Not terminating instance")
-                    idletime = 0
-                    continue
-
                 idletime += 1
                 log.info("Instance had no job for the past %s minute(s)", idletime)
 
                 if idletime >= config.scaledown_idletime:
-                    _lock_and_terminate(scheduler_module, hostname, asg_name, asg_conn, instance_id)
+                    _lock_and_terminate(config.region, config.proxy_config, scheduler_module, hostname, instance_id)
+                    # _lock_and_terminate exits if termination is successful
                     # set idletime to 0 if termination is aborted
                     idletime = 0
 
