@@ -27,10 +27,10 @@ from common.time_utils import seconds
 from common.utils import (
     CriticalError,
     get_asg_name,
-    get_asg_settings,
     get_compute_instance_type,
     get_instance_properties,
     load_module,
+    retrieve_max_cluster_size,
     sleep_remaining_loop_time,
 )
 
@@ -353,14 +353,6 @@ def update_cluster(instance_properties, max_cluster_size, scheduler_module, sqs_
     return failed_events, succeeded_events
 
 
-def _retrieve_max_cluster_size(sqs_config, asg_name, fallback):
-    try:
-        _, _, max_size = get_asg_settings(sqs_config.region, sqs_config.proxy_config, asg_name)
-        return max_size
-    except Exception:
-        return fallback
-
-
 def _poll_queue(sqs_config, queue, table, asg_name):
     """
     Poll SQS queue.
@@ -387,7 +379,9 @@ def _poll_queue(sqs_config, queue, table, asg_name):
         ):
             cluster_properties_refresh_timer = 0
             logging.info("Refreshing cluster properties")
-            new_max_cluster_size = _retrieve_max_cluster_size(sqs_config, asg_name, fallback=max_cluster_size)
+            new_max_cluster_size = retrieve_max_cluster_size(
+                sqs_config.region, sqs_config.proxy_config, asg_name, fallback=max_cluster_size
+            )
             new_instance_type = get_compute_instance_type(
                 sqs_config.region, sqs_config.proxy_config, sqs_config.stack_name, fallback=instance_type
             )
