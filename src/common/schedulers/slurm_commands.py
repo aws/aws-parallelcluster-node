@@ -38,6 +38,8 @@ _SQUEUE_FIELDS = [
     "reason",
     "tres-per-job",
     "tres-per-task",
+    "tres-per-node",
+    "cpus-per-tres",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 
@@ -57,9 +59,7 @@ def get_jobs_info(job_state_filter=None):
     return SlurmJob.from_table(output)
 
 
-def get_pending_jobs_info(
-    max_slots_filter=None, max_nodes_filter=None, filter_by_pending_reasons=None, max_gpus_per_node=0
-):
+def get_pending_jobs_info(instance_properties=None, max_nodes_filter=None, filter_by_pending_reasons=None):
     """
     Retrieve the list of pending jobs from the Slurm scheduler.
 
@@ -74,19 +74,19 @@ def get_pending_jobs_info(
     :return: array of filtered SlurmJobs
     """
     pending_jobs = get_jobs_info(job_state_filter="PD")
-    if max_slots_filter:
-        _recompute_required_nodes_by_slots_reservation(pending_jobs, max_slots_filter)
-        _recompute_required_nodes_by_gpu_reservation(pending_jobs, max_gpus_per_node)
-    if max_slots_filter or filter_by_pending_reasons or max_nodes_filter:
+    logging.info("Retrieved the following original pending jobs: {0}".format(pending_jobs))
+    if instance_properties:
+        _recompute_required_nodes_by_slots_reservation(pending_jobs, instance_properties["slots"])
+        _recompute_required_nodes_by_gpu_reservation(pending_jobs, instance_properties["gpus"])
+    if instance_properties or filter_by_pending_reasons or max_nodes_filter:
         filtered_jobs = []
         for job in pending_jobs:
-            if max_slots_filter and job.cpus_min_per_node > max_slots_filter:
-                logging.info(
-                    "Skipping job %s since required slots per node (%d) exceed max slots (%d)",
-                    job.id,
-                    job.cpus_min_per_node,
-                    max_slots_filter,
-                )
+            job_resources = {
+                "slots": max(job.cpus_min_per_node, -(-job.cpus_total // job.nodes)),
+                "gpus": -(-process_gpus_total_for_job(job) // job.nodes),
+            }
+            if instance_properties and not job_runnable_on_given_node(job_resources, instance_properties):
+                continue
             elif max_nodes_filter and job.nodes > max_nodes_filter:
                 logging.info(
                     "Skipping job %s since required nodes (%d) exceed max nodes in cluster (%d)",
@@ -127,6 +127,7 @@ def _recompute_required_nodes_by_slots_reservation(pending_jobs, node_slots):
     :param node_slots: max slots per compute node
     """
     for job in pending_jobs:
+        _recompute_cpus_total_with_cpus_per_gpu(job)
         if node_slots >= job.cpus_min_per_node:
             # check the max number of slots I can fill with tasks of size cpus_min_per_node
             usable_slots_per_node = node_slots - (node_slots % job.cpus_min_per_node)
@@ -171,12 +172,49 @@ def _recompute_required_nodes_by_gpu_reservation(pending_jobs, gpus_per_node):
     for job in pending_jobs:
         gpus_per_job = job.tres_per_job.get("gpu")
         if gpus_per_job:
-            job.nodes = max(int(math.ceil(float(gpus_per_job) / gpus_per_node)), job.nodes)
+            new_min_nodes = int(math.ceil(float(gpus_per_job) / gpus_per_node))
+            _update_job_nodes_and_cpus_total(job, new_min_nodes)
 
         gpus_per_task = job.tres_per_task.get("gpu")
         if gpus_per_task:
             tasks_schedulable_per_node = float(gpus_per_node) // gpus_per_task
-            job.nodes = max(int(math.ceil(float(job.tasks) / tasks_schedulable_per_node)), job.nodes)
+            new_min_nodes = int(math.ceil(float(job.tasks) / tasks_schedulable_per_node))
+            _update_job_nodes_and_cpus_total(job, new_min_nodes)
+
+
+def _recompute_cpus_total_with_cpus_per_gpu(job):
+    """
+    Need to recompute CPUs requested with GPU against total CPUs for a pending job.
+
+    i.e. For this job: sbatch --wrap="sleep 1" -G 2 --cpus-per-gpu=2, we are requesting 4 CPUs total
+    but when this job is pending, the cpus_total from scheduler is 1.
+    """
+    if job.cpus_per_tres and "gpu" in job.cpus_per_tres:
+        num_gpus = process_gpus_total_for_job(job)
+        cpus_requested_with_gpu = job.cpus_per_tres["gpu"] * num_gpus
+        if cpus_requested_with_gpu > job.cpus_total:
+            logging.info(
+                (
+                    "Number of CPUs requested with GPUs({0}) is greater than number of cpus_total({1}) "
+                    "retrieved from job, setting cpus_total to {0}"
+                ).format(cpus_requested_with_gpu, job.cpus_total)
+            )
+            job.cpus_total = cpus_requested_with_gpu
+
+
+def _update_job_nodes_and_cpus_total(job, new_min_nodes):
+    """
+    Update job.nodes and check/change job.cpus_total.
+
+    We need to do this check for GPU jobs.
+    i.e. we have 2 GPUs per node, we submit "sbatch --wrap='sleep 1' -G 4".
+    When we read in this job, job.nodes=1, job.cpus_total=1, job.cpus_min_per_node=1
+    We update job.nodes=2 in the previous step, but we also need to change job.cpus_total from 1 to 2
+    """
+    if new_min_nodes > job.nodes:
+        job.nodes = new_min_nodes
+        if job.cpus_total < job.nodes * job.cpus_min_per_node:
+            job.cpus_total = job.nodes * job.cpus_min_per_node
 
 
 def transform_tres_to_dict(value):
@@ -190,10 +228,50 @@ def transform_tres_to_dict(value):
     return tres_dict
 
 
+def process_gpus_total_for_job(job):
+    """Calculate the total number of GPUs needed by a job."""
+    if job.tres_per_node:
+        return job.tres_per_node["gpu"] * job.nodes
+    if job.tres_per_task:
+        return job.tres_per_task["gpu"] * job.tasks
+    if job.tres_per_job:
+        return job.tres_per_job["gpu"]
+
+    return 0
+
+
+def job_runnable_on_given_node(job_resources_per_node, resources_available, existing_node=False):
+    """Check to see if job can be run on a given node."""
+    for resource_type in job_resources_per_node:
+        try:
+            if resources_available[resource_type] < job_resources_per_node[resource_type]:
+                if existing_node:
+                    logging.info(
+                        "Resource:{0} unavailable in existing node or not enough to satisfy job requirement".format(
+                            resource_type
+                        )
+                    )
+                else:
+                    logging.warning(
+                        (
+                            "Resource:{0} required per node ({1}) is greater than resources "
+                            "available on single node ({2}), skipping job..."
+                        ).format(
+                            resource_type, job_resources_per_node[resource_type], resources_available[resource_type]
+                        )
+                    )
+                return False
+        except KeyError as e:
+            logging.warning(e)
+            return False
+
+    return True
+
+
 class SlurmJob(ComparableObject):
     # This is the format after being processed by reformat_table function
     # JOBID|ST|NODES|CPUS|TASKS|CPUS_PER_TASK|MIN_CPUS|REASON|TRES_PER_JOB|TRES_PER_TASK
-    # 72|PD|2|5|5|1|1|Resources|N/A|N/A
+    # 72|PD|2|5|5|N/A|1|Resources|N/A|N/A
     # 86|PD|10|40|4|4|4|PartitionConfig|gpu:12|N/A
     # 87|PD|10|10|10|1|1|PartitionNodeLimit|N/A|gpu:4
     MAPPINGS = {
@@ -202,11 +280,17 @@ class SlurmJob(ComparableObject):
         "NODES": {"field": "nodes", "transformation": int},
         "CPUS": {"field": "cpus_total", "transformation": int},
         "TASKS": {"field": "tasks", "transformation": int},
-        "CPUS_PER_TASK": {"field": "cpus_per_task", "transformation": int},
+        # cpus_per_task will be N/A if -c is not specified
+        "CPUS_PER_TASK": {
+            "field": "cpus_per_task",
+            "transformation": lambda value: 1 if value == "N/A" else int(value),
+        },
         "MIN_CPUS": {"field": "cpus_min_per_node", "transformation": int},
         "REASON": {"field": "pending_reason"},
         "TRES_PER_JOB": {"field": "tres_per_job", "transformation": transform_tres_to_dict},
         "TRES_PER_TASK": {"field": "tres_per_task", "transformation": transform_tres_to_dict},
+        "TRES_PER_NODE": {"field": "tres_per_node", "transformation": transform_tres_to_dict},
+        "CPUS_PER_TRES": {"field": "cpus_per_tres", "transformation": transform_tres_to_dict},
     }
 
     def __init__(
@@ -221,6 +305,8 @@ class SlurmJob(ComparableObject):
         pending_reason="",
         tres_per_job=None,
         tres_per_task=None,
+        tres_per_node=None,
+        cpus_per_tres=None,
     ):
         self.id = id
         self.state = state
@@ -232,6 +318,8 @@ class SlurmJob(ComparableObject):
         self.pending_reason = pending_reason
         self.tres_per_job = tres_per_job or {}
         self.tres_per_task = tres_per_task or {}
+        self.tres_per_node = tres_per_node or {}
+        self.cpus_per_tres = cpus_per_tres or {}
 
     @staticmethod
     def reformat_table(table):

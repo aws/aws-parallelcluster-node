@@ -176,7 +176,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     # Add a dummy node if node_list is empty so that slurm can start when cluster is stopped
     if not node_list:
         node_list.append(
-            "NodeName=dummy-compute-stop CPUs={1} State=DOWN Reason=Cluster is stopped or max size is 0.\n".format(
+            'NodeName=dummy-compute-stop CPUs={0} State=DOWN Reason="Cluster is stopped or max size is 0"\n'.format(
                 instance_properties["slots"]
             )
         )
