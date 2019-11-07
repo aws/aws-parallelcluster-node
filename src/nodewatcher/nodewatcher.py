@@ -201,7 +201,7 @@ def _dump_logs(instance_id):
         log.warning("Failed while dumping logs to %s with exception %s.", filename, e)
 
 
-def _terminate_if_down(scheduler_module, config, instance_id, max_wait):
+def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait):
     """Check that node is correctly attached to scheduler otherwise terminate the instance."""
     asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
 
@@ -219,7 +219,7 @@ def _terminate_if_down(scheduler_module, config, instance_id, max_wait):
         _dump_logs(instance_id)
         # jobwatcher already has the logic to request a new host in case of down nodes,
         # which is done in order to speed up cluster recovery.
-        _self_terminate(asg_client, instance_id, decrement_desired=True)
+        _self_terminate(asg_client, instance_id, decrement_desired=not _maintain_size(asg_name, asg_client))
 
 
 @retry(
@@ -346,7 +346,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
     :param instance_type: current instance type
     """
     _wait_for_stack_ready(config.stack_name, config.region, config.proxy_config)
-    _terminate_if_down(scheduler_module, config, instance_id, INITIAL_TERMINATE_TIMEOUT)
+    _terminate_if_down(scheduler_module, config, asg_name, instance_id, INITIAL_TERMINATE_TIMEOUT)
 
     idletime = _init_idletime()
     instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
@@ -358,7 +358,7 @@ def _poll_instance_status(config, scheduler_module, asg_name, hostname, instance
         max_cluster_size = _refresh_cluster_properties(config.region, config.proxy_config, asg_name)
 
         _store_idletime(idletime)
-        _terminate_if_down(scheduler_module, config, instance_id, TERMINATE_TIMEOUT)
+        _terminate_if_down(scheduler_module, config, asg_name, instance_id, TERMINATE_TIMEOUT)
 
         has_jobs = _has_jobs(scheduler_module, hostname)
         if has_jobs:
