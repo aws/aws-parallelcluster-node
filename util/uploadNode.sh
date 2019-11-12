@@ -98,7 +98,7 @@ main() {
     aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.tgz.date s3://${_bucket}/node/aws-parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to push node date'
 
     _bucket_region=$(aws ${_profile} s3api get-bucket-location --bucket ${_bucket} --output text)
-    if [ ${_bucket_region} == "None" ]; then
+    if [ ${_bucket_region} = "None" ]; then
         _bucket_region=""
     else
         _bucket_region=".${_bucket_region}"
