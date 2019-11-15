@@ -86,6 +86,7 @@ def _add_keys_to_known_hosts(server_keys, host_keys_file):
                     key = RSAKey(data=base64.b64decode(key_tuple[0]))
                     host_keys.add(hostname=hostname, key=key, keytype=key_tuple[1])
                     host_keys.add(hostname=hostname + ".*", key=key, keytype=key_tuple[1])
+                    host_keys.add(hostname=socket.gethostbyname(hostname), key=key, keytype=key_tuple[1])
                     logging.info(
                         "Adding keys to known hosts file '{0}' for host '{1}'".format(host_keys_file, hostname)
                     )
@@ -103,6 +104,8 @@ def _remove_keys_from_known_hosts(hostnames, host_keys_file, user):
         command = "ssh-keygen -R " + hostname + " -f " + host_keys_file
         run_command(command, raise_on_error=False, execute_as_user=user)
         command = "ssh-keygen -R " + hostname + ". -f " + host_keys_file
+        run_command(command, raise_on_error=False, execute_as_user=user)
+        command = "ssh-keygen -R " + socket.gethostbyname(hostname) + " -f " + host_keys_file
         run_command(command, raise_on_error=False, execute_as_user=user)
 
 

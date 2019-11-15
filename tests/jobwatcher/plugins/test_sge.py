@@ -107,6 +107,14 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
                     state="d",
                     jobs=[],
                 ),
+                "ip-10-0-0-175.eu-west-1.compute.internal": SgeHost(
+                    name="ip-10-0-0-175.eu-west-1.compute.internal",
+                    slots_total=4,
+                    slots_used=0,
+                    slots_reserved=0,
+                    state="adu",
+                    jobs=[],
+                ),
                 "ip-10-0-0-171.eu-west-1.compute.internal": SgeHost(
                     name="ip-10-0-0-171.eu-west-1.compute.internal",
                     slots_total=0,
@@ -116,7 +124,7 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
                     jobs=[],
                 ),
             },
-            3,
+            2,
         ),
         (
             {

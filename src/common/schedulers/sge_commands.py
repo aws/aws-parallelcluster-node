@@ -56,7 +56,10 @@ QCONF_COMMANDS = {
 # or some combination thereof.
 # Refer to qstat man page for additional details.
 # o(rphaned) is not considered as busy since we assume a node in orphaned state is not present in ASG anymore
-SGE_BUSY_STATES = ["u", "C", "s", "d", "D", "E", "P"]
+SGE_BUSY_STATES = ["u", "C", "s", "D", "E", "P"]
+
+# This state is set by nodewatcher when the node is locked and is being terminated.
+SGE_DISABLED_STATE = "d"
 
 # If an o(rphaned) state is displayed for a queue instance, it indicates that the queue instance is no longer demanded
 # by the current cluster queue configuration or the host group configuration. The queue instance is kept because jobs
@@ -133,10 +136,11 @@ def remove_hosts_from_queue(hosts):
 def install_sge_on_compute_nodes(hosts, cluster_user):
     """Start sge on compute nodes in parallel."""
     command = (
-        "sudo sh -c 'cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf'"
+        "sudo sh -c 'ps aux | grep [s]ge_execd || "
+        "(cd {0} && {0}/inst_sge -noremote -x -auto /opt/parallelcluster/templates/sge/sge_inst.conf)'"
     ).format(sge.SGE_ROOT)
     hostnames = [host.hostname for host in hosts]
-    result = RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user)
+    result = RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user, timeout=20)
 
     succeeded_hosts = []
     for host in hosts:
@@ -206,6 +210,7 @@ def get_jobs_info(hostname_filter=None, job_state_filter=None):
 def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None):
     """
     Retrieve the list of pending jobs.
+
     :param max_slots_filter: discard jobs that require a number of slots bigger than the given value
     :param skip_if_state: discard jobs that are in the given state
     :return: the list of filtered pending jos.

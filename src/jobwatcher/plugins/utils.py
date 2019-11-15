@@ -1,47 +1,67 @@
+# Copyright 2013-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+import copy
 import logging
+
+from common.schedulers.slurm_commands import job_runnable_on_given_node
 
 log = logging.getLogger(__name__)
 
 
-def get_optimal_nodes(nodes_requested, slots_requested, instance_properties):
+def get_optimal_nodes(nodes_requested, resources_requested, instance_properties):
     """
     Get the optimal number of nodes required to satisfy the number of nodes and slots requested.
 
     :param nodes_requested: Array containing the number of nodes requested by the ith job
-    :param slots_requested: Array containing the number of slots requested by the ith job
-    :param instance_properties: instance properties, i.e. number of slots available per node
+    :param resources_requested: Array containing dict of all resources requested by the ith job,
+        i.e. {"slots": 4, "gpus": 4}
+    :param instance_properties: instance properties, i.e. slots/gpu/memory available per node
     :return: The optimal number of nodes required to satisfy the input queue.
     """
-    vcpus = instance_properties.get("slots")
-    slots_remaining_per_node = []
+    resources_remaining_per_node = []
 
-    for slots, num_of_nodes in zip(slots_requested, nodes_requested):
-        log.info("Requested %s nodes and %s slots" % (num_of_nodes, slots))
-        # For simplicity, uniformly distribute the numbers of cpus requested across all the requested nodes
-        slots_required_per_node = -(-slots // num_of_nodes)
-
-        if slots_required_per_node > vcpus:
-            log.warning(
-                "Slots required per node (%d) is greater than vcpus available on single node (%d), skipping job...",
-                slots_required_per_node,
-                vcpus,
+    for job_resources, num_of_nodes in zip(resources_requested, nodes_requested):
+        log.info(
+            "Processing job that requested {0} nodes and the following resources: {1}".format(
+                num_of_nodes, job_resources
             )
-            continue
+        )
+
+        # For simplicity, uniformly distribute the resource requested across all the requested nodes
+        job_resources_per_node = {}
+        for resource_type in job_resources:
+            job_resources_per_node[resource_type] = -(-job_resources[resource_type] // num_of_nodes)
 
         # Verify if there are enough available slots in the nodes allocated in the previous rounds
-        for slot_idx, slots_available in enumerate(slots_remaining_per_node):
-            if num_of_nodes > 0 and slots_available >= slots_required_per_node:
-                log.info("Slot available in existing node")
-                # The node represented by slot_idx can be used to run this job
-                slots_remaining_per_node[slot_idx] -= slots_required_per_node
+        for slot_idx, resources_available in enumerate(resources_remaining_per_node):
+            if num_of_nodes == 0:
+                break
+            # Check if node represented by slot_idx can be used to run this job
+            job_runnable_on_node = job_runnable_on_given_node(
+                job_resources_per_node, resources_available, existing_node=True
+            )
+            if job_runnable_on_node:
+                for resource_type in job_resources:
+                    resources_remaining_per_node[slot_idx][resource_type] -= job_resources_per_node[resource_type]
                 num_of_nodes -= 1
 
-        log.info("After looking at already allocated nodes, %s more nodes are needed" % num_of_nodes)
+        log.info("After looking at existing nodes, %s more nodes are needed" % num_of_nodes)
 
         # Since the number of available slots were unable to run this job entirely, only add the necessary nodes.
-        for i in range(num_of_nodes):
-            log.info("Adding node. Using %s slots" % slots_required_per_node)
-            slots_remaining_per_node.append(vcpus - slots_required_per_node)
+        for _ in range(num_of_nodes):
+            new_node = copy.deepcopy(instance_properties)
+            log.info("Adding new node. Using following resources" % job_resources)
+            for resource_type in job_resources:
+                new_node[resource_type] -= job_resources_per_node[resource_type]
+            resources_remaining_per_node.append(new_node)
 
     # return the number of nodes added
-    return len(slots_remaining_per_node)
+    return len(resources_remaining_per_node)

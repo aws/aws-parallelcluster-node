@@ -41,14 +41,15 @@ from jobwatcher.plugins.torque import get_busy_nodes, get_required_nodes
                     name="ip-10-0-1-237",
                     slots=4,
                     state="job-exclusive",
-                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    jobs="1/136.ip-10-0-0-196.eu-west-1.compute.internal,"
+                    "2/137.ip-10-0-0-196.eu-west-1.compute.internal,"
                     "0,3/138.ip-10-0-0-196.eu-west-1.compute.internal",
                 ),
             },
             2,
         ),
         ({}, 0),
-        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 1),
+        ({"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state=["down", "offline"], jobs=None)}, 0),
         (
             {
                 "ip-10-0-0-196": TorqueHost(
@@ -84,12 +85,6 @@ def test_get_busy_nodes(compute_nodes, expected_busy_nodes, mocker):
         ),
         (
             [
-                # This is skipped cause ppn=5
-                TorqueJob(
-                    id="149.ip-10-0-0-196.eu-west-1.compute.internal",
-                    state="Q",
-                    resources_list=TorqueResourceList(nodes_resources=[(1, 5)], nodes_count=2, ncpus=None),
-                ),
                 # This requires 1 full node
                 TorqueJob(
                     id="150.ip-10-0-0-196.eu-west-1.compute.internal",

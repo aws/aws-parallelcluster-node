@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, SlurmJob
-from nodewatcher.plugins.slurm import hasPendingJobs
+from nodewatcher.plugins.slurm import has_pending_jobs
 
 
 @pytest.mark.parametrize(
@@ -53,12 +53,12 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
     else:
         mock = mocker.patch("nodewatcher.plugins.slurm.get_pending_jobs_info", return_value=pending_jobs, autospec=True)
 
-    instance_properties = {"slots": 4}
+    instance_properties = {"slots": 4, "gpus": 0}
     max_cluster_size = 10
 
-    assert_that(hasPendingJobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
+    assert_that(has_pending_jobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
     mock.assert_called_with(
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
-        max_slots_filter=instance_properties["slots"],
+        instance_properties=instance_properties,
     )

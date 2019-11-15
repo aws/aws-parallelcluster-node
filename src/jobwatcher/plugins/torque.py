@@ -28,13 +28,13 @@ def get_required_nodes(instance_properties, max_size):
         if job.resources_list.nodes_resources:
             for nodes, ppn in job.resources_list.nodes_resources:
                 nodes_requested.append(nodes)
-                slots_requested.append(ppn * nodes)
+                slots_requested.append({"slots": ppn * nodes})
         elif job.resources_list.ncpus:
             nodes_requested.append(1)
-            slots_requested.append(job.resources_list.ncpus)
+            slots_requested.append({"slots": job.resources_list.ncpus})
         elif job.resources_list.nodes_count:
             nodes_requested.append(job.resources_list.nodes_count)
-            slots_requested.append(1 * job.resources_list.nodes_count)
+            slots_requested.append({"slots": 1 * job.resources_list.nodes_count})
 
     return get_optimal_nodes(nodes_requested, slots_requested, instance_properties)
 
@@ -42,11 +42,12 @@ def get_required_nodes(instance_properties, max_size):
 # get nodes reserved by running jobs
 def get_busy_nodes():
     nodes = get_compute_nodes_info()
+    logging.info("Found the following compute nodes:\n%s", nodes)
     busy_nodes = 0
     for node in nodes.values():
         # when a node is added it transitions from down,offline,MOM-list-not-sent -> down -> free
         if node.jobs or (
-            any(state in ["offline", "state-unknown"] for state in node.state) and "MOM-list-not-sent" not in node.state
+            any(state in ["state-unknown"] for state in node.state) and "MOM-list-not-sent" not in node.state
         ):
             busy_nodes += 1
 
