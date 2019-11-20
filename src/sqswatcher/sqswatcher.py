@@ -151,11 +151,8 @@ def _get_ddb_table(region, table_name, proxy_config):
     log.debug("Getting DynamoDB table '%s'", table_name)
     ddb_client = boto3.client("dynamodb", region_name=region, config=proxy_config)
     try:
-        tables = ddb_client.list_tables().get("TableNames")
-        if table_name not in tables:
-            error_msg = "Unable to find the DynamoDB table '{0}'".format(table_name)
-            log.critical(error_msg)
-            raise CriticalError(error_msg)
+        # Check that table exists
+        ddb_client.describe_table(TableName=table_name)
 
         ddb_resource = boto3.resource("dynamodb", region_name=region, config=proxy_config)
         table = ddb_resource.Table(table_name)
