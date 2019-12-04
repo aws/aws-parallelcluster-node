@@ -3,6 +3,14 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.5.1
+-----
+
+**BUG FIXES**
+- Fix bug in sqswatcher that was causing the daemon to crash when more than 100 DynamoDB tables are present in the
+  cluster region.
+
+
 2.5.0
 -----
 
