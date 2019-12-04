@@ -28,7 +28,7 @@ console_scripts = [
     "nodewatcher = nodewatcher.nodewatcher:main",
     "jobwatcher = jobwatcher.jobwatcher:main",
 ]
-version = "2.5.0"
+version = "2.5.1"
 requires = ["requests>=2.21.0", "boto3>=1.7.55", "retrying>=1.3.3", "configparser>=3.7.4", "paramiko>=2.4.2"]
 
 setup(
