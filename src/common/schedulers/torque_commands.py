@@ -132,8 +132,19 @@ def delete_nodes(hosts):
 def update_cluster_limits(max_nodes, node_slots):
     try:
         logging.info("Updating cluster limits: max_nodes=%d, node_slots=%d", max_nodes, node_slots)
-        run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_available.nodect={0}"'.format(max_nodes))
-        run_command(TORQUE_BIN_DIR + 'qmgr -c "set server resources_available.nodect={0}"'.format(max_nodes))
+        # resources_available.nodect enforces the max number of usable slots. Setting this to max_queue_size causes
+        # torque not to use all slots available to the cluster and the scheduler erroneously limits the number of
+        # concurrent running jobs so that the total number of required nodes is equal to max_queue_size. This is not
+        # correct because a node can be shared across multiple jobs if free slots are available.
+        run_command(
+            TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_available.nodect={0}"'.format(max_nodes * node_slots)
+        )
+        run_command(
+            TORQUE_BIN_DIR + 'qmgr -c "set server resources_available.nodect={0}"'.format(max_nodes * node_slots)
+        )
+        # resources_max.nodect enforces the max size of the cluster
+        run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_max.nodect={0}"'.format(max_nodes))
+        run_command(TORQUE_BIN_DIR + 'qmgr -c "set server resources_max.nodect={0}"'.format(max_nodes))
         run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_max.ncpus={0}"'.format(node_slots))
         _update_master_np(max_nodes, node_slots)
     except Exception as e:
