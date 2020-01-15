@@ -98,5 +98,5 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     return failed, succeeded
 
 
-def init():
+def init(scheduler_conf_dir=None):
     pass

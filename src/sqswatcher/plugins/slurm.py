@@ -26,16 +26,17 @@ from common.utils import run_command
 
 log = logging.getLogger(__name__)
 
-PCLUSTER_NODES_CONFIG = "/opt/slurm/etc/slurm_parallelcluster_nodes.conf"
+PCLUSTER_CONF_DIR = "/opt/slurm/etc"
+PCLUSTER_NODES_CONFIG = PCLUSTER_CONF_DIR + "/slurm_parallelcluster_nodes.conf"
 # slurm_parallelcluster_gres.conf is included in gres.conf,
 # so user can easily add to gres.conf without interfering with sqswatcher logic.
-PCLUSTER_GRES_CONFIG = "/opt/slurm/etc/slurm_parallelcluster_gres.conf"
+PCLUSTER_GRES_CONFIG = PCLUSTER_CONF_DIR + "/slurm_parallelcluster_gres.conf"
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=10000)
 def _restart_master_node():
     log.info("Restarting slurm on master node")
-    if os.path.isfile("/etc/systemd/system/slurmctld.service"):
+    if os.path.exists("/usr/lib/systemd"):
         command = ["sudo", "systemctl", "restart", "slurmctld.service"]
     else:
         command = ["/etc/init.d/slurm", "restart"]
@@ -48,7 +49,7 @@ def _restart_master_node():
 
 def _restart_multiple_compute_nodes(hostnames, cluster_user):
     command = (
-        "if [ -f /etc/systemd/system/slurmd.service ]; "
+        "if [ -e /usr/lib/systemd ]; "
         "then sudo systemctl restart slurmd.service; "
         'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
     )
@@ -57,7 +58,7 @@ def _restart_multiple_compute_nodes(hostnames, cluster_user):
 
 def _reconfigure_nodes():
     log.info("Reconfiguring slurm")
-    command = ["/opt/slurm/bin/scontrol", "reconfigure"]
+    command = ["scontrol", "reconfigure"]
     try:
         run_command(command)
     except Exception as e:
@@ -202,5 +203,9 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     return failed, succeeded
 
 
-def init():
-    pass
+def init(scheduler_conf_dir=None):
+    global PCLUSTER_CONF_DIR, PCLUSTER_NODES_CONFIG, PCLUSTER_GRES_CONFIG
+    if scheduler_conf_dir:
+        PCLUSTER_CONF_DIR = scheduler_conf_dir
+        PCLUSTER_NODES_CONFIG = PCLUSTER_CONF_DIR + "/slurm_parallelcluster_nodes.conf"
+        PCLUSTER_GRES_CONFIG = PCLUSTER_CONF_DIR + "/slurm_parallelcluster_gres.conf"

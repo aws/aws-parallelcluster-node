@@ -45,7 +45,7 @@ def get_required_nodes(instance_properties, max_size):
 
 # get nodes reserved by running jobs
 def get_busy_nodes():
-    command = "/opt/slurm/bin/sinfo -h -o '%D %t'"
+    command = "sinfo -h -o '%D %t'"
     # Sample output:
     # 2 mix
     # 4 alloc

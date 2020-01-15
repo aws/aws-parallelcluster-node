@@ -51,7 +51,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     return failed, succeeded
 
 
-def init():
+def init(scheduler_conf_dir=None):
     if hasattr(init, "wakeup_scheduler_worker_thread") and init.wakeup_scheduler_worker_thread.is_alive():
         return
     init.wakeup_scheduler_worker_thread = threading.Thread(target=_wakeup_scheduler_worker)

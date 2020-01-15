@@ -51,7 +51,7 @@ def get_jobs_info(job_state_filter=None):
     :param job_state_filter: filter jobs by the given state
     :return: a list of SlurmJob objects representing the submitted jobs.
     """
-    command = "/opt/slurm/bin/squeue -r -O '{0}'".format(SQUEUE_FIELD_STRING)
+    command = "squeue -r -O '{0}'".format(SQUEUE_FIELD_STRING)
     if job_state_filter:
         command += " --states {0}".format(job_state_filter)
 
@@ -116,7 +116,7 @@ def _recompute_required_nodes_by_slots_reservation(pending_jobs, node_slots):
 
     For example, when submitting a job with: sbatch -c 3 -n 5 in a cluster with 4-slot nodes, the output of the squeue
     command is:
-        /opt/slurm/bin/squeue -r -o '%i|%t|%D|%C|%c|%r'
+        squeue -r -o '%i|%t|%D|%C|%c|%r'
         JOBID|ST|NODES|CPUS|MIN_CPUS|REASON
         91|PD|4|15|3|Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions
 

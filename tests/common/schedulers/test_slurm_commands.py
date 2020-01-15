@@ -163,7 +163,7 @@ def test_get_jobs_info(squeue_mocked_response, expected_output, test_datadir, mo
     jobs = get_jobs_info(job_state_filter="PD,R")
 
     mock.assert_called_with(
-        "/opt/slurm/bin/squeue -r -O 'jobid:200,statecompact:200,numnodes:200,numcpus:200,numtasks:200,"
+        "squeue -r -O 'jobid:200,statecompact:200,numnodes:200,numcpus:200,numtasks:200,"
         "cpus-per-task:200,mincpus:200,reason:200,tres-per-job:200,tres-per-task:200,tres-per-node:200,"
         "cpus-per-tres:200' --states PD,R"
     )

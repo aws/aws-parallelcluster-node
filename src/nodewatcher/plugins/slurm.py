@@ -10,6 +10,7 @@
 # limitations under the License.
 
 import logging
+import socket
 import subprocess
 
 from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, get_pending_jobs_info
@@ -22,7 +23,7 @@ def has_jobs(hostname):
     # Slurm won't use FQDN
     short_name = hostname.split(".")[0]
     # Checking for running jobs on the node
-    command = ["/opt/slurm/bin/squeue", "-w", short_name, "-h"]
+    command = ["squeue", "-w", short_name, "-h"]
     try:
         output = check_command_output(command)
         logging.info("Found the following running jobs:\n%s", output.rstrip())
@@ -59,7 +60,7 @@ def lock_host(hostname, unlock=False):
     if unlock:
         log.info("Unlocking host %s", hostname)
         command = [
-            "/opt/slurm/bin/scontrol",
+            "scontrol",
             "update",
             "NodeName={0}".format(hostname),
             "State=RESUME",
@@ -68,7 +69,7 @@ def lock_host(hostname, unlock=False):
     else:
         log.info("Locking host %s", hostname)
         command = [
-            "/opt/slurm/bin/scontrol",
+            "scontrol",
             "update",
             "NodeName={0}".format(hostname),
             "State=DRAIN",
@@ -87,7 +88,15 @@ def is_node_down():
         # https://slurm.schedmd.com/sinfo.html#lbAG
         # Output format:
         # down*
-        command = "/bin/bash -c \"/opt/slurm/bin/sinfo --noheader -o '%T' -n $(hostname)\""
+        hostname = socket.get_hostname()
+        command = [
+            "sinfo",
+            "--noheader",
+            "-o",
+            "%T",
+            "-n",
+            hostname
+        ]
         output = check_command_output(command).strip()
         log.info("Node is in state: '{0}'".format(output))
         if output and all(state not in output for state in ["down", "drained", "fail"]):
@@ -99,10 +108,10 @@ def is_node_down():
 
 
 def _get_node_slots():
-    hostname = check_command_output("hostname")
+    hostname = socket.get_hostname()
     # retrieves number of slots for a specific node in the cluster.
     # Output format:
     # 4
-    command = "/opt/slurm/bin/sinfo -o '%c' -n {0} -h".format(hostname)
+    command = "sinfo -o '%c' -n {0} -h".format(hostname)
     output = check_command_output(command)
     return int(output)

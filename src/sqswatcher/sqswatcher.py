@@ -51,6 +51,7 @@ SQSWatcherConfig = collections.namedtuple(
     [
         "region",
         "scheduler",
+        "scheduler_conf_dir",
         "sqsqueue",
         "table_name",
         "cluster_user",
@@ -82,6 +83,7 @@ def _get_config():
 
     region = config.get("sqswatcher", "region")
     scheduler = config.get("sqswatcher", "scheduler")
+    scheduler_conf_dir = config.get("sqswatcher", "scheduler_conf_dir", fallback=None)
     sqsqueue = config.get("sqswatcher", "sqsqueue")
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
@@ -96,10 +98,11 @@ def _get_config():
         proxy_config = Config(proxies={"https": _proxy})
 
     log.info(
-        "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
-        "proxy=%s stack_name=%s max_processed_messages=%s",
+        "Configured parameters: region=%s scheduler=%s scheduler_conf_dir=%s sqsqueue=%s table_name=%s "
+        "cluster_user=%s proxy=%s stack_name=%s max_processed_messages=%s",
         region,
         scheduler,
+        scheduler_conf_dir,
         sqsqueue,
         table_name,
         cluster_user,
@@ -108,7 +111,15 @@ def _get_config():
         max_processed_messages,
     )
     return SQSWatcherConfig(
-        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name, max_processed_messages
+        region,
+	scheduler,
+	scheduler_conf_dir,
+	sqsqueue,
+	table_name,
+	cluster_user,
+	proxy_config,
+	stack_name,
+	max_processed_messages
     )
 
 
@@ -359,7 +370,7 @@ def _poll_queue(sqs_config, queue, table, asg_name):
     :param table: DB table resource object
     """
     scheduler_module = load_module("sqswatcher.plugins." + sqs_config.scheduler)
-    scheduler_module.init()
+    scheduler_module.init(sqs_config.scheduler_conf_dir)
 
     max_cluster_size = None
     instance_type = None

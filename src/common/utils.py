@@ -206,7 +206,13 @@ def _read_cfnconfig():
     :return: a dictionary containing the configuration parameters
     """
     cfnconfig_params = {}
-    cfnconfig_file = "/opt/parallelcluster/cfnconfig"
+    cfnconfig_file_locations = ["/opt/parallelcluster/cfnconfig", "/etc/parallelcluster/cfnconfig"]
+    cfnconfig_file = None
+    for fl in cfnconfig_file_locations:
+        if os.path.exists(fl):
+            cfnconfig_file = fl
+    if not cfnconfig_file:
+        raise CriticalError("Could not find cfnconfig file.")
     log.info("Reading %s", cfnconfig_file)
     with open(cfnconfig_file) as f:
         for kvp in f:
