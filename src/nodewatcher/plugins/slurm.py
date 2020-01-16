@@ -89,14 +89,7 @@ def is_node_down():
         # Output format:
         # down*
         hostname = socket.get_hostname()
-        command = [
-            "sinfo",
-            "--noheader",
-            "-o",
-            "%T",
-            "-n",
-            hostname
-        ]
+        command = ["sinfo", "--noheader", "-o", "%T", "-n", hostname]
         output = check_command_output(command).strip()
         log.info("Node is in state: '{0}'".format(output))
         if output and all(state not in output for state in ["down", "drained", "fail"]):

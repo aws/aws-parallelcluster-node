@@ -112,14 +112,14 @@ def _get_config():
     )
     return SQSWatcherConfig(
         region,
-	scheduler,
-	scheduler_conf_dir,
-	sqsqueue,
-	table_name,
-	cluster_user,
-	proxy_config,
-	stack_name,
-	max_processed_messages
+        scheduler,
+        scheduler_conf_dir,
+        sqsqueue,
+        table_name,
+        cluster_user,
+        proxy_config,
+        stack_name,
+        max_processed_messages,
     )
 
 
