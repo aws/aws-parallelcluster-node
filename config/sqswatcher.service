@@ -1,0 +1,16 @@
+[Unit]
+Description=AWS ParallelCluster Sqswatcher service
+After=network.target
+ConditionPathExists=/etc/sqswatcher.cfg
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sqswatcher
+ExecReload=/bin/kill -HUP $MAINPID
+StandardError=syslog
+PIDFile=/var/run/sqswatcher.pid
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
