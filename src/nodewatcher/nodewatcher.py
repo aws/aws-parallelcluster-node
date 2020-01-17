@@ -20,6 +20,7 @@ import tarfile
 import time
 from contextlib import closing
 from datetime import datetime
+from urllib.request import urlopen
 
 import boto3
 from botocore.config import Config
@@ -27,7 +28,6 @@ from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from retrying import RetryError, retry
 
-import requests
 from common.time_utils import minutes, seconds
 from common.utils import (
     CriticalError,
@@ -99,7 +99,7 @@ def _get_metadata(metadata_path):
     :return the metadata value.
     """
     try:
-        metadata_value = requests.get("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).text
+        metadata_value = urlopen("http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)).read().decode()
     except Exception as e:
         error_msg = "Unable to get {0} metadata. Failed with exception: {1}".format(metadata_path, e)
         log.critical(error_msg)
