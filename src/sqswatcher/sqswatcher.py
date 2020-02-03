@@ -22,7 +22,6 @@ from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from retrying import retry
 
-from common.ssh_keyscan import update_ssh_known_hosts
 from common.time_utils import seconds
 from common.utils import (
     CriticalError,
@@ -337,8 +336,6 @@ def _process_sqs_messages(
 
 
 def update_cluster(instance_properties, max_cluster_size, scheduler_module, sqs_config, update_events):
-    # Managing SSH host keys for the nodes joining and leaving the cluster
-    update_ssh_known_hosts(update_events, sqs_config.cluster_user)
     try:
         failed_events, succeeded_events = scheduler_module.update_cluster(
             max_cluster_size, sqs_config.cluster_user, update_events, instance_properties
