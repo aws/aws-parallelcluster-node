@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.6.0
+-----
+
+**CHANGES**
+- Remove logic that was adding compute nodes identity to known_hosts file.
+
 2.5.1
 -----
 
