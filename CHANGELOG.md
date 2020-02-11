@@ -7,7 +7,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 -----
 
 **CHANGES**
-- Remove logic that was adding compute nodes identity to known_hosts file.
+- Remove logic that was adding compute nodes identity to known_hosts file for all OSs except CentOS6
 
 2.5.1
 -----
