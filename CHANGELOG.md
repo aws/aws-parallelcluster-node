@@ -9,6 +9,10 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Remove logic that was adding compute nodes identity to known_hosts file for all OSs except CentOS6
 
+**BUG FIXES**
+- Fix Torque issue that was limiting the max number of running jobs to the max size of the cluster.
+
+
 2.5.1
 -----
 
