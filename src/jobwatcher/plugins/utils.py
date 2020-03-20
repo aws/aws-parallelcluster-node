@@ -53,15 +53,13 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
                     resources_remaining_per_node[slot_idx][resource_type] -= job_resources_per_node[resource_type]
                 num_of_nodes -= 1
 
-        log.info("After looking at existing nodes, %s more nodes are needed" % num_of_nodes)
-
         # Since the number of available slots were unable to run this job entirely, only add the necessary nodes.
         for _ in range(num_of_nodes):
             new_node = copy.deepcopy(instance_properties)
-            log.info("Adding new node. Using following resources" % job_resources)
             for resource_type in job_resources:
                 new_node[resource_type] -= job_resources_per_node[resource_type]
             resources_remaining_per_node.append(new_node)
 
     # return the number of nodes added
+    log.info("Computed following allocation for required nodes %s", resources_remaining_per_node)
     return len(resources_remaining_per_node)
