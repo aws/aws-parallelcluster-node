@@ -57,6 +57,6 @@ def get_busy_nodes():
     output = output.split("\n")
     for line in output:
         line_arr = line.split()
-        if len(line_arr) == 2 and (line_arr[1] in ["mix", "alloc", "down", "down*"]):
+        if len(line_arr) == 2 and (line_arr[1] in ["mix", "alloc"]):
             nodes += int(line_arr[0])
     return nodes
