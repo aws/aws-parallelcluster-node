@@ -16,7 +16,7 @@ import socket
 from math import ceil
 from multiprocessing import Pool
 
-from common.utils import run_command
+from common.utils import EventType, run_command
 from paramiko import HostKeys, RSAKey, Transport
 
 
@@ -112,9 +112,9 @@ def _remove_keys_from_known_hosts(hostnames, host_keys_file, user):
 def update_ssh_known_hosts(events, user):
     host_keys_file = os.path.expanduser("~" + user) + "/.ssh/known_hosts"
     _remove_keys_from_known_hosts(
-        [event.host.hostname for event in events if event.action == "REMOVE"], host_keys_file, user
+        [event.host.hostname for event in events if event.action == EventType.REMOVE], host_keys_file, user
     )
     _add_keys_to_known_hosts(
-        _get_server_key_on_multiple_hosts([event.host.hostname for event in events if event.action == "ADD"]),
+        _get_server_key_on_multiple_hosts([event.host.hostname for event in events if event.action == EventType.ADD]),
         host_keys_file,
     )
