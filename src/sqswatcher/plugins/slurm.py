@@ -22,7 +22,7 @@ from shutil import move
 from retrying import retry
 
 from common.remote_command_executor import RemoteCommandExecutor
-from common.utils import run_command
+from common.utils import EventType, run_command
 
 log = logging.getLogger(__name__)
 
@@ -97,10 +97,10 @@ def _update_gres_node_lists(update_events):
     """
     gres_node_list = _read_node_list(PCLUSTER_GRES_CONFIG)
     for event in update_events:
-        if event.action == "REMOVE":
+        if event.action == EventType.REMOVE:
             node_name = "NodeName={0}".format(event.host.hostname)
             gres_node_list = [node for node in gres_node_list if node.split()[0] != node_name]
-        elif event.action == "ADD":
+        elif event.action == EventType.ADD:
             # Only add new node in gres.conf if instance has GPU
             if event.host.gpus != 0:
                 new_gres_node = "NodeName={nodename} Name=gpu Type=tesla File=/dev/nvidia[0-{gpus}]\n".format(
@@ -124,10 +124,10 @@ def _update_node_lists(update_events):
     node_list = _read_node_list(PCLUSTER_NODES_CONFIG)
     nodes_to_restart = []
     for event in update_events:
-        if event.action == "REMOVE":
+        if event.action == EventType.REMOVE:
             node_name = "NodeName={0}".format(event.host.hostname)
             node_list = [node for node in node_list if node.split()[0] != node_name]
-        elif event.action == "ADD":
+        elif event.action == EventType.ADD:
             # Only include GPU info if instance has GPU
             gpu_info = "Gres=gpu:tesla:{gpus} ".format(gpus=event.host.gpus) if event.host.gpus != 0 else ""
             new_node = "NodeName={nodename} CPUs={cpus} {gpu_info}State=UNKNOWN\n".format(
