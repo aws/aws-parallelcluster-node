@@ -9,6 +9,7 @@
 # or in the "LICENSE.txt" file accompanying this file.
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
+import collections
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from enum import Enum
 from subprocess import check_output
 
 import boto3
@@ -32,6 +34,15 @@ class CriticalError(Exception):
     """Critical error for the daemon."""
 
     pass
+
+
+class EventType(Enum):
+    ADD = "ADD"
+    REMOVE = "REMOVE"
+
+
+Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
+UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 
 
 def load_module(module):

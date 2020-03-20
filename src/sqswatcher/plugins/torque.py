@@ -20,6 +20,7 @@ from common.schedulers.torque_commands import (
     update_cluster_limits,
     wakeup_scheduler,
 )
+from common.utils import EventType
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +33,9 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
         hosts_to_add = []
         hosts_to_remove = []
         for event in update_events:
-            if event.action == "REMOVE":
+            if event.action == EventType.REMOVE:
                 hosts_to_remove.append(event.host.hostname)
-            elif event.action == "ADD":
+            elif event.action == EventType.ADD:
                 hosts_to_add.append(event.host.hostname)
 
         added_hosts = add_nodes(hosts_to_add, instance_properties["slots"])

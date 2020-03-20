@@ -9,8 +9,8 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
 import collections
+import itertools
 import json
 import logging
 import platform
@@ -27,6 +27,9 @@ from common.ssh_keyscan import update_ssh_known_hosts
 from common.time_utils import seconds
 from common.utils import (
     CriticalError,
+    EventType,
+    Host,
+    UpdateEvent,
     get_asg_name,
     get_compute_instance_type,
     get_instance_properties,
@@ -60,10 +63,6 @@ SQSWatcherConfig = collections.namedtuple(
         "max_processed_messages",
     ],
 )
-
-Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
-
-UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 
 
 def _get_config():
@@ -227,7 +226,8 @@ def _retrieve_all_sqs_messages(queue, max_processed_messages):
 
 
 def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, queue):
-    update_events = OrderedDict()
+    add_events = []
+    remove_events = []
     for message in messages:
         message_text = json.loads(message.body)
         message_attrs = json.loads(message_text.get("Message"))
@@ -239,26 +239,27 @@ def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, qu
             continue
 
         if event_type == "parallelcluster:COMPUTE_READY":
-            update_event = _process_compute_ready_event(
-                sqs_config_region, sqs_config_proxy, message_attrs, message, table
-            )
+            add_event = _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message, table)
+            if add_event:
+                add_events.append(add_event)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-            update_event = _process_instance_terminate_event(message_attrs, message, table, queue)
+            remove_event = _process_instance_terminate_event(message_attrs, message, table, queue)
+            if remove_event:
+                remove_events.append(remove_event)
         else:
             log.info("Unsupported event type %s. Discarding message." % event_type)
-            update_event = None
-
-        if update_event:
-            log.info("Processing %s event for instance %s", event_type, update_event.host)
-            hostname = update_event.host.hostname
-            if hostname in update_events:
-                # delete first to preserve messages order in dict
-                del update_events[hostname]
-            update_events[hostname] = update_event
-        else:
-            # discarding message
-            log.warning("Discarding message %s", message)
             message.delete()
+
+    update_events = OrderedDict()
+    for event in itertools.chain(add_events, remove_events):
+        log.info("Processing %s event for instance %s", event.action, event.host)
+        hostname = event.host.hostname
+        if hostname in update_events:
+            # events are looped in the order they are fetched and by iterating over REMOVE events after ADD events.
+            # in case of collisions let's always remove the item that comes first in order to always favor REMOVE ops.
+            log.info("Hostname collision. Discarding event %s in favour of event %s", update_events[hostname], event)
+            del update_events[hostname]
+        update_events[hostname] = event
 
     return update_events.values()
 
@@ -273,7 +274,7 @@ def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_at
     slots = message_attrs.get("Slots")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
     _retry_on_request_limit_exceeded(lambda: table.put_item(Item={"instanceId": instance_id, "hostname": hostname}))
-    return UpdateEvent("ADD", message, Host(instance_id, hostname, slots, gpus))
+    return UpdateEvent(EventType.ADD, message, Host(instance_id, hostname, slots, gpus))
 
 
 def _process_instance_terminate_event(message_attrs, message, table, queue):
@@ -285,14 +286,16 @@ def _process_instance_terminate_event(message_attrs, message, table, queue):
     except Exception as e:
         log.error("Failed when retrieving instance data for instance %s from db with exception %s", instance_id, e)
         _requeue_message(queue, message)
+        message.delete()
         return None
 
     if item.get("Item") is not None:
         hostname = item.get("Item").get("hostname")
-        return UpdateEvent("REMOVE", message, Host(instance_id, hostname, None, None))
+        return UpdateEvent(EventType.REMOVE, message, Host(instance_id, hostname, None, None))
     else:
         log.error("Instance %s not found in the database.", instance_id)
         _requeue_message(queue, message)
+        message.delete()
         return None
 
 
@@ -317,7 +320,7 @@ def _process_sqs_messages(
 
     for event in update_events:
         try:
-            if event.action == "REMOVE" and event in succeeded_events:
+            if event.action == EventType.REMOVE and event in succeeded_events:
                 _retry_on_request_limit_exceeded(lambda: table.delete_item(Key={"instanceId": event.host.instance_id}))
         except Exception as e:
             log.error(
@@ -333,7 +336,10 @@ def _process_sqs_messages(
 
     for event in failed_events:
         log.error("Failed when processing event %s for instance %s", event.action, event.host)
-        _requeue_message(queue, event.message)
+        if event.action == EventType.REMOVE:
+            _requeue_message(queue, event.message)
+        else:
+            log.error("Deleting failed event %s from queue: %s", event.action, event.message.body)
         event.message.delete()
 
 

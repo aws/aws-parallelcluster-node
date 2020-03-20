@@ -19,6 +19,7 @@ from common.schedulers.sge_commands import (
     remove_hosts_from_group,
     remove_hosts_from_queue,
 )
+from common.utils import EventType
 
 log = logging.getLogger(__name__)
 
@@ -79,9 +80,9 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
     hosts_to_add = []
     hosts_to_remove = []
     for event in update_events:
-        if event.action == "REMOVE":
+        if event.action == EventType.REMOVE:
             hosts_to_remove.append(event.host)
-        elif event.action == "ADD":
+        elif event.action == EventType.ADD:
             hosts_to_add.append(event.host)
 
     added_hosts = _add_hosts(hosts_to_add, cluster_user)
