@@ -3,6 +3,5 @@ pytest-cov
 pytest-datadir
 pytest-html
 pytest-mock
-pytest-sugar
 assertpy
 codecov
