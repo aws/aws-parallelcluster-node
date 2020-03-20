@@ -47,12 +47,13 @@ def _restart_master_node():
 
 
 def _restart_multiple_compute_nodes(hostnames, cluster_user):
+    log.info("Restarting slurmd on following compute nodes %s", hostnames)
     command = (
         "if [ -f /etc/systemd/system/slurmd.service ]; "
         "then sudo systemctl restart slurmd.service; "
         'else sudo sh -c "/etc/init.d/slurm restart 2>&1 > /tmp/slurmdstart.log"; fi'
     )
-    return RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user)
+    return RemoteCommandExecutor.run_remote_command_on_multiple_hosts(command, hostnames, cluster_user, parallelism=30)
 
 
 def _reconfigure_nodes():
