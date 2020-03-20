@@ -184,23 +184,6 @@ def _maintain_size(asg_name, asg_client):
         return False
 
 
-def _dump_logs(instance_id):
-    """Dump gzipped /var/log dir to /home/logs/compute/$instance_id.tar.gz."""
-    logs_dir = "/home/logs/compute"
-    filename = "{0}/{1}.tar.gz".format(logs_dir, instance_id)
-    try:
-        try:
-            os.makedirs(logs_dir)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise
-        log.info("Dumping logs to %s", filename)
-        with closing(tarfile.open(filename, "w|gz")) as archive:
-            archive.add("/var/log", recursive=True)
-    except Exception as e:
-        log.warning("Failed while dumping logs to %s with exception %s.", filename, e)
-
-
 def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait):
     """Check that node is correctly attached to scheduler otherwise terminate the instance."""
     asg_client = boto3.client("autoscaling", region_name=config.region, config=config.proxy_config)
@@ -216,7 +199,6 @@ def _terminate_if_down(scheduler_module, config, asg_name, instance_id, max_wait
         _poll_wait_for_node_ready()
     except RetryError:
         log.error("Node is marked as down by scheduler or not attached correctly. Terminating...")
-        _dump_logs(instance_id)
         # jobwatcher already has the logic to request a new host in case of down nodes,
         # which is done in order to speed up cluster recovery.
         _self_terminate(asg_client, instance_id, decrement_desired=not _maintain_size(asg_name, asg_client))
