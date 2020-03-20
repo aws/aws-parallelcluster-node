@@ -11,14 +11,11 @@
 # limitations under the License.
 
 import collections
-import errno
 import json
 import logging
 import os
 import sys
-import tarfile
 import time
-from contextlib import closing
 from datetime import datetime
 from urllib.request import urlopen
 
