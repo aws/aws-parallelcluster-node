@@ -246,7 +246,7 @@ def job_runnable_on_given_node(job_resources_per_node, resources_available, exis
         try:
             if resources_available[resource_type] < job_resources_per_node[resource_type]:
                 if existing_node:
-                    logging.info(
+                    logging.debug(
                         "Resource:{0} unavailable in existing node or not enough to satisfy job requirement".format(
                             resource_type
                         )
