@@ -184,7 +184,7 @@ def _requeue_message(queue, message):
     :param queue: the queue where to send the message
     :param message: the message to requeue
     """
-    max_retries = 2
+    max_retries = 1
     message_body = json.loads(message.body)
     if "TTL" not in message_body:
         message_body["TTL"] = max_retries
