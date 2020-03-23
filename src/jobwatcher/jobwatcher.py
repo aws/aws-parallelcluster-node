@@ -105,8 +105,13 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
         # get current limits
         _, current_desired, max_size = get_asg_settings(config.region, config.proxy_config, asg_name)
 
+        # Get current number of nodes
+        running = scheduler_module.get_busy_nodes()
+
         # Get number of nodes requested
         pending = scheduler_module.get_required_nodes(instance_properties, max_size)
+
+        log.info("%d nodes requested, %d nodes busy or unavailable", pending, running)
 
         if pending < 0:
             log.critical("Error detecting number of required nodes. The cluster will not scale up.")
@@ -115,10 +120,6 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
             log.info("There are no pending jobs or the requirements on pending jobs cannot be satisfied. Noop.")
 
         else:
-            # Get current number of nodes
-            running = scheduler_module.get_busy_nodes()
-            log.info("%d nodes requested, %d nodes busy or unavailable", pending, running)
-
             # Check to make sure requested number of instances is within ASG limits
             required = running + pending
             if required <= current_desired:
