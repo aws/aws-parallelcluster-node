@@ -258,6 +258,7 @@ def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, qu
             # events are looped in the order they are fetched and by iterating over REMOVE events after ADD events.
             # in case of collisions let's always remove the item that comes first in order to always favor REMOVE ops.
             log.info("Hostname collision. Discarding event %s in favour of event %s", update_events[hostname], event)
+            update_events[hostname].message.delete()
             del update_events[hostname]
         update_events[hostname] = event
 
