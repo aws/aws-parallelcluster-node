@@ -14,6 +14,7 @@ import socket
 import subprocess
 
 from common.schedulers.sge_commands import (
+    SGE_DISABLED_STATE,
     SGE_ERROR_STATES,
     SGE_HOLD_STATE,
     get_compute_nodes_info,
@@ -86,7 +87,11 @@ def is_node_down():
 
         node = nodes.get(host_fqdn, nodes.get(hostname))
         log.info("Node is in state: '{0}'".format(node.state))
+        # check if any error state is present
         if all(error_state not in node.state for error_state in SGE_ERROR_STATES):
+            # Consider the node down if it's in disabled state and there is no job running
+            if SGE_DISABLED_STATE in node.state and not has_jobs(hostname):
+                return True
             return False
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)

@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.utils import EventType, Host, UpdateEvent
-from sqswatcher.plugins.slurm import _update_gres_node_lists, _update_node_lists
+from sqswatcher.plugins.slurm import _is_node_locked, _update_gres_node_lists, _update_node_lists
 
 
 # Input: existing gres_node_list, events to be processed.
@@ -150,3 +150,19 @@ def test_update_node_lists(node_list, events, expected_result, mocker):
     mocker.patch("sqswatcher.plugins.slurm._read_node_list", return_value=node_list, autospec=True)
 
     assert_that(_update_node_lists(events)).is_equal_to(expected_result)
+
+
+@pytest.mark.parametrize(
+    "hostname, get_node_state_output, expected_result",
+    [
+        ("ip-10-0-000-111", "draining", True),
+        ("ip-10-0-000-111", "drained", True),
+        ("ip-10-0-000-111", "idle", False),
+        ("ip-10-0-000-111", "down", False),
+        ("ip-10-0-000-111", "unknown", False),
+    ],
+)
+def test_is_node_locked(hostname, get_node_state_output, expected_result, mocker):
+    mocker.patch("sqswatcher.plugins.slurm.get_node_state", return_value=get_node_state_output, autospec=True)
+
+    assert_that(_is_node_locked(hostname)).is_equal_to(expected_result)

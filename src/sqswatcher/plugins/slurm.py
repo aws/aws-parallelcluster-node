@@ -23,6 +23,7 @@ from shutil import move
 from retrying import retry
 
 from common.remote_command_executor import RemoteCommandExecutor
+from common.schedulers.slurm_commands import SLURM_NODE_DISABLED_STATES, get_node_state, lock_node
 from common.utils import EventType, run_command
 
 log = logging.getLogger(__name__)
@@ -203,6 +204,51 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
         if results.get(event.host.hostname, True):
             succeeded.append(event)
         else:
+            failed.append(event)
+
+    return failed, succeeded
+
+
+def _is_node_locked(hostname):
+    node_state = get_node_state(hostname)
+    log.info("Node {} currently in state {}".format(hostname, node_state))
+    for disable_state in SLURM_NODE_DISABLED_STATES:
+        if disable_state in node_state:
+            return True
+    return False
+
+
+def perform_health_actions(health_events):
+    """Update and write node lists( and gres_nodes if instance has GPU); restart relevant nodes."""
+    failed = []
+    succeeded = []
+    for event in health_events:
+        try:
+            # to-do, ignore fail to lock message if node is not in scheduler
+            if _is_node_locked(event.host.hostname):
+                log.error(
+                    "Instance {}/{} currently in disabled state 'draining/drained'. "
+                    "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
+                    "Marking event as failed to retry later.".format(event.host.instance_id, event.host.hostname)
+                )
+                failed.append(event)
+                continue
+            reason = "DO_NOT_CHANGE_SQSWATCHER_SCHEDULED_EVENT_ACTION"
+            lock_node(event.host.hostname, unlock=False, note=reason)
+            if _is_node_locked(event.host.hostname):
+                succeeded.append(event)
+                log.info(
+                    "Successfully locked {} in response to scheduled maintainence event".format(event.host.hostname)
+                )
+            else:
+                failed.append(event)
+                log.info("Failed to lock {} in response to scheduled maintainence event".format(event.host.hostname))
+        except Exception as e:
+            log.error(
+                "Encountered exception when locking {} because of a scheduled maintainence event: {}".format(
+                    event.host.hostname, e
+                )
+            )
             failed.append(event)
 
     return failed, succeeded

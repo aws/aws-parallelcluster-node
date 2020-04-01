@@ -10,18 +10,18 @@
 # limitations under the License.
 
 import logging
-import subprocess
 
 from common.schedulers.torque_commands import (
-    TORQUE_BIN_DIR,
+    TORQUE_NODE_DISABLED_STATE,
     TORQUE_NODE_ERROR_STATES,
     TORQUE_RUNNING_JOB_STATE,
     TORQUE_SUSPENDED_JOB_STATE,
     get_compute_nodes_info,
     get_jobs_info,
     get_pending_jobs_info,
+    lock_node,
 )
-from common.utils import check_command_output, run_command
+from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
 
@@ -56,14 +56,7 @@ def has_pending_jobs(instance_properties, max_size):
 
 
 def lock_host(hostname, unlock=False):
-    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
-    hostname = hostname.split(".")[0]
-    mod = unlock and "-c" or "-o"
-    command = [TORQUE_BIN_DIR + "pbsnodes", mod, hostname]
-    try:
-        run_command(command)
-    except subprocess.CalledProcessError:
-        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+    lock_node(hostname, unlock=unlock)
 
 
 def is_node_down():
@@ -74,6 +67,10 @@ def is_node_down():
         if node:
             log.info("Node is in state: '{0}'".format(node.state))
             if all(error_state not in node.state for error_state in TORQUE_NODE_ERROR_STATES):
+                # Consider the node down if it is in Disabled state placed by scheduled event
+                # and does not have job
+                if TORQUE_NODE_DISABLED_STATE in node.state and not has_jobs(hostname):
+                    return True
                 return False
         else:
             log.warning("Node is not attached to scheduler. Reporting as down")
