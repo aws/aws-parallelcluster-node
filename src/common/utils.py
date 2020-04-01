@@ -43,6 +43,7 @@ class EventType(Enum):
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
+INSTANCE_ALIVE_STATE = ["pending", "running"]
 
 
 def load_module(module):
@@ -389,3 +390,38 @@ def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
         )
         log.critical(error_msg)
         raise CriticalError(error_msg)
+
+
+def get_cluster_instance_info(cluster_name, region, include_master=False):
+    """Return a dict of instance_id to nodename."""
+    try:
+        instances_in_cluster = {}
+        ec2_client = boto3.client("ec2", region_name=region)
+        nodes_to_include = ["Compute", "Master"] if include_master else ["Compute"]
+        next_token = None
+        while True:
+            function_args = {
+                "Filters": [
+                    {"Name": "tag:Application", "Values": [cluster_name]},
+                    {"Name": "tag:Name", "Values": nodes_to_include},
+                ],
+                "MaxResults": 1000,
+            }
+            if next_token:
+                function_args["NextToken"] = next_token
+            response = ec2_client.describe_instances(**function_args)
+            for reservation in response.get("Reservations"):
+                for instance in reservation.get("Instances"):
+                    is_alive = instance.get("State").get("Name") in INSTANCE_ALIVE_STATE
+                    instance_id = instance.get("InstanceId")
+                    hostname = instance.get("PrivateDnsName").split(".")[0]
+                    if is_alive:
+                        instances_in_cluster[instance_id] = hostname
+            next_token = response.get("NextToken")
+            if not next_token or next_token == "null":
+                break
+
+        return instances_in_cluster
+
+    except Exception as e:
+        logging.error("Failed retrieving instance_ids for cluster {} with exception: {}".format(cluster_name, e))

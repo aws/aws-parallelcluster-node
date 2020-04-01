@@ -17,7 +17,8 @@ from xml.etree import ElementTree
 from common.schedulers.converters import ComparableObject, from_xml_to_obj
 from common.utils import check_command_output, run_command
 
-TORQUE_NODE_ERROR_STATES = ("down", "offline", "unknown")
+TORQUE_NODE_ERROR_STATES = ("down", "unknown")
+TORQUE_NODE_DISABLED_STATE = "offline"
 TORQUE_NODE_STATES = (
     "free",
     "offline",
@@ -127,6 +128,20 @@ def delete_nodes(hosts):
         )
 
     return succeeded_hosts
+
+
+def lock_node(hostname, unlock=False, note=None):
+    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
+    hostname = hostname.split(".")[0]
+    mod = unlock and "-c" or "-o"
+    command = [TORQUE_BIN_DIR + "pbsnodes", mod, hostname]
+    if note:
+        command.append("-N '{}'".format(note))
+    try:
+        run_command(command)
+    except subprocess.CalledProcessError:
+        logging.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+        raise
 
 
 def update_cluster_limits(max_nodes, node_slots):

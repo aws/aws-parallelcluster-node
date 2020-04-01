@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, SlurmJob
-from nodewatcher.plugins.slurm import has_pending_jobs
+from nodewatcher.plugins.slurm import has_pending_jobs, is_node_down
 
 
 @pytest.mark.parametrize(
@@ -63,3 +63,28 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
         instance_properties=instance_properties,
         log_pending_jobs=False,
     )
+
+
+@pytest.mark.parametrize(
+    "hostname, get_node_state_output, expected_result",
+    [
+        ("ip-10-0-0-166", "idle", False,),
+        ("ip-10-0-0-166", "down", True,),
+        ("ip-10-0-0-166", "draining", False,),
+        ("ip-10-0-0-166", "drained", True,),
+        ("ip-10-0-0-166", "unknown", False,),
+        ("ip-10-0-0-166", Exception, True,),
+    ],
+    ids=["idle", "down", "drain_has_job", "drain_no_job", "unknown", "exception"],
+)
+def test_is_node_down(hostname, get_node_state_output, expected_result, mocker):
+    mocker.patch("nodewatcher.plugins.slurm.check_command_output", return_value=hostname, autospec=True)
+    if get_node_state_output is Exception:
+        mock = mocker.patch("nodewatcher.plugins.slurm.get_node_state", side_effect=Exception(), autospec=True)
+    else:
+        mock = mocker.patch(
+            "nodewatcher.plugins.slurm.get_node_state", return_value=get_node_state_output, autospec=True
+        )
+
+    assert_that(is_node_down()).is_equal_to(expected_result)
+    mock.assert_called_with(hostname)

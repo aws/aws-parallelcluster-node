@@ -277,6 +277,11 @@ def _init_idletime():
 
 
 def _lock_and_terminate(region, proxy_config, scheduler_module, hostname, instance_id):
+    # handle case that the instance is placed in lock by scheduled event and has job running
+    if _has_jobs(scheduler_module, hostname):
+        log.info("Instance has active jobs.")
+        return
+    # handle case that instance has no job running to begin with
     _lock_host(scheduler_module, hostname)
     if _has_jobs(scheduler_module, hostname):
         log.info("Instance has active jobs.")
