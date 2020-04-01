@@ -26,7 +26,6 @@ def _get_required_slots(instance_properties, max_size):
     """Compute the total number of slots required by pending jobs."""
     max_cluster_slots = max_size * instance_properties.get("slots")
     pending_jobs = get_pending_jobs_info(max_slots_filter=max_cluster_slots, skip_if_state=SGE_HOLD_STATE)
-    logging.info("Found the following pending jobs:\n%s", pending_jobs)
     slots = 0
     for job in pending_jobs:
         slots += job.slots
