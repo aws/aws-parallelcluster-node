@@ -213,6 +213,7 @@ def get_jobs_info(filter_by_states=None, filter_by_exec_hosts=None):
 
 def get_pending_jobs_info(max_slots_filter=None):
     jobs = get_jobs_info(filter_by_states=[TORQUE_PENDING_JOB_STATE])
+    logging.info("Retrieved the following original pending jobs: {0}".format(pending_jobs))
     pending_jobs = []
     for job in jobs:
         # filtering of ncpus option is already done by the scheduler at job submission time
