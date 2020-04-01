@@ -216,6 +216,7 @@ def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None):
     :return: the list of filtered pending jos.
     """
     pending_jobs = get_jobs_info(job_state_filter="p")
+    logging.info("Retrieved the following original pending jobs: {0}".format(pending_jobs))
     if max_slots_filter or skip_if_state:
         filtered_jobs = []
         for job in pending_jobs:

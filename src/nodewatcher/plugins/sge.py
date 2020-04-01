@@ -49,7 +49,6 @@ def has_pending_jobs(instance_properties, max_size):
     try:
         max_cluster_slots = max_size * instance_properties.get("slots")
         pending_jobs = get_pending_jobs_info(max_slots_filter=max_cluster_slots, skip_if_state=SGE_HOLD_STATE)
-        logging.info("Found the following pending jobs:\n%s", pending_jobs)
         return len(pending_jobs) > 0, False
     except Exception as e:
         log.error("Failed when checking for pending jobs with exception %s. Reporting no pending jobs.", e)
