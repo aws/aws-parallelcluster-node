@@ -207,16 +207,19 @@ def get_jobs_info(hostname_filter=None, job_state_filter=None):
     return [SgeJob.from_xml(ElementTree.tostring(host)) for host in job_info]
 
 
-def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None):
+def get_pending_jobs_info(max_slots_filter=None, skip_if_state=None, log_pending_jobs=True):
     """
     Retrieve the list of pending jobs.
 
     :param max_slots_filter: discard jobs that require a number of slots bigger than the given value
     :param skip_if_state: discard jobs that are in the given state
+    :param log_pending_jobs: log the actual list of pending jobs (rather than just a count)
     :return: the list of filtered pending jos.
     """
     pending_jobs = get_jobs_info(job_state_filter="p")
-    logging.info("Retrieved the following original pending jobs: {0}".format(pending_jobs))
+    logging.info("Retrieved {0} pending jobs".format(len(pending_jobs)))
+    if log_pending_jobs:
+        logging.info("The pending jobs are: {0}".format(pending_jobs))
     if max_slots_filter or skip_if_state:
         filtered_jobs = []
         for job in pending_jobs:

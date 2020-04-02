@@ -59,7 +59,9 @@ def get_jobs_info(job_state_filter=None):
     return SlurmJob.from_table(output)
 
 
-def get_pending_jobs_info(instance_properties=None, max_nodes_filter=None, filter_by_pending_reasons=None):
+def get_pending_jobs_info(
+    instance_properties=None, max_nodes_filter=None, filter_by_pending_reasons=None, log_pending_jobs=True
+):
     """
     Retrieve the list of pending jobs from the Slurm scheduler.
 
@@ -71,10 +73,13 @@ def get_pending_jobs_info(instance_properties=None, max_nodes_filter=None, filte
     :param max_slots_filter: max number of slots in a compute node.
     :param max_nodes_filter: max number of nodes in the cluster.
     :param filter_by_pending_reasons: retrieve only jobs with the following pending reasons.
+    :param log_pending_jobs: log the actual list of pending jobs (rather than just a count)
     :return: array of filtered SlurmJobs
     """
     pending_jobs = get_jobs_info(job_state_filter="PD")
-    logging.info("Retrieved the following original pending jobs: {0}".format(pending_jobs))
+    logging.info("Retrieved {0} pending jobs".format(len(pending_jobs)))
+    if log_pending_jobs:
+        logging.info("The pending jobs are: {0}".format(pending_jobs))
     if instance_properties:
         _recompute_required_nodes_by_slots_reservation(pending_jobs, instance_properties["slots"])
         _recompute_required_nodes_by_gpu_reservation(pending_jobs, instance_properties["gpus"])
