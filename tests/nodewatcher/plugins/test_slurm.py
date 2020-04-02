@@ -61,4 +61,5 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
         max_nodes_filter=max_cluster_size,
         instance_properties=instance_properties,
+        log_pending_jobs=False,
     )
