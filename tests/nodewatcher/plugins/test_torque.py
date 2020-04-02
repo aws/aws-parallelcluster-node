@@ -105,7 +105,7 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
     max_cluster_size = 10
 
     assert_that(has_pending_jobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
-    mock.assert_called_with(max_slots_filter=instance_properties["slots"])
+    mock.assert_called_with(max_slots_filter=instance_properties["slots"], log_pending_jobs=False)
 
 
 @pytest.mark.parametrize(

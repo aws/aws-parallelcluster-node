@@ -105,7 +105,9 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
 
     assert_that(has_pending_jobs(instance_properties, max_cluster_size)).is_equal_to(expected_result)
     mock.assert_called_with(
-        max_slots_filter=max_cluster_size * instance_properties["slots"], skip_if_state=SGE_HOLD_STATE
+        max_slots_filter=max_cluster_size * instance_properties["slots"],
+        skip_if_state=SGE_HOLD_STATE,
+        log_pending_jobs=False,
     )
 
 
