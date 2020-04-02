@@ -55,8 +55,12 @@ QCONF_COMMANDS = {
 # S(ubordinate), d(isabled), D(isabled), E(rror), c(configuration ambiguous), o(rphaned), P(reempted),
 # or some combination thereof.
 # Refer to qstat man page for additional details.
+
+# u(nknown) is not considered as busy since the node will eventually be replaced by nodewatcher.
+# Otherwise there might be overscaling issue when sge process is temporarily unresponsive
+# when hitting bottleneck on network, etc in a large scale setting.
 # o(rphaned) is not considered as busy since we assume a node in orphaned state is not present in ASG anymore
-SGE_BUSY_STATES = ["u", "C", "s", "D", "E", "P"]
+SGE_BUSY_STATES = ["C", "s", "D", "E", "P"]
 
 # This state is set by nodewatcher when the node is locked and is being terminated.
 SGE_DISABLED_STATE = "d"
