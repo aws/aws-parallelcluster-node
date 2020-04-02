@@ -42,7 +42,7 @@ from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
                     jobs=[],
                 )
             },
-            1,
+            0,
         ),
         (
             {
