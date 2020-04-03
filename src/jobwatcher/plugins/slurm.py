@@ -29,7 +29,6 @@ def get_required_nodes(instance_properties, max_size):
         max_nodes_filter=max_size,
         filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
     )
-    logging.info("Found the following pending jobs:\n%s", pending_jobs)
 
     resources_requested = []
     nodes_requested = []

@@ -211,8 +211,17 @@ def get_jobs_info(filter_by_states=None, filter_by_exec_hosts=None):
     return jobs_list
 
 
-def get_pending_jobs_info(max_slots_filter=None):
+def get_pending_jobs_info(max_slots_filter=None, log_pending_jobs=True):
+    """
+    Retrieve the list of pending jobs from the Slurm scheduler.
+
+    :param max_slots_filter: discard jobs that require a number of slots bigger than the given value
+    :param log_pending_jobs: log the actual list of pending jobs (rather than just a count)
+    """
     jobs = get_jobs_info(filter_by_states=[TORQUE_PENDING_JOB_STATE])
+    logging.info("Retrieved {0} pending jobs".format(len(jobs)))
+    if log_pending_jobs:
+        logging.info("The pending jobs are: {0}".format(jobs))
     pending_jobs = []
     for job in jobs:
         # filtering of ncpus option is already done by the scheduler at job submission time

@@ -45,8 +45,8 @@ def has_pending_jobs(instance_properties, max_size):
             instance_properties=instance_properties,
             max_nodes_filter=max_size,
             filter_by_pending_reasons=PENDING_RESOURCES_REASONS,
+            log_pending_jobs=False,
         )
-        logging.info("Found the following pending jobs:\n%s", pending_jobs)
         return len(pending_jobs) > 0, False
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting no pending jobs.", e)

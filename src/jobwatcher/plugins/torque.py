@@ -20,7 +20,6 @@ log = logging.getLogger(__name__)
 # get nodes requested from pending jobs
 def get_required_nodes(instance_properties, max_size):
     pending_jobs = get_pending_jobs_info(max_slots_filter=instance_properties.get("slots"))
-    logging.info("Found the following pending jobs:\n%s", pending_jobs)
 
     slots_requested = []
     nodes_requested = []
