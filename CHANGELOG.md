@@ -3,6 +3,29 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.6.1
+-----
+
+**ENHANCEMENTS**
+- Improved the management of SQS messages and retries to speed-up recovery times when failures occur.
+
+**CHANGES**
+- Do not launch a replacement for an unhealthy or unresponsive node until this is terminated. This makes cluster slower
+  at provisioning new nodes when failures occur but prevents any temporary over-scaling with respect to the expected
+  capacity.
+- Increase parallelism when starting `slurmd` on compute nodes that join the cluster from 10 to 30.
+- Reduce the verbosity of messages logged by the node daemons.
+- Do not dump logs to `/home/logs` when nodewatcher encounters a failure and terminates the node. CloudWatch can be
+  used to debug such failures.
+- Reduce the number of retries for failed REMOVE events in sqswatcher.
+
+**BUG FIXES**
+- Fixed a bug in the ordering and retrying of SQS messages that was causing, under certain circumstances of heavy load,
+  the scheduler configuration to be left in an inconsistent state.
+- Delete from queue the REMOVE events that are discarded due to hostname collision with another event fetched as part
+  of the same `sqswatcher` iteration.
+
+
 2.6.0
 -----
 
