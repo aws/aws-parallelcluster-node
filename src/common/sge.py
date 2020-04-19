@@ -10,10 +10,13 @@
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
 
+import platform
+
 from common.utils import check_command_output, run_command
 
 SGE_ROOT = "/opt/sge"
-SGE_BIN_PATH = SGE_ROOT + "/bin/lx-amd64"
+BIN_PATH_SUFFIX = "amd64" if platform.machine() == "x86_64" else "arm64"
+SGE_BIN_PATH = SGE_ROOT + "/bin/lx-" + BIN_PATH_SUFFIX
 SGE_BIN_DIR = SGE_BIN_PATH + "/"
 SGE_ENV = {"SGE_ROOT": SGE_ROOT, "PATH": "{0}/bin:{1}:/bin:/usr/bin".format(SGE_ROOT, SGE_BIN_PATH)}
 
