@@ -123,7 +123,9 @@ def _get_sqs_queue(region, queue_name, proxy_config):
     :return: the Queue object
     """
     log.debug("Getting SQS queue '%s'", queue_name)
-    sqs = boto3.resource("sqs", region_name=region, config=proxy_config, endpoint_url="https://sqs." + region + ".amazonaws.com")
+    sqs = boto3.resource(
+        "sqs", region_name=region, config=proxy_config, endpoint_url="https://sqs." + region + ".amazonaws.com"
+    )
     try:
         queue = sqs.get_queue_by_name(QueueName=queue_name)
         log.debug("SQS queue is %s", queue)
