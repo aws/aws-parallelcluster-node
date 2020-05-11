@@ -88,7 +88,7 @@ def _write_node_list_to_file(generic_node_list, config_file_path):
     # Only log the updated node list if it's different from the previous version,
     # because it can get quite long.
     if not filecmp.cmp(config_file_path, abs_path, shallow=False):
-        log.info("Writing updated {0} with the following nodes: {1}".format(config_file_path, generic_node_list))
+        log.info("Writing updated %s with the following nodes: %s", config_file_path, generic_node_list)
 
     # Update permissions on new file
     os.chmod(abs_path, 0o744)
@@ -211,7 +211,7 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
 
 def _is_node_locked(hostname):
     node_state = get_node_state(hostname)
-    log.info("Node {} currently in state {}".format(hostname, node_state))
+    log.info("Node %s currently in state %s", hostname, node_state)
     for disable_state in SLURM_NODE_DISABLED_STATES:
         if disable_state in node_state:
             return True
@@ -226,28 +226,28 @@ def perform_health_actions(health_events):
         try:
             # to-do, ignore fail to lock message if node is not in scheduler
             if _is_node_locked(event.host.hostname):
-                log.error(
-                    "Instance {}/{} currently in disabled state 'draining/drained'. "
+                log.warning(
+                    "Instance %s/%s currently in disabled state 'draining/drained'. "
                     "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
-                    "Marking event as failed to retry later.".format(event.host.instance_id, event.host.hostname)
+                    "Marking event as failed to retry later.",
+                    event.host.instance_id,
+                    event.host.hostname,
                 )
                 failed.append(event)
                 continue
-            reason = "DO_NOT_CHANGE_SQSWATCHER_SCHEDULED_EVENT_ACTION"
-            lock_node(event.host.hostname, unlock=False, note=reason)
+            reason = "Node requires replacement due to an EC2 scheduled maintenance event"
+            lock_node(event.host.hostname, reason=reason)
             if _is_node_locked(event.host.hostname):
                 succeeded.append(event)
-                log.info(
-                    "Successfully locked {} in response to scheduled maintainence event".format(event.host.hostname)
-                )
+                log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
             else:
                 failed.append(event)
-                log.info("Failed to lock {} in response to scheduled maintainence event".format(event.host.hostname))
+                log.error("Failed to lock %s in response to scheduled maintainence event", event.host.hostname)
         except Exception as e:
             log.error(
-                "Encountered exception when locking {} because of a scheduled maintainence event: {}".format(
-                    event.host.hostname, e
-                )
+                "Encountered exception when locking %s because of a scheduled maintainence event: %s",
+                event.host.hostname,
+                e,
             )
             failed.append(event)
 

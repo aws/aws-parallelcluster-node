@@ -68,11 +68,12 @@ def get_node_state(hostname):
     # Output format:
     # down*
     try:
-        command = "/bin/bash -c \"/opt/slurm/bin/sinfo --noheader -o '%T' -n {}\"".format(hostname)
+        command = "/opt/slurm/bin/sinfo --noheader -o '%T' -n {}".format(hostname)
         output = check_command_output(command).strip()
         return output
     except Exception as e:
-        logging.error("Failed when checking if node {} state with exception {}.".format(hostname, e))
+        logging.error("Failed when checking if node %s state with exception %s.", hostname, e)
+        raise
 
 
 def get_pending_jobs_info(
@@ -285,31 +286,39 @@ def job_runnable_on_given_node(job_resources_per_node, resources_available, exis
     return True
 
 
-def lock_node(hostname, unlock=False, note=None):
+def lock_node(hostname, reason=None):
     # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
     hostname = hostname.split(".")[0]
-    if unlock:
-        logging.info("Unlocking host %s", hostname)
-        command = [
-            "/opt/slurm/bin/scontrol",
-            "update",
-            "NodeName={0}".format(hostname),
-            "State=RESUME",
-            "Reason={}".format(note if note else '"Unlocking"'),
-        ]
-    else:
-        logging.info("Locking host %s", hostname)
-        command = [
-            "/opt/slurm/bin/scontrol",
-            "update",
-            "NodeName={0}".format(hostname),
-            "State=DRAIN",
-            "Reason={}".format(note if note else '"Shutting down"'),
-        ]
+    logging.info("Locking host %s", hostname)
+    command = [
+        "/opt/slurm/bin/scontrol",
+        "update",
+        "NodeName={0}".format(hostname),
+        "State=DRAIN",
+        "Reason={}".format(reason if reason else '"Shutting down"'),
+    ]
     try:
         run_command(command)
     except subprocess.CalledProcessError:
-        logging.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+        logging.error("Error locking host %s", hostname)
+        raise
+
+
+def unlock_node(hostname, reason=None):
+    hostname = hostname.split(".")[0]
+    logging.info("Unlocking host %s", hostname)
+    command = [
+        "/opt/slurm/bin/scontrol",
+        "update",
+        "NodeName={0}".format(hostname),
+        "State=RESUME",
+        "Reason={}".format(reason if reason else '"Unlocking"'),
+    ]
+    try:
+        run_command(command)
+    except subprocess.CalledProcessError:
+        logging.error("Error unlocking host %s", hostname)
+        raise
 
 
 class SlurmJob(ComparableObject):

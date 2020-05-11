@@ -39,11 +39,22 @@ class CriticalError(Exception):
 class EventType(Enum):
     ADD = "ADD"
     REMOVE = "REMOVE"
+    HEALTH = "HEALTH"
 
+
+class QueueType(Enum):
+    instance = "instance"
+    health = "health"
+
+
+SUPPORTED_EVENTTYPE_FOR_QUEUETYPE = {
+    QueueType.instance: [EventType.ADD, EventType.REMOVE],
+    QueueType.health: [EventType.HEALTH],
+}
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
-INSTANCE_ALIVE_STATE = ["pending", "running"]
+INSTANCE_ALIVE_STATES = ["pending", "running"]
 
 
 def load_module(module):
@@ -392,36 +403,29 @@ def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
         raise CriticalError(error_msg)
 
 
-def get_cluster_instance_info(cluster_name, region, include_master=False):
-    """Return a dict of instance_id to nodename."""
+def get_cluster_instance_info(stack_name, region, proxy_config, include_master=False):
+    """Return a list of instance_id that are in the cluster."""
     try:
-        instances_in_cluster = {}
-        ec2_client = boto3.client("ec2", region_name=region)
+        instances_in_cluster = []
+        ec2_client = boto3.client("ec2", region_name=region, config=proxy_config)
+        instance_paginator = ec2_client.get_paginator("describe_instances")
         nodes_to_include = ["Compute", "Master"] if include_master else ["Compute"]
-        next_token = None
-        while True:
-            function_args = {
-                "Filters": [
-                    {"Name": "tag:Application", "Values": [cluster_name]},
-                    {"Name": "tag:Name", "Values": nodes_to_include},
-                ],
-                "MaxResults": 1000,
-            }
-            if next_token:
-                function_args["NextToken"] = next_token
-            response = ec2_client.describe_instances(**function_args)
-            for reservation in response.get("Reservations"):
+
+        for page in instance_paginator.paginate(
+            Filters=[
+                {"Name": "tag:Application", "Values": [stack_name]},
+                {"Name": "tag:Name", "Values": nodes_to_include},
+            ]
+        ):
+            for reservation in page.get("Reservations"):
                 for instance in reservation.get("Instances"):
-                    is_alive = instance.get("State").get("Name") in INSTANCE_ALIVE_STATE
+                    is_alive = instance.get("State").get("Name") in INSTANCE_ALIVE_STATES
                     instance_id = instance.get("InstanceId")
-                    hostname = instance.get("PrivateDnsName").split(".")[0]
                     if is_alive:
-                        instances_in_cluster[instance_id] = hostname
-            next_token = response.get("NextToken")
-            if not next_token or next_token == "null":
-                break
+                        instances_in_cluster.append(instance_id)
 
         return instances_in_cluster
 
     except Exception as e:
-        logging.error("Failed retrieving instance_ids for cluster {} with exception: {}".format(cluster_name, e))
+        logging.error("Failed retrieving instance_ids for cluster %s with exception: %s", stack_name, e)
+        raise

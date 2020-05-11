@@ -120,26 +120,26 @@ def perform_health_actions(health_events):
             # to-do, ignore fail to lock message if node is not in scheduler
             if _is_node_locked(event.host.hostname):
                 log.error(
-                    "Instance {}/{} currently in disabled state 'd'. "
+                    "Instance %s/%s currently in disabled state 'd'. "
                     "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
-                    "Marking event as failed to retry later.".format(event.host.instance_id, event.host.hostname)
+                    "Marking event as failed to retry later.",
+                    event.host.instance_id,
+                    event.host.hostname,
                 )
                 failed.append(event)
                 continue
             lock_host(event.host.hostname)
             if _is_node_locked:
                 succeeded.append(event)
-                log.info(
-                    "Successfully locked {} in response to scheduled maintainence event".format(event.host.hostname)
-                )
+                log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
             else:
                 failed.append(event)
-                log.info("Failed to lock {} in response to scheduled maintainence event".format(event.host.hostname))
+                log.error("Failed to lock %s in response to scheduled maintainence event", event.host.hostname)
         except Exception as e:
             log.error(
-                "Encountered exception when locking {} because of a scheduled maintainence event: {}".format(
-                    event.host.hostname, e
-                )
+                "Encountered exception when locking %s because of a scheduled maintainence event: %s",
+                event.host.hostname,
+                e,
             )
             failed.append(event)
 
