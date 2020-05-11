@@ -70,6 +70,13 @@ def is_node_down():
                 # Consider the node down if it is in Disabled state placed by scheduled event
                 # and does not have job
                 if TORQUE_NODE_DISABLED_STATE in node.state and not has_jobs(hostname):
+                    log.warning(
+                        (
+                            "Considering node as down because there is no job running and node is in a disabled state. "
+                            "The node could have been put into this disabled state automatically by ParallelCluster in "
+                            "response to an EC2 scheduled maintenance event, or manually by the system administrator."
+                        )
+                    )
                     return True
                 return False
         else:

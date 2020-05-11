@@ -26,9 +26,11 @@ from retrying import retry
 from common.ssh_keyscan import update_ssh_known_hosts
 from common.time_utils import seconds
 from common.utils import (
+    SUPPORTED_EVENTTYPE_FOR_QUEUETYPE,
     CriticalError,
     EventType,
     Host,
+    QueueType,
     UpdateEvent,
     get_asg_name,
     get_cluster_instance_info,
@@ -57,7 +59,7 @@ SQSWatcherConfig = collections.namedtuple(
         "region",
         "scheduler",
         "sqsqueue",
-        "healthsqsqueue",
+        "health_sqsqueue",
         "table_name",
         "cluster_user",
         "proxy_config",
@@ -86,8 +88,8 @@ def _get_config():
     region = config.get("sqswatcher", "region")
     scheduler = config.get("sqswatcher", "scheduler")
     sqsqueue = config.get("sqswatcher", "sqsqueue")
-    healthsqsqueue = config.get("sqswatcher", "healthsqsqueue")
-    disable_health_check = bool(config.get("sqswatcher", "disable_health_check", fallback=False))
+    health_sqsqueue = config.get("sqswatcher", "health_sqsqueue")
+    disable_health_check = config.getboolean("sqswatcher", "disable_health_check", fallback=False)
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
     stack_name = config.get("sqswatcher", "stack_name")
@@ -102,13 +104,12 @@ def _get_config():
 
     log.info(
         (
-            "Configured parameters: region={} scheduler={} sqsqueue={} healthqueue={} table_name={} cluster_user={} "
-            "proxy={} stack_name={} max_processed_messages={} disable_health_check={}"
-        ).format(
+            "Configured parameters: region=%s scheduler=%s sqsqueue=%s health_sqsqueue=%s table_name=%s "
+            "cluster_user=%s proxy=%s stack_name=%s max_processed_messages=%s disable_health_check=%s",
             region,
             scheduler,
             sqsqueue,
-            healthsqsqueue,
+            health_sqsqueue,
             table_name,
             cluster_user,
             _proxy,
@@ -121,7 +122,7 @@ def _get_config():
         region,
         scheduler,
         sqsqueue,
-        healthsqsqueue,
+        health_sqsqueue,
         table_name,
         cluster_user,
         proxy_config,
@@ -199,7 +200,7 @@ def _retry_on_request_limit_exceeded(func):
     return _retry()
 
 
-def _requeue_message(queue, message_body):
+def _requeue_message(queue, message):
     """
     Requeue the given message into the specified queue.
 
@@ -207,6 +208,11 @@ def _requeue_message(queue, message_body):
     :param message: the message to requeue
     """
     max_retries = 1
+    # CW event rule can only send messages to SQS with "" enclosing the message.
+    # However, when message is re-queued it is sent without ""
+    message_body = (
+        json.loads(json.loads(message.body)) if str(message.body).startswith('"') else json.loads(message.body)
+    )
     if "TTL" not in message_body:
         message_body["TTL"] = max_retries
     else:
@@ -224,9 +230,10 @@ def _requeue_message(queue, message_body):
 
 
 def _retrieve_all_sqs_messages(queue, max_processed_messages):
+    queue_name = queue.url.split("/")[-1]
+    log.info("Retrieving messages from SQS queue %s", queue_name)
     max_messages_per_call = 10
     messages = []
-    queue_name = queue.url.split("/")[-1]
     while len(messages) < max_processed_messages:
         # setting WaitTimeSeconds in order to use Amazon SQS Long Polling.
         # when not using Long Polling with a small queue you might not receive any message
@@ -241,22 +248,21 @@ def _retrieve_all_sqs_messages(queue, max_processed_messages):
             # looping until receive_messages returns at least 1 message
             break
 
-    log.info("Retrieved {} messages from SQS queue {}".format(len(messages), queue_name))
+    log.info("Retrieved %s messages from SQS queue %s", len(messages), queue_name)
 
     return messages
 
 
-def _parse_sqs_messages(sqs_config, messages, table, queue):
+def _resolve_events_hostname_collision(event_pool):
     update_events = OrderedDict()
-    parsed_events = _parse_messages_helper(messages, False, sqs_config, table, queue)
-    for event in itertools.chain(parsed_events["ADD"], parsed_events["REMOVE"]):
-        log.info("Processing {} event for instance {}".format(event.action, event.host))
+    for event in event_pool:
+        log.info("Processing %s event for instance %s", event.action, event.host)
         hostname = event.host.hostname
         if hostname in update_events:
             # events are looped in the order they are fetched and by iterating over REMOVE events after ADD events.
             # in case of collisions let's always remove the item that comes first in order to always favor REMOVE ops.
             log.info(
-                "Hostname collision. Discarding event {} in favour of event {}".format(update_events[hostname], event)
+                "Hostname collision. Discarding event %s in favour of event %s", update_events[hostname], event,
             )
             update_events[hostname].message.delete()
             del update_events[hostname]
@@ -265,31 +271,47 @@ def _parse_sqs_messages(sqs_config, messages, table, queue):
     return update_events.values()
 
 
-def _parse_health_messages(sqs_config, messages, health_queue):
-    health_update_events = OrderedDict()
-    instance_id_to_hostname = get_cluster_instance_info(sqs_config.stack_name, sqs_config.region, include_master=False)
-    parsed_events = _parse_messages_helper(messages, True, sqs_config, instance_id_to_hostname=instance_id_to_hostname)
-    for health_event in parsed_events["HEALTH"]:
-        log.info("Processing {} event for instance {}".format(health_event.action, health_event.host))
-        if health_event.host.instance_id in health_update_events:
-            # delete first to preserve messages order in dict
-            log.info(
-                "InstanceID collision. Discarding event {} in favour of event {}".format(
-                    health_update_events[health_event.host.instance_id], health_event,
-                )
-            )
-            health_update_events[health_event.host.instance_id].message.delete()
-            del health_update_events[health_event.host.instance_id]
-        health_update_events[health_event.host.instance_id] = health_event
-
-    return health_update_events.values()
+def _parse_sqs_messages(sqs_config, messages, table, queue):
+    parsed_events = _parse_messages_helper(
+        messages, sqs_config, queue_type=QueueType.instance, table=table, queue=queue
+    )
+    return _resolve_events_hostname_collision(
+        event_pool=itertools.chain(parsed_events[EventType.ADD], parsed_events[EventType.REMOVE])
+    )
 
 
-def _parse_messages_helper(messages, is_health_queue, sqs_config, table=None, queue=None, instance_id_to_hostname=None):
+def _parse_health_messages(sqs_config, messages, table, health_queue):
+    if messages:
+        instances_in_cluster = get_cluster_instance_info(
+            sqs_config.stack_name, sqs_config.region, sqs_config.proxy_config, include_master=False
+        )
+        parsed_events = _parse_messages_helper(
+            messages, sqs_config, queue_type=QueueType.health, table=table, instances_in_cluster=instances_in_cluster
+        )
+        return _resolve_events_hostname_collision(event_pool=parsed_events[EventType.HEALTH])
+    else:
+        return []
+
+
+def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=None, instances_in_cluster=None):
     parsed_events = {
-        "ADD": [],
-        "REMOVE": [],
-        "HEALTH": [],
+        EventType.ADD: [],
+        EventType.REMOVE: [],
+        EventType.HEALTH: [],
+    }
+    event_name_to_processing_function = {
+        EventType.HEALTH: lambda: _process_scheduled_maintenance_event(
+            message_attrs, message, table, instances_in_cluster
+        ),
+        EventType.ADD: lambda: _process_compute_ready_event(
+            sqs_config.region, sqs_config.proxy_config, message_attrs, message, table
+        ),
+        EventType.REMOVE: lambda: _process_instance_terminate_event(message_attrs, message, table, queue),
+    }
+    event_name_to_event_type = {
+        "parallelcluster:EC2_SCHEDULED_EVENT": EventType.HEALTH,
+        "parallelcluster:COMPUTE_READY": EventType.ADD,
+        "autoscaling:EC2_INSTANCE_TERMINATE": EventType.REMOVE,
     }
     for message in messages:
         # CW event rule can only send messages to SQS with "" enclosing the message.
@@ -298,45 +320,34 @@ def _parse_messages_helper(messages, is_health_queue, sqs_config, table=None, qu
             json.loads(json.loads(message.body)) if str(message.body).startswith('"') else json.loads(message.body)
         )
         message_attrs = json.loads(message_text.get("Message"))
-        event_type = message_attrs.get("Event")
-
-        if not event_type:
+        event_name = message_attrs.get("Event")
+        if not event_name:
             log.warning("Unable to read message. Deleting.")
             message.delete()
             continue
-        if is_health_queue:
-            if event_type == "parallelcluster:EC2_SCHEDULED_EVENT":
-                # filter events for instances currently in ASG
-                instances_in_cluster = list(instance_id_to_hostname.keys())
-                instance_id = message_attrs.get("EC2InstanceId")
-                if instance_id in instances_in_cluster:
-                    hostname = instance_id_to_hostname[instance_id]
-                    parsed_events["HEALTH"].append(
-                        UpdateEvent("SCHEDULED_EVENT", message, Host(instance_id, hostname, None, None))
-                    )
-                    log.info("Relevant EC2 scheduled event for instance:{} in ASG.".format(instance_id))
-                else:
-                    log.info("Irrelevant EC2 scheduled event for instance:{}. Discarding message.".format(instance_id))
-                    message.delete()
-            else:
-                log.info("Unsupported event type {} for health queue. Discarding message.".format(event_type))
-                message.delete()
+        event_type = event_name_to_event_type.get(event_name, None)
+
+        if event_type in SUPPORTED_EVENTTYPE_FOR_QUEUETYPE[queue_type]:
+            event = event_name_to_processing_function.get(event_type)()
+            if event:
+                parsed_events[event_type].append(event)
         else:
-            if event_type == "parallelcluster:COMPUTE_READY":
-                add_event = _process_compute_ready_event(
-                    sqs_config.region, sqs_config.proxy_config, message_attrs, message, table
-                )
-                if add_event:
-                    parsed_events["ADD"].append(add_event)
-            elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
-                remove_event = _process_instance_terminate_event(message_attrs, message, table, queue)
-                if remove_event:
-                    parsed_events["REMOVE"].append(remove_event)
-            else:
-                log.info("Unsupported event type {} for instance queue. Discarding message.".format(event_type))
-                message.delete()
+            log.info("Unsupported event type %s for %s queue. Discarding message.", event_type, queue_type)
+            message.delete()
 
     return parsed_events
+
+
+def _process_scheduled_maintenance_event(message_attrs, message, table, instances_in_cluster):
+    instance_id = message_attrs.get("EC2InstanceId")
+    if instance_id in instances_in_cluster:
+        hostname = _retrieve_hostname_from_ddb(instance_id, table)
+        log.info("Relevant EC2 scheduled event for instance:%s in ASG.", instance_id)
+        return UpdateEvent(EventType.HEALTH, message, Host(instance_id, hostname, None, None))
+    else:
+        log.info("Irrelevant EC2 scheduled event for instance:%s. Discarding message.", instance_id)
+        message.delete()
+        return None
 
 
 def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message, table):
@@ -355,47 +366,49 @@ def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_at
 def _process_instance_terminate_event(message_attrs, message, table, queue):
     instance_id = message_attrs.get("EC2InstanceId")
     try:
-        item = _retry_on_request_limit_exceeded(
-            lambda: table.get_item(ConsistentRead=True, Key={"instanceId": instance_id})
-        )
+        hostname = _retrieve_hostname_from_ddb(instance_id, table)
     except Exception as e:
         log.error("Failed when retrieving instance data for instance %s from db with exception %s", instance_id, e)
         _requeue_message(queue, message)
         message.delete()
         return None
 
-    if item.get("Item") is not None:
-        hostname = item.get("Item").get("hostname")
+    if hostname:
         return UpdateEvent(EventType.REMOVE, message, Host(instance_id, hostname, None, None))
     else:
         log.error("Instance %s not found in the database.", instance_id)
-        _requeue_message(queue, json.loads(message.body))
+        _requeue_message(queue, message)
         message.delete()
         return None
 
 
+def _retrieve_hostname_from_ddb(instance_id, table):
+    item = _retry_on_request_limit_exceeded(
+        lambda: table.get_item(ConsistentRead=True, Key={"instanceId": instance_id})
+    )
+    if item.get("Item") is not None:
+        hostname = item.get("Item").get("hostname")
+        return hostname
+    else:
+        return None
+
+
 def _process_health_messages(
-    health_events, scheduler_module, sqs_config, health_queue, force_cluster_update,
+    health_events, scheduler_module, sqs_config, health_queue,
 ):
-    # Update the scheduler only when there are messages from the queue or
-    # tha ASG max size got updated.
-    if not health_events and not force_cluster_update:
+    # Update the scheduler only when there are health events
+    if not health_events:
         return
 
     failed_events, succeeded_events = perform_health_actions(scheduler_module, health_events)
 
     for event in succeeded_events:
-        log.info("Successfully processed event {} for instance {}".format(event.action, event.host))
+        log.info("Successfully processed event %s for instance %s", event.action, event.host)
         event.message.delete()
 
     for event in failed_events:
-        log.error("Failed when processing event {} for instance {}".format(event.action, event.host))
-        message_text = (
-            json.loads(json.loads(event.message.body))
-            if str(event.message.body).startswith('"')
-            else json.loads(event.message.body)
-        )
-        _requeue_message(health_queue, message_text)
+        log.error("Failed when processing event %s for instance %s", event.action, event.host)
+        _requeue_message(health_queue, event.message)
         event.message.delete()
 
 
@@ -487,11 +500,11 @@ def _process_instance_queue(
     )
 
 
-def _process_health_queue(sqs_config, health_queue, scheduler_module, force_cluster_update):
+def _process_health_queue(sqs_config, health_queue, scheduler_module, table):
     messages = _retrieve_all_sqs_messages(health_queue, sqs_config.max_processed_messages)
-    health_events = _parse_health_messages(sqs_config, messages, health_queue)
+    health_events = _parse_health_messages(sqs_config, messages, table, health_queue)
     _process_health_messages(
-        health_events, scheduler_module, sqs_config, health_queue, force_cluster_update,
+        health_events, scheduler_module, sqs_config, health_queue,
     )
 
 
@@ -544,7 +557,7 @@ def _poll_queue(sqs_config, instance_queue, health_queue, table, asg_name):
             force_cluster_update,
         )
         if not sqs_config.disable_health_check:
-            _process_health_queue(sqs_config, health_queue, scheduler_module, force_cluster_update)
+            _process_health_queue(sqs_config, health_queue, scheduler_module, table)
 
         sleep_remaining_loop_time(LOOP_TIME, start_time)
 
@@ -557,7 +570,7 @@ def main():
     try:
         config = _get_config()
         instance_queue = _get_sqs_queue(config.region, config.sqsqueue, config.proxy_config)
-        health_queue = _get_sqs_queue(config.region, config.healthsqsqueue, config.proxy_config)
+        health_queue = _get_sqs_queue(config.region, config.health_sqsqueue, config.proxy_config)
         table = _get_ddb_table(config.region, config.table_name, config.proxy_config)
         asg_name = get_asg_name(config.stack_name, config.region, config.proxy_config)
 
