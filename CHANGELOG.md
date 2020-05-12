@@ -3,6 +3,13 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.7.0
+-----
+
+**ENHANCEMENTS**
+- `sqswatcher`: The daemon is now compatible with VPC Endpoints so that SQS messages can be passed without traversing
+  the public internet.
+
 2.6.1
 -----
 
