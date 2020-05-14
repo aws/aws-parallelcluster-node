@@ -210,11 +210,16 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
 
 
 def _is_node_locked(hostname):
-    node_state = get_node_state(hostname)
-    log.info("Node %s currently in state %s", hostname, node_state)
-    for disable_state in SLURM_NODE_DISABLED_STATES:
-        if disable_state in node_state:
-            return True
+    try:
+        node_state = get_node_state(hostname)
+        log.info("Node %s currently in state %s", hostname, node_state)
+        for disable_state in SLURM_NODE_DISABLED_STATES:
+            if disable_state in node_state:
+                return True
+    except Exception as e:
+        log.error(
+            "Failed when checking if node is locked with exception %s. Reporting node %s as unlocked.", e, hostname
+        )
     return False
 
 
@@ -224,7 +229,6 @@ def perform_health_actions(health_events):
     succeeded = []
     for event in health_events:
         try:
-            # to-do, ignore fail to lock message if node is not in scheduler
             if _is_node_locked(event.host.hostname):
                 log.warning(
                     "Instance %s/%s currently in disabled state 'draining/drained'. "

@@ -11,7 +11,6 @@
 
 import logging
 import socket
-import subprocess
 
 from common.schedulers.sge_commands import (
     SGE_DISABLED_STATE,
@@ -20,9 +19,9 @@ from common.schedulers.sge_commands import (
     get_compute_nodes_info,
     get_jobs_info,
     get_pending_jobs_info,
+    lock_node,
+    unlock_node,
 )
-from common.schedulers.sge_commands import lock_host as sge_lock_host
-from common.schedulers.sge_commands import unlock_host
 from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
@@ -59,13 +58,10 @@ def has_pending_jobs(instance_properties, max_size):
 
 
 def lock_host(hostname, unlock=False):
-    try:
-        if unlock:
-            unlock_host(hostname)
-        else:
-            sge_lock_host(hostname)
-    except subprocess.CalledProcessError:
-        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
+    if unlock:
+        unlock_node(hostname)
+    else:
+        lock_node(hostname)
 
 
 def is_node_down():

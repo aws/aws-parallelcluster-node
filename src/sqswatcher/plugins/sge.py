@@ -19,7 +19,7 @@ from common.schedulers.sge_commands import (
     exec_qconf_command,
     get_compute_nodes_info,
     install_sge_on_compute_nodes,
-    lock_host,
+    lock_node,
     remove_hosts_from_group,
     remove_hosts_from_queue,
 )
@@ -104,10 +104,15 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
 
 
 def _is_node_locked(hostname):
-    node_info = get_compute_nodes_info(hostname_filter=hostname)
-    node = node_info.get(socket.getfqdn(hostname), node_info.get(hostname))
-    if SGE_DISABLED_STATE in node.state:
-        return True
+    try:
+        node_info = get_compute_nodes_info(hostname_filter=hostname)
+        node = node_info.get(socket.getfqdn(hostname), node_info.get(hostname))
+        if SGE_DISABLED_STATE in node.state:
+            return True
+    except Exception as e:
+        log.error(
+            "Failed when checking if node is locked with exception %s. Reporting node %s as unlocked.", e, hostname
+        )
     return False
 
 
@@ -117,7 +122,6 @@ def perform_health_actions(health_events):
     succeeded = []
     for event in health_events:
         try:
-            # to-do, ignore fail to lock message if node is not in scheduler
             if _is_node_locked(event.host.hostname):
                 log.error(
                     "Instance %s/%s currently in disabled state 'd'. "
@@ -128,8 +132,8 @@ def perform_health_actions(health_events):
                 )
                 failed.append(event)
                 continue
-            lock_host(event.host.hostname)
-            if _is_node_locked:
+            lock_node(event.host.hostname)
+            if _is_node_locked(event.host.hostname):
                 succeeded.append(event)
                 log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
             else:

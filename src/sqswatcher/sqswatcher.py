@@ -150,6 +150,8 @@ def _get_sqs_queue(region, queue_name, proxy_config):
     try:
         queue = sqs.get_queue_by_name(QueueName=queue_name)
         log.debug("SQS queue is %s", queue)
+        # Set queue_name attribute
+        queue.queue_name = queue.url.split("/")[-1]
     except ClientError as e:
         log.critical("Unable to get the SQS queue '%s'. Failed with exception: %s", queue_name, e)
         raise
@@ -230,25 +232,28 @@ def _requeue_message(queue, message):
 
 
 def _retrieve_all_sqs_messages(queue, max_processed_messages):
-    queue_name = queue.url.split("/")[-1]
-    log.info("Retrieving messages from SQS queue %s", queue_name)
+    log.info("Retrieving messages from SQS queue %s", queue.queue_name)
     max_messages_per_call = 10
     messages = []
-    while len(messages) < max_processed_messages:
-        # setting WaitTimeSeconds in order to use Amazon SQS Long Polling.
-        # when not using Long Polling with a small queue you might not receive any message
-        # since only a subset of random machines is queried.
-        retrieved_messages = queue.receive_messages(
-            MaxNumberOfMessages=min(max_processed_messages - len(messages), max_messages_per_call), WaitTimeSeconds=2
-        )
-        if len(retrieved_messages) > 0:
-            messages.extend(retrieved_messages)
-        else:
-            # the queue is not always returning max_messages_per_call even when available
-            # looping until receive_messages returns at least 1 message
-            break
+    try:
+        while len(messages) < max_processed_messages:
+            # setting WaitTimeSeconds in order to use Amazon SQS Long Polling.
+            # when not using Long Polling with a small queue you might not receive any message
+            # since only a subset of random machines is queried.
+            retrieved_messages = queue.receive_messages(
+                MaxNumberOfMessages=min(max_processed_messages - len(messages), max_messages_per_call),
+                WaitTimeSeconds=2,
+            )
+            if len(retrieved_messages) > 0:
+                messages.extend(retrieved_messages)
+            else:
+                # the queue is not always returning max_messages_per_call even when available
+                # looping until receive_messages returns at least 1 message
+                break
 
-    log.info("Retrieved %s messages from SQS queue %s", len(messages), queue_name)
+        log.info("Retrieved %s messages from SQS queue %s", len(messages), queue.queue_name)
+    except Exception as e:
+        logging.error("Failed to retrieve messages from queue %s with exception: %s", queue.queue_name, e)
 
     return messages
 
@@ -272,28 +277,30 @@ def _resolve_events_hostname_collision(event_pool):
 
 
 def _parse_sqs_messages(sqs_config, messages, table, queue):
-    parsed_events = _parse_messages_helper(
-        messages, sqs_config, queue_type=QueueType.instance, table=table, queue=queue
-    )
-    return _resolve_events_hostname_collision(
-        event_pool=itertools.chain(parsed_events[EventType.ADD], parsed_events[EventType.REMOVE])
-    )
+    try:
+        parsed_events = _parse_messages_helper(
+            messages, sqs_config, queue_type=QueueType.instance, table=table, queue=queue
+        )
+        return _resolve_events_hostname_collision(
+            event_pool=itertools.chain(parsed_events[EventType.ADD], parsed_events[EventType.REMOVE])
+        )
+    except Exception as e:
+        logging.error("Failed to parse messages from %s with exception: %s", queue.queue_name, e)
+    return []
 
 
 def _parse_health_messages(sqs_config, messages, table, health_queue):
-    if messages:
-        instances_in_cluster = get_cluster_instance_info(
-            sqs_config.stack_name, sqs_config.region, sqs_config.proxy_config, include_master=False
-        )
+    try:
         parsed_events = _parse_messages_helper(
-            messages, sqs_config, queue_type=QueueType.health, table=table, instances_in_cluster=instances_in_cluster
+            messages, sqs_config, queue_type=QueueType.health, table=table, queue=health_queue,
         )
         return _resolve_events_hostname_collision(event_pool=parsed_events[EventType.HEALTH])
-    else:
-        return []
+    except Exception as e:
+        logging.error("Failed to parse messages from %s with exception: %s", health_queue.queue_name, e)
+    return []
 
 
-def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=None, instances_in_cluster=None):
+def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=None):
     parsed_events = {
         EventType.ADD: [],
         EventType.REMOVE: [],
@@ -301,7 +308,7 @@ def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=N
     }
     event_name_to_processing_function = {
         EventType.HEALTH: lambda: _process_scheduled_maintenance_event(
-            message_attrs, message, table, instances_in_cluster
+            sqs_config.stack_name, sqs_config.region, sqs_config.proxy_config, message_attrs, message, table, queue
         ),
         EventType.ADD: lambda: _process_compute_ready_event(
             sqs_config.region, sqs_config.proxy_config, message_attrs, message, table
@@ -338,16 +345,30 @@ def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=N
     return parsed_events
 
 
-def _process_scheduled_maintenance_event(message_attrs, message, table, instances_in_cluster):
-    instance_id = message_attrs.get("EC2InstanceId")
-    if instance_id in instances_in_cluster:
-        hostname = _retrieve_hostname_from_ddb(instance_id, table)
-        log.info("Relevant EC2 scheduled event for instance:%s in ASG.", instance_id)
-        return UpdateEvent(EventType.HEALTH, message, Host(instance_id, hostname, None, None))
-    else:
-        log.info("Irrelevant EC2 scheduled event for instance:%s. Discarding message.", instance_id)
+def _process_scheduled_maintenance_event(stack_name, region, proxy_config, message_attrs, message, table, queue):
+    try:
+        instance_id = message_attrs.get("EC2InstanceId")
+        instances_in_cluster = get_cluster_instance_info(
+            stack_name, region, proxy_config, instance_ids=[instance_id], include_master=False
+        )
+        if instance_id in instances_in_cluster:
+            hostname = _retrieve_hostname_from_ddb(instance_id, table)
+            log.info("Relevant EC2 scheduled event for instance:%s in ASG.", instance_id)
+            if hostname:
+                return UpdateEvent(EventType.HEALTH, message, Host(instance_id, hostname, None, None))
+            else:
+                log.error("Instance %s not found in the database.", instance_id)
+                _requeue_message(queue, message)
+                message.delete()
+        else:
+            log.info("Irrelevant EC2 scheduled event for instance:%s. Discarding message.", instance_id)
+            message.delete()
+    except Exception as e:
+        log.error("Failed when processing scheduled event message for instance %s with exception %s", instance_id, e)
+        _requeue_message(queue, message)
         message.delete()
-        return None
+
+    return None
 
 
 def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message, table):
@@ -396,7 +417,7 @@ def _retrieve_hostname_from_ddb(instance_id, table):
 def _process_health_messages(
     health_events, scheduler_module, sqs_config, health_queue,
 ):
-    # Update the scheduler only when there are health events
+    # Update the scheduler only when there is health event
     if not health_events:
         return
 

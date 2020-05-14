@@ -67,13 +67,9 @@ def get_node_state(hostname):
     # https://slurm.schedmd.com/sinfo.html#lbAG
     # Output format:
     # down*
-    try:
-        command = "/opt/slurm/bin/sinfo --noheader -o '%T' -n {}".format(hostname)
-        output = check_command_output(command).strip()
-        return output
-    except Exception as e:
-        logging.error("Failed when checking if node %s state with exception %s.", hostname, e)
-        raise
+    command = "/opt/slurm/bin/sinfo --noheader -o '%T' -n {}".format(hostname)
+    output = check_command_output(command).strip()
+    return output
 
 
 def get_pending_jobs_info(
@@ -301,7 +297,6 @@ def lock_node(hostname, reason=None):
         run_command(command)
     except subprocess.CalledProcessError:
         logging.error("Error locking host %s", hostname)
-        raise
 
 
 def unlock_node(hostname, reason=None):
@@ -318,7 +313,6 @@ def unlock_node(hostname, reason=None):
         run_command(command)
     except subprocess.CalledProcessError:
         logging.error("Error unlocking host %s", hostname)
-        raise
 
 
 class SlurmJob(ComparableObject):
