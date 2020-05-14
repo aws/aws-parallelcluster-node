@@ -56,9 +56,14 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
 
 
 def _is_node_locked(hostname):
-    node = get_compute_nodes_info(hostname_filter=[hostname]).get(hostname)
-    if TORQUE_NODE_DISABLED_STATE in node.state:
-        return True
+    try:
+        node = get_compute_nodes_info(hostname_filter=[hostname]).get(hostname)
+        if TORQUE_NODE_DISABLED_STATE in node.state:
+            return True
+    except Exception as e:
+        log.error(
+            "Failed when checking if node is locked with exception %s. Reporting node %s as unlocked.", e, hostname
+        )
     return False
 
 
@@ -68,7 +73,6 @@ def perform_health_actions(health_events):
     succeeded = []
     for event in health_events:
         try:
-            # to-do, ignore fail to lock message if node is not in scheduler
             if _is_node_locked(event.host.hostname):
                 log.error(
                     "Instance %s/%s currently in disabled state 'offline'. "
@@ -83,7 +87,7 @@ def perform_health_actions(health_events):
             note = "Node requires replacement due to an EC2 scheduled maintenance event"
             lock_node(hostname=event.host.hostname, unlock=False, note=note)
 
-            if _is_node_locked:
+            if _is_node_locked(event.host.hostname):
                 succeeded.append(event)
                 log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
             else:

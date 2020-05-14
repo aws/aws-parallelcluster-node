@@ -141,7 +141,6 @@ def lock_node(hostname, unlock=False, note=None):
         run_command(command)
     except subprocess.CalledProcessError:
         logging.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
-        raise
 
 
 def update_cluster_limits(max_nodes, node_slots):

@@ -403,20 +403,22 @@ def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
         raise CriticalError(error_msg)
 
 
-def get_cluster_instance_info(stack_name, region, proxy_config, include_master=False):
-    """Return a list of instance_id that are in the cluster."""
+def get_cluster_instance_info(stack_name, region, proxy_config, instance_ids=None, include_master=False):
+    """Return a list of instance_ids that are in the cluster."""
     try:
         instances_in_cluster = []
         ec2_client = boto3.client("ec2", region_name=region, config=proxy_config)
         instance_paginator = ec2_client.get_paginator("describe_instances")
         nodes_to_include = ["Compute", "Master"] if include_master else ["Compute"]
-
-        for page in instance_paginator.paginate(
-            Filters=[
+        function_args = {
+            "Filters": [
                 {"Name": "tag:Application", "Values": [stack_name]},
                 {"Name": "tag:Name", "Values": nodes_to_include},
             ]
-        ):
+        }
+        if instance_ids:
+            function_args["InstanceIds"] = instance_ids
+        for page in instance_paginator.paginate(**function_args):
             for reservation in page.get("Reservations"):
                 for instance in reservation.get("Instances"):
                     is_alive = instance.get("State").get("Name") in INSTANCE_ALIVE_STATES

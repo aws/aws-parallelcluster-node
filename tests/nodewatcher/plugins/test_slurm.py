@@ -68,10 +68,10 @@ def test_has_pending_jobs(pending_jobs, expected_result, mocker):
 @pytest.mark.parametrize(
     "hostname, get_node_state_output, expected_result",
     [
-        ("ip-10-0-0-166", "idle", False,),
+        ("ip-10-0-0-166", "idle#", False,),
         ("ip-10-0-0-166", "down", True,),
-        ("ip-10-0-0-166", "draining", False,),
-        ("ip-10-0-0-166", "drained", True,),
+        ("ip-10-0-0-166", "draining#", False,),
+        ("ip-10-0-0-166", "drained*", True,),
         ("ip-10-0-0-166", "unknown", False,),
         ("ip-10-0-0-166", Exception, True,),
     ],
