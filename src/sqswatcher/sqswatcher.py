@@ -353,7 +353,7 @@ def _process_scheduled_maintenance_event(stack_name, region, proxy_config, messa
         )
         if instance_id in instances_in_cluster:
             hostname = _retrieve_hostname_from_ddb(instance_id, table)
-            log.info("Relevant EC2 scheduled event for instance:%s in ASG.", instance_id)
+            log.info("Relevant EC2 scheduled event for instance: %s.", instance_id)
             if hostname:
                 return UpdateEvent(EventType.HEALTH, message, Host(instance_id, hostname, None, None))
             else:
