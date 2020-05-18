@@ -249,7 +249,7 @@ def perform_health_actions(health_events):
                 log.error("Failed to lock %s in response to scheduled maintainence event", event.host.hostname)
         except Exception as e:
             log.error(
-                "Encountered exception when locking %s because of a scheduled maintainence event: %s",
+                "Encountered exception when responding to a scheduled maintainence event for %s: %s",
                 event.host.hostname,
                 e,
             )
