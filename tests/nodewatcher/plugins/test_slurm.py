@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, SlurmJob
-from nodewatcher.plugins.slurm import has_pending_jobs, is_node_down
+from nodewatcher.plugins.slurm import has_pending_jobs, is_node_down, lock_host
 
 
 @pytest.mark.parametrize(
@@ -87,4 +87,16 @@ def test_is_node_down(hostname, get_node_state_output, expected_result, mocker):
         )
 
     assert_that(is_node_down()).is_equal_to(expected_result)
+    mock.assert_called_with(hostname)
+
+
+@pytest.mark.parametrize(
+    "hostname, unlock", [("ip-10-0-0-166", False), ("ip-10-0-0-166", True)],
+)
+def test_lock_host(hostname, unlock, mocker):
+    if unlock:
+        mock = mocker.patch("nodewatcher.plugins.slurm.unlock_node", autospec=True)
+    else:
+        mock = mocker.patch("nodewatcher.plugins.slurm.lock_node", autospec=True)
+    lock_host(hostname, unlock)
     mock.assert_called_with(hostname)

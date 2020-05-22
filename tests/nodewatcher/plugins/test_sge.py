@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.sge_commands import SGE_HOLD_STATE, SgeHost, SgeJob
-from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down
+from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down, lock_host
 
 
 @pytest.mark.parametrize(
@@ -184,3 +184,15 @@ def test_has_jobs(jobs, expected_result, mocker):
 
     assert_that(has_jobs(hostname)).is_equal_to(expected_result)
     mock.assert_called_with(hostname_filter=hostname, job_state_filter="rs")
+
+
+@pytest.mark.parametrize(
+    "hostname, unlock", [("ip-10-0-0-166", False), ("ip-10-0-0-166", True)],
+)
+def test_lock_host(hostname, unlock, mocker):
+    if unlock:
+        mock = mocker.patch("nodewatcher.plugins.sge.unlock_node", autospec=True)
+    else:
+        mock = mocker.patch("nodewatcher.plugins.sge.lock_node", autospec=True)
+    lock_host(hostname, unlock)
+    mock.assert_called_with(hostname)

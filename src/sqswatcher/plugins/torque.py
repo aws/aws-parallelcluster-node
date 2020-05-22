@@ -23,7 +23,7 @@ from common.schedulers.torque_commands import (
     update_cluster_limits,
     wakeup_scheduler,
 )
-from common.utils import EventType
+from common.utils import POSSIBLE_LOCK_CONFLICT_WARNING, EventType
 
 log = logging.getLogger(__name__)
 
@@ -75,11 +75,10 @@ def perform_health_actions(health_events):
         try:
             if _is_node_locked(event.host.hostname):
                 log.warning(
-                    "Instance %s/%s currently in disabled state 'offline'. "
-                    "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
-                    "Marking event as failed to retry later.",
+                    POSSIBLE_LOCK_CONFLICT_WARNING,
                     event.host.instance_id,
                     event.host.hostname,
+                    TORQUE_NODE_DISABLED_STATE,
                 )
                 failed.append(event)
                 continue

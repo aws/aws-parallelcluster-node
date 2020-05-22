@@ -55,6 +55,16 @@ SUPPORTED_EVENTTYPE_FOR_QUEUETYPE = {
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
 INSTANCE_ALIVE_STATES = ["pending", "running"]
+TREAT_DISABLED_AS_DOWN_WARNING = (
+    "Considering node as down because there is no job running and node is in a disabled state. "
+    "The node could have been put into this disabled state automatically by ParallelCluster "
+    "in response to an EC2 scheduled maintenance event, or manually by the system administrator."
+)
+POSSIBLE_LOCK_CONFLICT_WARNING = (
+    "Instance %s/%s currently in disabled state %s. "
+    "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
+    "Marking event as failed to retry later."
+)
 
 
 def load_module(module):

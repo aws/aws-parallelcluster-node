@@ -22,7 +22,7 @@ from common.schedulers.sge_commands import (
     lock_node,
     unlock_node,
 )
-from common.utils import check_command_output
+from common.utils import TREAT_DISABLED_AS_DOWN_WARNING, check_command_output
 
 log = logging.getLogger(__name__)
 
@@ -87,13 +87,7 @@ def is_node_down():
         if all(error_state not in node.state for error_state in SGE_ERROR_STATES):
             # Consider the node down if it's in disabled state and there is no job running
             if SGE_DISABLED_STATE in node.state and not has_jobs(hostname):
-                log.warning(
-                    (
-                        "Considering node as down because there is no job running and node is in a disabled state. "
-                        "The node could have been put into this disabled state automatically by ParallelCluster "
-                        "in response to an EC2 scheduled maintenance event, or manually by the system administrator."
-                    )
-                )
+                log.warning(TREAT_DISABLED_AS_DOWN_WARNING)
                 return True
             return False
     except Exception as e:

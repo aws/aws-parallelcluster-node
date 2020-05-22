@@ -23,7 +23,7 @@ from common.schedulers.sge_commands import (
     remove_hosts_from_group,
     remove_hosts_from_queue,
 )
-from common.utils import EventType
+from common.utils import POSSIBLE_LOCK_CONFLICT_WARNING, EventType
 
 log = logging.getLogger(__name__)
 
@@ -124,11 +124,7 @@ def perform_health_actions(health_events):
         try:
             if _is_node_locked(event.host.hostname):
                 log.warning(
-                    "Instance %s/%s currently in disabled state 'd'. "
-                    "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
-                    "Marking event as failed to retry later.",
-                    event.host.instance_id,
-                    event.host.hostname,
+                    POSSIBLE_LOCK_CONFLICT_WARNING, event.host.instance_id, event.host.hostname, SGE_DISABLED_STATE,
                 )
                 failed.append(event)
                 continue

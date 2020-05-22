@@ -20,7 +20,7 @@ from common.schedulers.slurm_commands import (
     lock_node,
     unlock_node,
 )
-from common.utils import check_command_output
+from common.utils import TREAT_DISABLED_AS_DOWN_WARNING, check_command_output
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def has_pending_jobs(instance_properties, max_size):
 
 
 def lock_host(hostname, unlock=False):
-    if unlock_node:
+    if unlock:
         unlock_node(hostname)
     else:
         lock_node(hostname)
@@ -76,13 +76,7 @@ def is_node_down():
         if output and all(state not in output for state in SLURM_NODE_ERROR_STATES):
             return False
         if output and "drained" in output:
-            log.warning(
-                (
-                    "Considering node as down because there is no job running and node is in a disabled state. "
-                    "The node could have been put into this disabled state automatically by ParallelCluster in "
-                    "response to an EC2 scheduled maintenance event, or manually by the system administrator."
-                )
-            )
+            log.warning(TREAT_DISABLED_AS_DOWN_WARNING)
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
 
