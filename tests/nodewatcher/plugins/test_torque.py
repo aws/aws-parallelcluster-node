@@ -12,7 +12,7 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.torque_commands import TorqueHost, TorqueJob, TorqueResourceList
-from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down
+from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down, lock_host
 
 
 @pytest.mark.parametrize(
@@ -171,3 +171,12 @@ def test_has_jobs(jobs, expected_result, mocker):
 
     assert_that(has_jobs(hostname)).is_equal_to(expected_result)
     mock.assert_called_with(filter_by_exec_hosts={hostname.split(".")[0]}, filter_by_states=["R", "S"])
+
+
+@pytest.mark.parametrize(
+    "hostname, unlock", [("ip-10-0-0-166", False), ("ip-10-0-0-166", True)],
+)
+def test_lock_host(hostname, unlock, mocker):
+    mock = mocker.patch("nodewatcher.plugins.torque.lock_node", autospec=True)
+    lock_host(hostname, unlock)
+    mock.assert_called_with(hostname=hostname, unlock=unlock)

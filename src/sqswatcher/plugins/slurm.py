@@ -24,7 +24,7 @@ from retrying import retry
 
 from common.remote_command_executor import RemoteCommandExecutor
 from common.schedulers.slurm_commands import SLURM_NODE_DISABLED_STATES, get_node_state, lock_node
-from common.utils import EventType, run_command
+from common.utils import POSSIBLE_LOCK_CONFLICT_WARNING, EventType, run_command
 
 log = logging.getLogger(__name__)
 
@@ -231,11 +231,10 @@ def perform_health_actions(health_events):
         try:
             if _is_node_locked(event.host.hostname):
                 log.warning(
-                    "Instance %s/%s currently in disabled state 'draining/drained'. "
-                    "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
-                    "Marking event as failed to retry later.",
+                    POSSIBLE_LOCK_CONFLICT_WARNING,
                     event.host.instance_id,
                     event.host.hostname,
+                    SLURM_NODE_DISABLED_STATES,
                 )
                 failed.append(event)
                 continue
