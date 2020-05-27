@@ -14,6 +14,7 @@ import itertools
 import json
 import logging
 import platform
+import re
 from collections import OrderedDict
 from datetime import datetime
 
@@ -337,7 +338,10 @@ def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=N
         if event_type in SUPPORTED_EVENTTYPE_FOR_QUEUETYPE[queue_type]:
             event = event_name_to_processing_function.get(event_type)()
             if event:
-                parsed_events[event_type].append(event)
+                if type(event) is list:
+                    parsed_events[event_type] += event
+                else:
+                    parsed_events[event_type].append(event)
         else:
             log.info("Unsupported event type %s for %s queue. Discarding message.", event_type, queue_type)
             message.delete()
@@ -347,24 +351,34 @@ def _parse_messages_helper(messages, sqs_config, queue_type, table=None, queue=N
 
 def _process_scheduled_maintenance_event(stack_name, region, proxy_config, message_attrs, message, table, queue):
     try:
-        instance_id = message_attrs.get("EC2InstanceId")
+        log.info("Received following message attributes: %s", message_attrs)
+        # Sample message_attrs.get("EC2InstanceId"): '[i-0568ba1685b8de9c6,i-0365bafdf8528834b]'
+        instance_id_list = re.sub(r"[\[\]]", "", message_attrs.get("EC2InstanceId")).split(",")
         instances_in_cluster = get_cluster_instance_info(
-            stack_name, region, proxy_config, instance_ids=[instance_id], include_master=False
+            stack_name, region, proxy_config, instance_ids=instance_id_list, include_master=False
         )
-        if instance_id in instances_in_cluster:
-            hostname = _retrieve_hostname_from_ddb(instance_id, table)
-            log.info("Relevant EC2 scheduled event for instance: %s.", instance_id)
-            if hostname:
-                return UpdateEvent(EventType.HEALTH, message, Host(instance_id, hostname, None, None))
+        health_event_list = []
+        for instance_id in instance_id_list:
+            if instance_id in instances_in_cluster:
+                hostname = _retrieve_hostname_from_ddb(instance_id, table)
+                log.info("Relevant EC2 scheduled event for instance: %s.", instance_id)
+                if hostname:
+                    health_event_list.append(
+                        UpdateEvent(EventType.HEALTH, message, Host(instance_id, hostname, None, None))
+                    )
+                else:
+                    log.error("Instance %s not found in the database. Discarding notification.", instance_id)
             else:
-                log.error("Instance %s not found in the database.", instance_id)
-                _requeue_message(queue, message)
-                message.delete()
-        else:
-            log.info("Irrelevant EC2 scheduled event for instance:%s. Discarding message.", instance_id)
-            message.delete()
+                log.info(
+                    "Irrelevant EC2 scheduled event for instance not in cluster:%s. Discarding notification.",
+                    instance_id,
+                )
+
+        return health_event_list
     except Exception as e:
-        log.error("Failed when processing scheduled event message for instance %s with exception %s", instance_id, e)
+        log.error(
+            "Failed when processing scheduled event message for instances %s with exception %s", instance_id_list, e
+        )
         _requeue_message(queue, message)
         message.delete()
 
