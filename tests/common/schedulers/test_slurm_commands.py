@@ -10,8 +10,13 @@
 # limitations under the License.
 import pytest
 from assertpy import assert_that
-
-from common.schedulers.slurm_commands import SlurmJob, get_jobs_info, get_pending_jobs_info
+from common.schedulers.slurm_commands import (
+    SlurmJob,
+    SlurmNode,
+    _parse_nodes_info,
+    get_jobs_info,
+    get_pending_jobs_info,
+)
 from tests.common import read_text
 
 
@@ -700,3 +705,38 @@ def test_get_pending_jobs_info(
 
     mock.assert_called_with(job_state_filter="PD")
     assert_that(pending_jobs).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node_info, expected_parsed_nodes_output",
+    [
+        (
+            (
+                "multiple-dynamic-c5.xlarge-1\n"
+                "172.31.10.155\n"
+                "172-31-10-155\n"
+                "MIXED+CLOUD\n"
+                "multiple-dynamic-c5.xlarge-2\n"
+                "172.31.7.218\n"
+                "172-31-7-218\n"
+                "IDLE+CLOUD+POWER\n"
+                "multiple-dynamic-c5.xlarge-3\n"
+                "multiple-dynamic-c5.xlarge-3\n"
+                "multiple-dynamic-c5.xlarge-3\n"
+                "IDLE+CLOUD+POWER"
+            ),
+            [
+                SlurmNode("multiple-dynamic-c5.xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
+                SlurmNode("multiple-dynamic-c5.xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
+                SlurmNode(
+                    "multiple-dynamic-c5.xlarge-3",
+                    "multiple-dynamic-c5.xlarge-3",
+                    "multiple-dynamic-c5.xlarge-3",
+                    "IDLE+CLOUD+POWER",
+                ),
+            ],
+        )
+    ],
+)
+def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
+    assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)

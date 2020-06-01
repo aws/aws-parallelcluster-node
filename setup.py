@@ -27,6 +27,8 @@ console_scripts = [
     "sqswatcher = sqswatcher.sqswatcher:main",
     "nodewatcher = nodewatcher.nodewatcher:main",
     "jobwatcher = jobwatcher.jobwatcher:main",
+    "slurm_resume = slurm_cloud_bursting.resume:main",
+    "slurm_suspend = slurm_cloud_bursting.suspend:main",
 ]
 version = "2.8.0"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3", "paramiko>=2.4.2"]
