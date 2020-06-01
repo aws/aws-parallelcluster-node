@@ -10,12 +10,13 @@
 # limitations under the License.
 
 
+import collections
 import logging
 import math
 from textwrap import wrap
 
 from common.schedulers.converters import ComparableObject, from_table_to_obj_list
-from common.utils import check_command_output
+from common.utils import check_command_output, grouper, run_command
 
 PENDING_RESOURCES_REASONS = [
     "Resources",
@@ -42,6 +43,89 @@ _SQUEUE_FIELDS = [
     "cpus-per-tres",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
+SCONTROL = "/opt/slurm/bin/scontrol"
+SlurmNode = collections.namedtuple("SlurmNode", ["name", "nodeaddr", "nodehostname", "state"])
+
+
+def update_nodes(nodes, nodeaddr=None, nodehostname=None, state=None, reason=None, raise_on_error=True):
+    """
+    Update slurm nodes with scontrol call.
+
+    Slurm can process 10000 nodes in range format.
+    Max range is somewhere below 100000, then we see the following error:
+    fatal: _parse_single_range: Too many hosts in range '1-100000'
+
+    To safely execute update command, run in batches of 100.
+    """
+    if type(nodes) is str:
+        nodes_batch = [",".join(batch) for batch in grouper(nodes.split(","), 100)]
+    else:
+        nodes_batch = [",".join(batch) for batch in grouper(nodes, 100)]
+
+    node_update_cmd = f"{SCONTROL} update"
+    if nodeaddr:
+        node_update_cmd += f" nodeaddr={nodeaddr}"
+    if nodehostname:
+        node_update_cmd += f" nodehostname={nodehostname}"
+    if state:
+        node_update_cmd += f" state={state}"
+    if reason:
+        node_update_cmd += f' reason="{reason}"'
+
+    for batch in nodes_batch:
+        run_command(f"{node_update_cmd} nodename={batch}", raise_on_error=raise_on_error)
+
+
+def set_nodes_down(nodes, reason):
+    """Place slurm node into down state, reason is required."""
+    update_nodes(nodes, state="down", reason=reason)
+
+
+def set_nodes_power_down(nodes, reason=None):
+    """Place slurm node into power_down state."""
+    update_nodes(nodes, state="power_down", reason=reason)
+
+
+def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
+    """
+    Place slurm node into idle state.
+
+    Do not raise on error.
+    Failure for resume command will fail if node already in IDLE, ignore failure.
+    """
+    if reset_node_addrs_hostname:
+        # slurm supports updating multiple nodeaddr/nodehostname at the same time
+        # however if number of nodeaddr/nodehostname entries != number of nodes update will fail
+        # works: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr=c5.2xlarge-[1-2]
+        # works: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr="some ip","some ip"
+        # fails: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr="some ip"
+        update_nodes(nodes, nodeaddr=nodes, nodehostname=nodes, state="resume", reason=reason, raise_on_error=False)
+    else:
+        update_nodes(nodes, state="resume", reason=reason, raise_on_error=False)
+
+
+def get_nodes_info(nodes):
+    """
+    Retrieve SlurmNode list from slurm nodelist notation.
+
+    Sample slurm nodelist notation: queue1-dynamic-c5.xlarge-[1-3],queue2-static-t2.micro-5.
+    """
+    show_node_info_command = (
+        f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '
+        'NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)"'
+    )
+    nodeinfo_str = check_command_output(show_node_info_command)
+
+    return _parse_nodes_info(nodeinfo_str)
+
+
+def _parse_nodes_info(slurm_node_info):
+    """Parse slurm node info into SlurmNode objects."""
+    nodes = []
+    for node in grouper(slurm_node_info.splitlines(), 4):
+        nodes.append(SlurmNode(*node))
+
+    return nodes
 
 
 def get_jobs_info(job_state_filter=None):
