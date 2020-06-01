@@ -10,17 +10,16 @@
 # This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
 # See the License for the specific language governing permissions and limitations under the License.
 import collections
+import itertools
 import json
 import logging
 import os
 import pwd
-import shlex
 import subprocess
 import sys
 import time
 from datetime import datetime
 from enum import Enum
-from subprocess import check_output
 
 import boto3
 from retrying import retry
@@ -117,20 +116,22 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
     :raise: subprocess.CalledProcessError if the command fails
     """
     return _run_command(
-        lambda _command, _env, _preexec_fn: check_output(
+        lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
             preexec_fn=_preexec_fn,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
             timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            shell=True,
         ),
         command,
         env,
         raise_on_error,
         execute_as_user,
         log_error,
-    )
+    ).stdout
 
 
 def run_command(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60):
@@ -144,8 +145,15 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     :raise: subprocess.CalledProcessError if the command fails
     """
     _run_command(
-        lambda _command, _env, _preexec_fn: subprocess.check_call(
-            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, stdout=subprocess.DEVNULL
+        lambda _command, _env, _preexec_fn: subprocess.run(
+            _command,
+            env=_env,
+            preexec_fn=_preexec_fn,
+            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            shell=True,
         ),
         command,
         env,
@@ -165,8 +173,6 @@ def _demote(user_uid, user_gid):
 
 def _run_command(command_function, command, env=None, raise_on_error=True, execute_as_user=None, log_error=True):
     try:
-        if isinstance(command, str):
-            command = shlex.split(command)
         if env is None:
             env = {}
 
@@ -389,3 +395,13 @@ def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
         )
         log.critical(error_msg)
         raise CriticalError(error_msg)
+
+
+def grouper(iterable, n):
+    """Slice iterable into chunks of size n."""
+    it = iter(iterable)
+    while True:
+        chunk = tuple(itertools.islice(it, n))
+        if not chunk:
+            return
+        yield chunk
