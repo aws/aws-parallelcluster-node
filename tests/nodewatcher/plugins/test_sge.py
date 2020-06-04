@@ -12,11 +12,11 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.sge_commands import SGE_HOLD_STATE, SgeHost, SgeJob
-from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down, lock_host
+from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down
 
 
 @pytest.mark.parametrize(
-    "hostname, compute_nodes_output, has_job_output, expected_result",
+    "hostname, compute_nodes_output, expected_result",
     [
         (
             "ip-10-0-0-166",
@@ -31,7 +31,6 @@ from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down, lo
                 )
             },
             False,
-            False,
         ),
         (
             "ip-10-0-0-166",
@@ -41,9 +40,8 @@ from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down, lo
                 )
             },
             False,
-            False,
         ),
-        ("ip-10-0-0-166", {}, True, True),
+        ("ip-10-0-0-166", {}, True),
         (
             "ip-10-0-0-166",
             {
@@ -57,67 +55,12 @@ from nodewatcher.plugins.sge import has_jobs, has_pending_jobs, is_node_down, lo
                 )
             },
             True,
-            True,
         ),
-        ("ip-10-0-0-166", Exception, True, True),
-        (
-            "ip-10-0-0-166",
-            {
-                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="ip-10-0-0-166.eu-west-1.compute.internal",
-                    slots_total=4,
-                    slots_used=0,
-                    slots_reserved=0,
-                    state="d",
-                    jobs=[],
-                )
-            },
-            True,
-            False,
-        ),
-        (
-            "ip-10-0-0-166",
-            {
-                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="ip-10-0-0-166.eu-west-1.compute.internal",
-                    slots_total=4,
-                    slots_used=0,
-                    slots_reserved=0,
-                    state="d",
-                    jobs=[],
-                )
-            },
-            False,
-            True,
-        ),
-        (
-            "ip-10-0-0-166",
-            {
-                "ip-10-0-0-166.eu-west-1.compute.internal": SgeHost(
-                    name="ip-10-0-0-166.eu-west-1.compute.internal",
-                    slots_total=4,
-                    slots_used=0,
-                    slots_reserved=0,
-                    state="du",
-                    jobs=[],
-                )
-            },
-            True,
-            True,
-        ),
+        ("ip-10-0-0-166", Exception, True),
     ],
-    ids=[
-        "healthy",
-        "healthy_short",
-        "not_attached",
-        "error_state",
-        "exception",
-        "locked_has_job",
-        "locked_no_job",
-        "locked_error",
-    ],
+    ids=["healthy", "healthy_short", "not_attached", "error_state", "exception"],
 )
-def test_is_node_down(hostname, compute_nodes_output, has_job_output, expected_result, mocker):
+def test_terminate_if_down(hostname, compute_nodes_output, expected_result, mocker):
     mocker.patch("nodewatcher.plugins.sge.check_command_output", return_value=hostname, autospec=True)
     mocker.patch(
         "nodewatcher.plugins.sge.socket.getfqdn", return_value=hostname + ".eu-west-1.compute.internal", autospec=True
@@ -128,7 +71,6 @@ def test_is_node_down(hostname, compute_nodes_output, has_job_output, expected_r
         mock = mocker.patch(
             "nodewatcher.plugins.sge.get_compute_nodes_info", return_value=compute_nodes_output, autospec=True
         )
-    mocker.patch("nodewatcher.plugins.sge.has_jobs", return_value=has_job_output, autospec=True)
 
     assert_that(is_node_down()).is_equal_to(expected_result)
     mock.assert_called_with(hostname)
@@ -184,15 +126,3 @@ def test_has_jobs(jobs, expected_result, mocker):
 
     assert_that(has_jobs(hostname)).is_equal_to(expected_result)
     mock.assert_called_with(hostname_filter=hostname, job_state_filter="rs")
-
-
-@pytest.mark.parametrize(
-    "hostname, unlock", [("ip-10-0-0-166", False), ("ip-10-0-0-166", True)],
-)
-def test_lock_host(hostname, unlock, mocker):
-    if unlock:
-        mock = mocker.patch("nodewatcher.plugins.sge.unlock_node", autospec=True)
-    else:
-        mock = mocker.patch("nodewatcher.plugins.sge.lock_node", autospec=True)
-    lock_host(hostname, unlock)
-    mock.assert_called_with(hostname)

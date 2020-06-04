@@ -12,15 +12,8 @@
 import logging
 import subprocess
 
-from common.schedulers.slurm_commands import (
-    PENDING_RESOURCES_REASONS,
-    SLURM_NODE_ERROR_STATES,
-    get_node_state,
-    get_pending_jobs_info,
-    lock_node,
-    unlock_node,
-)
-from common.utils import TREAT_DISABLED_AS_DOWN_WARNING, check_command_output
+from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, get_pending_jobs_info
+from common.utils import check_command_output, run_command
 
 log = logging.getLogger(__name__)
 
@@ -61,22 +54,44 @@ def has_pending_jobs(instance_properties, max_size):
 
 
 def lock_host(hostname, unlock=False):
+    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
+    hostname = hostname.split(".")[0]
     if unlock:
-        unlock_node(hostname)
+        log.info("Unlocking host %s", hostname)
+        command = [
+            "/opt/slurm/bin/scontrol",
+            "update",
+            "NodeName={0}".format(hostname),
+            "State=RESUME",
+            'Reason="Unlocking"',
+        ]
     else:
-        lock_node(hostname)
+        log.info("Locking host %s", hostname)
+        command = [
+            "/opt/slurm/bin/scontrol",
+            "update",
+            "NodeName={0}".format(hostname),
+            "State=DRAIN",
+            'Reason="Shutting down"',
+        ]
+    try:
+        run_command(command)
+    except subprocess.CalledProcessError:
+        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
 
 
 def is_node_down():
     """Check if node is down according to scheduler."""
     try:
-        hostname = check_command_output("hostname").strip()
-        output = get_node_state(hostname)
+        # retrieves the state of a specific node
+        # https://slurm.schedmd.com/sinfo.html#lbAG
+        # Output format:
+        # down*
+        command = "/bin/bash -c \"/opt/slurm/bin/sinfo --noheader -o '%T' -n $(hostname)\""
+        output = check_command_output(command).strip()
         log.info("Node is in state: '{0}'".format(output))
-        if output and all(state not in output for state in SLURM_NODE_ERROR_STATES):
+        if output and all(state not in output for state in ["down", "drained", "fail"]):
             return False
-        if output and "drained" in output:
-            log.warning(TREAT_DISABLED_AS_DOWN_WARNING)
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)
 

@@ -11,7 +11,6 @@
 import collections
 import logging
 import re
-import subprocess
 from xml.etree import ElementTree
 
 from common import sge
@@ -155,22 +154,16 @@ def install_sge_on_compute_nodes(hosts, cluster_user):
     return succeeded_hosts
 
 
-def lock_node(hostname):
+def lock_host(hostname):
     logging.info("Locking host %s", hostname)
     command = ["qmod", "-d", "all.q@{0}".format(hostname)]
-    try:
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        logging.error("Error locking host %s", hostname)
+    run_sge_command(command)
 
 
-def unlock_node(hostname):
+def unlock_host(hostname):
     logging.info("Unlocking host %s", hostname)
     command = ["qmod", "-e", "all.q@{0}".format(hostname)]
-    try:
-        run_sge_command(command)
-    except subprocess.CalledProcessError:
-        logging.error("Error unlocking host %s", hostname)
+    run_sge_command(command)
 
 
 def _run_sge_command_for_multiple_hosts(hosts, command_template):
