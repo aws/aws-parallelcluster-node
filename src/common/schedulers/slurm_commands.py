@@ -12,14 +12,11 @@
 
 import logging
 import math
-import subprocess
 from textwrap import wrap
 
 from common.schedulers.converters import ComparableObject, from_table_to_obj_list
-from common.utils import check_command_output, run_command
+from common.utils import check_command_output
 
-SLURM_NODE_ERROR_STATES = ["down", "drained", "fail"]
-SLURM_NODE_DISABLED_STATES = ["draining", "drained"]
 PENDING_RESOURCES_REASONS = [
     "Resources",
     "Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions",
@@ -60,16 +57,6 @@ def get_jobs_info(job_state_filter=None):
 
     output = check_command_output(command)
     return SlurmJob.from_table(output)
-
-
-def get_node_state(hostname):
-    # retrieves the state of a specific node
-    # https://slurm.schedmd.com/sinfo.html#lbAG
-    # Output format:
-    # down*
-    command = "/opt/slurm/bin/sinfo --noheader -o '%T' -n {}".format(hostname)
-    output = check_command_output(command).strip()
-    return output
 
 
 def get_pending_jobs_info(
@@ -280,39 +267,6 @@ def job_runnable_on_given_node(job_resources_per_node, resources_available, exis
             return False
 
     return True
-
-
-def lock_node(hostname, reason=None):
-    # hostname format: ip-10-0-0-114.eu-west-1.compute.internal
-    hostname = hostname.split(".")[0]
-    logging.info("Locking host %s", hostname)
-    command = [
-        "/opt/slurm/bin/scontrol",
-        "update",
-        "NodeName={0}".format(hostname),
-        "State=DRAIN",
-        "Reason={}".format(reason if reason else '"Shutting down"'),
-    ]
-    try:
-        run_command(command)
-    except subprocess.CalledProcessError:
-        logging.error("Error locking host %s", hostname)
-
-
-def unlock_node(hostname, reason=None):
-    hostname = hostname.split(".")[0]
-    logging.info("Unlocking host %s", hostname)
-    command = [
-        "/opt/slurm/bin/scontrol",
-        "update",
-        "NodeName={0}".format(hostname),
-        "State=RESUME",
-        "Reason={}".format(reason if reason else '"Unlocking"'),
-    ]
-    try:
-        run_command(command)
-    except subprocess.CalledProcessError:
-        logging.error("Error unlocking host %s", hostname)
 
 
 class SlurmJob(ComparableObject):

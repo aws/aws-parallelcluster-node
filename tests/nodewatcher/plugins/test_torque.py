@@ -12,11 +12,11 @@ import pytest
 
 from assertpy import assert_that
 from common.schedulers.torque_commands import TorqueHost, TorqueJob, TorqueResourceList
-from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down, lock_host
+from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down
 
 
 @pytest.mark.parametrize(
-    "hostname, compute_nodes_output, has_job_output, expected_result",
+    "hostname, compute_nodes_output, expected_result",
     [
         (
             "ip-10-0-0-196",
@@ -28,10 +28,9 @@ from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down,
                     jobs="0/137.ip-10-0-0-196.eu-west-1.compute.internal",
                 )
             },
-            True,
             False,
         ),
-        ("ip-10-0-0-166", {}, [], True),
+        ("ip-10-0-0-166", {}, True),
         (
             "ip-10-0-0-196",
             {
@@ -43,45 +42,12 @@ from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down,
                 )
             },
             True,
-            True,
         ),
-        ("ip-10-0-0-166", Exception, [], True),
-        (
-            "ip-10-0-0-196",
-            {
-                "ip-10-0-0-196": TorqueHost(
-                    name="ip-10-0-0-196",
-                    slots=1000,
-                    state="offline",
-                    jobs="0/137.ip-10-0-0-196.eu-west-1.compute.internal",
-                )
-            },
-            True,
-            False,
-        ),
-        (
-            "ip-10-0-0-196",
-            {"ip-10-0-0-196": TorqueHost(name="ip-10-0-0-196", slots=1000, state="offline", jobs="",)},
-            False,
-            True,
-        ),
-        (
-            "ip-10-0-0-196",
-            {
-                "ip-10-0-0-196": TorqueHost(
-                    name="ip-10-0-0-196",
-                    slots=1000,
-                    state="offline,down",
-                    jobs="0/137.ip-10-0-0-196.eu-west-1.compute.internal",
-                )
-            },
-            True,
-            True,
-        ),
+        ("ip-10-0-0-166", Exception, True),
     ],
-    ids=["healthy", "not_attached", "error_state", "exception", "locked_has_job", "locked_no_job", "locked_and_error"],
+    ids=["healthy", "not_attached", "error_state", "exception"],
 )
-def test_is_node_down(hostname, compute_nodes_output, has_job_output, expected_result, mocker):
+def test_is_node_down(hostname, compute_nodes_output, expected_result, mocker):
     mocker.patch("nodewatcher.plugins.torque.check_command_output", return_value=hostname, autospec=True)
     if compute_nodes_output is Exception:
         mock = mocker.patch("nodewatcher.plugins.torque.get_compute_nodes_info", side_effect=Exception(), autospec=True)
@@ -89,7 +55,6 @@ def test_is_node_down(hostname, compute_nodes_output, has_job_output, expected_r
         mock = mocker.patch(
             "nodewatcher.plugins.torque.get_compute_nodes_info", return_value=compute_nodes_output, autospec=True
         )
-    mocker.patch("nodewatcher.plugins.torque.has_jobs", return_value=has_job_output, autospec=True)
 
     assert_that(is_node_down()).is_equal_to(expected_result)
     mock.assert_called_with(hostname_filter=[hostname])
@@ -171,12 +136,3 @@ def test_has_jobs(jobs, expected_result, mocker):
 
     assert_that(has_jobs(hostname)).is_equal_to(expected_result)
     mock.assert_called_with(filter_by_exec_hosts={hostname.split(".")[0]}, filter_by_states=["R", "S"])
-
-
-@pytest.mark.parametrize(
-    "hostname, unlock", [("ip-10-0-0-166", False), ("ip-10-0-0-166", True)],
-)
-def test_lock_host(hostname, unlock, mocker):
-    mock = mocker.patch("nodewatcher.plugins.torque.lock_node", autospec=True)
-    lock_host(hostname, unlock)
-    mock.assert_called_with(hostname=hostname, unlock=unlock)

@@ -14,16 +14,13 @@ import threading
 import time
 
 from common.schedulers.torque_commands import (
-    TORQUE_NODE_DISABLED_STATE,
     add_nodes,
     delete_nodes,
-    get_compute_nodes_info,
     get_pending_jobs_info,
-    lock_node,
     update_cluster_limits,
     wakeup_scheduler,
 )
-from common.utils import POSSIBLE_LOCK_CONFLICT_WARNING, EventType
+from common.utils import EventType
 
 log = logging.getLogger(__name__)
 
@@ -51,55 +48,6 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
                 failed.append(event)
 
     update_cluster_limits(max_cluster_size, instance_properties["slots"])
-
-    return failed, succeeded
-
-
-def _is_node_locked(hostname):
-    try:
-        node = get_compute_nodes_info(hostname_filter=[hostname]).get(hostname)
-        if TORQUE_NODE_DISABLED_STATE in node.state:
-            return True
-    except Exception as e:
-        log.error(
-            "Failed when checking if node is locked with exception %s. Reporting node %s as unlocked.", e, hostname
-        )
-    return False
-
-
-def perform_health_actions(health_events):
-    """Update and write node lists( and gres_nodes if instance has GPU); restart relevant nodes."""
-    failed = []
-    succeeded = []
-    for event in health_events:
-        try:
-            if _is_node_locked(event.host.hostname):
-                log.warning(
-                    POSSIBLE_LOCK_CONFLICT_WARNING,
-                    event.host.instance_id,
-                    event.host.hostname,
-                    TORQUE_NODE_DISABLED_STATE,
-                )
-                failed.append(event)
-                continue
-
-            note = "Node requires replacement due to an EC2 scheduled maintenance event"
-            lock_node(hostname=event.host.hostname, unlock=False, note=note)
-
-            if _is_node_locked(event.host.hostname):
-                succeeded.append(event)
-                log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
-            else:
-                failed.append(event)
-                log.error("Failed to lock %s in response to scheduled maintainence event", event.host.hostname)
-
-        except Exception as e:
-            log.error(
-                "Encountered exception when responding to a scheduled maintainence event for %s: %s",
-                event.host.hostname,
-                e,
-            )
-            failed.append(event)
 
     return failed, succeeded
 

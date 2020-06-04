@@ -39,32 +39,10 @@ class CriticalError(Exception):
 class EventType(Enum):
     ADD = "ADD"
     REMOVE = "REMOVE"
-    HEALTH = "HEALTH"
 
-
-class QueueType(Enum):
-    instance = "instance"
-    health = "health"
-
-
-SUPPORTED_EVENTTYPE_FOR_QUEUETYPE = {
-    QueueType.instance: [EventType.ADD, EventType.REMOVE],
-    QueueType.health: [EventType.HEALTH],
-}
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
-INSTANCE_ALIVE_STATES = ["pending", "running"]
-TREAT_DISABLED_AS_DOWN_WARNING = (
-    "Considering node as down because there is no job running and node is in a disabled state. "
-    "The node could have been put into this disabled state automatically by ParallelCluster "
-    "in response to an EC2 scheduled maintenance event, or manually by the system administrator."
-)
-POSSIBLE_LOCK_CONFLICT_WARNING = (
-    "Instance %s/%s currently in disabled state %s. "
-    "Risk of lock being released by nodewatcher if locking the node because of scheduled event now. "
-    "Marking event as failed to retry later."
-)
 
 
 def load_module(module):
@@ -411,33 +389,3 @@ def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
         )
         log.critical(error_msg)
         raise CriticalError(error_msg)
-
-
-def get_cluster_instance_info(stack_name, region, proxy_config, instance_ids=None, include_master=False):
-    """Return a list of instance_ids that are in the cluster."""
-    try:
-        instances_in_cluster = []
-        ec2_client = boto3.client("ec2", region_name=region, config=proxy_config)
-        instance_paginator = ec2_client.get_paginator("describe_instances")
-        nodes_to_include = ["Compute", "Master"] if include_master else ["Compute"]
-        function_args = {
-            "Filters": [
-                {"Name": "tag:Application", "Values": [stack_name]},
-                {"Name": "tag:Name", "Values": nodes_to_include},
-            ]
-        }
-        if instance_ids:
-            function_args["InstanceIds"] = instance_ids
-        for page in instance_paginator.paginate(**function_args):
-            for reservation in page.get("Reservations"):
-                for instance in reservation.get("Instances"):
-                    is_alive = instance.get("State").get("Name") in INSTANCE_ALIVE_STATES
-                    instance_id = instance.get("InstanceId")
-                    if is_alive:
-                        instances_in_cluster.append(instance_id)
-
-        return instances_in_cluster
-
-    except Exception as e:
-        logging.error("Failed retrieving instance_ids for cluster %s with exception: %s", stack_name, e)
-        raise

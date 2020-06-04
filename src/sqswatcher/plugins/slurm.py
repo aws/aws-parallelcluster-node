@@ -23,8 +23,7 @@ from shutil import move
 from retrying import retry
 
 from common.remote_command_executor import RemoteCommandExecutor
-from common.schedulers.slurm_commands import SLURM_NODE_DISABLED_STATES, get_node_state, lock_node
-from common.utils import POSSIBLE_LOCK_CONFLICT_WARNING, EventType, run_command
+from common.utils import EventType, run_command
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ def _write_node_list_to_file(generic_node_list, config_file_path):
     # Only log the updated node list if it's different from the previous version,
     # because it can get quite long.
     if not filecmp.cmp(config_file_path, abs_path, shallow=False):
-        log.info("Writing updated %s with the following nodes: %s", config_file_path, generic_node_list)
+        log.info("Writing updated {0} with the following nodes: {1}".format(config_file_path, generic_node_list))
 
     # Update permissions on new file
     os.chmod(abs_path, 0o744)
@@ -204,54 +203,6 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
         if results.get(event.host.hostname, True):
             succeeded.append(event)
         else:
-            failed.append(event)
-
-    return failed, succeeded
-
-
-def _is_node_locked(hostname):
-    try:
-        node_state = get_node_state(hostname)
-        log.info("Node %s currently in state %s", hostname, node_state)
-        for disable_state in SLURM_NODE_DISABLED_STATES:
-            if disable_state in node_state:
-                return True
-    except Exception as e:
-        log.error(
-            "Failed when checking if node is locked with exception %s. Reporting node %s as unlocked.", e, hostname
-        )
-    return False
-
-
-def perform_health_actions(health_events):
-    """Update and write node lists( and gres_nodes if instance has GPU); restart relevant nodes."""
-    failed = []
-    succeeded = []
-    for event in health_events:
-        try:
-            if _is_node_locked(event.host.hostname):
-                log.warning(
-                    POSSIBLE_LOCK_CONFLICT_WARNING,
-                    event.host.instance_id,
-                    event.host.hostname,
-                    SLURM_NODE_DISABLED_STATES,
-                )
-                failed.append(event)
-                continue
-            reason = "Node requires replacement due to an EC2 scheduled maintenance event"
-            lock_node(event.host.hostname, reason=reason)
-            if _is_node_locked(event.host.hostname):
-                succeeded.append(event)
-                log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
-            else:
-                failed.append(event)
-                log.error("Failed to lock %s in response to scheduled maintainence event", event.host.hostname)
-        except Exception as e:
-            log.error(
-                "Encountered exception when responding to a scheduled maintainence event for %s: %s",
-                event.host.hostname,
-                e,
-            )
             failed.append(event)
 
     return failed, succeeded

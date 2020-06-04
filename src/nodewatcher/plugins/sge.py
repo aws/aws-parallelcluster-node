@@ -11,18 +11,18 @@
 
 import logging
 import socket
+import subprocess
 
 from common.schedulers.sge_commands import (
-    SGE_DISABLED_STATE,
     SGE_ERROR_STATES,
     SGE_HOLD_STATE,
     get_compute_nodes_info,
     get_jobs_info,
     get_pending_jobs_info,
-    lock_node,
-    unlock_node,
 )
-from common.utils import TREAT_DISABLED_AS_DOWN_WARNING, check_command_output
+from common.schedulers.sge_commands import lock_host as sge_lock_host
+from common.schedulers.sge_commands import unlock_host
+from common.utils import check_command_output
 
 log = logging.getLogger(__name__)
 
@@ -58,10 +58,13 @@ def has_pending_jobs(instance_properties, max_size):
 
 
 def lock_host(hostname, unlock=False):
-    if unlock:
-        unlock_node(hostname)
-    else:
-        lock_node(hostname)
+    try:
+        if unlock:
+            unlock_host(hostname)
+        else:
+            sge_lock_host(hostname)
+    except subprocess.CalledProcessError:
+        log.error("Error %s host %s", "unlocking" if unlock else "locking", hostname)
 
 
 def is_node_down():
@@ -83,12 +86,7 @@ def is_node_down():
 
         node = nodes.get(host_fqdn, nodes.get(hostname))
         log.info("Node is in state: '{0}'".format(node.state))
-        # check if any error state is present
         if all(error_state not in node.state for error_state in SGE_ERROR_STATES):
-            # Consider the node down if it's in disabled state and there is no job running
-            if SGE_DISABLED_STATE in node.state and not has_jobs(hostname):
-                log.warning(TREAT_DISABLED_AS_DOWN_WARNING)
-                return True
             return False
     except Exception as e:
         log.error("Failed when checking if node is down with exception %s. Reporting node as down.", e)

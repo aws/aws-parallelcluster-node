@@ -9,21 +9,17 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import socket
 
 from common.schedulers.sge_commands import (
     QCONF_COMMANDS,
-    SGE_DISABLED_STATE,
     add_host_slots,
     add_hosts_to_group,
     exec_qconf_command,
-    get_compute_nodes_info,
     install_sge_on_compute_nodes,
-    lock_node,
     remove_hosts_from_group,
     remove_hosts_from_queue,
 )
-from common.utils import POSSIBLE_LOCK_CONFLICT_WARNING, EventType
+from common.utils import EventType
 
 log = logging.getLogger(__name__)
 
@@ -98,49 +94,6 @@ def update_cluster(max_cluster_size, cluster_user, update_events, instance_prope
         if event.host.hostname in added_hosts or event.host.hostname in removed_hosts:
             succeeded.append(event)
         else:
-            failed.append(event)
-
-    return failed, succeeded
-
-
-def _is_node_locked(hostname):
-    try:
-        node_info = get_compute_nodes_info(hostname_filter=hostname)
-        node = node_info.get(socket.getfqdn(hostname), node_info.get(hostname))
-        if SGE_DISABLED_STATE in node.state:
-            return True
-    except Exception as e:
-        log.error(
-            "Failed when checking if node is locked with exception %s. Reporting node %s as unlocked.", e, hostname
-        )
-    return False
-
-
-def perform_health_actions(health_events):
-    """Update and write node lists( and gres_nodes if instance has GPU); restart relevant nodes."""
-    failed = []
-    succeeded = []
-    for event in health_events:
-        try:
-            if _is_node_locked(event.host.hostname):
-                log.warning(
-                    POSSIBLE_LOCK_CONFLICT_WARNING, event.host.instance_id, event.host.hostname, SGE_DISABLED_STATE,
-                )
-                failed.append(event)
-                continue
-            lock_node(event.host.hostname)
-            if _is_node_locked(event.host.hostname):
-                succeeded.append(event)
-                log.info("Successfully locked %s in response to scheduled maintainence event", event.host.hostname)
-            else:
-                failed.append(event)
-                log.error("Failed to lock %s in response to scheduled maintainence event", event.host.hostname)
-        except Exception as e:
-            log.error(
-                "Encountered exception when responding to a scheduled maintainence event for %s: %s",
-                event.host.hostname,
-                e,
-            )
             failed.append(event)
 
     return failed, succeeded
