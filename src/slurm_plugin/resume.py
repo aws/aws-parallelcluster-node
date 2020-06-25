@@ -11,6 +11,7 @@
 
 import collections
 import logging
+import os
 import re
 import subprocess
 from logging.config import fileConfig
@@ -18,40 +19,29 @@ from logging.config import fileConfig
 import argparse
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
 from configparser import ConfigParser
 from retrying import retry
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down, set_nodes_power_down, update_nodes
 from common.utils import grouper
-from slurm_cloud_bursting.utils import CONFIG_FILE_PATH
+from slurm_plugin.common import CONFIG_FILE_PATH
 
-TAG_SPECIFICATIONS = [
-    {
-        "ResourceType": "instance",
-        "Tags": [{"Key": "aws-parallelcluster-slurm-node-type", "Value": "cloud-bursting-compute"}],
-    }
-]
-EC2Instance = collections.namedtuple("EC2Instance", ["id", "private_ip", "hostname"])
-LOG_CONFIG_FILE = "/opt/parallelcluster/configs/slurm/parallelcluster_resume_logging.conf"
 log = logging.getLogger(__name__)
 
 failed_nodes = []
 
 
 class SlurmResumeConfig:
-    DEFAULT_MAX_RETRY = 5
-    DEFAULT_MAX_INSTANCES_BATCH_SIZE = 100
+    DEFAULTS = {
+        "max_retry": 5,
+        "max_batch_size": 100,
+        "update_node_address": True,
+        "proxy": "NONE",
+        "logging_config": os.path.join(os.path.dirname(__file__), "logging", "parallelcluster_resume_logging.conf"),
+    }
 
-    def __init__(self, config_file_path=None, **kwargs):
-        if config_file_path:
-            self._get_config(config_file_path)
-        else:
-            self.region = kwargs.get("region")
-            self.cluster_name = kwargs.get("cluster_name")
-            self.boto3_config = kwargs.get("boto3_config")
-            self.max_batch_size = kwargs.get("max_batch_size")
-            self.update_node_address = kwargs.get("update_node_address")
+    def __init__(self, config_file_path):
+        self._get_config(config_file_path)
 
     def __repr__(self):
         attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
@@ -68,19 +58,22 @@ class SlurmResumeConfig:
             log.error(f"Cannot read slurm cloud bursting scripts configuration file: {config_file_path}")
             raise
 
-        self.region = config.get("slurm_cb_config", "region")
-        self.cluster_name = config.get("slurm_cb_config", "cluster_name")
-        self.max_batch_size = int(
-            config.get("slurm_cb_config", "max_batch_size", fallback=self.DEFAULT_MAX_INSTANCES_BATCH_SIZE)
+        self.region = config.get("slurm_resume", "region")
+        self.cluster_name = config.get("slurm_resume", "cluster_name")
+        self.max_batch_size = config.getint(
+            "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
         )
-        self.update_node_address = config.getboolean("slurm_cb_config", "update_node_address", fallback=True)
+        self.update_node_address = config.getboolean(
+            "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
+        )
 
         # Configure boto3 to retry 5 times by default
-        self._boto3_config = {"retries": {"max_attempts": self.DEFAULT_MAX_RETRY, "mode": "standard"}}
-        proxy = config.get("slurm_cb_config", "proxy", fallback="NONE")
+        self._boto3_config = {"retries": {"max_attempts": self.DEFAULTS.get("max_retry"), "mode": "standard"}}
+        proxy = config.get("slurm_resume", "proxy", fallback=self.DEFAULTS.get("proxy"))
         if proxy != "NONE":
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
+        self.logging_config = config.get("slurm_resume", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
 
         log.info(self.__repr__())
 
@@ -106,51 +99,32 @@ def _handle_failed_nodes(node_list):
     To save time, should explicitly set nodes to DOWN then POWER_DOWN after encountering failure.
     """
     try:
-        log.info("Node %s marked as down and placed into power_down", node_list)
+        log.info("Following nodes marked as down and placed into power_down: %s", node_list)
         _set_nodes_down_and_power_save(node_list)
     except Exception as e:
-        log.exception("Failed to place nodes %s into down/power_down with exception: %s", node_list, e)
+        log.error("Failed to place nodes %s into down/power_down with exception: %s", node_list, e)
 
 
-def _parse_ec2_instance(instance):
-    """Parse and return EC2 instance info."""
-    return EC2Instance(
-        instance["InstanceId"],
-        private_ip=instance["PrivateIpAddress"],
-        hostname=instance["PrivateDnsName"].split(".")[0],
-    )
-
-
-def _update_slurm_node_addrs(launched_nodes):
+def _update_slurm_node_addrs(slurm_nodes, instance_ids, instance_ips, instance_hostnames):
     """Update node information in slurm with info from launched EC2 instance."""
-    for instance, slurm_node in launched_nodes:
-        try:
-            update_nodes(slurm_node, nodeaddr=instance.private_ip, nodehostname=instance.hostname, raise_on_error=True)
-            log.info(
-                "Node %s is now configured with instance=%s private_ip=%s nodehostname=%s",
-                slurm_node,
-                instance.id,
-                instance.private_ip,
-                instance.hostname,
-            )
-        except subprocess.CalledProcessError:
-            log.error(
-                "Encountered error when updating node %s with instance=%s private_ip=%s nodehostname=%s",
-                slurm_node,
-                instance.id,
-                instance.private_ip,
-                instance.hostname,
-            )
-            failed_nodes.append(slurm_node)
-
-
-def _update_run_instance_args(run_instances_args, cluster_name, queue, instance_type):
-    # LaunchTemplate is different for every instance type in every queue
-    # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
-    # Sample LT name: hit-queue1-c5.xlarge
-    run_instances_args["LaunchTemplate"] = {"LaunchTemplateName": f"{cluster_name}-{queue}-{instance_type}"}
-    run_instances_args["InstanceType"] = instance_type
-    run_instances_args["TagSpecifications"] = TAG_SPECIFICATIONS
+    try:
+        update_nodes(slurm_nodes, nodeaddrs=instance_ips, nodehostnames=instance_hostnames, raise_on_error=True)
+        log.info(
+            "Nodes %s are now configured with instance=%s private_ip=%s nodehostname=%s",
+            slurm_nodes,
+            instance_ids,
+            instance_ips,
+            instance_hostnames,
+        )
+    except subprocess.CalledProcessError:
+        log.error(
+            "Encountered error when updating node %s with instance=%s private_ip=%s nodehostname=%s",
+            slurm_nodes,
+            instance_ids,
+            instance_ips,
+            instance_hostnames,
+        )
+        failed_nodes.extend(slurm_nodes)
 
 
 def _validate_nodename(nodename):
@@ -182,36 +156,42 @@ def _parse_requested_instances(node_list):
         if _validate_nodename(node):
             queue_name, _, instance_type = node.split("-")[0:3]
             instances_to_launch[queue_name][instance_type].append(node)
+        else:
+            log.warning("Discarding NodeName with invalid format: %s", node)
     log.info("instances_to_launch = %s", instances_to_launch)
 
     return instances_to_launch
 
 
-def _launch_ec2_instances(batch_nodes, ec2_client, cluster_name, queue, instance_type):
-    """
-    Launch a batch of ec2 instances.
-
-    Return list of (launched instance, slurm nodename)
-    """
-    run_instances_args = {}
-    # Prepare args needed for run-instance call
-    _update_run_instance_args(run_instances_args, cluster_name, queue, instance_type)
-    log.debug("run_instances_args = %s", run_instances_args)
+def _launch_ec2_instances(ec2_client, cluster_name, queue, instance_type, current_batch_size):
+    """Launch a batch of ec2 instances."""
     result = ec2_client.run_instances(
         # To-do, evaluate best effort scaling for future
-        MinCount=len(batch_nodes),
-        MaxCount=len(batch_nodes),
-        **run_instances_args,
+        MinCount=current_batch_size,
+        MaxCount=current_batch_size,
+        # LaunchTemplate is different for every instance type in every queue
+        # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
+        # Sample LT name: hit-queue1-c5.xlarge
+        LaunchTemplate={"LaunchTemplateName": f"{cluster_name}-{queue}-{instance_type}"},
     )
-    return [
-        (_parse_ec2_instance(ec2_instance), slurm_node)
-        for ec2_instance, slurm_node in zip(result["Instances"], batch_nodes)
-    ]
+
+    return result["Instances"]
+
+
+def _parse_launched_instances(launched_instances):
+    """Parse run_instance output."""
+    instance_ids = []
+    instance_ips = []
+    instance_hostnames = []
+    for instance in launched_instances:
+        instance_ids.append(instance["InstanceId"])
+        instance_ips.append(instance["PrivateIpAddress"])
+        instance_hostnames.append(instance["PrivateDnsName"].split(".")[0])
+    return instance_ids, instance_ips, instance_hostnames
 
 
 def _add_instances(node_list, resume_config):
     """Launch EC2 instances for cloud nodes."""
-    logging.debug(resume_config.region)
     ec2_client = boto3.client("ec2", region_name=resume_config.region, config=resume_config.boto3_config)
 
     instances_to_launch = _parse_requested_instances(node_list)
@@ -221,11 +201,12 @@ def _add_instances(node_list, resume_config):
             for batch_nodes in grouper(slurm_node_list, resume_config.max_batch_size):
                 try:
                     launched_instances = _launch_ec2_instances(
-                        batch_nodes, ec2_client, resume_config.cluster_name, queue, instance_type
+                        ec2_client, resume_config.cluster_name, queue, instance_type, len(batch_nodes)
                     )
                     if resume_config.update_node_address:
-                        _update_slurm_node_addrs(launched_instances)
-                except ClientError as e:
+                        instance_ids, instance_ips, instance_hostnames = _parse_launched_instances(launched_instances)
+                        _update_slurm_node_addrs(list(batch_nodes), instance_ids, instance_ips, instance_hostnames)
+                except Exception as e:
                     log.error("Encountered exception when launching instances for nodes %s: %s", list(batch_nodes), e)
                     failed_nodes.extend(batch_nodes)
 
@@ -249,9 +230,23 @@ def main():
     parser.add_argument("nodes", help="Nodes to burst")
     args = parser.parse_args()
     try:
-        # Configure root logger
-        fileConfig(LOG_CONFIG_FILE, disable_existing_loggers=False)
         resume_config = SlurmResumeConfig(CONFIG_FILE_PATH)
+        try:
+            # Configure root logger
+            fileConfig(resume_config.logging_config, disable_existing_loggers=False)
+        except Exception as e:
+            default_log_file = "/var/log/parallelcluster/slurm_resume.log"
+            logging.basicConfig(
+                filename=default_log_file,
+                level=logging.INFO,
+                format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
+            )
+            log.warning(
+                "Unable to configure logging from %s, using default settings and writing to %s.\nException: %s",
+                resume_config.logging_config,
+                default_log_file,
+                e,
+            )
         _resume(args.nodes, resume_config)
     except Exception as e:
         log.exception("Encountered exception when requesting instances for %s: %s", args.nodes, e)

@@ -121,6 +121,7 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
             env=_env,
             preexec_fn=_preexec_fn,
             timeout=timeout,
+            check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             encoding="utf-8",
@@ -146,14 +147,7 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
-            _command,
-            env=_env,
-            preexec_fn=_preexec_fn,
-            timeout=timeout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding="utf-8",
-            shell=True,
+            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, check=True, encoding="utf-8", shell=True,
         ),
         command,
         env,
