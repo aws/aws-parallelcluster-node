@@ -8,14 +8,19 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+from unittest.mock import call
+
 import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import (
     SlurmJob,
     SlurmNode,
+    _batch_node_info,
     _parse_nodes_info,
     get_jobs_info,
     get_pending_jobs_info,
+    set_nodes_idle,
+    update_nodes,
 )
 from tests.common import read_text
 
@@ -740,3 +745,170 @@ def test_get_pending_jobs_info(
 )
 def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
     assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
+
+
+@pytest.mark.parametrize(
+    "nodenames, nodeaddrs, hostnames, batch_size, expected_result",
+    [
+        ("node-1,node-2,node-3", None, None, 2, [("node-1,node-2", None, None), ("node-3", None, None)]),
+        (
+            "node-1,node-2,node-3",
+            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
+            None,
+            2,
+            [("node-1,node-2", "nodeaddr-1,nodeaddr-2", None), ("node-3", "nodeaddr-3", None)],
+        ),
+        (
+            "node-1,node-2,node-3",
+            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
+            "nodehostname-1,nodehostname-2,nodehostname-3",
+            2,
+            [
+                ("node-1,node-2", "nodeaddr-1,nodeaddr-2", "nodehostname-1,nodehostname-2"),
+                ("node-3", "nodeaddr-3", "nodehostname-3"),
+            ],
+        ),
+        ("node-1,node-2,node-3", ["nodeaddr-1"], None, 2, ValueError),
+        ("node-1,node-2,node-3", None, ["nodehostname-1"], 2, ValueError),
+        (
+            "node-1,node-2,node-3",
+            ["nodeaddr-1", "nodeaddr-2"],
+            "nodehostname-1,nodehostname-2,nodehostname-3",
+            2,
+            ValueError,
+        ),
+        (
+            ["node-1", "node-2", "node-3"],
+            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
+            ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
+            2,
+            [
+                ("node-1,node-2", "nodeaddr-1,nodeaddr-2", "nodehostname-1,nodehostname-2"),
+                ("node-3", "nodeaddr-3", "nodehostname-3"),
+            ],
+        ),
+    ],
+    ids=[
+        "nodename_only",
+        "name+addr",
+        "name+addr+hostname",
+        "incorrect_addr1",
+        "incorrect_hostname1",
+        "incorrect_addr2",
+        "mixed_format",
+    ],
+)
+def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_result):
+    if expected_result is not ValueError:
+        assert_that(list(_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size))).is_equal_to(expected_result)
+    else:
+        try:
+            _batch_node_info(nodenames, nodeaddrs, hostnames, batch_size)
+        except Exception as e:
+            assert_that(e).is_instance_of(ValueError)
+            pass
+        else:
+            pytest.fail("Expected _batch_node_info to raise ValueError.")
+
+
+@pytest.mark.parametrize(
+    "nodes, reason, reset_addrs, update_call_kwargs",
+    [
+        (
+            "nodes-1,nodes[2-6]",
+            None,
+            False,
+            {"nodes": "nodes-1,nodes[2-6]", "state": "resume", "reason": None, "raise_on_error": False},
+        ),
+        (
+            "nodes-1,nodes[2-6]",
+            "debugging",
+            True,
+            {
+                "nodes": "nodes-1,nodes[2-6]",
+                "nodeaddrs": "nodes-1,nodes[2-6]",
+                "nodehostnames": "nodes-1,nodes[2-6]",
+                "state": "resume",
+                "reason": "debugging",
+                "raise_on_error": False,
+            },
+        ),
+        (
+            ["nodes-1", "nodes[2-4]", "nodes-5"],
+            "debugging",
+            True,
+            {
+                "nodes": ["nodes-1", "nodes[2-4]", "nodes-5"],
+                "nodeaddrs": ["nodes-1", "nodes[2-4]", "nodes-5"],
+                "nodehostnames": ["nodes-1", "nodes[2-4]", "nodes-5"],
+                "state": "resume",
+                "reason": "debugging",
+                "raise_on_error": False,
+            },
+        ),
+    ],
+)
+def test_set_nodes_idle(nodes, reason, reset_addrs, update_call_kwargs, mocker):
+    update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    set_nodes_idle(nodes, reason, reset_addrs)
+    update_mock.assert_called_with(**update_call_kwargs)
+
+
+@pytest.mark.parametrize(
+    "batch_node_info, state, reason, raise_on_error, run_command_calls",
+    [
+        (
+            [("node-1", None, None), ("node-2,node-3", None, None)],
+            None,
+            None,
+            False,
+            [
+                call("/opt/slurm/bin/scontrol update nodename=node-1", raise_on_error=False),
+                call("/opt/slurm/bin/scontrol update nodename=node-2,node-3", raise_on_error=False),
+            ],
+        ),
+        (
+            [("node-1", None, "hostname-1"), ("node-2,node-3", "addr-2,addr-3", None)],
+            "power_down",
+            None,
+            True,
+            [
+                call(
+                    "/opt/slurm/bin/scontrol update state=power_down nodename=node-1 nodehostname=hostname-1",
+                    raise_on_error=True,
+                ),
+                call(
+                    "/opt/slurm/bin/scontrol update state=power_down nodename=node-2,node-3 nodeaddr=addr-2,addr-3",
+                    raise_on_error=True,
+                ),
+            ],
+        ),
+        (
+            [("node-1", None, "hostname-1"), ("node-[3-6]", "addr-[3-6]", "hostname-[3-6]")],
+            "down",
+            "debugging",
+            True,
+            [
+                call(
+                    (
+                        '/opt/slurm/bin/scontrol update state=down reason="debugging"'
+                        + " nodename=node-1 nodehostname=hostname-1"
+                    ),
+                    raise_on_error=True,
+                ),
+                call(
+                    (
+                        '/opt/slurm/bin/scontrol update state=down reason="debugging"'
+                        + " nodename=node-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
+                    ),
+                    raise_on_error=True,
+                ),
+            ],
+        ),
+    ],
+)
+def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_command_calls, mocker):
+    mocker.patch("common.schedulers.slurm_commands._batch_node_info", return_value=batch_node_info, autospec=True)
+    cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
+    update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+    cmd_mock.assert_has_calls(run_command_calls)

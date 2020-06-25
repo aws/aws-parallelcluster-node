@@ -10,6 +10,7 @@
 # limitations under the License.
 
 import logging
+import os
 from logging.config import fileConfig
 
 import argparse
@@ -17,28 +18,25 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from configparser import ConfigParser
-from retrying import retry
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_idle
 from common.utils import grouper
-from slurm_cloud_bursting.utils import CONFIG_FILE_PATH
+from slurm_plugin.common import CONFIG_FILE_PATH
 
-LOG_CONFIG_FILE = "/opt/parallelcluster/configs/slurm/parallelcluster_suspend_logging.conf"
 log = logging.getLogger(__name__)
 
 
 class SlurmSuspendConfig:
-    DEFAULT_MAX_RETRY = 5
-    DEFAULT_MAX_INSTANCES_BATCH_SIZE = 100
+    DEFAULTS = {
+        "max_retry": 5,
+        # max boto3 terminate_instance call size is 1000
+        "max_batch_size": 1000,
+        "proxy": "NONE",
+        "logging_config": os.path.join(os.path.dirname(__file__), "logging", "parallelcluster_suspend_logging.conf"),
+    }
 
-    def __init__(self, config_file_path=None, **kwargs):
-        if config_file_path:
-            self._get_config(config_file_path)
-        else:
-            self.region = kwargs.get("region")
-            self.cluster_name = kwargs.get("cluster_name")
-            self.max_batch_size = kwargs.get("max_batch_size")
-            self.boto3_config = kwargs.get("boto3_config")
+    def __init__(self, config_file_path):
+        self._get_config(config_file_path)
 
     def __repr__(self):
         attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
@@ -55,18 +53,21 @@ class SlurmSuspendConfig:
             log.error(f"Cannot read slurm cloud bursting scripts configuration file: {config_file_path}")
             raise
 
-        self.region = config.get("slurm_cb_config", "region")
-        self.cluster_name = config.get("slurm_cb_config", "cluster_name")
-        self.max_batch_size = int(
-            config.get("slurm_cb_config", "max_batch_size", fallback=self.DEFAULT_MAX_INSTANCES_BATCH_SIZE)
+        self.region = config.get("slurm_suspend", "region")
+        self.cluster_name = config.get("slurm_suspend", "cluster_name")
+        self.max_batch_size = config.getint(
+            "slurm_suspend", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
         )
 
         # Configure boto3 to retry 5 times by default
-        self._boto3_config = {"retries": {"max_attempts": self.DEFAULT_MAX_RETRY, "mode": "standard"}}
-        proxy = config.get("slurm_cb_config", "proxy", fallback="NONE")
+        self._boto3_config = {"retries": {"max_attempts": self.DEFAULTS.get("max_retry"), "mode": "standard"}}
+        proxy = config.get("slurm_suspend", "proxy", fallback=self.DEFAULTS.get("proxy"))
         if proxy != "NONE":
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
+        self.logging_config = config.get(
+            "slurm_suspend", "logging_config", fallback=self.DEFAULTS.get("logging_config")
+        )
 
         log.info(self.__repr__())
 
@@ -78,8 +79,7 @@ def _delete_instances(instance_ids_to_nodename, region, boto3_config, batch_size
     for instances in grouper(instance_ids_to_nodename.keys(), batch_size):
         try:
             # Boto3 clients retries on connection errors only
-            # Adding extra layer of retry on all exceptions to try to terminate instances
-            retry(stop_max_attempt_number=3, wait_fixed=5000)(ec2_client.terminate_instances)(InstanceIds=instances,)
+            ec2_client.terminate_instances(InstanceIds=list(instances),)
         except ClientError as e:
             log.error("Failed when terminating instances %s with error %s", instances, e)
 
@@ -116,7 +116,7 @@ def _set_nodes_idle(slurm_nodenames):
 
 def _suspend(arg_nodes, suspend_config):
     """Suspend and terminate nodes requested by slurm."""
-    log.info("Suspending nodes:" + arg_nodes)
+    log.info("Suspending nodes: " + arg_nodes)
 
     # Retrieve SlurmNode objects from slurm nodelist notation
     slurm_nodes = get_nodes_info(arg_nodes)
@@ -130,8 +130,6 @@ def _suspend(arg_nodes, suspend_config):
     _delete_instances(
         instance_ids_to_nodename, suspend_config.region, suspend_config.boto3_config, suspend_config.max_batch_size,
     )
-    _set_nodes_idle([node.name for node in slurm_nodes])
-
     log.info("Finished removing instances for nodes %s", arg_nodes)
 
 
@@ -140,12 +138,27 @@ def main():
     parser.add_argument("nodes", help="Nodes to release")
     args = parser.parse_args()
     try:
-        # Configure root logger
-        fileConfig(LOG_CONFIG_FILE, disable_existing_loggers=False)
         suspend_config = SlurmSuspendConfig(CONFIG_FILE_PATH)
+        try:
+            # Configure root logger
+            fileConfig(suspend_config.logging_config, disable_existing_loggers=False)
+        except Exception as e:
+            default_log_file = "/var/log/parallelcluster/slurm_suspend.log"
+            logging.basicConfig(
+                filename=default_log_file,
+                level=logging.INFO,
+                format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
+            )
+            log.warning(
+                "Unable to configure logging with %s, using default settings and writing to %s.\nException: %s",
+                suspend_config.logging_config,
+                default_log_file,
+                e,
+            )
         _suspend(args.nodes, suspend_config)
     except Exception as e:
         log.exception("Encountered exception when suspending instances for %s: %s", args.nodes, e)
+    finally:
         _set_nodes_idle(args.nodes)
 
 
