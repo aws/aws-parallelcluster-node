@@ -27,8 +27,8 @@ console_scripts = [
     "sqswatcher = sqswatcher.sqswatcher:main",
     "nodewatcher = nodewatcher.nodewatcher:main",
     "jobwatcher = jobwatcher.jobwatcher:main",
-    "slurm_resume = slurm_cloud_bursting.resume:main",
-    "slurm_suspend = slurm_cloud_bursting.suspend:main",
+    "slurm_resume = slurm_plugin.resume:main",
+    "slurm_suspend = slurm_plugin.suspend:main",
 ]
 version = "2.7.0"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3", "paramiko>=2.4.2"]
@@ -45,9 +45,8 @@ setup(
     python_requires=">=3.5",
     install_requires=requires,
     entry_points=dict(console_scripts=console_scripts),
-    include_package_data=True,
     zip_safe=False,
-    package_data={"": ["examples/config"]},
+    package_data={"slurm_plugin": ["logging/*.conf"]},
     long_description=(
         "aws-parallelcluster-node is the python package installed on the Amazon EC2 instances launched "
         "as part of AWS ParallelCluster."
