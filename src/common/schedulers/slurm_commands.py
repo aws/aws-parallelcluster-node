@@ -47,7 +47,7 @@ SCONTROL = "/opt/slurm/bin/scontrol"
 SlurmNode = collections.namedtuple("SlurmNode", ["name", "nodeaddr", "nodehostname", "state"])
 
 
-def update_nodes(nodes, nodeaddr=None, nodehostname=None, state=None, reason=None, raise_on_error=True):
+def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True):
     """
     Update slurm nodes with scontrol call.
 
@@ -56,24 +56,58 @@ def update_nodes(nodes, nodeaddr=None, nodehostname=None, state=None, reason=Non
     fatal: _parse_single_range: Too many hosts in range '1-100000'
 
     To safely execute update command, run in batches of 100.
+    Inputs can be string or other iterables.
+
+    When there is an error with scontrol update, slurm will try to update as much as it can.
+    For example, if one node in a batch failed, the rest of the nodes will still be updated.
+    With the node that failed, slurm will try to update attributes that do not have error.
+    For example, if updating a state cause failure, but updating nodeaddr cause no failure.
+    if we run scontrol update state=fail_state nodeaddr=good_addr nodename=name,
+    the scontrol command will fail but nodeaddr will be updated to good_addr.
     """
-    if type(nodes) is str:
-        nodes_batch = [",".join(batch) for batch in grouper(nodes.split(","), 100)]
-    else:
-        nodes_batch = [",".join(batch) for batch in grouper(nodes, 100)]
+    batched_node_info = _batch_node_info(nodes, nodeaddrs, nodehostnames, batch_size=100)
 
-    node_update_cmd = f"{SCONTROL} update"
-    if nodeaddr:
-        node_update_cmd += f" nodeaddr={nodeaddr}"
-    if nodehostname:
-        node_update_cmd += f" nodehostname={nodehostname}"
+    update_cmd = f"{SCONTROL} update"
     if state:
-        node_update_cmd += f" state={state}"
+        update_cmd += f" state={state}"
     if reason:
-        node_update_cmd += f' reason="{reason}"'
+        update_cmd += f' reason="{reason}"'
 
-    for batch in nodes_batch:
-        run_command(f"{node_update_cmd} nodename={batch}", raise_on_error=raise_on_error)
+    for nodenames, addrs, hostnames in batched_node_info:
+        node_info = f"nodename={nodenames}"
+        if addrs:
+            node_info += f" nodeaddr={addrs}"
+        if hostnames:
+            node_info += f" nodehostname={hostnames}"
+        run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error)
+
+
+def _batch_attribute(attribute, batch_size):
+    """Parse an attribute into batches."""
+    if type(attribute) is str:
+        attribute_batch = [",".join(batch) for batch in grouper(attribute.split(","), batch_size)]
+    else:
+        attribute_batch = [",".join(batch) for batch in grouper(attribute, batch_size)]
+    return attribute_batch
+
+
+def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):
+    """Group nodename, nodeaddrs, nodehostnames into batches."""
+    nodename_batch = _batch_attribute(nodenames, batch_size)
+    nodeaddrs_batch = [None] * len(nodename_batch)
+    nodehostnames_batch = [None] * len(nodename_batch)
+    if nodeaddrs:
+        if len(nodeaddrs) != len(nodenames) and type(nodeaddrs) is not str:
+            logging.error("Nodename and NodeAddr entries have different sizes.")
+            raise ValueError
+        nodeaddrs_batch = _batch_attribute(nodeaddrs, batch_size)
+    if nodehostnames:
+        if len(nodehostnames) != len(nodenames) and type(nodehostnames) is not str:
+            logging.error("Nodename and NodeHostname entries have different sizes.")
+            raise ValueError
+        nodehostnames_batch = _batch_attribute(nodehostnames, batch_size)
+
+    return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch)
 
 
 def set_nodes_down(nodes, reason):
@@ -99,9 +133,11 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         # works: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr=c5.2xlarge-[1-2]
         # works: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr="some ip","some ip"
         # fails: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr="some ip"
-        update_nodes(nodes, nodeaddr=nodes, nodehostname=nodes, state="resume", reason=reason, raise_on_error=False)
+        update_nodes(
+            nodes=nodes, nodeaddrs=nodes, nodehostnames=nodes, state="resume", reason=reason, raise_on_error=False
+        )
     else:
-        update_nodes(nodes, state="resume", reason=reason, raise_on_error=False)
+        update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
 
 
 def get_nodes_info(nodes):
@@ -121,11 +157,7 @@ def get_nodes_info(nodes):
 
 def _parse_nodes_info(slurm_node_info):
     """Parse slurm node info into SlurmNode objects."""
-    nodes = []
-    for node in grouper(slurm_node_info.splitlines(), 4):
-        nodes.append(SlurmNode(*node))
-
-    return nodes
+    return [SlurmNode(*node) for node in grouper(slurm_node_info.splitlines(), 4)]
 
 
 def get_jobs_info(job_state_filter=None):
