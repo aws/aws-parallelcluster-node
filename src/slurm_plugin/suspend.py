@@ -21,7 +21,7 @@ from configparser import ConfigParser
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_idle
 from common.utils import grouper
-from slurm_plugin.common import CONFIG_FILE_PATH
+from slurm_plugin.common import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ def main():
     parser.add_argument("nodes", help="Nodes to release")
     args = parser.parse_args()
     try:
-        suspend_config = SlurmSuspendConfig(CONFIG_FILE_PATH)
+        suspend_config = SlurmSuspendConfig(os.path.join(CONFIG_FILE_DIR, "parallelcluster_slurm_suspend.conf"))
         try:
             # Configure root logger
             fileConfig(suspend_config.logging_config, disable_existing_loggers=False)
