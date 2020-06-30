@@ -82,30 +82,37 @@ def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=N
         run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error)
 
 
-def _batch_attribute(attribute, batch_size):
+def _batch_attribute(attribute, batch_size, expected_length=None):
     """Parse an attribute into batches."""
     if type(attribute) is str:
-        attribute_batch = [",".join(batch) for batch in grouper(attribute.split(","), batch_size)]
-    else:
-        attribute_batch = [",".join(batch) for batch in grouper(attribute, batch_size)]
-    return attribute_batch
+        attribute = attribute.split(",")
+    if expected_length and len(attribute) != expected_length:
+        raise ValueError
+
+    return [",".join(batch) for batch in grouper(attribute, batch_size)]
 
 
 def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):
     """Group nodename, nodeaddrs, nodehostnames into batches."""
+    if type(nodenames) is str:
+        nodenames = nodenames.split(",")
     nodename_batch = _batch_attribute(nodenames, batch_size)
     nodeaddrs_batch = [None] * len(nodename_batch)
     nodehostnames_batch = [None] * len(nodename_batch)
     if nodeaddrs:
-        if len(nodeaddrs) != len(nodenames) and type(nodeaddrs) is not str:
-            logging.error("Nodename and NodeAddr entries have different sizes.")
-            raise ValueError
-        nodeaddrs_batch = _batch_attribute(nodeaddrs, batch_size)
+        try:
+            nodeaddrs_batch = _batch_attribute(nodeaddrs, batch_size, expected_length=len(nodenames))
+        except ValueError:
+            logging.error("Nodename %s and NodeAddr %s contain different number of entries", nodenames, nodeaddrs)
+            raise
     if nodehostnames:
-        if len(nodehostnames) != len(nodenames) and type(nodehostnames) is not str:
-            logging.error("Nodename and NodeHostname entries have different sizes.")
-            raise ValueError
-        nodehostnames_batch = _batch_attribute(nodehostnames, batch_size)
+        try:
+            nodehostnames_batch = _batch_attribute(nodehostnames, batch_size, expected_length=len(nodenames))
+        except ValueError:
+            logging.error(
+                "Nodename %s and NodeHostname %s contain different number of entries", nodenames, nodehostnames
+            )
+            raise
 
     return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch)
 
