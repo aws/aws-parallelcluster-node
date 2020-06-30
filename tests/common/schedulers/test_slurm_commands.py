@@ -788,6 +788,14 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
                 ("node-3", "nodeaddr-3", "nodehostname-3"),
             ],
         ),
+        (
+            # Test with strings of same length but different number of node entries
+            "node-1-fillerr,node-2-fillerr,node-3-filler",
+            "nodeaddr-1,nodeaddr-2,nodeaddr-3,nodeaddr-4",
+            ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
+            2,
+            ValueError,
+        ),
     ],
     ids=[
         "nodename_only",
@@ -797,6 +805,7 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
         "incorrect_hostname1",
         "incorrect_addr2",
         "mixed_format",
+        "same_length_string",
     ],
 )
 def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_result):
