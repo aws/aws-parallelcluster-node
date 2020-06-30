@@ -24,7 +24,7 @@ from retrying import retry
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down, set_nodes_power_down, update_nodes
 from common.utils import grouper
-from slurm_plugin.common import CONFIG_FILE_PATH
+from slurm_plugin.common import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
 
@@ -230,7 +230,7 @@ def main():
     parser.add_argument("nodes", help="Nodes to burst")
     args = parser.parse_args()
     try:
-        resume_config = SlurmResumeConfig(CONFIG_FILE_PATH)
+        resume_config = SlurmResumeConfig(os.path.join(CONFIG_FILE_DIR, "parallelcluster_slurm_resume.conf"))
         try:
             # Configure root logger
             fileConfig(resume_config.logging_config, disable_existing_loggers=False)

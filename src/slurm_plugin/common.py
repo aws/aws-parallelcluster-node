@@ -9,4 +9,4 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-CONFIG_FILE_PATH = "/opt/parallelcluster/configs/parallelcluster_slurm_cloudbursting.conf"
+CONFIG_FILE_DIR = "/opt/parallelcluster/configs/slurm"
