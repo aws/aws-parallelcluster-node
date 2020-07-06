@@ -127,21 +127,19 @@ def _update_slurm_node_addrs(slurm_nodes, instance_ids, instance_ips, instance_h
         failed_nodes.extend(slurm_nodes)
 
 
-def _validate_nodename(nodename):
+def _capture_nodename(nodename):
     """
-    Check and validate nodename format.
+    Capture queue_name and instance_type from nodename.
 
     Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
-    Sample NodeName: queue1-static-c5.xlarge-2
-    Nodename will be parsed on '-'
-    Verify there are no extra '-' in parts of the nodename
     """
-    if not re.match(r"^[^\-]+-[^\-]+-[^\-]+-[\d]+$", nodename):
+    nodename_capture = re.match(r"^(\w+)-(static|dynamic)-([a-z0-9-]+.[a-z0-9-]+)-\d+$", nodename)
+    if not nodename_capture:
         log.error("Invalid nodename format for node %s", nodename)
         failed_nodes.append(nodename)
-        return False
+        return None
 
-    return True
+    return nodename_capture.group(1, 3)
 
 
 def _parse_requested_instances(node_list):
@@ -153,8 +151,9 @@ def _parse_requested_instances(node_list):
     """
     instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
     for node in node_list:
-        if _validate_nodename(node):
-            queue_name, _, instance_type = node.split("-")[0:3]
+        capture = _capture_nodename(node)
+        if capture:
+            queue_name, instance_type = capture
             instances_to_launch[queue_name][instance_type].append(node)
         else:
             log.warning("Discarding NodeName with invalid format: %s", node)

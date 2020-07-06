@@ -442,6 +442,9 @@ def test_add_instances(
                 "in-valid-queue-static-c5.xlarge-2",
                 "noBrackets-static-c5.xlarge-[1-2]",
                 "queue2-dynamic-g3.8xlarge-1",
+                "queue2-static-i3en.metal-2tb-1",
+                "queue2-static-i3en.metal_2tb-1",
+                "queue2-invalidnodetype-c5.xlarge-12",
             ],
             {
                 "queue1": {
@@ -451,7 +454,11 @@ def test_add_instances(
                         "queue1-dynamic-c5.xlarge-201",
                     ]
                 },
-                "queue2": {"g3.4xlarge": ["queue2-static-g3.4xlarge-1"], "g3.8xlarge": ["queue2-dynamic-g3.8xlarge-1"]},
+                "queue2": {
+                    "g3.4xlarge": ["queue2-static-g3.4xlarge-1"],
+                    "g3.8xlarge": ["queue2-dynamic-g3.8xlarge-1"],
+                    "i3en.metal-2tb": ["queue2-static-i3en.metal-2tb-1"],
+                },
             },
         ),
     ],
