@@ -505,8 +505,9 @@ def test_parse_requested_instances(node_list, expected_results, expected_failed_
 def test_delete_instances(boto3_stubber, instance_ids_to_name, batch_size, mocked_boto3_request, mocker):
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
+    mock_instance_manager = InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",)
     # run test
-    InstanceManager.delete_instances(instance_ids_to_name, "us-east-1", "some_boto_3_config", batch_size)
+    mock_instance_manager.delete_instances(instance_ids_to_name, batch_size)
 
 
 @pytest.mark.parametrize(

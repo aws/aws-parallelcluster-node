@@ -20,6 +20,16 @@ from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
 
 CONFIG_FILE_DIR = "/opt/parallelcluster/configs/slurm"
+EC2Instance = collections.namedtuple("EC2Instance", ["id", "private_ip", "hostname", "launch_time"])
+EC2InstanceHealthState = collections.namedtuple(
+    "EC2InstanceHealthState", ["id", "state", "instance_status", "system_status", "scheduled_events"]
+)
+# Possible ec2 health status: 'ok'|'impaired'|'insufficient-data'|'not-applicable'|'initializing'
+EC2_INSTANCE_HEALTHY_STATUSES = ["ok", "initializing", "not-applicable"]
+# Possible instance states: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
+EC2_INSTANCE_HEALTHY_STATES = ["pending", "running"]
+EC2_INSTANCE_STOP_STATES = ["stopping", "stopped"]
+EC2_INSTANCE_ALIVE_STATES = EC2_INSTANCE_HEALTHY_STATES + EC2_INSTANCE_STOP_STATES
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +39,7 @@ class InstanceManager:
     InstanceManager class.
 
     Class implementing instance management actions.
-    Should generally be used when launching or terminating instances for slurm integration.
+    Used when launching instance, terminating instance, and retrieving instance info for slurm integration.
     """
 
     class InvalidNodenameError(ValueError):
@@ -160,7 +170,7 @@ class InstanceManager:
         log.info("Terminating the following instances for respective associated nodes: %s", instance_ids_to_nodename)
         if instance_ids_to_nodename:
             self.delete_instances(
-                list(instance_ids_to_nodename.keys()), self._region, self._boto3_config, terminate_batch_size,
+                list(instance_ids_to_nodename.keys()), terminate_batch_size,
             )
 
     def get_instance_ids_to_nodename(self, slurm_nodes):
@@ -180,14 +190,58 @@ class InstanceManager:
             for instance_info in filtered_iterator
         }
 
-    @staticmethod
-    def delete_instances(instance_ids_to_terminate, region, boto3_config, batch_size):
+    def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
-        ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
+        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         log.info("Terminating instances %s", instance_ids_to_terminate)
-        for instances in grouper(instance_ids_to_terminate, batch_size):
+        for instances in grouper(instance_ids_to_terminate, terminate_batch_size):
             try:
                 # Boto3 clients retries on connection errors only
                 ec2_client.terminate_instances(InstanceIds=list(instances),)
             except ClientError as e:
                 log.error("Failed when terminating instances %s with error %s", instances, e)
+
+    def get_instance_health_states(self, instance_ids):
+        """Get health status for instances."""
+        instance_health_states = []
+        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+        # Max 100 instance ids
+        for batch in grouper(instance_ids, 100):
+            response = ec2_client.describe_instance_status(InstanceIds=list(batch)).get("InstanceStatuses")
+            instance_health_states.extend(
+                [
+                    EC2InstanceHealthState(
+                        instance.get("InstanceId"),
+                        instance.get("InstanceState"),
+                        instance.get("InstanceStatus"),
+                        instance.get("SystemStatus"),
+                        instance.get("Events"),
+                    )
+                    for instance in response
+                ]
+            )
+
+        return instance_health_states
+
+    def get_cluster_instances(self, include_master=False, alive_states_only=True):
+        """Get instances that are associated with the cluster."""
+        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+        paginator = ec2_client.get_paginator("describe_instances")
+        args = {
+            "Filters": [{"Name": "tag:ClusterName", "Values": [self._cluster_name]}],
+        }
+        if alive_states_only:
+            args["Filters"].append({"Name": "instance-state-name", "Values": EC2_INSTANCE_ALIVE_STATES})
+        if not include_master:
+            args["Filters"].append({"Name": "tag:Name", "Values": ["Compute"]})
+        response_iterator = paginator.paginate(**args)
+        filtered_iterator = response_iterator.search("Reservations[].Instances[]")
+        return [
+            EC2Instance(
+                instance_info["InstanceId"],
+                instance_info["PrivateIpAddress"],
+                instance_info["PrivateDnsName"].split(".")[0],
+                instance_info["LaunchTime"],
+            )
+            for instance_info in filtered_iterator
+        ]

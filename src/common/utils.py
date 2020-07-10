@@ -18,7 +18,7 @@ import pwd
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 import boto3
@@ -373,6 +373,11 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     end_time = datetime.now()
     if not loop_start_time:
         loop_start_time = end_time
+    # Localize datetime objects to UTC if not previously localized
+    if not end_time.tzinfo:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+    if not loop_start_time.tzinfo:
+        loop_start_time = loop_start_time.replace(tzinfo=timezone.utc)
     time_delta = (end_time - loop_start_time).total_seconds()
     if time_delta < total_loop_time:
         time.sleep(total_loop_time - time_delta)
