@@ -14,14 +14,11 @@ import os
 from logging.config import fileConfig
 
 import argparse
-import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
 from configparser import ConfigParser
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_idle
-from common.utils import grouper
-from slurm_plugin.common import CONFIG_FILE_DIR
+from slurm_plugin.common import CONFIG_FILE_DIR, terminate_associated_instances
 
 log = logging.getLogger(__name__)
 
@@ -72,36 +69,6 @@ class SlurmSuspendConfig:
         log.info(self.__repr__())
 
 
-def _delete_instances(instance_ids_to_nodename, region, boto3_config, batch_size):
-    """Terminate corresponding EC2 instances."""
-    ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
-    log.info("Terminating instances %s", list(instance_ids_to_nodename.keys()))
-    for instances in grouper(instance_ids_to_nodename.keys(), batch_size):
-        try:
-            # Boto3 clients retries on connection errors only
-            ec2_client.terminate_instances(InstanceIds=list(instances),)
-        except ClientError as e:
-            log.error("Failed when terminating instances %s with error %s", instances, e)
-
-
-def _get_instance_ids_to_nodename(slurm_nodes, region, cluster_name, boto3_config):
-    """Retrieve dict that maps from instance ids to slurm nodenames."""
-    node_ip_to_name = {node.nodeaddr: node.name for node in slurm_nodes}
-    ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
-    paginator = ec2_client.get_paginator("describe_instances")
-    response_iterator = paginator.paginate(
-        Filters=[
-            {"Name": "private-ip-address", "Values": list(node_ip_to_name.keys())},
-            {"Name": "tag:ClusterName", "Values": [cluster_name]},
-        ],
-    )
-    filtered_iterator = response_iterator.search("Reservations[].Instances[]")
-    return {
-        instance_info["InstanceId"]: node_ip_to_name[instance_info["PrivateIpAddress"]]
-        for instance_info in filtered_iterator
-    }
-
-
 def _set_nodes_idle(slurm_nodenames):
     """
     Set POWER_DOWN nodes back to IDLE by resuming the node.
@@ -122,14 +89,14 @@ def _suspend(arg_nodes, suspend_config):
     slurm_nodes = get_nodes_info(arg_nodes)
     log.debug("Slurm_nodes = %s", slurm_nodes)
 
-    instance_ids_to_nodename = _get_instance_ids_to_nodename(
-        slurm_nodes, suspend_config.region, suspend_config.cluster_name, suspend_config.boto3_config
+    terminate_associated_instances(
+        slurm_nodes,
+        suspend_config.region,
+        suspend_config.cluster_name,
+        suspend_config.boto3_config,
+        suspend_config.max_batch_size,
     )
-    log.debug("instance_ids_to_nodename = %s", instance_ids_to_nodename)
 
-    _delete_instances(
-        instance_ids_to_nodename, suspend_config.region, suspend_config.boto3_config, suspend_config.max_batch_size,
-    )
     log.info("Finished removing instances for nodes %s", arg_nodes)
 
 
