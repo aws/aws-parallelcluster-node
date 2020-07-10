@@ -15,6 +15,8 @@ import logging
 import math
 from textwrap import wrap
 
+from retrying import retry
+
 from common.schedulers.converters import ComparableObject, from_table_to_obj_list
 from common.utils import check_command_output, grouper, run_command
 
@@ -44,7 +46,55 @@ _SQUEUE_FIELDS = [
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SCONTROL = "/opt/slurm/bin/scontrol"
-SlurmNode = collections.namedtuple("SlurmNode", ["name", "nodeaddr", "nodehostname", "state"])
+SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
+
+
+class SlurmNode:
+    SLURM_SCONTROL_BUSY_STATES = ["MIXED", "ALLOCATED"]
+    SLURM_SCONTROL_IDLE_STATE = "IDLE"
+    SLURM_SCONTROL_DOWN_STATE = "DOWN"
+    SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
+
+    def __init__(self, name, nodeaddr, nodehostname, state):
+        """Initialize slurm node with attributes."""
+        self.name = name
+        self.nodeaddr = nodeaddr
+        self.nodehostname = nodehostname
+        self.state = state
+
+    def is_static_node(self):
+        """
+        Check if the node is static or dynamic.
+
+        Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
+        """
+        return "static" in self.name
+
+    def is_nodeaddr_set(self):
+        """Check if nodeaddr(private ip) for the node is set."""
+        return self.nodeaddr != self.name
+
+    def has_job(self):
+        """Check if slurm node is in a working state."""
+        return (working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
+
+    def is_drained(self):
+        """
+        Check if slurm node is in drained state.
+
+        drained(sinfo) is equivalent to IDLE+DRAIN(scontrol)
+        """
+        return self.SLURM_SCONTROL_DRAIN_STATE in self.state and self.SLURM_SCONTROL_IDLE_STATE in self.state
+
+    def is_down(self):
+        """Check if slurm node is in a down state."""
+        return self.SLURM_SCONTROL_DOWN_STATE in self.state
+
+    def __eq__(self, other):
+        """Compare 2 SlurmNode objects."""
+        if isinstance(other, SlurmNode):
+            return self.__dict__ == other.__dict__
+        return False
 
 
 def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True):
@@ -122,6 +172,11 @@ def set_nodes_down(nodes, reason):
     update_nodes(nodes, state="down", reason=reason)
 
 
+def set_nodes_drain(nodes, reason):
+    """Place slurm node into down state, reason is required."""
+    update_nodes(nodes, state="drain", reason=reason)
+
+
 def set_nodes_power_down(nodes, reason=None):
     """Place slurm node into power_down state."""
     update_nodes(nodes, state="power_down", reason=reason)
@@ -147,6 +202,17 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=5000)
+def set_nodes_down_and_power_save(node_list, reason):
+    """
+    Set slurm nodes into down -> power_down.
+
+    This is the standard failure recovery procedure to reset a CLOUD node.
+    """
+    set_nodes_down(node_list, reason=reason)
+    set_nodes_power_down(node_list, reason=reason)
+
+
 def get_nodes_info(nodes):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
@@ -160,6 +226,21 @@ def get_nodes_info(nodes):
     nodeinfo_str = check_command_output(show_node_info_command)
 
     return _parse_nodes_info(nodeinfo_str)
+
+
+def get_partition_info():
+    """Retrieve slurm partition info from scontrol."""
+    show_partition_info_command = (
+        f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| ' 'Nodes=\\K(\\S+)| State=\\K(\\S+)"'
+    )
+    partition_info_str = check_command_output(show_partition_info_command)
+
+    return _parse_partition_info(partition_info_str)
+
+
+def _parse_partition_info(partition_info):
+    """Parse slurm partition info into SlurmPartition objects."""
+    return [SlurmPartition(*part) for part in grouper(partition_info.splitlines(), 3)]
 
 
 def _parse_nodes_info(slurm_node_info):
