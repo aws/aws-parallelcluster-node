@@ -16,11 +16,16 @@ from assertpy import assert_that
 from common.schedulers.slurm_commands import (
     SlurmJob,
     SlurmNode,
+    SlurmPartition,
     _batch_node_info,
     _parse_nodes_info,
+    _parse_partition_info,
     get_jobs_info,
     get_pending_jobs_info,
+    set_nodes_down,
+    set_nodes_drain,
     set_nodes_idle,
+    set_nodes_power_down,
     update_nodes,
 )
 from tests.common import read_text
@@ -749,6 +754,29 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
 
 
 @pytest.mark.parametrize(
+    "partition_info, expected_parsed_partitions_output",
+    [
+        (
+            (
+                "multiple\n"
+                "multiple-dynamic-c5.xlarge-[1-10],multiple-static-c5.xlarge-2\n"
+                "UP\n"
+                "efa\n"
+                "multiple-dynamic-c5n.18xlarge-[1-10]\n"
+                "INACTIVE\n"
+            ),
+            [
+                SlurmPartition("multiple", "multiple-dynamic-c5.xlarge-[1-10],multiple-static-c5.xlarge-2", "UP"),
+                SlurmPartition("efa", "multiple-dynamic-c5n.18xlarge-[1-10]", "INACTIVE"),
+            ],
+        )
+    ],
+)
+def test_parse_partition_info(partition_info, expected_parsed_partitions_output):
+    assert_that(_parse_partition_info(partition_info)).is_equal_to(expected_parsed_partitions_output)
+
+
+@pytest.mark.parametrize(
     "nodenames, nodeaddrs, hostnames, batch_size, expected_result",
     [
         ("node-1,node-2,node-3", None, None, 2, [("node-1,node-2", None, None), ("node-3", None, None)]),
@@ -865,6 +893,76 @@ def test_set_nodes_idle(nodes, reason, reset_addrs, update_call_kwargs, mocker):
 
 
 @pytest.mark.parametrize(
+    "nodes, reason, reset_addrs, update_call_kwargs",
+    [
+        (
+            "nodes-1,nodes[2-6]",
+            "debugging",
+            True,
+            {"nodes": "nodes-1,nodes[2-6]", "state": "down", "reason": "debugging"},
+        ),
+        (
+            ["nodes-1", "nodes[2-4]", "nodes-5"],
+            "debugging",
+            True,
+            {"nodes": ["nodes-1", "nodes[2-4]", "nodes-5"], "state": "down", "reason": "debugging"},
+        ),
+    ],
+)
+def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
+    update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    set_nodes_down(nodes, reason)
+    update_mock.assert_called_with(**update_call_kwargs)
+
+
+@pytest.mark.parametrize(
+    "nodes, reason, reset_addrs, update_call_kwargs",
+    [
+        ("nodes-1,nodes[2-6]", None, False, {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": None}),
+        (
+            "nodes-1,nodes[2-6]",
+            "debugging",
+            True,
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": "debugging"},
+        ),
+        (
+            ["nodes-1", "nodes[2-4]", "nodes-5"],
+            "debugging",
+            True,
+            {"nodes": ["nodes-1", "nodes[2-4]", "nodes-5"], "state": "power_down", "reason": "debugging"},
+        ),
+    ],
+)
+def test_set_nodes_power_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
+    update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    set_nodes_power_down(nodes, reason)
+    update_mock.assert_called_with(**update_call_kwargs)
+
+
+@pytest.mark.parametrize(
+    "nodes, reason, reset_addrs, update_call_kwargs",
+    [
+        (
+            "nodes-1,nodes[2-6]",
+            "debugging",
+            True,
+            {"nodes": "nodes-1,nodes[2-6]", "state": "drain", "reason": "debugging"},
+        ),
+        (
+            ["nodes-1", "nodes[2-4]", "nodes-5"],
+            "debugging",
+            True,
+            {"nodes": ["nodes-1", "nodes[2-4]", "nodes-5"], "state": "drain", "reason": "debugging"},
+        ),
+    ],
+)
+def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker):
+    update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    set_nodes_drain(nodes, reason)
+    update_mock.assert_called_with(**update_call_kwargs)
+
+
+@pytest.mark.parametrize(
     "batch_node_info, state, reason, raise_on_error, run_command_calls",
     [
         (
@@ -922,3 +1020,81 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
     cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
     update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
     cmd_mock.assert_has_calls(run_command_calls)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("queue-_name-static-t2.mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queuename-dynamic-t2.micro-1", "nodeip", "nodehostname", "somestate"), False),
+    ],
+)
+def test_slurm_node_is_static(node, expected_output):
+    assert_that(node.is_static_node()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("queue-_name-static-t2.mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queuename-dynamic-t2.micro-1", "queuename-dynamic-t2.micro-1", "nodehostname", "somestate"), False),
+    ],
+)
+def test_slurm_node_is_nodeaddr_set(node, expected_output):
+    assert_that(node.is_nodeaddr_set()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("nodename", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), True),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), True),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "IDLE+CLOUD"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "DOWN+CLOUD"), False),
+    ],
+)
+def test_slurm_node_has_job(node, expected_output):
+    assert_that(node.has_job()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("nodename", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN"), True),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN"), True),
+    ],
+)
+def test_slurm_node_is_drained(node, expected_output):
+    assert_that(node.is_drained()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("nodename", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN"), True),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "DOWN*+CLOUD"), True),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "DOWN+CLOUD+POWER"), True),
+    ],
+)
+def test_slurm_node_is_down(node, expected_output):
+    assert_that(node.is_down()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("nodename", "nodeip", "nodehostname", "IDLE+CLOUD+POWER"), True),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "IDLE#+CLOUD"), True),
+    ],
+)
+def test_slurm_node_is_up(node, expected_output):
+    assert_that(node.is_up()).is_equal_to(expected_output)

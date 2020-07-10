@@ -76,25 +76,45 @@ class SlurmNode:
 
     def has_job(self):
         """Check if slurm node is in a working state."""
-        return (working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
+        for working_state in self.SLURM_SCONTROL_BUSY_STATES:
+            if working_state in self.state:
+                return True
+        return False
+
+    def _is_drain(self):
+        """Check if slurm node is in any drain(draining, drained) states."""
+        return self.SLURM_SCONTROL_DRAIN_STATE in self.state
 
     def is_drained(self):
         """
         Check if slurm node is in drained state.
 
-        drained(sinfo) is equivalent to IDLE+DRAIN(scontrol)
+        drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self.SLURM_SCONTROL_DRAIN_STATE in self.state and self.SLURM_SCONTROL_IDLE_STATE in self.state
+        return self._is_drain() and (
+            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.SLURM_SCONTROL_DOWN_STATE in self.state
+        )
 
     def is_down(self):
         """Check if slurm node is in a down state."""
         return self.SLURM_SCONTROL_DOWN_STATE in self.state
+
+    def is_up(self):
+        """Check if slurm node is in a healthy state."""
+        return not self._is_drain() and not self.is_down()
 
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
         if isinstance(other, SlurmNode):
             return self.__dict__ == other.__dict__
         return False
+
+    def __repr__(self):
+        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
+        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
+
+    def __str__(self):
+        return self.__repr__
 
 
 def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True):
