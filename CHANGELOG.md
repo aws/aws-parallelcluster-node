@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.8.0
+-----
+
+**ENHANCEMENTS**
+- Dynamically generate the architecture-specific portion of the path to the SGE binaries directory.
+
 2.7.0
 -----
 
