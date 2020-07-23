@@ -9,8 +9,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import pytest
-
 from assertpy import assert_that
+
 from common.schedulers.slurm_commands import PENDING_RESOURCES_REASONS, SlurmJob
 from nodewatcher.plugins.slurm import has_pending_jobs
 

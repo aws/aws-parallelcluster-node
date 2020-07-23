@@ -2,8 +2,8 @@ import os
 from unittest.mock import MagicMock, call
 
 import pytest
-
 from assertpy import assert_that
+
 from common.schedulers.slurm_commands import SlurmNode
 from slurm_plugin.common import InstanceLauncher, _get_instance_ids_to_nodename, delete_instances
 from tests.common import MockedBoto3Request
