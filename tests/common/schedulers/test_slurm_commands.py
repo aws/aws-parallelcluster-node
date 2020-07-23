@@ -12,6 +12,7 @@ from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
+
 from common.schedulers.slurm_commands import (
     SlurmJob,
     SlurmNode,

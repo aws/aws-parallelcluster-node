@@ -10,8 +10,8 @@
 # limitations under the License.
 
 import pytest
-
 from assertpy import assert_that
+
 from common.utils import grouper
 
 
