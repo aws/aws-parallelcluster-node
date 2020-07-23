@@ -12,9 +12,9 @@
 import os
 
 import pytest
+from assertpy import assert_that
 
 import slurm_plugin
-from assertpy import assert_that
 from slurm_plugin.suspend import SlurmSuspendConfig
 
 
