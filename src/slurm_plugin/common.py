@@ -24,52 +24,12 @@ CONFIG_FILE_DIR = "/opt/parallelcluster/configs/slurm"
 log = logging.getLogger(__name__)
 
 
-def terminate_associated_instances(slurm_nodes, region, cluster_name, boto3_config, batch_size):
-    """Terminate instances associated with given nodes in batches."""
-    instance_ids_to_nodename = _get_instance_ids_to_nodename(slurm_nodes, region, cluster_name, boto3_config)
-    log.info("Terminating the following instances for respective associated nodes: %s", instance_ids_to_nodename)
-    if instance_ids_to_nodename:
-        delete_instances(
-            list(instance_ids_to_nodename.keys()), region, boto3_config, batch_size,
-        )
-
-
-def _get_instance_ids_to_nodename(slurm_nodes, region, cluster_name, boto3_config):
-    """Retrieve dict that maps from instance ids to slurm nodenames."""
-    node_ip_to_name = {node.nodeaddr: node.name for node in slurm_nodes}
-    ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
-    paginator = ec2_client.get_paginator("describe_instances")
-    response_iterator = paginator.paginate(
-        Filters=[
-            {"Name": "private-ip-address", "Values": list(node_ip_to_name.keys())},
-            {"Name": "tag:ClusterName", "Values": [cluster_name]},
-        ],
-    )
-    filtered_iterator = response_iterator.search("Reservations[].Instances[]")
-    return {
-        instance_info["InstanceId"]: node_ip_to_name[instance_info["PrivateIpAddress"]]
-        for instance_info in filtered_iterator
-    }
-
-
-def delete_instances(instance_ids_to_terminate, region, boto3_config, batch_size):
-    """Terminate corresponding EC2 instances."""
-    ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
-    log.info("Terminating instances %s", instance_ids_to_terminate)
-    for instances in grouper(instance_ids_to_terminate, batch_size):
-        try:
-            # Boto3 clients retries on connection errors only
-            ec2_client.terminate_instances(InstanceIds=list(instances),)
-        except ClientError as e:
-            log.error("Failed when terminating instances %s with error %s", instances, e)
-
-
-class InstanceLauncher:
+class InstanceManager:
     """
-    InstanceLauncher class.
+    InstanceManager class.
 
-    Class to manage instance launching action.
-    Should generally be used when launching instances for slurm integration.
+    Class implementing instance management actions.
+    Should generally be used when launching or terminating instances for slurm integration.
     """
 
     class InvalidNodenameError(ValueError):
@@ -83,31 +43,30 @@ class InstanceLauncher:
 
         pass
 
-    def __init__(self, node_list, region, cluster_name, boto3_config, max_batch_size, update_node_address):
+    def __init__(self, region, cluster_name, boto3_config):
         """Initialize InstanceLauncher with required attributes."""
-        self._node_list = node_list
         self._region = region
         self._cluster_name = cluster_name
         self._boto3_config = boto3_config
-        self._max_batch_size = max_batch_size
-        self._update_node_address = update_node_address
         self.failed_nodes = []
 
-    def add_instances_for_nodes(self):
-        """Launch requested EC2 instances for nodes."""
-        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+    def _clear_failed_nodes(self):
+        """Clear and reset failed nodes list."""
+        self.failed_nodes = []
 
-        instances_to_launch = self._parse_requested_instances()
+    def add_instances_for_nodes(self, node_list, launch_batch_size, update_node_address=True):
+        """Launch requested EC2 instances for nodes."""
+        # Reset failed_nodes
+        self._clear_failed_nodes()
+        instances_to_launch = self._parse_requested_instances(node_list)
         for queue, queue_instances in instances_to_launch.items():
             for instance_type, slurm_node_list in queue_instances.items():
                 log.info("Launching instances for slurm nodes %s", slurm_node_list)
-                for batch_nodes in grouper(slurm_node_list, self._max_batch_size):
+                for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
-                        launched_instances = InstanceLauncher._launch_ec2_instances(
-                            ec2_client, self._cluster_name, queue, instance_type, len(batch_nodes)
-                        )
-                        if self._update_node_address:
-                            instance_ids, instance_ips, instance_hostnames = InstanceLauncher._parse_launched_instances(
+                        launched_instances = self._launch_ec2_instances(queue, instance_type, len(batch_nodes))
+                        if update_node_address:
+                            instance_ids, instance_ips, instance_hostnames = InstanceManager._parse_launched_instances(
                                 launched_instances
                             )
                             self._update_slurm_node_addrs(
@@ -152,7 +111,7 @@ class InstanceLauncher:
             instance_hostnames.append(instance["PrivateDnsName"].split(".")[0])
         return instance_ids, instance_ips, instance_hostnames
 
-    def _parse_requested_instances(self):
+    def _parse_requested_instances(self, node_list):
         """
         Parse out which launch configurations (queue/instance type) are requested by slurm nodes from NodeName.
 
@@ -160,7 +119,7 @@ class InstanceLauncher:
         Sample NodeName: queue1-static-c5.xlarge-2
         """
         instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
-        for node in self._node_list:
+        for node in node_list:
             try:
                 capture = self._parse_nodename(node)
                 queue_name, instance_type = capture
@@ -172,9 +131,9 @@ class InstanceLauncher:
 
         return instances_to_launch
 
-    @staticmethod
-    def _launch_ec2_instances(ec2_client, cluster_name, queue, instance_type, current_batch_size):
+    def _launch_ec2_instances(self, queue, instance_type, current_batch_size):
         """Launch a batch of ec2 instances."""
+        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         result = ec2_client.run_instances(
             # To-do, evaluate best effort scaling for future
             MinCount=current_batch_size,
@@ -182,7 +141,7 @@ class InstanceLauncher:
             # LaunchTemplate is different for every instance type in every queue
             # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
             # Sample LT name: hit-queue1-c5.xlarge
-            LaunchTemplate={"LaunchTemplateName": f"{cluster_name}-{queue}-{instance_type}"},
+            LaunchTemplate={"LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}"},
         )
 
         return result["Instances"]
@@ -194,3 +153,41 @@ class InstanceLauncher:
             raise self.InvalidNodenameError
 
         return nodename_capture.group(1, 3)
+
+    def terminate_associated_instances(self, slurm_nodes, terminate_batch_size):
+        """Terminate instances associated with given nodes in batches."""
+        instance_ids_to_nodename = self.get_instance_ids_to_nodename(slurm_nodes)
+        log.info("Terminating the following instances for respective associated nodes: %s", instance_ids_to_nodename)
+        if instance_ids_to_nodename:
+            self.delete_instances(
+                list(instance_ids_to_nodename.keys()), self._region, self._boto3_config, terminate_batch_size,
+            )
+
+    def get_instance_ids_to_nodename(self, slurm_nodes):
+        """Retrieve dict that maps from instance ids to slurm nodenames."""
+        node_ip_to_name = {node.nodeaddr: node.name for node in slurm_nodes}
+        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+        paginator = ec2_client.get_paginator("describe_instances")
+        response_iterator = paginator.paginate(
+            Filters=[
+                {"Name": "private-ip-address", "Values": list(node_ip_to_name.keys())},
+                {"Name": "tag:ClusterName", "Values": [self._cluster_name]},
+            ],
+        )
+        filtered_iterator = response_iterator.search("Reservations[].Instances[]")
+        return {
+            instance_info["InstanceId"]: node_ip_to_name[instance_info["PrivateIpAddress"]]
+            for instance_info in filtered_iterator
+        }
+
+    @staticmethod
+    def delete_instances(instance_ids_to_terminate, region, boto3_config, batch_size):
+        """Terminate corresponding EC2 instances."""
+        ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
+        log.info("Terminating instances %s", instance_ids_to_terminate)
+        for instances in grouper(instance_ids_to_terminate, batch_size):
+            try:
+                # Boto3 clients retries on connection errors only
+                ec2_client.terminate_instances(InstanceIds=list(instances),)
+            except ClientError as e:
+                log.error("Failed when terminating instances %s with error %s", instances, e)

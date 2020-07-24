@@ -5,7 +5,7 @@ import pytest
 from assertpy import assert_that
 
 from common.schedulers.slurm_commands import SlurmNode
-from slurm_plugin.common import InstanceLauncher, _get_instance_ids_to_nodename, delete_instances
+from slurm_plugin.common import InstanceManager
 from tests.common import MockedBoto3Request
 
 
@@ -19,7 +19,9 @@ def boto3_stubber_path():
 @pytest.mark.parametrize(
     (
         "instances_to_launch",
-        "instance_launcher",
+        "instance_manager",
+        "launch_batch_size",
+        "update_node_address",
         "mocked_boto3_request",
         "expected_failed_nodes",
         "expected_update_nodes_calls",
@@ -31,14 +33,9 @@ def boto3_stubber_path():
                 "queue1": {"c5.xlarge": ["queue1-static-c5.xlarge-2"], "c5.2xlarge": ["queue1-static-c5.2xlarge-1"]},
                 "queue2": {"c5.xlarge": ["queue2-static-c5.xlarge-1", "queue2-dynamic-c5.xlarge-1"]},
             },
-            InstanceLauncher(
-                node_list=["placeholder_node_lists"],
-                region="us-east-2",
-                cluster_name="hit",
-                boto3_config="some_boto3_config",
-                max_batch_size=10,
-                update_node_address=True,
-            ),
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            10,
+            True,
             [
                 MockedBoto3Request(
                     method="run_instances",
@@ -119,14 +116,9 @@ def boto3_stubber_path():
                 "queue1": {"c5.xlarge": ["queue1-static-c5.xlarge-2"], "c5.2xlarge": ["queue1-static-c5.2xlarge-1"]},
                 "queue2": {"c5.xlarge": ["queue2-static-c5.xlarge-1", "queue2-dynamic-c5.xlarge-1"]},
             },
-            InstanceLauncher(
-                node_list=["placeholder_node_lists"],
-                region="us-east-2",
-                cluster_name="hit",
-                boto3_config="some_boto3_config",
-                max_batch_size=10,
-                update_node_address=True,
-            ),
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            10,
+            True,
             [
                 MockedBoto3Request(
                     method="run_instances",
@@ -195,14 +187,9 @@ def boto3_stubber_path():
         # no_update
         (
             {"queue1": {"c5.xlarge": ["queue1-static-c5.xlarge-2"]}},
-            InstanceLauncher(
-                node_list=["placeholder_node_lists"],
-                region="us-east-2",
-                cluster_name="hit",
-                boto3_config="some_boto3_config",
-                max_batch_size=10,
-                update_node_address=False,
-            ),
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            10,
+            False,
             [
                 MockedBoto3Request(
                     method="run_instances",
@@ -238,14 +225,9 @@ def boto3_stubber_path():
                     ],
                 },
             },
-            InstanceLauncher(
-                node_list=["placeholder_node_lists"],
-                region="us-east-2",
-                cluster_name="hit",
-                boto3_config="some_boto3_config",
-                max_batch_size=3,
-                update_node_address=True,
-            ),
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            3,
+            True,
             [
                 MockedBoto3Request(
                     method="run_instances",
@@ -306,14 +288,9 @@ def boto3_stubber_path():
                     ],
                 },
             },
-            InstanceLauncher(
-                node_list=["placeholder_node_lists"],
-                region="us-east-2",
-                cluster_name="hit",
-                boto3_config="some_boto3_config",
-                max_batch_size=1,
-                update_node_address=True,
-            ),
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            1,
+            True,
             [
                 MockedBoto3Request(
                     method="run_instances",
@@ -403,28 +380,34 @@ def boto3_stubber_path():
 def test_add_instances(
     boto3_stubber,
     instances_to_launch,
-    instance_launcher,
+    instance_manager,
+    launch_batch_size,
+    update_node_address,
     mocked_boto3_request,
     expected_failed_nodes,
     expected_update_nodes_calls,
     mocker,
 ):
     # patch internal functions
-    instance_launcher._update_slurm_node_addrs = MagicMock()
+    instance_manager._update_slurm_node_addrs = MagicMock()
     # update_node_mocker = mocker.patch("slurm_plugin.common.InstanceLaunch._update_slurm_node_addrs", autospec=True)
-    instance_launcher._parse_requested_instances = MagicMock(return_value=instances_to_launch)
+    instance_manager._parse_requested_instances = MagicMock(return_value=instances_to_launch)
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     # run test
-    instance_launcher.add_instances_for_nodes()
+    instance_manager.add_instances_for_nodes(
+        node_list=["placeholder_node_list"],
+        launch_batch_size=launch_batch_size,
+        update_node_address=update_node_address,
+    )
     if expected_failed_nodes:
-        assert_that(instance_launcher.failed_nodes).is_equal_to(expected_failed_nodes)
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
     else:
-        assert_that(instance_launcher.failed_nodes).is_empty()
+        assert_that(instance_manager.failed_nodes).is_empty()
     if expected_update_nodes_calls:
-        instance_launcher._update_slurm_node_addrs.assert_has_calls(expected_update_nodes_calls)
+        instance_manager._update_slurm_node_addrs.assert_has_calls(expected_update_nodes_calls)
     else:
-        instance_launcher._update_slurm_node_addrs.assert_not_called()
+        instance_manager._update_slurm_node_addrs.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -471,16 +454,9 @@ def test_add_instances(
     ],
 )
 def test_parse_requested_instances(node_list, expected_results, expected_failed_nodes):
-    mock_instance_launcher = InstanceLauncher(
-        node_list=node_list,
-        region="us-east-2",
-        cluster_name="hit",
-        boto3_config="some_boto3_config",
-        max_batch_size=10,
-        update_node_address=True,
-    )
-    assert_that(mock_instance_launcher._parse_requested_instances()).is_equal_to(expected_results)
-    assert_that(mock_instance_launcher.failed_nodes).is_equal_to(expected_failed_nodes)
+    mock_instance_manager = InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",)
+    assert_that(mock_instance_manager._parse_requested_instances(node_list)).is_equal_to(expected_results)
+    assert_that(mock_instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
 
 @pytest.mark.parametrize(
@@ -530,7 +506,7 @@ def test_delete_instances(boto3_stubber, instance_ids_to_name, batch_size, mocke
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     # run test
-    delete_instances(instance_ids_to_name, "us-east-1", "some_boto_3_config", batch_size)
+    InstanceManager.delete_instances(instance_ids_to_name, "us-east-1", "some_boto_3_config", batch_size)
 
 
 @pytest.mark.parametrize(
@@ -606,5 +582,6 @@ def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expecte
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     # run test
-    result = _get_instance_ids_to_nodename(slurm_nodes, "us-east-1", "hit-test", "some_boto3_config")
+    instance_manager = InstanceManager("us-east-1", "hit-test", "some_boto3_config")
+    result = instance_manager.get_instance_ids_to_nodename(slurm_nodes)
     assert_that(result).is_equal_to(expected_results)
