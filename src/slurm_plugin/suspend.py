@@ -18,7 +18,7 @@ from botocore.config import Config
 from configparser import ConfigParser
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_idle
-from slurm_plugin.common import CONFIG_FILE_DIR, terminate_associated_instances
+from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager
 
 log = logging.getLogger(__name__)
 
@@ -89,12 +89,9 @@ def _suspend(arg_nodes, suspend_config):
     slurm_nodes = get_nodes_info(arg_nodes)
     log.debug("Slurm_nodes = %s", slurm_nodes)
 
-    terminate_associated_instances(
-        slurm_nodes,
-        suspend_config.region,
-        suspend_config.cluster_name,
-        suspend_config.boto3_config,
-        suspend_config.max_batch_size,
+    instance_manager = InstanceManager(suspend_config.region, suspend_config.cluster_name, suspend_config.boto3_config)
+    instance_manager.terminate_associated_instances(
+        slurm_nodes, suspend_config.max_batch_size,
     )
 
     log.info("Finished removing instances for nodes %s", arg_nodes)
