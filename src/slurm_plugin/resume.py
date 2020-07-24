@@ -18,7 +18,7 @@ from botocore.config import Config
 from configparser import ConfigParser
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down_and_power_save
-from slurm_plugin.common import CONFIG_FILE_DIR, InstanceLauncher
+from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager
 
 log = logging.getLogger(__name__)
 
@@ -91,32 +91,19 @@ def _handle_failed_nodes(node_list):
         log.error("Failed to place nodes %s into down/power_down with exception: %s", node_list, e)
 
 
-def _add_instances(node_list, resume_config):
-    """Launch EC2 instances for cloud nodes."""
-    instance_launcher = InstanceLauncher(
-        node_list,
-        resume_config.region,
-        resume_config.cluster_name,
-        resume_config.boto3_config,
-        resume_config.max_batch_size,
-        resume_config.update_node_address,
-    )
-    instance_launcher.add_instances_for_nodes()
-    return instance_launcher.failed_nodes
-
-
 def _resume(arg_nodes, resume_config):
     """Launch new EC2 nodes according to nodes requested by slurm."""
     log.info("Launching EC2 instances for the following Slurm nodes: %s", arg_nodes)
     node_list = [node.name for node in get_nodes_info(arg_nodes)]
     log.info("Retrieved nodelist: %s", node_list)
 
-    failed_nodes = _add_instances(node_list, resume_config)
-    success_nodes = [node for node in node_list if node not in failed_nodes]
+    instance_manager = InstanceManager(resume_config.region, resume_config.cluster_name, resume_config.boto3_config)
+    instance_manager.add_instances_for_nodes(node_list, resume_config.max_batch_size, resume_config.update_node_address)
+    success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
     log.info("Successfully launched nodes %s", success_nodes)
-    if failed_nodes:
-        log.error("Failed to launch following nodes, powering down: %s", failed_nodes)
-        _handle_failed_nodes(failed_nodes)
+    if instance_manager.failed_nodes:
+        log.error("Failed to launch following nodes, powering down: %s", instance_manager.failed_nodes)
+        _handle_failed_nodes(instance_manager.failed_nodes)
 
 
 def main():
