@@ -12,8 +12,8 @@ import subprocess
 from unittest.mock import call
 
 import pytest
-
 from assertpy import assert_that
+
 from common.schedulers.torque_commands import (
     TorqueHost,
     TorqueJob,

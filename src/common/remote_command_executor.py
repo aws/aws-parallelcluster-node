@@ -16,9 +16,8 @@ import time
 from math import ceil
 from multiprocessing import Pool
 
-from retrying import retry
-
 from paramiko import AutoAddPolicy, SSHClient
+from retrying import retry
 
 RemoteCommandResult = collections.namedtuple("RemoteCommandResult", ["return_code", "stdout", "stderr"])
 

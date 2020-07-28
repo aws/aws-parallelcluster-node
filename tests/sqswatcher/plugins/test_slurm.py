@@ -9,8 +9,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import pytest
-
 from assertpy import assert_that
+
 from common.utils import EventType, Host, UpdateEvent
 from sqswatcher.plugins.slurm import _update_gres_node_lists, _update_node_lists
 
