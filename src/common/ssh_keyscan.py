@@ -16,8 +16,9 @@ import socket
 from math import ceil
 from multiprocessing import Pool
 
-from common.utils import EventType, run_command
 from paramiko import HostKeys, RSAKey, Transport
+
+from common.utils import EventType, run_command
 
 
 def _get_server_keys(hostname):
