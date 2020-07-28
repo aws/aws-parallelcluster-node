@@ -9,8 +9,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import pytest
-
 from assertpy import assert_that
+
 from common.schedulers.slurm_commands import SlurmJob, get_jobs_info, get_pending_jobs_info
 from tests.common import read_text
 
