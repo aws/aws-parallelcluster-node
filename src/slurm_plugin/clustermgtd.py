@@ -28,7 +28,14 @@ from common.schedulers.slurm_commands import (
 )
 from common.time_utils import seconds
 from common.utils import sleep_remaining_loop_time
-from slurm_plugin.common import CONFIG_FILE_DIR, EC2_HEALTH_STATUS_UNHEALTHY_STATES, InstanceManager, log_exception
+from slurm_plugin.common import (
+    CONFIG_FILE_DIR,
+    EC2_HEALTH_STATUS_UNHEALTHY_STATES,
+    TIMESTAMP_FORMAT,
+    InstanceManager,
+    log_exception,
+    time_is_up,
+)
 
 LOOP_TIME = 30
 log = logging.getLogger(__name__)
@@ -240,7 +247,9 @@ class ClusterManager:
     def _write_timestamp_to_file(self):
         """Write timestamp into shared file so compute nodes can determine if head node is online."""
         with open(self.sync_config.heartbeat_file_path, "w") as timestamp_file:
-            timestamp_file.write(f"{self.current_time}")
+            # Note: heartbeat must be written with datetime.strftime to convert localized datetime into str
+            # datetime.strptime will not work with str(datetime)
+            timestamp_file.write(datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT))
 
     @staticmethod
     @retry(stop_max_attempt_number=3, wait_fixed=1000)
@@ -338,7 +347,7 @@ class ClusterManager:
             if (
                 # Check instance status
                 instance_health_state.instance_status.get("Status") in EC2_HEALTH_STATUS_UNHEALTHY_STATES
-                and ClusterManager._time_is_up(
+                and time_is_up(
                     instance_health_state.instance_status.get("Details")[0].get("ImpairedSince"),
                     current_time,
                     health_check_timeout,
@@ -346,7 +355,7 @@ class ClusterManager:
             ) or (
                 # Check system status
                 instance_health_state.system_status.get("Status") in EC2_HEALTH_STATUS_UNHEALTHY_STATES
-                and ClusterManager._time_is_up(
+                and time_is_up(
                     instance_health_state.system_status.get("Details")[0].get("ImpairedSince"),
                     current_time,
                     health_check_timeout,
@@ -440,7 +449,7 @@ class ClusterManager:
         if (
             backing_instance
             and node.name in self.static_nodes_in_replacement
-            and not ClusterManager._time_is_up(
+            and not time_is_up(
                 backing_instance.launch_time, self.current_time, grace_time=self.sync_config.node_replacement_timeout
             )
         ):
@@ -586,7 +595,7 @@ class ClusterManager:
         log.info("Checking for orphaned instance")
         instances_to_terminate = []
         for instance in cluster_instances:
-            if instance.private_ip not in ips_used_by_slurm and ClusterManager._time_is_up(
+            if instance.private_ip not in ips_used_by_slurm and time_is_up(
                 instance.launch_time, self.current_time, self.sync_config.orphaned_instance_timeout
             ):
                 instances_to_terminate.append(instance.id)
@@ -595,21 +604,6 @@ class ClusterManager:
             self.instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self.sync_config.terminate_max_batch_size
             )
-
-    @staticmethod
-    def _time_is_up(initial_time, current_time, grace_time):
-        """Check if timeout is exceeded."""
-        # Localize datetime objects to UTC if not previously localized
-        # All timestamps used in this function should be already localized
-        # Assume timestamp was taken from UTC is there is no localization info
-        if not initial_time.tzinfo:
-            log.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.")
-            initial_time = initial_time.replace(tzinfo=timezone.utc)
-        if not current_time.tzinfo:
-            log.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC")
-            current_time = current_time.replace(tzinfo=timezone.utc)
-        time_diff = (current_time - initial_time).total_seconds()
-        return time_diff >= grace_time
 
 
 def _run_clustermgtd():

@@ -30,6 +30,7 @@ console_scripts = [
     "slurm_resume = slurm_plugin.resume:main",
     "slurm_suspend = slurm_plugin.suspend:main",
     "clustermgtd = slurm_plugin.clustermgtd:main",
+    "computemgtd = slurm_plugin.computemgtd:main",
 ]
 version = "2.8.1"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3", "paramiko>=2.4.2"]

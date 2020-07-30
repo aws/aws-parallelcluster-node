@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import call
 
 import pytest
@@ -13,6 +13,7 @@ from slurm_plugin.common import (
     EC2Instance,
     EC2InstanceHealthState,
     InstanceManager,
+    time_is_up,
 )
 from tests.common import MockedBoto3Request
 
@@ -806,3 +807,42 @@ def test_get_cluster_instances(mock_kwargs, mocked_boto3_request, expected_parse
     instance_manager = InstanceManager("us-east-1", "hit-test", "some_boto3_config")
     result = instance_manager.get_cluster_instances(**mock_kwargs)
     assert_that(result).is_equal_to(expected_parsed_result)
+
+
+@pytest.mark.parametrize(
+    "initial_time, current_time, grace_time, expected_result",
+    [
+        (datetime(2020, 1, 1, 0, 0, 0), datetime(2020, 1, 1, 0, 0, 29), 30, False),
+        (datetime(2020, 1, 1, 0, 0, 0), datetime(2020, 1, 1, 0, 0, 30), 30, True),
+        (
+            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            # local timezone is 1 hours ahead of UTC, so this time stamp is actually 30 mins before initial_time
+            datetime(2020, 1, 1, 0, 30, 0, tzinfo=timezone(timedelta(hours=1))),
+            30 * 60,
+            False,
+        ),
+        (
+            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            # local timezone is 1 hours ahead of UTC, so this time stamp is actually 30 mins after initial_time
+            datetime(2020, 1, 1, 1, 30, 0, tzinfo=timezone(timedelta(hours=1))),
+            30 * 60,
+            True,
+        ),
+        (
+            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            # local timezone is 1 hours behind of UTC, so this time stamp is actually 1.5 hrs after initial_time
+            datetime(2020, 1, 1, 0, 30, 0, tzinfo=timezone(-timedelta(hours=1))),
+            90 * 60,
+            True,
+        ),
+        (
+            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            # local timezone is 1 hours behind of UTC, so this time stamp is actually 1 hrs after initial_time
+            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone(-timedelta(hours=1))),
+            90 * 60,
+            False,
+        ),
+    ],
+)
+def test_time_is_up(initial_time, current_time, grace_time, expected_result):
+    assert_that(time_is_up(initial_time, current_time, grace_time)).is_equal_to(expected_result)
