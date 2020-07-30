@@ -13,6 +13,7 @@ import functools
 import logging
 import re
 import subprocess
+from datetime import timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -41,6 +42,9 @@ EC2_SCHEDULED_EVENT_CODES = [
 # PageSize parameter used for Boto3 paginated calls
 # Corresponds to MaxResults in describe_instances and describe_instance_status API
 BOTO3_PAGINATION_PAGE_SIZE = 1000
+# timestamp used by clustermgtd and computemgtd should be in default ISO format
+# YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM[:SS[.ffffff]]
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
 
 log = logging.getLogger(__name__)
 
@@ -78,9 +82,6 @@ class InstanceManager:
     Class implementing instance management actions.
     Used when launching instance, terminating instance, and retrieving instance info for slurm integration.
     """
-
-    # Max 100 instance ids in 1 describe_instance_status call
-    GET_HEALTH_STATES_BATCH_SIZE = 100
 
     class InvalidNodenameError(ValueError):
         r"""
@@ -308,3 +309,18 @@ class InstanceManager:
             )
             for instance_info in filtered_iterator
         ]
+
+
+def time_is_up(initial_time, current_time, grace_time):
+    """Check if timeout is exceeded."""
+    # Localize datetime objects to UTC if not previously localized
+    # All timestamps used in this function should be already localized
+    # Assume timestamp was taken from UTC is there is no localization info
+    if not initial_time.tzinfo:
+        log.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.")
+        initial_time = initial_time.replace(tzinfo=timezone.utc)
+    if not current_time.tzinfo:
+        log.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC")
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    time_diff = (current_time - initial_time).total_seconds()
+    return time_diff >= grace_time

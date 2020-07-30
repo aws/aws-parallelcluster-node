@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import call
 
@@ -899,45 +899,6 @@ def test_terminate_orphaned_instances(
         cluster_manager.instance_manager.delete_instances.assert_called_with(
             expected_instance_to_terminate, terminate_batch_size=4
         )
-
-
-@pytest.mark.parametrize(
-    "initial_time, current_time, grace_time, expected_result",
-    [
-        (datetime(2020, 1, 1, 0, 0, 0), datetime(2020, 1, 1, 0, 0, 29), 30, False),
-        (datetime(2020, 1, 1, 0, 0, 0), datetime(2020, 1, 1, 0, 0, 30), 30, True),
-        (
-            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            # local timezone is 1 hours ahead of UTC, so this time stamp is actually 30 mins before initial_time
-            datetime(2020, 1, 1, 0, 30, 0, tzinfo=timezone(timedelta(hours=1))),
-            30 * 60,
-            False,
-        ),
-        (
-            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            # local timezone is 1 hours ahead of UTC, so this time stamp is actually 30 mins after initial_time
-            datetime(2020, 1, 1, 1, 30, 0, tzinfo=timezone(timedelta(hours=1))),
-            30 * 60,
-            True,
-        ),
-        (
-            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            # local timezone is 1 hours behind of UTC, so this time stamp is actually 1.5 hrs after initial_time
-            datetime(2020, 1, 1, 0, 30, 0, tzinfo=timezone(-timedelta(hours=1))),
-            90 * 60,
-            True,
-        ),
-        (
-            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            # local timezone is 1 hours behind of UTC, so this time stamp is actually 1 hrs after initial_time
-            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone(-timedelta(hours=1))),
-            90 * 60,
-            False,
-        ),
-    ],
-)
-def test_time_is_up(initial_time, current_time, grace_time, expected_result):
-    assert_that(ClusterManager._time_is_up(initial_time, current_time, grace_time)).is_equal_to(expected_result)
 
 
 @pytest.mark.parametrize(
