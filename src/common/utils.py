@@ -115,7 +115,7 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
     :return: the command output
     :raise: subprocess.CalledProcessError if the command fails
     """
-    return _run_command(
+    result = _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
@@ -123,7 +123,7 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
             timeout=timeout,
             check=True,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             encoding="utf-8",
             shell=True,
         ),
@@ -132,7 +132,9 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
         raise_on_error,
         execute_as_user,
         log_error,
-    ).stdout
+    )
+
+    return result.stdout if hasattr(result, "stdout") else ""
 
 
 def run_command(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60):
@@ -190,7 +192,7 @@ def _run_command(command_function, command, env=None, raise_on_error=True, execu
         else:
             if log_error:
                 log.warning(e)
-            return e.output if hasattr(e, "output") else ""
+            return e
     except OSError as e:
         log.error("Unable to execute the command %s. Failed with exception: %s", command, e)
         raise
