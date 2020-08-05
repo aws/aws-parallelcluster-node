@@ -1,11 +1,19 @@
 import os
-from unittest.mock import MagicMock, call
+from datetime import datetime, timezone
+from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
 
 from common.schedulers.slurm_commands import SlurmNode
-from slurm_plugin.common import InstanceManager
+from slurm_plugin.common import (
+    EC2_HEALTH_STATUS_UNHEALTHY_STATES,
+    EC2_INSTANCE_ALIVE_STATES,
+    EC2_SCHEDULED_EVENT_CODES,
+    EC2Instance,
+    EC2InstanceHealthState,
+    InstanceManager,
+)
 from tests.common import MockedBoto3Request
 
 
@@ -389,9 +397,9 @@ def test_add_instances(
     mocker,
 ):
     # patch internal functions
-    instance_manager._update_slurm_node_addrs = MagicMock()
+    instance_manager._update_slurm_node_addrs = mocker.MagicMock()
     # update_node_mocker = mocker.patch("slurm_plugin.common.InstanceLaunch._update_slurm_node_addrs", autospec=True)
-    instance_manager._parse_requested_instances = MagicMock(return_value=instances_to_launch)
+    instance_manager._parse_requested_instances = mocker.MagicMock(return_value=instances_to_launch)
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     # run test
@@ -586,3 +594,205 @@ def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expecte
     instance_manager = InstanceManager("us-east-1", "hit-test", "some_boto3_config")
     result = instance_manager.get_instance_ids_to_nodename(slurm_nodes)
     assert_that(result).is_equal_to(expected_results)
+
+
+@pytest.mark.parametrize(
+    "instance_ids, mocked_boto3_request, expected_parsed_result",
+    [
+        (
+            ["i-1", "i-2"],
+            [
+                MockedBoto3Request(
+                    method="describe_instance_status",
+                    response={
+                        "InstanceStatuses": [
+                            {
+                                "InstanceId": "i-1",
+                                "InstanceState": {"Name": "running"},
+                                "InstanceStatus": {"Status": "impaired"},
+                                "SystemStatus": {"Status": "ok"},
+                            },
+                            {
+                                "InstanceId": "i-2",
+                                "InstanceState": {"Name": "pending"},
+                                "InstanceStatus": {"Status": "initializing"},
+                                "SystemStatus": {"Status": "impaired"},
+                                "Events": [{"InstanceEventId": "event-id-1"}],
+                            },
+                        ]
+                    },
+                    expected_params={
+                        "Filters": [
+                            {"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
+                        ]
+                    },
+                    generate_error=False,
+                ),
+                MockedBoto3Request(
+                    method="describe_instance_status",
+                    response={
+                        "InstanceStatuses": [
+                            {
+                                "InstanceId": "i-1",
+                                "InstanceState": {"Name": "running"},
+                                "InstanceStatus": {"Status": "impaired"},
+                                "SystemStatus": {"Status": "ok"},
+                            },
+                        ]
+                    },
+                    expected_params={
+                        "Filters": [
+                            {"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
+                        ]
+                    },
+                    generate_error=False,
+                ),
+                MockedBoto3Request(
+                    method="describe_instance_status",
+                    response={
+                        "InstanceStatuses": [
+                            {
+                                "InstanceId": "i-2",
+                                "InstanceState": {"Name": "pending"},
+                                "InstanceStatus": {"Status": "initializing"},
+                                "SystemStatus": {"Status": "impaired"},
+                                "Events": [{"InstanceEventId": "event-id-1"}],
+                            },
+                        ]
+                    },
+                    expected_params={
+                        "Filters": [
+                            {"Name": "system-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
+                        ]
+                    },
+                    generate_error=False,
+                ),
+                MockedBoto3Request(
+                    method="describe_instance_status",
+                    response={
+                        "InstanceStatuses": [
+                            {
+                                "InstanceId": "i-2",
+                                "InstanceState": {"Name": "pending"},
+                                "InstanceStatus": {"Status": "initializing"},
+                                "SystemStatus": {"Status": "impaired"},
+                                "Events": [{"InstanceEventId": "event-id-1"}],
+                            },
+                        ]
+                    },
+                    expected_params={"Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}]},
+                    generate_error=False,
+                ),
+            ],
+            [
+                EC2InstanceHealthState("i-1", "running", {"Status": "ok"}, {"Status": "ok"}, None),
+                EC2InstanceHealthState(
+                    "i-2",
+                    "pending",
+                    {"Status": "initializing"},
+                    {"Status": "initializing"},
+                    [{"InstanceEventId": "event-id-1"}],
+                ),
+            ],
+        )
+    ],
+)
+def get_unhealthy_cluster_instance_status(instance_ids, mocked_boto3_request, expected_parsed_result, boto3_stubber):
+    # patch boto3 call
+    boto3_stubber("ec2", mocked_boto3_request)
+    # run test
+    instance_manager = InstanceManager("us-east-1", "hit-test", "some_boto3_config")
+    result = instance_manager.get_unhealthy_cluster_instance_status(instance_ids)
+    assert_that(result).is_equal_to(expected_parsed_result)
+
+
+@pytest.mark.parametrize(
+    "mock_kwargs, mocked_boto3_request, expected_parsed_result",
+    [
+        (
+            {"include_master": False, "alive_states_only": True},
+            MockedBoto3Request(
+                method="describe_instances",
+                response={
+                    "Reservations": [
+                        {
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-1",
+                                    "PrivateIpAddress": "ip-1",
+                                    "PrivateDnsName": "hostname",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                },
+                                {
+                                    "InstanceId": "i-2",
+                                    "PrivateIpAddress": "ip-2",
+                                    "PrivateDnsName": "hostname",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                },
+                            ]
+                        }
+                    ]
+                },
+                expected_params={
+                    "Filters": [
+                        {"Name": "tag:ClusterName", "Values": ["hit-test"]},
+                        {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
+                        {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
+                    ]
+                },
+                generate_error=False,
+            ),
+            [
+                EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+            ],
+        ),
+        (
+            {"include_master": False, "alive_states_only": True},
+            MockedBoto3Request(
+                method="describe_instances",
+                response={"Reservations": []},
+                expected_params={
+                    "Filters": [
+                        {"Name": "tag:ClusterName", "Values": ["hit-test"]},
+                        {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
+                        {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
+                    ]
+                },
+                generate_error=False,
+            ),
+            [],
+        ),
+        (
+            {"include_master": True, "alive_states_only": False},
+            MockedBoto3Request(
+                method="describe_instances",
+                response={
+                    "Reservations": [
+                        {
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-1",
+                                    "PrivateIpAddress": "ip-1",
+                                    "PrivateDnsName": "hostname",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                },
+                            ]
+                        }
+                    ]
+                },
+                expected_params={"Filters": [{"Name": "tag:ClusterName", "Values": ["hit-test"]}]},
+                generate_error=False,
+            ),
+            [EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+        ),
+    ],
+    ids=["default", "empty_response", "custom_args"],
+)
+def test_get_cluster_instances(mock_kwargs, mocked_boto3_request, expected_parsed_result, boto3_stubber):
+    # patch boto3 call
+    boto3_stubber("ec2", mocked_boto3_request)
+    # run test
+    instance_manager = InstanceManager("us-east-1", "hit-test", "some_boto3_config")
+    result = instance_manager.get_cluster_instances(**mock_kwargs)
+    assert_that(result).is_equal_to(expected_parsed_result)

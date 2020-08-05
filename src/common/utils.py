@@ -373,7 +373,11 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     end_time = datetime.now()
     if not loop_start_time:
         loop_start_time = end_time
-    # Localize datetime objects to UTC if not previously localized
+    # Always try to localize datetime objects to UTC if not previously localized
+    # For example, datetime in tradition daemons are not localized(sqswatcher, jobwatcher, ...)
+    # Daemons in HIT integration are required to use localized datetime
+    # This operation DOES NOT convert datetime from 1 timezone into UTC
+    # It simply replaces the timezone info if datetime is not localized
     if not end_time.tzinfo:
         end_time = end_time.replace(tzinfo=timezone.utc)
     if not loop_start_time.tzinfo:

@@ -1052,6 +1052,7 @@ def test_slurm_node_is_nodeaddr_set(node, expected_output):
         (SlurmNode("nodename", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), True),
         (SlurmNode("nodename", "nodeip", "nodehostname", "IDLE+CLOUD"), False),
         (SlurmNode("nodename", "nodeip", "nodehostname", "DOWN+CLOUD"), False),
+        (SlurmNode("nodename", "nodeip", "nodehostname", "COMPLETING+DRAIN"), True),
     ],
 )
 def test_slurm_node_has_job(node, expected_output):

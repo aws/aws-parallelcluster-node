@@ -9,6 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import collections
+import functools
 import logging
 import re
 import subprocess
@@ -25,13 +26,36 @@ EC2InstanceHealthState = collections.namedtuple(
     "EC2InstanceHealthState", ["id", "state", "instance_status", "system_status", "scheduled_events"]
 )
 # Possible ec2 health status: 'ok'|'impaired'|'insufficient-data'|'not-applicable'|'initializing'
-EC2_INSTANCE_HEALTHY_STATUSES = ["ok", "initializing", "not-applicable"]
+EC2_HEALTH_STATUS_UNHEALTHY_STATES = {"impaired"}
 # Possible instance states: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
-EC2_INSTANCE_HEALTHY_STATES = ["pending", "running"]
-EC2_INSTANCE_STOP_STATES = ["stopping", "stopped"]
-EC2_INSTANCE_ALIVE_STATES = EC2_INSTANCE_HEALTHY_STATES + EC2_INSTANCE_STOP_STATES
+EC2_INSTANCE_HEALTHY_STATES = {"pending", "running"}
+EC2_INSTANCE_STOP_STATES = {"stopping", "stopped"}
+EC2_INSTANCE_ALIVE_STATES = EC2_INSTANCE_HEALTHY_STATES | EC2_INSTANCE_STOP_STATES
+EC2_SCHEDULED_EVENT_CODES = [
+    "instance-reboot",
+    "system-reboot",
+    "system-maintenance",
+    "instance-retirement",
+    "instance-stop",
+]
 
 log = logging.getLogger(__name__)
+
+
+def log_exception(logger, action_desc, log_level=logging.ERROR, exception=Exception, raise_on_exception=True):
+    def _log_exception(function):
+        @functools.wraps(function)
+        def wrapper(*args, **kwargs):
+            try:
+                return function(*args, **kwargs)
+            except exception as e:
+                logger.log(log_level, "Failed when %s with exception %s", action_desc, e)
+                if raise_on_exception:
+                    raise
+
+        return wrapper
+
+    return _log_exception
 
 
 class InstanceManager:
@@ -41,6 +65,9 @@ class InstanceManager:
     Class implementing instance management actions.
     Used when launching instance, terminating instance, and retrieving instance info for slurm integration.
     """
+
+    # Max 100 instance ids in 1 describe_instance_status call
+    GET_HEALTH_STATES_BATCH_SIZE = 100
 
     class InvalidNodenameError(ValueError):
         r"""
@@ -201,27 +228,43 @@ class InstanceManager:
             except ClientError as e:
                 log.error("Failed when terminating instances %s with error %s", instances, e)
 
-    def get_instance_health_states(self, instance_ids):
-        """Get health status for instances."""
-        instance_health_states = []
-        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-        # Max 100 instance ids
-        for batch in grouper(instance_ids, 100):
-            response = ec2_client.describe_instance_status(InstanceIds=list(batch)).get("InstanceStatuses")
-            instance_health_states.extend(
-                [
-                    EC2InstanceHealthState(
-                        instance.get("InstanceId"),
-                        instance.get("InstanceState"),
-                        instance.get("InstanceStatus"),
-                        instance.get("SystemStatus"),
-                        instance.get("Events"),
-                    )
-                    for instance in response
-                ]
-            )
+    def get_unhealthy_cluster_instance_status(self, cluster_instance_ids):
+        """
+        Get health status for unhealthy EC2 instances.
 
-        return instance_health_states
+        Retrieve instance status with 3 separate paginated calls filtering on different health check attributes
+        Rather than doing call with instance ids
+        Reason being number of unhealthy instances is in general lower than number of instances in cluster
+        In addition, while specifying instance ids, the max result returned by 1 API call is 100
+        As opposed to 1000 when not specifying instance ids and using filters
+        """
+        instance_health_states = {}
+        health_check_filters = {
+            "instance_status": {
+                "Filters": [{"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}]
+            },
+            "system_status": {
+                "Filters": [{"Name": "system-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}]
+            },
+            "scheduled_events": {"Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}]},
+        }
+        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+        paginator = ec2_client.get_paginator("describe_instance_status")
+        for health_check_type in health_check_filters:
+            response_iterator = paginator.paginate(**health_check_filters[health_check_type])
+            filtered_iterator = response_iterator.search("InstanceStatuses[]")
+            for instance_status in filtered_iterator:
+                instance_id = instance_status.get("InstanceId")
+                if instance_id in cluster_instance_ids and instance_id not in instance_health_states:
+                    instance_health_states[instance_id] = EC2InstanceHealthState(
+                        instance_id,
+                        instance_status.get("InstanceState").get("Name"),
+                        instance_status.get("InstanceStatus"),
+                        instance_status.get("SystemStatus"),
+                        instance_status.get("Events"),
+                    )
+
+        return list(instance_health_states.values())
 
     def get_cluster_instances(self, include_master=False, alive_states_only=True):
         """Get instances that are associated with the cluster."""
@@ -231,9 +274,9 @@ class InstanceManager:
             "Filters": [{"Name": "tag:ClusterName", "Values": [self._cluster_name]}],
         }
         if alive_states_only:
-            args["Filters"].append({"Name": "instance-state-name", "Values": EC2_INSTANCE_ALIVE_STATES})
+            args["Filters"].append({"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)})
         if not include_master:
-            args["Filters"].append({"Name": "tag:Name", "Values": ["Compute"]})
+            args["Filters"].append({"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]})
         response_iterator = paginator.paginate(**args)
         filtered_iterator = response_iterator.search("Reservations[].Instances[]")
         return [
