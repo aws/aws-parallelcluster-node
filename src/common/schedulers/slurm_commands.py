@@ -50,7 +50,7 @@ SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "sta
 
 
 class SlurmNode:
-    SLURM_SCONTROL_BUSY_STATES = ["MIXED", "ALLOCATED"]
+    SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", "COMPLETING"}
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
@@ -76,10 +76,7 @@ class SlurmNode:
 
     def has_job(self):
         """Check if slurm node is in a working state."""
-        for working_state in self.SLURM_SCONTROL_BUSY_STATES:
-            if working_state in self.state:
-                return True
-        return False
+        return any(working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
 
     def _is_drain(self):
         """Check if slurm node is in any drain(draining, drained) states."""
@@ -114,7 +111,7 @@ class SlurmNode:
         return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
 
     def __str__(self):
-        return self.__repr__
+        return f"{self.name}"
 
 
 def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True):
@@ -233,6 +230,7 @@ def set_nodes_down_and_power_save(node_list, reason):
     set_nodes_power_down(node_list, reason=reason)
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1500)
 def get_nodes_info(nodes):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
@@ -248,6 +246,7 @@ def get_nodes_info(nodes):
     return _parse_nodes_info(nodeinfo_str)
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1500)
 def get_partition_info():
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = (
