@@ -546,6 +546,7 @@ def test_delete_instances(boto3_stubber, instance_ids_to_name, batch_size, mocke
                             {"Name": "private-ip-address", "Values": ["ip.1", "ip.2", "ip.3"]},
                             {"Name": "tag:ClusterName", "Values": ["hit-test"]},
                         ],
+                        "MaxResults": 1000,
                     },
                 ),
             ],
@@ -579,6 +580,7 @@ def test_delete_instances(boto3_stubber, instance_ids_to_name, batch_size, mocke
                             {"Name": "private-ip-address", "Values": ["ip.1", "ip.2", "ip.3"]},
                             {"Name": "tag:ClusterName", "Values": ["hit-test"]},
                         ],
+                        "MaxResults": 1000,
                     },
                 ),
             ],
@@ -624,7 +626,8 @@ def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expecte
                     expected_params={
                         "Filters": [
                             {"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -643,7 +646,8 @@ def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expecte
                     expected_params={
                         "Filters": [
                             {"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -663,7 +667,8 @@ def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expecte
                     expected_params={
                         "Filters": [
                             {"Name": "system-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -680,7 +685,10 @@ def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expecte
                             },
                         ]
                     },
-                    expected_params={"Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}]},
+                    expected_params={
+                        "Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}],
+                        "MaxResults": 1000,
+                    },
                     generate_error=False,
                 ),
             ],
@@ -738,7 +746,8 @@ def get_unhealthy_cluster_instance_status(instance_ids, mocked_boto3_request, ex
                         {"Name": "tag:ClusterName", "Values": ["hit-test"]},
                         {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                         {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
-                    ]
+                    ],
+                    "MaxResults": 1000,
                 },
                 generate_error=False,
             ),
@@ -757,7 +766,8 @@ def get_unhealthy_cluster_instance_status(instance_ids, mocked_boto3_request, ex
                         {"Name": "tag:ClusterName", "Values": ["hit-test"]},
                         {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                         {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
-                    ]
+                    ],
+                    "MaxResults": 1000,
                 },
                 generate_error=False,
             ),
@@ -781,7 +791,7 @@ def get_unhealthy_cluster_instance_status(instance_ids, mocked_boto3_request, ex
                         }
                     ]
                 },
-                expected_params={"Filters": [{"Name": "tag:ClusterName", "Values": ["hit-test"]}]},
+                expected_params={"Filters": [{"Name": "tag:ClusterName", "Values": ["hit-test"]}], "MaxResults": 1000},
                 generate_error=False,
             ),
             [EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc))],

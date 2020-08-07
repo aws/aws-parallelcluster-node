@@ -213,9 +213,15 @@ def test_get_ec2_instances(mocker):
 
 
 @pytest.mark.parametrize(
-    "disable_ec2_health_check, disable_scheduled_event_health_check, expected_handle_health_check_calls",
+    (
+        "mock_instance_health_states",
+        "disable_ec2_health_check",
+        "disable_scheduled_event_health_check",
+        "expected_handle_health_check_calls",
+    ),
     [
         (
+            ["some_instance_health_states"],
             False,
             False,
             [
@@ -240,6 +246,7 @@ def test_get_ec2_instances(mocker):
             ],
         ),
         (
+            ["some_instance_health_states"],
             True,
             False,
             [
@@ -254,8 +261,9 @@ def test_get_ec2_instances(mocker):
                 )
             ],
         ),
-        (True, True, []),
+        (["some_instance_health_states"], True, True, []),
         (
+            ["some_instance_health_states"],
             False,
             True,
             [
@@ -270,12 +278,17 @@ def test_get_ec2_instances(mocker):
                 )
             ],
         ),
+        ([], False, False, [],),
     ],
+    ids=["basic", "disable_ec2", "disable_all", "disable_scheduled", "no_unhealthy_instance"],
 )
 def test_perform_health_check_actions(
-    disable_ec2_health_check, disable_scheduled_event_health_check, expected_handle_health_check_calls, mocker
+    mock_instance_health_states,
+    disable_ec2_health_check,
+    disable_scheduled_event_health_check,
+    expected_handle_health_check_calls,
+    mocker,
 ):
-    mock_instance_health_states = ["some_instance_health_states"]
     mock_cluster_instances = [
         EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
         EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
@@ -727,9 +740,24 @@ def test_handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, expected_power_
             {"some_current_node", "node-1", "node-2", "node-3"},
             ["id-1", "id-2"],
             ["node-1", "node-2", "node-3"],
-        )
+        ),
+        (
+            {"some_current_node"},
+            [
+                SlurmNode("node-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("node-2", "ip-2", "hostname", "IDLE+CLOUD"),
+                SlurmNode("node-3", "ip-3", "hostname", "IDLE+CLOUD"),
+            ],
+            {
+                "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
+                "ip-5": EC2Instance("id-2", "ip-5", "hostname", "some_launch_time"),
+            },
+            {"some_current_node", "node-1", "node-2", "node-3"},
+            [],
+            ["node-1", "node-2", "node-3"],
+        ),
     ],
-    ids=["basic"],
+    ids=["basic", "no_associated_instances"],
 )
 def test_handle_unhealthy_static_nodes(
     current_replacing_nodes,
@@ -761,7 +789,12 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
     # Assert calls
     update_mock.assert_called_with(add_node_list, reason="Static node maintenance: unhealthy node is being replaced")
-    cluster_manager.instance_manager.delete_instances.assert_called_with(delete_instance_list, terminate_batch_size=1)
+    if delete_instance_list:
+        cluster_manager.instance_manager.delete_instances.assert_called_with(
+            delete_instance_list, terminate_batch_size=1
+        )
+    else:
+        cluster_manager.instance_manager.delete_instances.assert_not_called()
     cluster_manager.instance_manager.add_instances_for_nodes.assert_called_with(add_node_list, 5, False)
     assert_that(cluster_manager.static_nodes_in_replacement).is_equal_to(expected_replacing_nodes)
 
@@ -1024,8 +1057,11 @@ def test_manage_cluster(
             # basic: This is the most comprehensive case in manage_cluster with max number of boto3 calls
             "default.conf",
             [
-                SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
+                # This node fail scheduler state check and corresponding instance will be terminated
+                SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN"),
+                # This node fail scheduler state check and node will be power_down
                 SlurmNode("queue-dynamic-c5.xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                # This node is good and should not be touched by clustermgtd
                 SlurmNode("queue-dynamic-c5.xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
@@ -1054,7 +1090,8 @@ def test_manage_cluster(
                         "Filters": [
                             {"Name": "private-ip-address", "Values": ["ip-4", "ip-5"]},
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1106,7 +1143,8 @@ def test_manage_cluster(
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1117,7 +1155,8 @@ def test_manage_cluster(
                     expected_params={
                         "Filters": [
                             {"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1128,17 +1167,20 @@ def test_manage_cluster(
                     expected_params={
                         "Filters": [
                             {"Name": "system-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
                 # _perform_health_check_actions: get unhealthy instance status by schedule event filter
-                # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="describe_instance_status",
                     response={"InstanceStatuses": []},
-                    expected_params={"Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}]},
-                    generate_error=True,
+                    expected_params={
+                        "Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}],
+                        "MaxResults": 1000,
+                    },
+                    generate_error=False,
                 ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
                 # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
@@ -1192,7 +1234,8 @@ def test_manage_cluster(
                         "Filters": [
                             {"Name": "private-ip-address", "Values": ["ip-4", "ip-5"]},
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1246,7 +1289,8 @@ def test_manage_cluster(
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1266,7 +1310,8 @@ def test_manage_cluster(
                     expected_params={
                         "Filters": [
                             {"Name": "instance-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1287,7 +1332,8 @@ def test_manage_cluster(
                     expected_params={
                         "Filters": [
                             {"Name": "system-status.status", "Values": list(EC2_HEALTH_STATUS_UNHEALTHY_STATES)}
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1295,8 +1341,11 @@ def test_manage_cluster(
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="describe_instance_status",
-                    response={},
-                    expected_params={"Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}]},
+                    response={"InstanceStatuses": []},
+                    expected_params={
+                        "Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}],
+                        "MaxResults": 1000,
+                    },
                     generate_error=True,
                 ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
@@ -1353,7 +1402,8 @@ def test_manage_cluster(
                         "Filters": [
                             {"Name": "private-ip-address", "Values": ["ip-4", "ip-5"]},
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=False,
                 ),
@@ -1375,7 +1425,8 @@ def test_manage_cluster(
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
-                        ]
+                        ],
+                        "MaxResults": 1000,
                     },
                     generate_error=True,
                 ),

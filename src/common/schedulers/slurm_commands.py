@@ -111,7 +111,7 @@ class SlurmNode:
         return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
 
     def __str__(self):
-        return f"{self.name}"
+        return f"{self.name}({self.nodeaddr})"
 
 
 def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True):

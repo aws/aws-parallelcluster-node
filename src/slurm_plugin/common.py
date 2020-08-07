@@ -38,20 +38,28 @@ EC2_SCHEDULED_EVENT_CODES = [
     "instance-retirement",
     "instance-stop",
 ]
+# PageSize parameter used for Boto3 paginated calls
+# Corresponds to MaxResults in describe_instances and describe_instance_status API
+BOTO3_PAGINATION_PAGE_SIZE = 1000
 
 log = logging.getLogger(__name__)
 
 
-def log_exception(logger, action_desc, log_level=logging.ERROR, exception=Exception, raise_on_exception=True):
+def log_exception(
+    logger, action_desc, catch_exception=Exception, raise_on_error=True, exception_to_raise=None,
+):
     def _log_exception(function):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
             try:
                 return function(*args, **kwargs)
-            except exception as e:
-                logger.log(log_level, "Failed when %s with exception %s", action_desc, e)
-                if raise_on_exception:
-                    raise
+            except catch_exception as e:
+                logger.exception("Failed when %s with exception %s", action_desc, e)
+                if raise_on_error:
+                    if exception_to_raise:
+                        raise exception_to_raise
+                    else:
+                        raise
 
         return wrapper
 
@@ -206,6 +214,7 @@ class InstanceManager:
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
         response_iterator = paginator.paginate(
+            PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE},
             Filters=[
                 {"Name": "private-ip-address", "Values": list(node_ip_to_name.keys())},
                 {"Name": "tag:ClusterName", "Values": [self._cluster_name]},
@@ -228,6 +237,9 @@ class InstanceManager:
             except ClientError as e:
                 log.error("Failed when terminating instances %s with error %s", instances, e)
 
+    @log_exception(
+        log, "getting health status for unhealthy EC2 instances", catch_exception=Exception, raise_on_error=True
+    )
     def get_unhealthy_cluster_instance_status(self, cluster_instance_ids):
         """
         Get health status for unhealthy EC2 instances.
@@ -248,11 +260,13 @@ class InstanceManager:
             },
             "scheduled_events": {"Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}]},
         }
-        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-        paginator = ec2_client.get_paginator("describe_instance_status")
         for health_check_type in health_check_filters:
-            response_iterator = paginator.paginate(**health_check_filters[health_check_type])
-            filtered_iterator = response_iterator.search("InstanceStatuses[]")
+            ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+            paginator = ec2_client.get_paginator("describe_instance_status")
+            response_iterator = paginator.paginate(
+                PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE}, **health_check_filters[health_check_type]
+            )
+            filtered_iterator = response_iterator.search("InstanceStatuses")
             for instance_status in filtered_iterator:
                 instance_id = instance_status.get("InstanceId")
                 if instance_id in cluster_instance_ids and instance_id not in instance_health_states:
@@ -266,6 +280,7 @@ class InstanceManager:
 
         return list(instance_health_states.values())
 
+    @log_exception(log, "getting cluster instances from EC2", catch_exception=Exception, raise_on_error=True)
     def get_cluster_instances(self, include_master=False, alive_states_only=True):
         """Get instances that are associated with the cluster."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
@@ -277,7 +292,7 @@ class InstanceManager:
             args["Filters"].append({"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)})
         if not include_master:
             args["Filters"].append({"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]})
-        response_iterator = paginator.paginate(**args)
+        response_iterator = paginator.paginate(PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE}, **args)
         filtered_iterator = response_iterator.search("Reservations[].Instances[]")
         return [
             EC2Instance(
