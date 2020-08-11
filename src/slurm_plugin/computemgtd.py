@@ -14,8 +14,8 @@ from common.utils import check_command_output, sleep_remaining_loop_time
 from slurm_plugin.common import CONFIG_FILE_DIR, TIMESTAMP_FORMAT, InstanceManager, log_exception, time_is_up
 
 LOOP_TIME = 60
-# Computemgtd config is under /opt/slurm/etc/pcluster; all compute nodes share a config
-COMPUTEMGTD_CONFIG_PATH = "/opt/slurm/etc/pcluster/parallelcluster_computemgtd.conf"
+# Computemgtd config is under /opt/slurm/etc/pcluster/.slurm_plugin/; all compute nodes share a config
+COMPUTEMGTD_CONFIG_PATH = "/opt/slurm/etc/pcluster/.slurm_plugin/parallelcluster_computemgtd.conf"
 log = logging.getLogger(__name__)
 
 
@@ -40,6 +40,7 @@ class ComputemgtdConfig:
         attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
         return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
 
+    @log_exception(log, "reading computemgtd config", catch_exception=IOError, raise_on_error=True)
     def _get_config(self, config_file_path):
         """Get computemgtd configuration."""
         log.info("Reading %s", config_file_path)
@@ -63,9 +64,10 @@ class ComputemgtdConfig:
             "computemgtd", "disable_computemgtd_actions", fallback=self.DEFAULTS.get("disable_computemgtd_actions"),
         )
         self.clustermgtd_heartbeat_file_path = config.get("computemgtd", "clustermgtd_heartbeat_file_path")
-        self.slurm_nodename_file = config.get(
+        self._slurm_nodename_file = config.get(
             "computemgtd", "slurm_nodename_file", fallback=self.DEFAULTS.get("slurm_nodename_file")
         )
+        self.nodename = ComputemgtdConfig._read_nodename_from_file(self._slurm_nodename_file)
 
         proxy = config.get("computemgtd", "proxy", fallback=self.DEFAULTS.get("proxy"))
         if proxy != "NONE":
@@ -74,6 +76,18 @@ class ComputemgtdConfig:
         self.logging_config = config.get("computemgtd", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
         # Log configuration
         log.info(self.__repr__())
+
+    @staticmethod
+    def _read_nodename_from_file(nodename_file_path):
+        """Read self nodename from a file."""
+        try:
+            log.info("Reading self nodename from %s", nodename_file_path)
+            with open(nodename_file_path, "r") as nodename_file:
+                nodename = nodename_file.read()
+            return nodename
+        except IOError as e:
+            log.error("Unable to read self nodename from %s with exception: %s\n", nodename_file_path, e)
+            raise
 
 
 @log_exception(log, "self terminating compute instance", catch_exception=CalledProcessError, raise_on_error=False)
@@ -109,26 +123,26 @@ def _expired_clustermgtd_heartbeat(last_heartbeat, current_time, clustermgtd_tim
     return False
 
 
-def _is_self_node_down(slurm_nodename_file):
+@retry(stop_max_attempt_number=3, wait_fixed=1500)
+def _get_nodes_info_with_retry(nodes):
+    return get_nodes_info(nodes, command_timeout=10)
+
+
+def _is_self_node_down(self_nodename):
     """
     Check if self node is down in slurm.
 
     This check prevents termination of a node that is still well-attached to the scheduler.
-    Note: a node that is not attached to the scheduler will be put into DOWN* automatically after slurmd.
+    Note: node that is not attached to the scheduler will be in DOWN* after SlurmdTimeout.
     """
     try:
-        log.info("Reading self nodename from %s", slurm_nodename_file)
-        with open(slurm_nodename_file, "r") as nodename_file:
-            self_nodename = nodename_file.read()
-        self_node = get_nodes_info(self_nodename)[0]
-        log.info("Self node state is currently %s", self_node.__repr__())
+        self_node = _get_nodes_info_with_retry(self_nodename)[0]
+        log.info("Current self node state %s", self_node.__repr__())
         if self_node.is_down():
+            log.warning("Node is in DOWN state, preparing for self termination...")
             return True
+        log.info("Node is not in a DOWN state and correctly attached to scheduler, not terminating...")
         return False
-    except IOError as e:
-        log.error(
-            "Unable to read self nodename from %s with exception: %s\nConsidering node as down!", slurm_nodename_file, e
-        )
     except Exception as e:
         # This could happen is slurmctld is down completely
         log.error("Unable to retrieve current node state from slurm with exception: %s\nConsidering node as down!", e)
@@ -140,7 +154,7 @@ def _fail_self_check(last_heartbeat, current_time, computemgtd_config):
     """Determine if self checks are failing and if the node should self-terminate."""
     return _expired_clustermgtd_heartbeat(
         last_heartbeat, current_time, computemgtd_config.clustermgtd_timeout
-    ) and _is_self_node_down(computemgtd_config.slurm_nodename_file)
+    ) and _is_self_node_down(computemgtd_config.nodename)
 
 
 def _run_computemgtd():
