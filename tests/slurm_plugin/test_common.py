@@ -55,6 +55,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -73,6 +74,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.2xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.2",
                                 "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -91,17 +93,19 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             },
                             {
                                 "InstanceId": "i-45678",
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             },
                         ]
                     },
                     expected_params={
-                        "MinCount": 2,
+                        "MinCount": 1,
                         "MaxCount": 2,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
                     },
@@ -109,13 +113,20 @@ def boto3_stubber_path():
             ],
             None,
             [
-                call(["queue1-static-c5.xlarge-2"], ["i-12345"], ["ip.1.0.0.1"], ["ip-1-0-0-1"]),
-                call(["queue1-static-c5.2xlarge-1"], ["i-23456"], ["ip.1.0.0.2"], ["ip-1-0-0-2"]),
+                call(
+                    ["queue1-static-c5.xlarge-2"],
+                    [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                ),
+                call(
+                    ["queue1-static-c5.2xlarge-1"],
+                    [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                ),
                 call(
                     ["queue2-static-c5.xlarge-1", "queue2-dynamic-c5.xlarge-1"],
-                    ["i-34567", "i-45678"],
-                    ["ip.1.0.0.3", "ip.1.0.0.4"],
-                    ["ip-1-0-0-3", "ip-1-0-0-4"],
+                    [
+                        EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
                 ),
             ],
         ),
@@ -138,6 +149,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -166,17 +178,19 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             },
                             {
                                 "InstanceId": "i-45678",
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             },
                         ]
                     },
                     expected_params={
-                        "MinCount": 2,
+                        "MinCount": 1,
                         "MaxCount": 2,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
                     },
@@ -184,12 +198,16 @@ def boto3_stubber_path():
             ],
             ["queue1-static-c5.2xlarge-1"],
             [
-                call(["queue1-static-c5.xlarge-2"], ["i-12345"], ["ip.1.0.0.1"], ["ip-1-0-0-1"]),
+                call(
+                    ["queue1-static-c5.xlarge-2"],
+                    [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                ),
                 call(
                     ["queue2-static-c5.xlarge-1", "queue2-dynamic-c5.xlarge-1"],
-                    ["i-34567", "i-45678"],
-                    ["ip.1.0.0.3", "ip.1.0.0.4"],
-                    ["ip-1-0-0-3", "ip-1-0-0-4"],
+                    [
+                        EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
                 ),
             ],
         ),
@@ -209,6 +227,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -247,6 +266,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -270,7 +290,7 @@ def boto3_stubber_path():
                     method="run_instances",
                     response={},
                     expected_params={
-                        "MinCount": 3,
+                        "MinCount": 1,
                         "MaxCount": 3,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
                     },
@@ -283,7 +303,12 @@ def boto3_stubber_path():
                 "queue2-static-c5.xlarge-2",
                 "queue2-dynamic-c5.xlarge-1",
             ],
-            [call(["queue1-static-c5.xlarge-2"], ["i-12345"], ["ip.1.0.0.1"], ["ip-1-0-0-1"])],
+            [
+                call(
+                    ["queue1-static-c5.xlarge-2"],
+                    [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                )
+            ],
         ),
         # batch_size2
         (
@@ -310,6 +335,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -338,6 +364,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -366,6 +393,7 @@ def boto3_stubber_path():
                                 "InstanceType": "c5.xlarge",
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             }
                         ]
                     },
@@ -378,13 +406,63 @@ def boto3_stubber_path():
             ],
             ["queue1-static-c5.2xlarge-1", "queue2-static-c5.xlarge-2"],
             [
-                call(["queue1-static-c5.xlarge-2"], ["i-12345"], ["ip.1.0.0.1"], ["ip-1-0-0-1"]),
-                call(["queue2-static-c5.xlarge-1"], ["i-34567"], ["ip.1.0.0.3"], ["ip-1-0-0-3"],),
-                call(["queue2-dynamic-c5.xlarge-1"], ["i-45678"], ["ip.1.0.0.4"], ["ip-1-0-0-4"]),
+                call(
+                    ["queue1-static-c5.xlarge-2"],
+                    [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                ),
+                call(
+                    ["queue2-static-c5.xlarge-1"],
+                    [EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                ),
+                call(
+                    ["queue2-dynamic-c5.xlarge-1"],
+                    [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                ),
+            ],
+        ),
+        (
+            {
+                "queue2": {
+                    "c5.xlarge": [
+                        "queue2-static-c5.xlarge-1",
+                        "queue2-static-c5.xlarge-2",
+                        "queue2-dynamic-c5.xlarge-1",
+                    ],
+                },
+            },
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            10,
+            True,
+            # Simulate the case that only a part of the requested capacity is launched
+            MockedBoto3Request(
+                method="run_instances",
+                response={
+                    "Instances": [
+                        {
+                            "InstanceId": "i-45678",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.4",
+                            "PrivateDnsName": "ip-1-0-0-4",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        }
+                    ]
+                },
+                expected_params={
+                    "MinCount": 1,
+                    "MaxCount": 3,
+                    "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                },
+            ),
+            ["queue2-static-c5.xlarge-2", "queue2-dynamic-c5.xlarge-1"],
+            [
+                call(
+                    ["queue2-static-c5.xlarge-1", "queue2-static-c5.xlarge-2", "queue2-dynamic-c5.xlarge-1"],
+                    [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                )
             ],
         ),
     ],
-    ids=["normal", "client_error", "no_update", "batch_size1", "batch_size2"],
+    ids=["normal", "client_error", "no_update", "batch_size1", "batch_size2", "partial_launch"],
 )
 def test_add_instances(
     boto3_stubber,
@@ -397,9 +475,11 @@ def test_add_instances(
     expected_update_nodes_calls,
     mocker,
 ):
+    mocker.patch("slurm_plugin.common.update_nodes")
     # patch internal functions
-    instance_manager._update_slurm_node_addrs = mocker.MagicMock()
-    # update_node_mocker = mocker.patch("slurm_plugin.common.InstanceLaunch._update_slurm_node_addrs", autospec=True)
+    # Mock _update_slurm_node_addrs but still allow original code to execute
+    original_update_func = instance_manager._update_slurm_node_addrs
+    instance_manager._update_slurm_node_addrs = mocker.MagicMock(side_effect=original_update_func)
     instance_manager._parse_requested_instances = mocker.MagicMock(return_value=instances_to_launch)
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
@@ -409,14 +489,62 @@ def test_add_instances(
         launch_batch_size=launch_batch_size,
         update_node_address=update_node_address,
     )
-    if expected_failed_nodes:
-        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
-    else:
-        assert_that(instance_manager.failed_nodes).is_empty()
     if expected_update_nodes_calls:
         instance_manager._update_slurm_node_addrs.assert_has_calls(expected_update_nodes_calls)
     else:
         instance_manager._update_slurm_node_addrs.assert_not_called()
+    if expected_failed_nodes:
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+    else:
+        assert_that(instance_manager.failed_nodes).is_empty()
+
+
+@pytest.mark.parametrize(
+    "instance_manager, node_lists, launched_nodes, expected_update_nodes_call, expected_failed_nodes",
+    [
+        (
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            ["node-1"],
+            [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+            call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"], raise_on_error=True),
+            [],
+        ),
+        (
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            ["node-1"],
+            [],
+            None,
+            ["node-1"],
+        ),
+        (
+            InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",),
+            ["node-1", "node-2", "node-3", "node-4"],
+            [
+                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+            ],
+            call(
+                ["node-1", "node-2"],
+                nodeaddrs=["ip-1", "ip-2"],
+                nodehostnames=["hostname-1", "hostname-2"],
+                raise_on_error=True,
+            ),
+            ["node-3", "node-4"],
+        ),
+    ],
+    ids=("all_launched", "nothing_launched", "partial_launched"),
+)
+def test_update_slurm_node_addrs(
+    instance_manager, node_lists, launched_nodes, expected_update_nodes_call, expected_failed_nodes, mocker
+):
+    mock_update_nodes = mocker.patch("slurm_plugin.common.update_nodes")
+    instance_manager._update_slurm_node_addrs(node_lists, launched_nodes)
+    if expected_update_nodes_call:
+        mock_update_nodes.assert_called_once()
+        mock_update_nodes.assert_has_calls([expected_update_nodes_call])
+    else:
+        mock_update_nodes.assert_not_called()
+    assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
 
 @pytest.mark.parametrize(

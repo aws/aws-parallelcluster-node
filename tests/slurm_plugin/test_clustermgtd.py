@@ -727,6 +727,7 @@ def test_handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, expected_power_
         "current_replacing_nodes",
         "unhealthy_static_nodes",
         "private_ip_to_instance_map",
+        "launched_instances",
         "expected_replacing_nodes",
         "delete_instance_list",
         "add_node_list",
@@ -743,6 +744,11 @@ def test_handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, expected_power_
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
                 "ip-2": EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
             },
+            [
+                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
+            ],
             {"some_current_node", "node-1", "node-2", "node-3"},
             ["id-1", "id-2"],
             ["node-1", "node-2", "node-3"],
@@ -758,18 +764,43 @@ def test_handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, expected_power_
                 "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
                 "ip-5": EC2Instance("id-2", "ip-5", "hostname", "some_launch_time"),
             },
+            [
+                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
+            ],
             {"some_current_node", "node-1", "node-2", "node-3"},
             [],
             ["node-1", "node-2", "node-3"],
         ),
+        (
+            {"some_current_node"},
+            [
+                SlurmNode("node-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("node-2", "ip-2", "hostname", "IDLE+CLOUD"),
+                SlurmNode("node-3", "ip-3", "hostname", "IDLE+CLOUD"),
+            ],
+            {
+                "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
+                "ip-5": EC2Instance("id-2", "ip-5", "hostname", "some_launch_time"),
+            },
+            [
+                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+            ],
+            {"some_current_node", "node-1", "node-2"},
+            [],
+            ["node-1", "node-2", "node-3"],
+        ),
     ],
-    ids=["basic", "no_associated_instances"],
+    ids=["basic", "no_associated_instances", "partial_launch"],
 )
 @pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
 def test_handle_unhealthy_static_nodes(
     current_replacing_nodes,
     unhealthy_static_nodes,
     private_ip_to_instance_map,
+    launched_instances,
     expected_replacing_nodes,
     delete_instance_list,
     add_node_list,
@@ -779,7 +810,7 @@ def test_handle_unhealthy_static_nodes(
     mock_sync_config = SimpleNamespace(
         terminate_max_batch_size=1,
         launch_max_batch_size=5,
-        update_node_address=False,
+        update_node_address=True,
         region="us-east-2",
         cluster_name="hit-test",
         boto3_config="some config",
@@ -788,7 +819,14 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
     # Mock associated function
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
-    cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock()
+    cluster_manager._instance_manager._parse_requested_instances = mocker.MagicMock(
+        return_value={"some_queue": {"some_instance_type": ["node-1", "node-2", "node-3"]}}
+    )
+    cluster_manager._instance_manager._launch_ec2_instances = mocker.MagicMock(return_value=launched_instances)
+    mocker.patch("slurm_plugin.common.update_nodes")
+    # Mock add_instances_for_nodes but still try to execute original code
+    original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
+    cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
     update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", return_value=None, autospec=True)
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
@@ -800,7 +838,7 @@ def test_handle_unhealthy_static_nodes(
         )
     else:
         cluster_manager._instance_manager.delete_instances.assert_not_called()
-    cluster_manager._instance_manager.add_instances_for_nodes.assert_called_with(add_node_list, 5, False)
+    cluster_manager._instance_manager.add_instances_for_nodes.assert_called_with(add_node_list, 5, True)
     assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_replacing_nodes)
 
 
@@ -1043,7 +1081,7 @@ def test_manage_cluster(
             # basic: This is the most comprehensive case in manage_cluster with max number of boto3 calls
             "default.conf",
             [
-                # This node fail scheduler state check and corresponding instance will be terminated
+                # This node fail scheduler state check and corresponding instance will be terminated and replaced
                 SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN"),
                 # This node fail scheduler state check and node will be power_down
                 SlurmNode("queue-dynamic-c5.xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
@@ -1176,16 +1214,23 @@ def test_manage_cluster(
                     expected_params={"InstanceIds": ["i-1"]},
                     generate_error=False,
                 ),
-                # _maintain_nodes/run_instances
+                # _maintain_nodes/add_instances_for_nodes: launch new instance for static node
                 MockedBoto3Request(
                     method="run_instances",
                     response={
-                        "Instances": [{"InstanceId": "id", "PrivateIpAddress": "1.2.3.4", "PrivateDnsName": "dns"}]
+                        "Instances": [
+                            {
+                                "InstanceId": "i-1234",
+                                "PrivateIpAddress": "ip-1234",
+                                "PrivateDnsName": "hostname-1234",
+                                "LaunchTime": datetime(2020, 1, 1, 0, 0, 0),
+                            }
+                        ]
                     },
                     expected_params={
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge"},
-                        "MaxCount": 1,
                         "MinCount": 1,
+                        "MaxCount": 1,
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge"},
                     },
                     generate_error=False,
                 ),

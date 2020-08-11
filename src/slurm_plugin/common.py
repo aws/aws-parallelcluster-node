@@ -117,50 +117,38 @@ class InstanceManager:
                     try:
                         launched_instances = self._launch_ec2_instances(queue, instance_type, len(batch_nodes))
                         if update_node_address:
-                            instance_ids, instance_ips, instance_hostnames = InstanceManager._parse_launched_instances(
-                                launched_instances
-                            )
-                            self._update_slurm_node_addrs(
-                                list(batch_nodes), instance_ids, instance_ips, instance_hostnames
-                            )
+                            self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
                     except Exception as e:
                         logger.error(
                             "Encountered exception when launching instances for nodes %s: %s", list(batch_nodes), e
                         )
                         self.failed_nodes.extend(batch_nodes)
 
-    def _update_slurm_node_addrs(self, slurm_nodes, instance_ids, instance_ips, instance_hostnames):
+    def _update_slurm_node_addrs(self, slurm_nodes, launched_instances):
         """Update node information in slurm with info from launched EC2 instance."""
         try:
-            update_nodes(slurm_nodes, nodeaddrs=instance_ips, nodehostnames=instance_hostnames, raise_on_error=True)
-            logger.info(
-                "Nodes %s are now configured with instance=%s private_ip=%s nodehostname=%s",
-                slurm_nodes,
-                instance_ids,
-                instance_ips,
-                instance_hostnames,
-            )
+            # There could be fewer launched instances than nodes requested to be launched if best-effort scaling
+            # Group nodes into successfully launched and failed to launch based on number of launched instances
+            # fmt: off
+            launched_nodes = slurm_nodes[:len(launched_instances)]
+            fail_launch_nodes = slurm_nodes[len(launched_instances):]
+            # fmt: on
+            if launched_nodes:
+                update_nodes(
+                    launched_nodes,
+                    nodeaddrs=[instance.private_ip for instance in launched_instances],
+                    nodehostnames=[instance.hostname for instance in launched_instances],
+                    raise_on_error=True,
+                )
+                logger.info("Nodes %s are now configured with instance=%s", launched_nodes, launched_instances)
+            if fail_launch_nodes:
+                logger.error("Failed to launch instances for following nodes: %s", fail_launch_nodes)
+                self.failed_nodes.extend(fail_launch_nodes)
         except subprocess.CalledProcessError:
             logger.error(
-                "Encountered error when updating node %s with instance=%s private_ip=%s nodehostname=%s",
-                slurm_nodes,
-                instance_ids,
-                instance_ips,
-                instance_hostnames,
+                "Encountered error when updating node %s with instance=%s", slurm_nodes, launched_instances,
             )
             self.failed_nodes.extend(slurm_nodes)
-
-    @staticmethod
-    def _parse_launched_instances(launched_instances):
-        """Parse run_instance output."""
-        instance_ids = []
-        instance_ips = []
-        instance_hostnames = []
-        for instance in launched_instances:
-            instance_ids.append(instance["InstanceId"])
-            instance_ips.append(instance["PrivateIpAddress"])
-            instance_hostnames.append(instance["PrivateDnsName"].split(".")[0])
-        return instance_ids, instance_ips, instance_hostnames
 
     def _parse_requested_instances(self, node_list):
         """
@@ -182,12 +170,14 @@ class InstanceManager:
 
         return instances_to_launch
 
-    def _launch_ec2_instances(self, queue, instance_type, current_batch_size):
+    def _launch_ec2_instances(self, queue, instance_type, current_batch_size, best_effort=True):
         """Launch a batch of ec2 instances."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         result = ec2_client.run_instances(
-            # To-do, evaluate best effort scaling for future
-            MinCount=current_batch_size,
+            # If best_effort scaling, set MinCount=1
+            # so run_instances call will succeed even if entire count cannot be satisfied
+            # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
+            MinCount=1 if best_effort else current_batch_size,
             MaxCount=current_batch_size,
             # LaunchTemplate is different for every instance type in every queue
             # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
@@ -195,7 +185,15 @@ class InstanceManager:
             LaunchTemplate={"LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}"},
         )
 
-        return result["Instances"]
+        return [
+            EC2Instance(
+                instance_info["InstanceId"],
+                instance_info["PrivateIpAddress"],
+                instance_info["PrivateDnsName"].split(".")[0],
+                instance_info["LaunchTime"],
+            )
+            for instance_info in result["Instances"]
+        ]
 
     def _parse_nodename(self, nodename):
         """Parse queue_name and instance_type from nodename."""

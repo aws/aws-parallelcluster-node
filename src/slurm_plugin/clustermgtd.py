@@ -691,8 +691,9 @@ class ClusterManager:
         self._instance_manager.add_instances_for_nodes(
             node_list, self._config.launch_max_batch_size, self._config.update_node_address
         )
-        # Add node to list of nodes being replaced
-        self._static_nodes_in_replacement |= set(node_list)
+        # Add launched nodes to list of nodes being replaced, excluding any nodes that failed to launch
+        launched_nodes = set(node_list) - set(self._instance_manager.failed_nodes)
+        self._static_nodes_in_replacement |= launched_nodes
         log.info(
             "After node maintenance, following nodes are currently in replacement: %s",
             self._static_nodes_in_replacement,
