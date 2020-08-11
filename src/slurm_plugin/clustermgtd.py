@@ -243,6 +243,16 @@ class ClusterManager:
             timestamp_file.write(f"{self.current_time}")
 
     @staticmethod
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    def _get_node_info_with_retry(nodes):
+        return get_nodes_info(nodes, command_timeout=5)
+
+    @staticmethod
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    def _get_partition_info_with_retry():
+        return get_partition_info(command_timeout=5)
+
+    @staticmethod
     def _get_node_info_from_partition():
         """
         Retrieve node belonging in UP/INACTIVE partitions.
@@ -252,9 +262,9 @@ class ClusterManager:
         try:
             inactive_nodes = []
             active_nodes = []
-            partitions = get_partition_info()
+            partitions = ClusterManager._get_partition_info_with_retry()
             for part in partitions:
-                nodes = get_nodes_info(part.nodes)
+                nodes = ClusterManager._get_node_info_with_retry(part.nodes)
                 if "INACTIVE" in part.state:
                     inactive_nodes.extend(nodes)
                 else:

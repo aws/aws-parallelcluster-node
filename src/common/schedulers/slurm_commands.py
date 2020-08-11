@@ -114,7 +114,9 @@ class SlurmNode:
         return f"{self.name}({self.nodeaddr})"
 
 
-def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True):
+def update_nodes(
+    nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True, command_timeout=5
+):
     """
     Update slurm nodes with scontrol call.
 
@@ -146,7 +148,7 @@ def update_nodes(nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=N
             node_info += f" nodeaddr={addrs}"
         if hostnames:
             node_info += f" nodehostname={hostnames}"
-        run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error)
+        run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout)
 
 
 def _batch_attribute(attribute, batch_size, expected_length=None):
@@ -219,7 +221,7 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=5000)
+@retry(stop_max_attempt_number=3, wait_fixed=1500)
 def set_nodes_down_and_power_save(node_list, reason):
     """
     Set slurm nodes into down -> power_down.
@@ -230,8 +232,7 @@ def set_nodes_down_and_power_save(node_list, reason):
     set_nodes_power_down(node_list, reason=reason)
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=1500)
-def get_nodes_info(nodes):
+def get_nodes_info(nodes, command_timeout=5):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
@@ -241,18 +242,17 @@ def get_nodes_info(nodes):
         f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '
         'NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)"'
     )
-    nodeinfo_str = check_command_output(show_node_info_command)
+    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout)
 
     return _parse_nodes_info(nodeinfo_str)
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=1500)
-def get_partition_info():
+def get_partition_info(command_timeout=5):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = (
         f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| ' 'Nodes=\\K(\\S+)| State=\\K(\\S+)"'
     )
-    partition_info_str = check_command_output(show_partition_info_command)
+    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout)
 
     return _parse_partition_info(partition_info_str)
 

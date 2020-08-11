@@ -971,8 +971,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             None,
             False,
             [
-                call("/opt/slurm/bin/scontrol update nodename=node-1", raise_on_error=False),
-                call("/opt/slurm/bin/scontrol update nodename=node-2,node-3", raise_on_error=False),
+                call("/opt/slurm/bin/scontrol update nodename=node-1", raise_on_error=False, timeout=5),
+                call("/opt/slurm/bin/scontrol update nodename=node-2,node-3", raise_on_error=False, timeout=5),
             ],
         ),
         (
@@ -984,10 +984,12 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 call(
                     "/opt/slurm/bin/scontrol update state=power_down nodename=node-1 nodehostname=hostname-1",
                     raise_on_error=True,
+                    timeout=5,
                 ),
                 call(
                     "/opt/slurm/bin/scontrol update state=power_down nodename=node-2,node-3 nodeaddr=addr-2,addr-3",
                     raise_on_error=True,
+                    timeout=5,
                 ),
             ],
         ),
@@ -1003,6 +1005,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                         + " nodename=node-1 nodehostname=hostname-1"
                     ),
                     raise_on_error=True,
+                    timeout=5,
                 ),
                 call(
                     (
@@ -1010,6 +1013,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                         + " nodename=node-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
                     ),
                     raise_on_error=True,
+                    timeout=5,
                 ),
             ],
         ),
