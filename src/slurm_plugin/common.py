@@ -46,7 +46,12 @@ log = logging.getLogger(__name__)
 
 
 def log_exception(
-    logger, action_desc, catch_exception=Exception, raise_on_error=True, exception_to_raise=None,
+    logger,
+    action_desc,
+    log_level=logging.ERROR,
+    catch_exception=Exception,
+    raise_on_error=True,
+    exception_to_raise=None,
 ):
     def _log_exception(function):
         @functools.wraps(function)
@@ -54,7 +59,7 @@ def log_exception(
             try:
                 return function(*args, **kwargs)
             except catch_exception as e:
-                logger.exception("Failed when %s with exception %s", action_desc, e)
+                logger.log(log_level, "Failed when %s with exception %s", action_desc, e)
                 if raise_on_error:
                     if exception_to_raise:
                         raise exception_to_raise

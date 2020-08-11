@@ -173,8 +173,8 @@ def test_set_sync_config(initialize_instance_manager, mocker):
 def test_get_node_info_from_partition(
     partitions, get_nodes_side_effect, expected_inactive_nodes, expected_active_nodes, mocker
 ):
-    mocker.patch("slurm_plugin.clustermgtd.get_partition_info", return_value=partitions, autospec=True)
-    mocker.patch("slurm_plugin.clustermgtd.get_nodes_info", side_effect=get_nodes_side_effect, autospec=True)
+    mocker.patch("slurm_plugin.clustermgtd.ClusterManager._get_partition_info_with_retry", return_value=partitions)
+    mocker.patch("slurm_plugin.clustermgtd.ClusterManager._get_node_info_with_retry", side_effect=get_nodes_side_effect)
     cluster_manager = ClusterManager()
     active_nodes, inactive_nodes = cluster_manager._get_node_info_from_partition()
     assert_that(active_nodes).is_equal_to(expected_active_nodes)
