@@ -23,7 +23,8 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbe
                 "clustermgtd_timeout": 180,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                 "disable_computemgtd_actions": False,
-                "slurm_nodename_file": "/opt/parallelcluster/configs/slurm/slurm_nodename",
+                "_slurm_nodename_file": "/opt/parallelcluster/configs/slurm/slurm_nodename",
+                "nodename": "some_nodename",
                 "loop_time": 60,
                 "logging_config": os.path.join(
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_computemgtd_logging.conf"
@@ -38,7 +39,8 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbe
                 "loop_time": 300,
                 "clustermgtd_timeout": 30,
                 "clustermgtd_heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
-                "slurm_nodename_file": "/my/nodename/path",
+                "_slurm_nodename_file": "/my/nodename/path",
+                "nodename": "some_nodename",
                 "disable_computemgtd_actions": True,
                 "_boto3_config": {
                     "retries": {"max_attempts": 5, "mode": "standard"},
@@ -49,7 +51,8 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbe
         ),
     ],
 )
-def test_computemgtd_config(config_file, expected_attributes, test_datadir):
+def test_computemgtd_config(config_file, expected_attributes, test_datadir, mocker):
+    mocker.patch("slurm_plugin.computemgtd.ComputemgtdConfig._read_nodename_from_file", return_value="some_nodename")
     compute_config = ComputemgtdConfig(test_datadir / config_file)
     for key in expected_attributes:
         assert_that(compute_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
@@ -74,24 +77,19 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
 
 
 @pytest.mark.parametrize(
-    "mock_nodename_content, mock_node_info, expected_result",
+    "mock_node_info, expected_result",
     [
-        ("nodename-1", [SlurmNode("nodename-1", "ip-1", "host-1", "DOWN*+CLOUD")], True,),
-        ("nodename-1", [SlurmNode("nodename-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")], False,),
-        ("nodename-1", [SlurmNode("nodename-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")], True,),
-        (IOError, [SlurmNode("nodename-1", "ip-1", "host-1", "IDLE+CLOUD")], True,),
-        ("nodename-1", Exception, True,),
+        ([SlurmNode("nodename-1", "ip-1", "host-1", "DOWN*+CLOUD")], True,),
+        ([SlurmNode("nodename-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")], False,),
+        ([SlurmNode("nodename-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")], True,),
+        (Exception, True,),
     ],
-    ids=["node_down", "node_drained_idle", "node_drained_down", "cant_get_nodename", "cant_get_node_info"],
+    ids=["node_down", "node_drained_idle", "node_drained_down", "cant_get_node_info"],
 )
-def test_is_self_node_down(mock_nodename_content, mock_node_info, expected_result, mocker):
-    if mock_nodename_content is IOError:
-        mocker.patch("slurm_plugin.computemgtd.open", side_effect=IOError())
+def test_is_self_node_down(mock_node_info, expected_result, mocker):
+    if mock_node_info is Exception:
+        mocker.patch("slurm_plugin.computemgtd._get_nodes_info_with_retry", side_effect=Exception())
     else:
-        mocker.patch("slurm_plugin.computemgtd.open", mock_open(read_data=mock_nodename_content))
-        if mock_node_info is Exception:
-            mocker.patch("slurm_plugin.computemgtd.get_nodes_info", side_effect=Exception())
-        else:
-            mocker.patch("slurm_plugin.computemgtd.get_nodes_info", return_value=mock_node_info)
+        mocker.patch("slurm_plugin.computemgtd._get_nodes_info_with_retry", return_value=mock_node_info)
 
-    assert_that(_is_self_node_down("some file path")).is_equal_to(expected_result)
+    assert_that(_is_self_node_down("nodename-1")).is_equal_to(expected_result)
