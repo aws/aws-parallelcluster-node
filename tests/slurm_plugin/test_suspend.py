@@ -24,28 +24,12 @@ from slurm_plugin.suspend import SlurmSuspendConfig
         (
             "default.conf",
             {
-                "cluster_name": "hit2",
-                "region": "us-east-1",
-                "max_batch_size": 1000,
-                "_boto3_config": {"retries": {"max_attempts": 5, "mode": "standard"}},
                 "logging_config": os.path.join(
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_suspend_logging.conf"
                 ),
             },
         ),
-        (
-            "all_options.conf",
-            {
-                "cluster_name": "hit2",
-                "region": "us-east-1",
-                "max_batch_size": 200,
-                "_boto3_config": {
-                    "retries": {"max_attempts": 5, "mode": "standard"},
-                    "proxies": {"https": "my.suspend.proxy"},
-                },
-                "logging_config": "/path/to/suspend_logging/config",
-            },
-        ),
+        ("all_options.conf", {"logging_config": "/path/to/suspend_logging/config"}),
     ],
 )
 def test_suspend_config(config_file, expected_attributes, test_datadir):

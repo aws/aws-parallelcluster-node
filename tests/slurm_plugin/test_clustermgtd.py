@@ -1,3 +1,15 @@
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 import logging
 import os
 from datetime import datetime, timezone
@@ -39,7 +51,7 @@ class TestClustermgtdConfig:
                     # basic configs
                     "cluster_name": "hit",
                     "region": "us-east-2",
-                    "_boto3_config": {"retries": {"max_attempts": 5, "mode": "standard"}},
+                    "_boto3_config": {"retries": {"max_attempts": 1, "mode": "standard"}},
                     "loop_time": 30,
                     "disable_all_cluster_management": False,
                     "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
@@ -49,13 +61,13 @@ class TestClustermgtdConfig:
                     "dynamodb_table": "table-name",
                     # launch configs
                     "update_node_address": True,
-                    "launch_max_batch_size": 100,
+                    "launch_max_batch_size": 500,
                     # terminate configs
                     "terminate_max_batch_size": 1000,
                     "node_replacement_timeout": 600,
                     "terminate_drain_nodes": True,
                     "terminate_down_nodes": True,
-                    "orphaned_instance_timeout": 180,
+                    "orphaned_instance_timeout": 120,
                     # health check configs
                     "disable_ec2_health_check": False,
                     "disable_scheduled_event_health_check": False,
@@ -70,7 +82,7 @@ class TestClustermgtdConfig:
                     "cluster_name": "hit",
                     "region": "us-east-1",
                     "_boto3_config": {
-                        "retries": {"max_attempts": 5, "mode": "standard"},
+                        "retries": {"max_attempts": 10, "mode": "standard"},
                         "proxies": {"https": "https://fake.proxy"},
                     },
                     "loop_time": 60,
@@ -101,7 +113,7 @@ class TestClustermgtdConfig:
                     "cluster_name": "hit",
                     "region": "us-east-1",
                     "_boto3_config": {
-                        "retries": {"max_attempts": 5, "mode": "standard"},
+                        "retries": {"max_attempts": 1, "mode": "standard"},
                         "proxies": {"https": "https://fake.proxy"},
                     },
                     "loop_time": 60,
@@ -197,18 +209,89 @@ def test_get_node_info_from_partition(
 
 
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_clean_up_inactive_parititon(mocker):
+@pytest.mark.parametrize(
+    (
+        "mock_cluster_instances",
+        "mock_backing_instances",
+        "expected_result",
+        "delete_instances_side_effect",
+        "reset_nodes_side_effect",
+    ),
+    [
+        (
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
+                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
+            ],
+            ["id-3"],
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
+            ],
+            None,
+            None,
+        ),
+        (
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
+                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
+            ],
+            ["id-3"],
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
+                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
+            ],
+            Exception,
+            None,
+        ),
+        (
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
+                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
+            ],
+            ["id-3"],
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
+            ],
+            None,
+            Exception,
+        ),
+    ],
+    ids=["normal", "delete_exception", "reset_exception"],
+)
+def test_clean_up_inactive_parititon(
+    mock_cluster_instances,
+    mock_backing_instances,
+    expected_result,
+    delete_instances_side_effect,
+    reset_nodes_side_effect,
+    mocker,
+):
     # Test setup
-    inactive_nodes = ["some inactive nodes"]
-    mock_sync_config = SimpleNamespace(
-        terminate_max_batch_size=4, region="us-east-2", cluster_name="hit-test", boto3_config="some config"
-    )
+    inactive_nodes = [SlurmNode("node-3", "ip-3", "hostname", "some_state")]
+    mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._instance_manager.terminate_associated_instances = mocker.MagicMock()
-    cluster_manager._clean_up_inactive_partition(inactive_nodes)
-    cluster_manager._instance_manager.terminate_associated_instances.assert_called_with(
-        ["some inactive nodes"], terminate_batch_size=4
-    )
+    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
+    if delete_instances_side_effect:
+        mock_instance_manager.delete_instances = mocker.patch.object(
+            mock_instance_manager, "delete_instances", side_effect=delete_instances_side_effect, auto_spec=True
+        )
+    if reset_nodes_side_effect:
+        mock_reset_node = mocker.patch(
+            "slurm_plugin.clustermgtd.reset_nodes", side_effect=reset_nodes_side_effect, auto_spec=True
+        )
+    else:
+        mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+    result = cluster_manager._clean_up_inactive_partition(inactive_nodes, mock_cluster_instances)
+    mock_instance_manager.delete_instances.assert_called_with(mock_backing_instances, terminate_batch_size=4)
+    if delete_instances_side_effect is not Exception:
+        mock_reset_node.assert_called_with(["node-3"], raise_on_error=False)
+    assert_that(result).is_equal_to(expected_result)
 
 
 @pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
@@ -471,7 +554,7 @@ def test_handle_health_check(
     mock_sync_config = SimpleNamespace(health_check_timeout=10)
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = "some_current_time"
-    drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", autospec=True)
+    drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", auto_spec=True)
     # Run tests
     cluster_manager._handle_health_check(
         placeholder_states, id_to_instance_map, ip_to_slurm_node_map, health_check_type
@@ -710,24 +793,35 @@ def test_is_node_healthy(node, private_ip_to_instance_map, instance_ips_in_clust
 
 
 @pytest.mark.parametrize(
-    "unhealthy_dynamic_nodes, expected_power_save_node_list",
+    "unhealthy_dynamic_nodes, mock_backing_instances, expected_power_save_node_list",
     [
         (
             [
                 SlurmNode("node-1", "ip-1", "hostname", "IDLE+CLOUD"),
                 SlurmNode("node-2", "ip-1", "hostname", "IDLE+CLOUD"),
             ],
+            ["id-1", "id-2"],
             ["node-1", "node-2"],
         )
     ],
     ids=["basic"],
 )
-def test_handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, expected_power_save_node_list, mocker):
-    power_save_mock = mocker.patch(
-        "slurm_plugin.clustermgtd.set_nodes_down_and_power_save", return_value=None, autospec=True
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_handle_unhealthy_dynamic_nodes(
+    unhealthy_dynamic_nodes, mock_backing_instances, expected_power_save_node_list, mocker
+):
+    mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
+    cluster_manager = ClusterManager(mock_sync_config)
+    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
+    mocker.patch(
+        "slurm_plugin.clustermgtd.ClusterManager._get_backing_instance_ids",
+        return_value=mock_backing_instances,
+        auto_spec=True,
     )
-    ClusterManager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
-    power_save_mock.assert_called_with(expected_power_save_node_list, reason="Schduler health check failed")
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down_and_power_save", auto_spec=True)
+    cluster_manager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, {"placeholder": "map"})
+    mock_instance_manager.delete_instances.assert_called_with(["id-1", "id-2"], terminate_batch_size=4)
+    power_save_mock.assert_called_with(expected_power_save_node_list, reason="Scheduler health check failed")
 
 
 @pytest.mark.parametrize(
@@ -758,7 +852,7 @@ def test_handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, expected_power_
                 EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
             ],
             {"some_current_node", "node-1", "node-2", "node-3"},
-            ["id-1", "id-2"],
+            list({"id-1", "id-2"}),
             ["node-1", "node-2", "node-3"],
         ),
         (
@@ -835,7 +929,7 @@ def test_handle_unhealthy_static_nodes(
     # Mock add_instances_for_nodes but still try to execute original code
     original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
     cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
-    update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", return_value=None, autospec=True)
+    update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", return_value=None, auto_spec=True)
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
     # Assert calls
@@ -851,10 +945,36 @@ def test_handle_unhealthy_static_nodes(
 
 
 @pytest.mark.parametrize(
-    "cluster_instances, active_nodes, mock_unhealthy_nodes",
+    "slurm_nodes, private_ip_to_instance_map, expected_result",
     [
         (
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            [
+                SlurmNode("node-1", "ip-1", "hostname", "some_state"),
+                SlurmNode("node-2", "ip-2", "hostname", "some_state"),
+                SlurmNode("node-3", "ip-3", "hostname", "some_state"),
+                SlurmNode("node-999", "ip-1", "hostname", "some_state"),
+            ],
+            {
+                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+            },
+            list({"id-1", "id-2"}),
+        )
+    ],
+    ids=["basic"],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map, expected_result):
+    assert_that(ClusterManager._get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map)).is_equal_to(
+        expected_result
+    )
+
+
+@pytest.mark.parametrize(
+    "private_ip_to_instance_map, active_nodes, mock_unhealthy_nodes",
+    [
+        (
+            {"ip-1", EC2Instance("id-1", "ip-1", "hostname", "launch_time")},
             [
                 SlurmNode("node-1", "ip-1", "hostname", "some_state"),
                 SlurmNode("node-2", "ip-2", "hostname", "some_state"),
@@ -862,7 +982,7 @@ def test_handle_unhealthy_static_nodes(
             (["node-1"], ["node-2"]),
         ),
         (
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            {"ip-1", EC2Instance("id-1", "ip-1", "hostname", "launch_time")},
             [
                 SlurmNode("node-1", "ip-1", "hostname", "some_state"),
                 SlurmNode("node-1-repetitive-ip", "ip-1", "hostname", "some_state"),
@@ -874,25 +994,24 @@ def test_handle_unhealthy_static_nodes(
     ids=["basic", "repetitive_ip"],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_maintain_nodes(cluster_instances, active_nodes, mock_unhealthy_nodes, mocker):
+def test_maintain_nodes(private_ip_to_instance_map, active_nodes, mock_unhealthy_nodes, mocker):
     # Mock functions
-    mock_private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
     cluster_manager = ClusterManager(mocker.MagicMock())
-    cluster_manager._update_static_nodes_in_replacement = mocker.MagicMock()
-    cluster_manager._find_unhealthy_slurm_nodes = mocker.MagicMock(return_value=mock_unhealthy_nodes)
-    mock_handle_unhealthy_dynamic_nodes = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._handle_unhealthy_dynamic_nodes"
+    mock_update_replacement = mocker.patch.object(
+        cluster_manager, "_update_static_nodes_in_replacement", auto_spec=True
     )
-    cluster_manager._handle_unhealthy_static_nodes = mocker.MagicMock()
+    mock_find_unhealthy = mocker.patch.object(
+        cluster_manager, "_find_unhealthy_slurm_nodes", return_value=mock_unhealthy_nodes, auto_spec=True
+    )
+    mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", auto_spec=True)
+    mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", auto_spec=True)
     # Run test
-    cluster_manager._maintain_nodes(cluster_instances, active_nodes)
+    cluster_manager._maintain_nodes(private_ip_to_instance_map, active_nodes)
     # Check function calls
-    cluster_manager._update_static_nodes_in_replacement.assert_called_with(active_nodes)
-    cluster_manager._find_unhealthy_slurm_nodes.assert_called_with(active_nodes, mock_private_ip_to_instance_map)
-    mock_handle_unhealthy_dynamic_nodes.assert_called_with(mock_unhealthy_nodes[0])
-    cluster_manager._handle_unhealthy_static_nodes.assert_called_with(
-        mock_unhealthy_nodes[1], mock_private_ip_to_instance_map
-    )
+    mock_update_replacement.assert_called_with(active_nodes)
+    mock_find_unhealthy.assert_called_with(active_nodes, private_ip_to_instance_map)
+    mock_handle_dynamic.assert_called_with(mock_unhealthy_nodes[0], private_ip_to_instance_map)
+    mock_handle_static.assert_called_with(mock_unhealthy_nodes[1], private_ip_to_instance_map)
 
 
 @pytest.mark.parametrize(
@@ -958,7 +1077,10 @@ def test_terminate_orphaned_instances(
         (
             False,
             False,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+            ],
             [
                 SlurmNode("some_active_node1", "ip", "hostname", "some_state"),
                 SlurmNode("some_active_node2", "ip", "hostname", "some_state"),
@@ -1031,7 +1153,7 @@ def test_manage_cluster(
         ClusterManager, "_perform_health_check_actions", auto_spec=True
     )
     clean_up_inactive_partition_mock = mocker.patch.object(
-        ClusterManager, "_clean_up_inactive_partition", auto_spec=True
+        ClusterManager, "_clean_up_inactive_partition", return_value=mock_cluster_instances, auto_spec=True
     )
     terminate_orphaned_instances_mock = mocker.patch.object(
         ClusterManager, "_terminate_orphaned_instances", auto_spec=True
@@ -1063,7 +1185,7 @@ def test_manage_cluster(
         get_ec2_instances_mock.assert_not_called()
         return
     if mock_inactive_nodes:
-        clean_up_inactive_partition_mock.assert_called_with(mock_inactive_nodes)
+        clean_up_inactive_partition_mock.assert_called_with(mock_inactive_nodes, mock_cluster_instances)
     get_ec2_instances_mock.assert_called_once()
     if not mock_active_nodes:
         terminate_orphaned_instances_mock.assert_called_with(mock_cluster_instances, ips_used_by_slurm=[])
@@ -1074,7 +1196,9 @@ def test_manage_cluster(
         perform_health_check_actions_mock.assert_not_called()
     else:
         perform_health_check_actions_mock.assert_called_with(mock_cluster_instances, ip_to_slurm_node_map)
-    maintain_nodes_mock.assert_called_with(mock_cluster_instances, mock_active_nodes)
+    maintain_nodes_mock.assert_called_with(
+        {instance.private_ip: instance for instance in mock_cluster_instances}, mock_active_nodes
+    )
     terminate_orphaned_instances_mock.assert_called_with(
         mock_cluster_instances, ips_used_by_slurm=list(ip_to_slurm_node_map.keys())
     )
@@ -1101,39 +1225,6 @@ def test_manage_cluster(
                 SlurmNode("queue-dynamic-c5.xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
-                # _clean_up_inactive_partition/terminate_associated_instances: get instances from inactive node IPs
-                MockedBoto3Request(
-                    method="describe_instances",
-                    response={
-                        "Reservations": [
-                            {
-                                "Instances": [
-                                    {
-                                        "InstanceId": "i-4",
-                                        "PrivateIpAddress": "ip-4",
-                                        "PrivateDnsName": "hostname",
-                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "Filters": [
-                            {"Name": "private-ip-address", "Values": ["ip-4", "ip-5"]},
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
-                        ],
-                        "MaxResults": 1000,
-                    },
-                    generate_error=False,
-                ),
-                # _clean_up_inactive_partition/terminate_associated_instances: delete inactive instances
-                MockedBoto3Request(
-                    method="terminate_instances",
-                    response={},
-                    expected_params={"InstanceIds": ["i-4"]},
-                    generate_error=False,
-                ),
                 # _get_ec2_instances: get all cluster instances by tags
                 MockedBoto3Request(
                     method="describe_instances",
@@ -1159,6 +1250,12 @@ def test_manage_cluster(
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                                     },
+                                    {
+                                        "InstanceId": "i-4",
+                                        "PrivateIpAddress": "ip-4",
+                                        "PrivateDnsName": "hostname",
+                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                    },
                                     # Return an orphaned instance
                                     {
                                         "InstanceId": "i-999",
@@ -1178,6 +1275,13 @@ def test_manage_cluster(
                         ],
                         "MaxResults": 1000,
                     },
+                    generate_error=False,
+                ),
+                # _clean_up_inactive_partition/terminate_associated_instances: delete inactive instances
+                MockedBoto3Request(
+                    method="terminate_instances",
+                    response={},
+                    expected_params={"InstanceIds": ["i-4"]},
                     generate_error=False,
                 ),
                 # _perform_health_check_actions: get unhealthy instance status by instance status filter
@@ -1212,6 +1316,14 @@ def test_manage_cluster(
                         "Filters": [{"Name": "event.code", "Values": EC2_SCHEDULED_EVENT_CODES}],
                         "MaxResults": 1000,
                     },
+                    generate_error=False,
+                ),
+                # _maintain_nodes/delete_instances: terminate dynamic down nodes
+                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
+                MockedBoto3Request(
+                    method="terminate_instances",
+                    response={},
+                    expected_params={"InstanceIds": ["i-2"]},
                     generate_error=False,
                 ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
@@ -1265,41 +1377,6 @@ def test_manage_cluster(
                 SlurmNode("queue-dynamic-c5.xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
-                # _clean_up_inactive_partition/terminate_associated_instances: get instances from inactive node IPs
-                # Not produce failure at this point, so next call is executed
-                MockedBoto3Request(
-                    method="describe_instances",
-                    response={
-                        "Reservations": [
-                            {
-                                "Instances": [
-                                    {
-                                        "InstanceId": "i-4",
-                                        "PrivateIpAddress": "ip-4",
-                                        "PrivateDnsName": "hostname",
-                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "Filters": [
-                            {"Name": "private-ip-address", "Values": ["ip-4", "ip-5"]},
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
-                        ],
-                        "MaxResults": 1000,
-                    },
-                    generate_error=False,
-                ),
-                # _clean_up_inactive_partition/terminate_associated_instances: delete inactive instances
-                # Produce an error, cluster should be able to handle exception and move on
-                MockedBoto3Request(
-                    method="terminate_instances",
-                    response={},
-                    expected_params={"InstanceIds": ["i-4"]},
-                    generate_error=True,
-                ),
                 # _get_ec2_instances: get all cluster instances by tags
                 # Not producing failure here so logic after can be executed
                 MockedBoto3Request(
@@ -1326,6 +1403,12 @@ def test_manage_cluster(
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                                     },
+                                    {
+                                        "InstanceId": "i-4",
+                                        "PrivateIpAddress": "ip-4",
+                                        "PrivateDnsName": "hostname",
+                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                    },
                                     # Return an orphaned instance
                                     {
                                         "InstanceId": "i-999",
@@ -1346,6 +1429,14 @@ def test_manage_cluster(
                         "MaxResults": 1000,
                     },
                     generate_error=False,
+                ),
+                # _clean_up_inactive_partition/terminate_associated_instances: delete inactive instances
+                # Produce an error, cluster should be able to handle exception and move on
+                MockedBoto3Request(
+                    method="terminate_instances",
+                    response={},
+                    expected_params={"InstanceIds": ["i-4"]},
+                    generate_error=True,
                 ),
                 # _perform_health_check_actions: get unhealthy instance status by instance status filter
                 MockedBoto3Request(
@@ -1401,8 +1492,15 @@ def test_manage_cluster(
                     },
                     generate_error=True,
                 ),
+                # _maintain_nodes/delete_instances: terminate dynamic down nodes
+                # Produce an error, cluster should be able to handle exception and move on
+                MockedBoto3Request(
+                    method="terminate_instances",
+                    response={},
+                    expected_params={"InstanceIds": ["i-2"]},
+                    generate_error=True,
+                ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
-                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="terminate_instances",
@@ -1420,12 +1518,13 @@ def test_manage_cluster(
                 ),
             ],
             [
-                r"Failed when terminating instances \('i-4',\)",
+                r"Failed when terminating instances \(x1\) \['i-4'\]",
                 r"Failed when getting health status for unhealthy EC2 instances",
                 r"Failed when performing health check action with exception",
-                r"Failed when terminating instances \('i-1',\)",
-                r"Encountered exception when launching instances for nodes \['queue-static-c5.xlarge-1'\]",
-                r"Failed when terminating instances \('i-999',\)",
+                r"Failed when terminating instances \(x1\) \['i-2'\]",
+                r"Failed when terminating instances \(x1\) \['i-1'\]",
+                r"Encountered exception when launching instances for nodes \(x1\) \['queue-static-c5.xlarge-1'\]",
+                r"Failed when terminating instances \(x1\) \['i-999'\]",
             ],
         ),
         (
@@ -1441,41 +1540,6 @@ def test_manage_cluster(
                 SlurmNode("queue-dynamic-c5.xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
-                # _clean_up_inactive_partition/terminate_associated_instances: get instances from inactive node IPs
-                # Not produce failure at this point, so next call is executed
-                MockedBoto3Request(
-                    method="describe_instances",
-                    response={
-                        "Reservations": [
-                            {
-                                "Instances": [
-                                    {
-                                        "InstanceId": "i-4",
-                                        "PrivateIpAddress": "ip-4",
-                                        "PrivateDnsName": "hostname",
-                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "Filters": [
-                            {"Name": "private-ip-address", "Values": ["ip-4", "ip-5"]},
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
-                        ],
-                        "MaxResults": 1000,
-                    },
-                    generate_error=False,
-                ),
-                # _clean_up_inactive_partition/terminate_associated_instances: delete inactive instances
-                # Produce an error, cluster should be able to handle exception and move on
-                MockedBoto3Request(
-                    method="terminate_instances",
-                    response={},
-                    expected_params={"InstanceIds": ["i-4"]},
-                    generate_error=True,
-                ),
                 # _get_ec2_instances: get all cluster instances by tags
                 # Produce an error, cluster should be able to handle exception and skip other actions
                 MockedBoto3Request(
@@ -1493,7 +1557,6 @@ def test_manage_cluster(
                 ),
             ],
             [
-                r"Failed when terminating instances \('i-4',\) with error",
                 r"Failed when getting cluster instances from EC2 with exception",
                 r"Failed when getting instance info from EC2 with exception",
                 r"Unable to get instances info from EC2, no other action can be performed.",

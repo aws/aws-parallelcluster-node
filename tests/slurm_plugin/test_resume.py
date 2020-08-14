@@ -27,9 +27,9 @@ from slurm_plugin.resume import SlurmResumeConfig
             {
                 "cluster_name": "hit",
                 "region": "us-east-2",
-                "max_batch_size": 100,
+                "max_batch_size": 500,
                 "update_node_address": True,
-                "_boto3_config": {"retries": {"max_attempts": 5, "mode": "standard"}},
+                "_boto3_config": {"retries": {"max_attempts": 1, "mode": "standard"}},
                 "logging_config": os.path.join(
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_resume_logging.conf"
                 ),
@@ -43,7 +43,7 @@ from slurm_plugin.resume import SlurmResumeConfig
                 "max_batch_size": 50,
                 "update_node_address": False,
                 "_boto3_config": {
-                    "retries": {"max_attempts": 5, "mode": "standard"},
+                    "retries": {"max_attempts": 10, "mode": "standard"},
                     "proxies": {"https": "my.resume.proxy"},
                 },
                 "logging_config": "/path/to/resume_logging/config",

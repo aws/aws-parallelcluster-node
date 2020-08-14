@@ -9,6 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import logging
 import os
 from logging.config import fileConfig
@@ -17,16 +18,16 @@ import argparse
 from botocore.config import Config
 from configparser import ConfigParser
 
-from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down_and_power_save
-from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager
+from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
+from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, print_with_count
 
 log = logging.getLogger(__name__)
 
 
 class SlurmResumeConfig:
     DEFAULTS = {
-        "max_retry": 5,
-        "max_batch_size": 100,
+        "max_retry": 1,
+        "max_batch_size": 500,
         "update_node_address": True,
         "proxy": "NONE",
         "logging_config": os.path.join(os.path.dirname(__file__), "logging", "parallelcluster_resume_logging.conf"),
@@ -59,8 +60,9 @@ class SlurmResumeConfig:
             "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
         )
 
-        # Configure boto3 to retry 5 times by default
-        self._boto3_config = {"retries": {"max_attempts": self.DEFAULTS.get("max_retry"), "mode": "standard"}}
+        # Configure boto3 to retry 1 times by default
+        self._boto3_retry = config.getint("slurm_resume", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
+        self._boto3_config = {"retries": {"max_attempts": self._boto3_retry, "mode": "standard"}}
         proxy = config.get("slurm_resume", "proxy", fallback=self.DEFAULTS.get("proxy"))
         if proxy != "NONE":
             self._boto3_config["proxies"] = {"https": proxy}
@@ -77,32 +79,35 @@ def _handle_failed_nodes(node_list):
     When encountering a failure, want slurm to deallocate current nodes,
     and re-queue job to be run automatically by new nodes.
     To do this, set node to DOWN, so slurm will automatically re-queue job.
-    Then set node to POWER_DOWN so suspend program will be run.
-    Suspend program needs to properly clean up instances(if any) and set node back to IDLE in all cases.
+    Then set node to POWER_DOWN so suspend program will be run and node can be reset back to power saving.
 
     If this process is not done explicitly, slurm will wait until ResumeTimeout,
     then execute this process of setting nodes to DOWN then POWER_DOWN.
-    To save time, should explicitly set nodes to DOWN then POWER_DOWN after encountering failure.
+    To save time, should explicitly set nodes to DOWN in ResumeProgram so clustermgtd can maintain failed nodes.
+    Clustermgtd will be responsible for running full DOWN -> POWER_DOWN process.
     """
     try:
-        log.info("Following nodes marked as down and placed into power_down: %s", node_list)
-        set_nodes_down_and_power_save(node_list, reason="Failure when resuming nodes")
+        log.info("Setting following failed nodes into DOWN state: %s", print_with_count(node_list))
+        set_nodes_down(node_list, reason="Failure when resuming nodes")
     except Exception as e:
-        log.error("Failed to place nodes %s into down/power_down with exception: %s", node_list, e)
+        log.error("Failed to place nodes %s into down with exception: %s", print_with_count(node_list), e)
 
 
 def _resume(arg_nodes, resume_config):
     """Launch new EC2 nodes according to nodes requested by slurm."""
     log.info("Launching EC2 instances for the following Slurm nodes: %s", arg_nodes)
     node_list = [node.name for node in get_nodes_info(arg_nodes)]
-    log.info("Retrieved nodelist: %s", node_list)
+    log.debug("Retrieved nodelist: %s", node_list)
 
     instance_manager = InstanceManager(resume_config.region, resume_config.cluster_name, resume_config.boto3_config)
     instance_manager.add_instances_for_nodes(node_list, resume_config.max_batch_size, resume_config.update_node_address)
     success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
-    log.info("Successfully launched nodes %s", success_nodes)
+    log.info("Successfully launched nodes %s", print_with_count(success_nodes))
     if instance_manager.failed_nodes:
-        log.error("Failed to launch following nodes, powering down: %s", instance_manager.failed_nodes)
+        log.error(
+            "Failed to launch following nodes, setting nodes to down: %s",
+            print_with_count(instance_manager.failed_nodes),
+        )
         _handle_failed_nodes(instance_manager.failed_nodes)
 
 
@@ -129,6 +134,7 @@ def main():
                 e,
             )
         _resume(args.nodes, resume_config)
+        log.info("ResumeProgram finished.")
     except Exception as e:
         log.exception("Encountered exception when requesting instances for %s: %s", args.nodes, e)
         _handle_failed_nodes(args.nodes)

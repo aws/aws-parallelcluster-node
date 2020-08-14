@@ -1,3 +1,15 @@
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import call
@@ -5,7 +17,6 @@ from unittest.mock import call
 import pytest
 from assertpy import assert_that
 
-from common.schedulers.slurm_commands import SlurmNode
 from slurm_plugin.common import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -645,86 +656,6 @@ def test_delete_instances(boto3_stubber, instance_ids_to_name, batch_size, mocke
     mock_instance_manager = InstanceManager(region="us-east-2", cluster_name="hit", boto3_config="some_boto3_config",)
     # run test
     mock_instance_manager.delete_instances(instance_ids_to_name, batch_size)
-
-
-@pytest.mark.parametrize(
-    ("slurm_nodes", "mocked_boto3_request", "expected_results"),
-    [
-        (
-            [
-                SlurmNode("queue1-static-c5.xlarge-2", "ip.1", "ip-1", "some_state"),
-                SlurmNode("queue1-static-c5.2xlarge-1", "ip.2", "ip-2", "some_state"),
-                SlurmNode("queue2-static-c5.xlarge-1", "ip.3", "ip-3", "some_state"),
-            ],
-            [
-                MockedBoto3Request(
-                    method="describe_instances",
-                    response={
-                        "Reservations": [
-                            {
-                                "Instances": [
-                                    {"InstanceId": "i-12345", "PrivateIpAddress": "ip.1"},
-                                    {"InstanceId": "i-23456", "PrivateIpAddress": "ip.2"},
-                                    {"InstanceId": "i-34567", "PrivateIpAddress": "ip.3"},
-                                ]
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "Filters": [
-                            {"Name": "private-ip-address", "Values": ["ip.1", "ip.2", "ip.3"]},
-                            {"Name": "tag:ClusterName", "Values": ["hit-test"]},
-                        ],
-                        "MaxResults": 1000,
-                    },
-                ),
-            ],
-            {
-                "i-12345": "queue1-static-c5.xlarge-2",
-                "i-23456": "queue1-static-c5.2xlarge-1",
-                "i-34567": "queue2-static-c5.xlarge-1",
-            },
-        ),
-        (
-            [
-                SlurmNode("queue1-static-c5.xlarge-2", "ip.1", "ip-1", "some_state"),
-                SlurmNode("queue1-static-c5.2xlarge-1", "ip.2", "ip-2", "some_state"),
-                SlurmNode("queue2-static-c5.xlarge-1", "ip.3", "ip-3", "some_state"),
-            ],
-            [
-                MockedBoto3Request(
-                    method="describe_instances",
-                    response={
-                        "Reservations": [
-                            {
-                                "Instances": [
-                                    {"InstanceId": "i-12345", "PrivateIpAddress": "ip.1"},
-                                    {"InstanceId": "i-23456", "PrivateIpAddress": "ip.2"},
-                                ]
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "Filters": [
-                            {"Name": "private-ip-address", "Values": ["ip.1", "ip.2", "ip.3"]},
-                            {"Name": "tag:ClusterName", "Values": ["hit-test"]},
-                        ],
-                        "MaxResults": 1000,
-                    },
-                ),
-            ],
-            {"i-12345": "queue1-static-c5.xlarge-2", "i-23456": "queue1-static-c5.2xlarge-1"},
-        ),
-    ],
-    ids=["default", "missing_instance"],
-)
-def test_get_instance_ids_to_nodename(slurm_nodes, mocked_boto3_request, expected_results, mocker, boto3_stubber):
-    # patch boto3 call
-    boto3_stubber("ec2", mocked_boto3_request)
-    # run test
-    instance_manager = InstanceManager("us-east-1", "hit-test", "some_boto3_config")
-    result = instance_manager.get_instance_ids_to_nodename(slurm_nodes)
-    assert_that(result).is_equal_to(expected_results)
 
 
 @pytest.mark.parametrize(

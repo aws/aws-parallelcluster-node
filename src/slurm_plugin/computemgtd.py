@@ -1,3 +1,15 @@
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 import logging
 import os
 from datetime import datetime, timezone
@@ -22,7 +34,7 @@ log = logging.getLogger(__name__)
 class ComputemgtdConfig:
     DEFAULTS = {
         # Basic configs
-        "max_retry": 5,
+        "max_retry": 1,
         "loop_time": LOOP_TIME,
         "proxy": "NONE",
         "clustermgtd_timeout": 180,
@@ -54,8 +66,9 @@ class ComputemgtdConfig:
         # Get config settings
         self.region = config.get("computemgtd", "region")
         self.cluster_name = config.get("computemgtd", "cluster_name")
-        # Configure boto3 to retry 5 times by default
-        self._boto3_config = {"retries": {"max_attempts": self.DEFAULTS.get("max_retry"), "mode": "standard"}}
+        # Configure boto3 to retry 1 times by default
+        self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
+        self._boto3_config = {"retries": {"max_attempts": self._boto3_retry, "mode": "standard"}}
         self.loop_time = config.getint("computemgtd", "loop_time", fallback=self.DEFAULTS.get("loop_time"))
         self.clustermgtd_timeout = config.getint(
             "computemgtd", "clustermgtd_timeout", fallback=self.DEFAULTS.get("clustermgtd_timeout"),
@@ -96,7 +109,7 @@ def _self_terminate(computemgtd_config):
     instance_manager = InstanceManager(
         computemgtd_config.region, computemgtd_config.cluster_name, computemgtd_config.boto3_config
     )
-    self_instance_id = check_command_output("curl -s http://169.254.169.254/latest/meta-data/instance-id")
+    self_instance_id = check_command_output("curl -s http://169.254.169.254/latest/meta-data/instance-id", shell=True)
     log.info("Self terminating instance %s now!", self_instance_id)
     instance_manager.delete_instances([self_instance_id], terminate_batch_size=1)
 
