@@ -16,10 +16,8 @@ from assertpy import assert_that
 from common.schedulers.slurm_commands import (
     SlurmJob,
     SlurmNode,
-    SlurmPartition,
     _batch_node_info,
     _parse_nodes_info,
-    _parse_partition_info,
     get_jobs_info,
     get_pending_jobs_info,
     set_nodes_down,
@@ -754,51 +752,34 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
 
 
 @pytest.mark.parametrize(
-    "partition_info, expected_parsed_partitions_output",
-    [
-        (
-            (
-                "multiple\n"
-                "multiple-dynamic-c5.xlarge-[1-10],multiple-static-c5.xlarge-2\n"
-                "UP\n"
-                "efa\n"
-                "multiple-dynamic-c5n.18xlarge-[1-10]\n"
-                "INACTIVE\n"
-            ),
-            [
-                SlurmPartition("multiple", "multiple-dynamic-c5.xlarge-[1-10],multiple-static-c5.xlarge-2", "UP"),
-                SlurmPartition("efa", "multiple-dynamic-c5n.18xlarge-[1-10]", "INACTIVE"),
-            ],
-        )
-    ],
-)
-def test_parse_partition_info(partition_info, expected_parsed_partitions_output):
-    assert_that(_parse_partition_info(partition_info)).is_equal_to(expected_parsed_partitions_output)
-
-
-@pytest.mark.parametrize(
     "nodenames, nodeaddrs, hostnames, batch_size, expected_result",
     [
-        ("node-1,node-2,node-3", None, None, 2, [("node-1,node-2", None, None), ("node-3", None, None)]),
+        ("node-1,node-2,node-3", None, None, 2, [("node-1,node-2,node-3", None, None)]),
         (
-            "node-1,node-2,node-3",
-            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
+            # Only split on commas after bucket
+            # So nodename like node-[1,3] can be processed safely
+            "node-[1-2],node-2,node-3,node-[4,6]",
+            "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]",
             None,
             2,
-            [("node-1,node-2", "nodeaddr-1,nodeaddr-2", None), ("node-3", "nodeaddr-3", None)],
+            [("node-[1-2],node-2,node-3,node-[4,6]", "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]", None)],
         ),
         (
-            "node-1,node-2,node-3",
-            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
-            "nodehostname-1,nodehostname-2,nodehostname-3",
+            "node-[1-2],node-2,node-[3],node-[4,6]",
+            "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3],nodeaddr-[4,6]",
+            "nodehostname-[1-2],nodehostname-2,nodehostname-[3],nodehostname-[4,6]",
             2,
             [
-                ("node-1,node-2", "nodeaddr-1,nodeaddr-2", "nodehostname-1,nodehostname-2"),
-                ("node-3", "nodeaddr-3", "nodehostname-3"),
+                (
+                    "node-[1-2],node-2,node-[3]",
+                    "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3]",
+                    "nodehostname-[1-2],nodehostname-2,nodehostname-[3]",
+                ),
+                ("node-[4,6]", "nodeaddr-[4,6]", "nodehostname-[4,6]"),
             ],
         ),
-        ("node-1,node-2,node-3", ["nodeaddr-1"], None, 2, ValueError),
-        ("node-1,node-2,node-3", None, ["nodehostname-1"], 2, ValueError),
+        ("node-1,node-[2],node-3", ["nodeaddr-1"], None, 2, ValueError),
+        ("node-1,node-[2],node-3", None, ["nodehostname-1"], 2, ValueError),
         (
             "node-1,node-2,node-3",
             ["nodeaddr-1", "nodeaddr-2"],
@@ -808,18 +789,18 @@ def test_parse_partition_info(partition_info, expected_parsed_partitions_output)
         ),
         (
             ["node-1", "node-2", "node-3"],
-            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
+            "nodeaddr-[1],nodeaddr-[2],nodeaddr-3",
             ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
             2,
             [
-                ("node-1,node-2", "nodeaddr-1,nodeaddr-2", "nodehostname-1,nodehostname-2"),
+                ("node-1,node-2", "nodeaddr-[1],nodeaddr-[2]", "nodehostname-1,nodehostname-2"),
                 ("node-3", "nodeaddr-3", "nodehostname-3"),
             ],
         ),
         (
             # Test with strings of same length but different number of node entries
-            "node-1-fillerr,node-2-fillerr,node-3-filler",
-            "nodeaddr-1,nodeaddr-2,nodeaddr-3,nodeaddr-4",
+            "node-[1-fillerr],node-[2-fillerr],node-[3-filler]",
+            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
             ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
             2,
             ValueError,
@@ -971,8 +952,13 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             None,
             False,
             [
-                call("/opt/slurm/bin/scontrol update nodename=node-1", raise_on_error=False, timeout=5),
-                call("/opt/slurm/bin/scontrol update nodename=node-2,node-3", raise_on_error=False, timeout=5),
+                call("/opt/slurm/bin/scontrol update nodename=node-1", raise_on_error=False, timeout=60, shell=True),
+                call(
+                    "/opt/slurm/bin/scontrol update nodename=node-2,node-3",
+                    raise_on_error=False,
+                    timeout=60,
+                    shell=True,
+                ),
             ],
         ),
         (
@@ -984,12 +970,14 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 call(
                     "/opt/slurm/bin/scontrol update state=power_down nodename=node-1 nodehostname=hostname-1",
                     raise_on_error=True,
-                    timeout=5,
+                    timeout=60,
+                    shell=True,
                 ),
                 call(
                     "/opt/slurm/bin/scontrol update state=power_down nodename=node-2,node-3 nodeaddr=addr-2,addr-3",
                     raise_on_error=True,
-                    timeout=5,
+                    timeout=60,
+                    shell=True,
                 ),
             ],
         ),
@@ -1005,7 +993,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                         + " nodename=node-1 nodehostname=hostname-1"
                     ),
                     raise_on_error=True,
-                    timeout=5,
+                    timeout=60,
+                    shell=True,
                 ),
                 call(
                     (
@@ -1013,7 +1002,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                         + " nodename=node-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
                     ),
                     raise_on_error=True,
-                    timeout=5,
+                    timeout=60,
+                    shell=True,
                 ),
             ],
         ),

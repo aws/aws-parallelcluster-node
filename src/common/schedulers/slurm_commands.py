@@ -13,6 +13,7 @@
 import collections
 import logging
 import math
+import re
 from enum import Enum
 from textwrap import wrap
 
@@ -47,6 +48,7 @@ _SQUEUE_FIELDS = [
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SCONTROL = "/opt/slurm/bin/scontrol"
+SINFO = "/opt/slurm/bin/sinfo"
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
 
 
@@ -126,7 +128,7 @@ class SlurmNode:
 
 
 def update_nodes(
-    nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True, command_timeout=5
+    nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True, command_timeout=60
 ):
     """
     Update slurm nodes with scontrol call.
@@ -159,14 +161,14 @@ def update_nodes(
             node_info += f" nodeaddr={addrs}"
         if hostnames:
             node_info += f" nodehostname={hostnames}"
-        run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout)
+        run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True)
 
 
 def update_partitions(partitions, state):
     succeeded_partitions = []
     for partition in partitions:
         try:
-            run_command(f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True)
+            run_command(f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True, shell=True)
             succeeded_partitions.append(partition)
         except Exception as e:
             logging.error("Failed when setting partition %s to %s with error %s", partition, state, e)
@@ -187,7 +189,7 @@ def update_all_partitions(state):
 def _batch_attribute(attribute, batch_size, expected_length=None):
     """Parse an attribute into batches."""
     if type(attribute) is str:
-        attribute = attribute.split(",")
+        attribute = re.split("(?<=]),", attribute)
     if expected_length and len(attribute) != expected_length:
         raise ValueError
 
@@ -197,7 +199,9 @@ def _batch_attribute(attribute, batch_size, expected_length=None):
 def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):
     """Group nodename, nodeaddrs, nodehostnames into batches."""
     if type(nodenames) is str:
-        nodenames = nodenames.split(",")
+        # Only split on , if there is ] before
+        # For ex. "node-[1,3,4-5],node-[20,30]" should split into ["node-[1,3,4-5]","node-[20,30]"]
+        nodenames = re.split("(?<=]),", nodenames)
     nodename_batch = _batch_attribute(nodenames, batch_size)
     nodeaddrs_batch = [None] * len(nodename_batch)
     nodehostnames_batch = [None] * len(nodename_batch)
@@ -234,6 +238,13 @@ def set_nodes_power_down(nodes, reason=None):
     update_nodes(nodes, state="power_down", reason=reason)
 
 
+def reset_nodes(nodes, state=None, reason=None, raise_on_error=False):
+    """Reset nodeaddr and nodehostname to be equal to nodename."""
+    update_nodes(
+        nodes=nodes, nodeaddrs=nodes, nodehostnames=nodes, state=state, reason=reason, raise_on_error=raise_on_error
+    )
+
+
 def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
     """
     Place slurm node into idle state.
@@ -247,9 +258,7 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         # works: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr=c5.2xlarge-[1-2]
         # works: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr="some ip","some ip"
         # fails: scontrol update nodename=c5.2xlarge-[1-2] nodeaddr="some ip"
-        update_nodes(
-            nodes=nodes, nodeaddrs=nodes, nodehostnames=nodes, state="resume", reason=reason, raise_on_error=False
-        )
+        reset_nodes(nodes, state="resume", reason=reason, raise_on_error=False)
     else:
         update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
 
@@ -282,17 +291,45 @@ def get_nodes_info(nodes, command_timeout=5):
 
 def get_partition_info(command_timeout=5):
     """Retrieve slurm partition info from scontrol."""
-    show_partition_info_command = (
-        f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| ' 'Nodes=\\K(\\S+)| State=\\K(\\S+)"'
-    )
+    show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
     partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)
+    paritions_info = _parse_partition_name_and_state(partition_info_str)
+    return [
+        SlurmPartition(partition_name, _get_partition_nodes(partition_name), partition_state)
+        for partition_name, partition_state in paritions_info
+    ]
 
-    return _parse_partition_info(partition_info_str)
+
+def _parse_partition_name_and_state(partition_info):
+    """Parse partition name and state from scontrol output."""
+    return grouper(partition_info.splitlines(), 2)
 
 
-def _parse_partition_info(partition_info):
-    """Parse slurm partition info into SlurmPartition objects."""
-    return [SlurmPartition(*part) for part in grouper(partition_info.splitlines(), 3)]
+def _get_partition_nodes(partition_name, command_timeout=5):
+    """Get up nodes in a parition by querying sinfo, and filtering out power_down nodes."""
+    show_all_nodes_command = (
+        f"{SINFO} -h -p {partition_name} "
+        # PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+        # Get last column(NODELIST)
+        "| awk '{print $NF}'"
+    )
+    # To-do: add logic to include power_down nodes that are not idle
+    # The above should not happen if system is functioning correctly and can be manually cleared with scontrol
+    show_power_down_nodes_command = f"{SINFO} -h -p {partition_name} -t power_down,powering_down" "| awk '{print $NF}'"
+    # Results nodelists are grouped by dominating states and displayed in separate lines, split into a list
+    all_nodes = check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).splitlines()
+    power_down_nodes = check_command_output(
+        show_power_down_nodes_command, timeout=command_timeout, shell=True
+    ).splitlines()
+    # This logic of getting all nodes then excluding power_down node is needed because of a current slurm limitation
+    # There is currently no sinfo filter that will show IDLE+CLOUD nodes
+    # The only way to see IDLE+CLOUD nodes is to show all
+    # There is also no "negation" filter to exclude power_down nodes
+    # To-do: modify into a logic using filters only, when there is filter available
+    # This simple not-in logic works because power_down nodes has to be a subset of all nodes
+    # At worst, if nodelist notation do not match exactly, we will just end up getting all nodes
+    # Which is the same as getting all nodes from scontrol
+    return ",".join([nodename for nodename in all_nodes if (nodename not in power_down_nodes and nodename != "n/a")])
 
 
 def _parse_nodes_info(slurm_node_info):

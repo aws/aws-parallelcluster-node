@@ -8,6 +8,8 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 import collections
 import functools
 import logging
@@ -21,7 +23,7 @@ from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
 
-CONFIG_FILE_DIR = "/opt/parallelcluster/configs/slurm"
+CONFIG_FILE_DIR = "/etc/parallelcluster/slurm_plugin"
 EC2Instance = collections.namedtuple("EC2Instance", ["id", "private_ip", "hostname", "launch_time"])
 EC2InstanceHealthState = collections.namedtuple(
     "EC2InstanceHealthState", ["id", "state", "instance_status", "system_status", "scheduled_events"]
@@ -75,6 +77,12 @@ def log_exception(
     return _log_exception
 
 
+def print_with_count(resource_list):
+    """Print resource list with the len of the list."""
+    resource_list = list(resource_list)
+    return f"(x{len(resource_list)}) {resource_list}"
+
+
 class InstanceManager:
     """
     InstanceManager class.
@@ -112,7 +120,7 @@ class InstanceManager:
         instances_to_launch = self._parse_requested_instances(node_list)
         for queue, queue_instances in instances_to_launch.items():
             for instance_type, slurm_node_list in queue_instances.items():
-                logger.info("Launching instances for slurm nodes %s", slurm_node_list)
+                logger.info("Launching instances for slurm nodes %s", print_with_count(slurm_node_list))
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
                         launched_instances = self._launch_ec2_instances(queue, instance_type, len(batch_nodes))
@@ -120,7 +128,9 @@ class InstanceManager:
                             self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
                     except Exception as e:
                         logger.error(
-                            "Encountered exception when launching instances for nodes %s: %s", list(batch_nodes), e
+                            "Encountered exception when launching instances for nodes %s: %s",
+                            print_with_count(batch_nodes),
+                            e,
                         )
                         self.failed_nodes.extend(batch_nodes)
 
@@ -140,13 +150,18 @@ class InstanceManager:
                     nodehostnames=[instance.hostname for instance in launched_instances],
                     raise_on_error=True,
                 )
-                logger.info("Nodes %s are now configured with instance=%s", launched_nodes, launched_instances)
+                logger.info(
+                    "Nodes are now configured with instances: %s",
+                    print_with_count(zip(launched_nodes, launched_instances)),
+                )
             if fail_launch_nodes:
-                logger.error("Failed to launch instances for following nodes: %s", fail_launch_nodes)
+                logger.info("Failed to launch instances for following nodes: %s", print_with_count(fail_launch_nodes))
                 self.failed_nodes.extend(fail_launch_nodes)
         except subprocess.CalledProcessError:
-            logger.error(
-                "Encountered error when updating node %s with instance=%s", slurm_nodes, launched_instances,
+            logger.info(
+                "Encountered error when updating node %s with instance %s",
+                print_with_count(slurm_nodes),
+                print_with_count(launched_instances),
             )
             self.failed_nodes.extend(slurm_nodes)
 
@@ -166,7 +181,7 @@ class InstanceManager:
             except self.InvalidNodenameError:
                 logger.warning("Discarding NodeName with invalid format: %s", node)
                 self.failed_nodes.append(node)
-        logger.info("Launch configuration requested by nodes = %s", instances_to_launch)
+        logger.debug("Launch configuration requested by nodes = %s", instances_to_launch)
 
         return instances_to_launch
 
@@ -203,43 +218,16 @@ class InstanceManager:
 
         return nodename_capture.group(1, 3)
 
-    def terminate_associated_instances(self, slurm_nodes, terminate_batch_size):
-        """Terminate instances associated with given nodes in batches."""
-        instance_ids_to_nodename = self.get_instance_ids_to_nodename(slurm_nodes)
-        logger.info("Terminating the following instances for respective associated nodes: %s", instance_ids_to_nodename)
-        if instance_ids_to_nodename:
-            self.delete_instances(
-                list(instance_ids_to_nodename.keys()), terminate_batch_size,
-            )
-
-    def get_instance_ids_to_nodename(self, slurm_nodes):
-        """Retrieve dict that maps from instance ids to slurm nodenames."""
-        node_ip_to_name = {node.nodeaddr: node.name for node in slurm_nodes}
-        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-        paginator = ec2_client.get_paginator("describe_instances")
-        response_iterator = paginator.paginate(
-            PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE},
-            Filters=[
-                {"Name": "private-ip-address", "Values": list(node_ip_to_name.keys())},
-                {"Name": "tag:ClusterName", "Values": [self._cluster_name]},
-            ],
-        )
-        filtered_iterator = response_iterator.search("Reservations[].Instances[]")
-        return {
-            instance_info["InstanceId"]: node_ip_to_name[instance_info["PrivateIpAddress"]]
-            for instance_info in filtered_iterator
-        }
-
     def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-        logger.info("Terminating instances %s", instance_ids_to_terminate)
+        logger.info("Terminating instances %s", print_with_count(instance_ids_to_terminate))
         for instances in grouper(instance_ids_to_terminate, terminate_batch_size):
             try:
                 # Boto3 clients retries on connection errors only
                 ec2_client.terminate_instances(InstanceIds=list(instances),)
             except ClientError as e:
-                logger.error("Failed when terminating instances %s with error %s", instances, e)
+                logger.error("Failed when terminating instances %s with error %s", print_with_count(instances), e)
 
     @log_exception(
         logger, "getting health status for unhealthy EC2 instances", catch_exception=Exception, raise_on_error=True

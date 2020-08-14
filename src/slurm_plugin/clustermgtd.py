@@ -9,6 +9,8 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 import logging
 import os
 from datetime import datetime, timezone
@@ -25,6 +27,7 @@ from common.schedulers.slurm_commands import (
     PartitionStatus,
     get_nodes_info,
     get_partition_info,
+    reset_nodes,
     set_nodes_down,
     set_nodes_down_and_power_save,
     set_nodes_drain,
@@ -38,6 +41,7 @@ from slurm_plugin.common import (
     TIMESTAMP_FORMAT,
     InstanceManager,
     log_exception,
+    print_with_count,
     time_is_up,
 )
 
@@ -112,14 +116,14 @@ class ComputeFleetStatusManager:
 class ClustermgtdConfig:
     DEFAULTS = {
         # Basic configs
-        "max_retry": 5,
+        "max_retry": 1,
         "loop_time": LOOP_TIME,
         "proxy": "NONE",
         "logging_config": os.path.join(
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
         # Launch configs
-        "launch_max_batch_size": 100,
+        "launch_max_batch_size": 500,
         "update_node_address": True,
         # Terminate configs
         "terminate_max_batch_size": 1000,
@@ -127,7 +131,7 @@ class ClustermgtdConfig:
         "node_replacement_timeout": 600,
         "terminate_drain_nodes": True,
         "terminate_down_nodes": True,
-        "orphaned_instance_timeout": 180,
+        "orphaned_instance_timeout": 120,
         # Health check configs
         "disable_ec2_health_check": False,
         "disable_scheduled_event_health_check": False,
@@ -156,8 +160,9 @@ class ClustermgtdConfig:
         self.cluster_name = config.get("clustermgtd", "cluster_name")
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
 
-        # Configure boto3 to retry 5 times by default
-        self._boto3_config = {"retries": {"max_attempts": self.DEFAULTS.get("max_retry"), "mode": "standard"}}
+        # Configure boto3 to retry 1 times by default
+        self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
+        self._boto3_config = {"retries": {"max_attempts": self._boto3_retry, "mode": "standard"}}
         self.loop_time = config.getint("clustermgtd", "loop_time", fallback=self.DEFAULTS.get("loop_time"))
         self.disable_all_cluster_management = config.getboolean(
             "clustermgtd",
@@ -350,30 +355,31 @@ class ClusterManager:
             # Get node states for nodes in inactive and active partitions
             try:
                 active_nodes, inactive_nodes = self._get_node_info_from_partition()
-                log.debug("Current active slurm nodes in scheduler: %s", active_nodes)
-                log.debug("Current inactive slurm nodes in scheduler: %s", inactive_nodes)
+                log.debug("Current active slurm nodes in scheduler: %s", print_with_count(active_nodes))
+                log.debug("Current inactive slurm nodes in scheduler: %s", print_with_count(inactive_nodes))
             except ClusterManager.SchedulerUnavailable:
                 log.error("Unable to get partition/node info from slurm, no other action can be performed. Sleeping...")
+                return
+            # Get all non-terminating instances in EC2
+            try:
+                cluster_instances = self._get_ec2_instances()
+            except ClusterManager.EC2InstancesInfoUnavailable:
+                log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
                 return
             # Initialize mapping data structures
             ip_to_slurm_node_map = {node.nodeaddr: node for node in active_nodes}
             # Handle inactive partition and terminate backing instances
             if inactive_nodes:
-                self._clean_up_inactive_partition(inactive_nodes)
-            try:
-                # Get all instances in EC2
-                cluster_instances = self._get_ec2_instances()
-            except ClusterManager.EC2InstancesInfoUnavailable:
-                log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
-                return
+                cluster_instances = self._clean_up_inactive_partition(inactive_nodes, cluster_instances)
             log.debug("Current cluster instances in EC2: %s", cluster_instances)
+            private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
             # Clean up orphaned instances and skip all other operations if no active node
             if active_nodes:
                 # Perform health check actions
                 if not self._config.disable_all_health_checks:
                     self._perform_health_check_actions(cluster_instances, ip_to_slurm_node_map)
                 # Maintain slurm nodes
-                self._maintain_nodes(cluster_instances, active_nodes)
+                self._maintain_nodes(private_ip_to_instance_map, active_nodes)
             # Clean up orphaned instances
             self._terminate_orphaned_instances(cluster_instances, ips_used_by_slurm=list(ip_to_slurm_node_map.keys()))
         # Write clustermgtd heartbeat to file
@@ -387,12 +393,12 @@ class ClusterManager:
             timestamp_file.write(datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT))
 
     @staticmethod
-    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_node_info_with_retry(nodes):
-        return get_nodes_info(nodes, command_timeout=5)
+        return get_nodes_info(nodes, command_timeout=10)
 
     @staticmethod
-    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_partition_info_with_retry():
         return get_partition_info(command_timeout=5)
 
@@ -407,32 +413,50 @@ class ClusterManager:
             inactive_nodes = []
             active_nodes = []
             partitions = ClusterManager._get_partition_info_with_retry()
+            log.debug("Partitions: %s", partitions)
             for part in partitions:
-                nodes = ClusterManager._get_node_info_with_retry(part.nodes)
-                if "INACTIVE" in part.state:
-                    inactive_nodes.extend(nodes)
-                else:
-                    active_nodes.extend(nodes)
+                # Get node info if partition has relevant node
+                # See SlurmNode.SLURM_RELEVANT_SINFO_STATES
+                if part.nodes:
+                    nodes = ClusterManager._get_node_info_with_retry(part.nodes)
+                    if "INACTIVE" in part.state:
+                        inactive_nodes.extend(nodes)
+                    else:
+                        active_nodes.extend(nodes)
 
             return active_nodes, inactive_nodes
         except Exception as e:
             log.error("Failed when getting partition/node states from scheduler with exception %s" % e)
             raise ClusterManager.SchedulerUnavailable
 
-    @log_exception(log, "cleaning up nodes in INACTIVE partitions", catch_exception=Exception, raise_on_error=False)
-    def _clean_up_inactive_partition(self, inactive_nodes):
-        """
-        Terminate all other instances associated with nodes directly through EC2.
+    def _clean_up_inactive_partition(self, inactive_nodes, cluster_instances):
+        """Terminate all other instances associated with nodes in INACTIVE partition directly through EC2."""
+        try:
+            log.info(
+                "Clean up instances associated with nodes in INACTIVE partitions: %s", print_with_count(inactive_nodes)
+            )
+            private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
+            instances_to_terminate = ClusterManager._get_backing_instance_ids(
+                inactive_nodes, private_ip_to_instance_map
+            )
+            if instances_to_terminate:
+                self._instance_manager.delete_instances(
+                    instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
+                )
+                # Try to reset nodeaddr if possible to avoid potential problems
+                try:
+                    reset_nodes([node.name for node in inactive_nodes], raise_on_error=False)
+                except Exception as e:
+                    log.error("Encountered exception when resetting nodeaddr for INACTIVE nodes: %s", e)
+            instances_still_in_cluster = []
+            for instance in cluster_instances:
+                if instance.id not in instances_to_terminate:
+                    instances_still_in_cluster.append(instance)
 
-        This operation will not update node states, nodes will retain their states
-        Nodes will be placed into down* by slurm after SlurmdTimeout
-        If dynamic, nodes will be power_saved after SuspendTime
-        describe_instances call is made with filter on private IPs
-        """
-        log.info("Clean up instances associated with nodes in INACTIVE partitions: %s", inactive_nodes)
-        self._instance_manager.terminate_associated_instances(
-            inactive_nodes, terminate_batch_size=self._config.terminate_max_batch_size
-        )
+            return instances_still_in_cluster
+        except Exception as e:
+            log.error("Failed to clean up INACTIVE nodes %s with exception %s", print_with_count(inactive_nodes), e)
+            return cluster_instances
 
     def _get_ec2_instances(self):
         """
@@ -613,7 +637,7 @@ class ClusterManager:
         # Check to see if node is in DRAINED, ignoring any node currently being replaced
         if node.is_drained() and self._config.terminate_drain_nodes:
             if self._is_node_being_replaced(node, private_ip_to_instance_map):
-                log.info("Node state check: node %s in DRAINED but is currently being replaced, ignoring", node)
+                log.debug("Node state check: node %s in DRAINED but is currently being replaced, ignoring", node)
                 return True
             else:
                 log.warning("Node state check: node %s in DRAINED, replacing node", node)
@@ -621,10 +645,14 @@ class ClusterManager:
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         if node.is_down() and self._config.terminate_down_nodes:
             if self._is_node_being_replaced(node, private_ip_to_instance_map):
-                log.info("Node state check: node %s in DOWN but is currently being replaced, ignoring.", node)
+                log.debug("Node state check: node %s in DOWN but is currently being replaced, ignoring.", node)
                 return True
             else:
-                log.warning("Node state check: node %s in DOWN, replacing node", node)
+                if not node.is_static_node() and not node.is_nodeaddr_set():
+                    # Sliently handle failed to launch dynamic node to clean up normal logging
+                    log.debug("Node state check: node %s in DOWN, replacing node", node)
+                else:
+                    log.warning("Node state check: node %s in DOWN, replacing node", node)
                 return False
         return True
 
@@ -643,19 +671,37 @@ class ClusterManager:
                 node, instance_ips_in_cluster=list(private_ip_to_instance_map.keys())
             ) and self._is_node_state_healthy(node, private_ip_to_instance_map)
 
-    @staticmethod
     @log_exception(log, "maintaining unhealthy dynamic nodes", catch_exception=Exception, raise_on_error=False)
-    def _handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes):
+    def _handle_unhealthy_dynamic_nodes(self, unhealthy_dynamic_nodes, private_ip_to_instance_map):
         """
         Maintain any unhealthy dynamic node.
 
+        Terminate instances backing dynamic nodes.
         Setting node to down will let slurm requeue jobs allocated to node.
         Setting node to power_down will terminate backing instance and reset dynamic node for future use.
         """
-        log.info("Setting unhealthy dynamic nodes to down and power_down: %s", unhealthy_dynamic_nodes)
-        set_nodes_down_and_power_save(
-            [node.name for node in unhealthy_dynamic_nodes], reason="Schduler health check failed"
+        instances_to_terminate = ClusterManager._get_backing_instance_ids(
+            unhealthy_dynamic_nodes, private_ip_to_instance_map
         )
+        if instances_to_terminate:
+            log.info("Terminating instances that are backing unhealthy dynamic nodes")
+            self._instance_manager.delete_instances(
+                instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
+            )
+        log.info("Setting unhealthy dynamic nodes to down and power_down.")
+        set_nodes_down_and_power_save(
+            [node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed"
+        )
+
+    @staticmethod
+    def _get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map):
+        backing_instances = set()
+        for node in slurm_nodes:
+            instance = private_ip_to_instance_map.get(node.nodeaddr)
+            if instance:
+                backing_instances.add(instance.id)
+
+        return list(backing_instances)
 
     @log_exception(log, "maintaining unhealthy static nodes", catch_exception=Exception, raise_on_error=False)
     def _handle_unhealthy_static_nodes(self, unhealthy_static_nodes, private_ip_to_instance_map):
@@ -664,30 +710,22 @@ class ClusterManager:
 
         Set node to down, terminate backing instance, and launch new instance for static node.
         """
-        log.info(
-            "Setting following unhealthy static nodes to DOWN and terminating associated instances: %s",
-            unhealthy_static_nodes,
-        )
         node_list = [node.name for node in unhealthy_static_nodes]
         # Set nodes into down state so jobs can be requeued immediately
-        log_exception(
-            log, "setting unhealthy static nodes into down state", catch_exception=Exception, raise_on_error=False
-        )(set_nodes_down)(node_list, reason="Static node maintenance: unhealthy node is being replaced")
-        instances_to_terminate = []
-        for node in unhealthy_static_nodes:
-            backing_instance = private_ip_to_instance_map.get(node.nodeaddr)
-            if backing_instance:
-                instances_to_terminate.append(backing_instance.id)
+        try:
+            log.info("Setting unhealthy static nodes to DOWN")
+            set_nodes_down(node_list, reason="Static node maintenance: unhealthy node is being replaced")
+        except Exception as e:
+            log.error("Encountered exception when setting unhealthy static nodes into down state: %s", e)
+        instances_to_terminate = ClusterManager._get_backing_instance_ids(
+            unhealthy_static_nodes, private_ip_to_instance_map
+        )
         if instances_to_terminate:
-            log.info(
-                "Terminating instances %s that are backing unhealthy static nodes: %s",
-                instances_to_terminate,
-                unhealthy_static_nodes,
-            )
+            log.info("Terminating instances backing unhealthy static nodes")
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
-        log.info("Launching new instances for unhealthy static nodes: %s", unhealthy_static_nodes)
+        log.info("Launching new instances for unhealthy static nodes")
         self._instance_manager.add_instances_for_nodes(
             node_list, self._config.launch_max_batch_size, self._config.update_node_address
         )
@@ -696,34 +734,31 @@ class ClusterManager:
         self._static_nodes_in_replacement |= launched_nodes
         log.info(
             "After node maintenance, following nodes are currently in replacement: %s",
-            self._static_nodes_in_replacement,
+            print_with_count(self._static_nodes_in_replacement),
         )
 
     @log_exception(log, "maintaining slurm nodes", catch_exception=Exception, raise_on_error=False)
-    def _maintain_nodes(self, cluster_instances, slurm_nodes):
+    def _maintain_nodes(self, private_ip_to_instance_map, slurm_nodes):
         """
         Call functions to maintain unhealthy nodes.
 
         This function needs to handle the case that 2 slurm nodes have the same IP/nodeaddr.
-        Hence the a list of nodes is passed in and slurm node dict with IP/nodeaddr as key should be avoided.
+        A list of slurm nodes is passed in and slurm node map with IP/nodeaddr as key should be avoided.
         """
         log.info("Performing node maintenance actions")
         # Update self.static_nodes_in_replacement by removing any up nodes from the set
         self._update_static_nodes_in_replacement(slurm_nodes)
-        log.info("Following nodes are currently in replacement: %s", self._static_nodes_in_replacement)
-        private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
+        log.info(
+            "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
+        )
         unhealthy_dynamic_nodes, unhealthy_static_nodes = self._find_unhealthy_slurm_nodes(
             slurm_nodes, private_ip_to_instance_map
         )
         if unhealthy_dynamic_nodes:
-            log.info(
-                "Found the following unhealthy dynamic nodes: %s", unhealthy_dynamic_nodes,
-            )
-            ClusterManager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
+            log.info("Found the following unhealthy dynamic nodes: %s", unhealthy_dynamic_nodes)
+            self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, private_ip_to_instance_map)
         if unhealthy_static_nodes:
-            log.info(
-                "Found the following unhealthy static nodes: %s", unhealthy_static_nodes,
-            )
+            log.info("Found the following unhealthy static nodes: %s", unhealthy_static_nodes)
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
@@ -737,7 +772,7 @@ class ClusterManager:
             ):
                 instances_to_terminate.append(instance.id)
         if instances_to_terminate:
-            log.info("Terminating the following orphaned instances: %s", instances_to_terminate)
+            log.info("Terminating orphaned instances")
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )

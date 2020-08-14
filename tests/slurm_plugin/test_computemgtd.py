@@ -1,3 +1,15 @@
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import mock_open
@@ -19,11 +31,11 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbe
             {
                 "cluster_name": "hit",
                 "region": "us-east-2",
-                "_boto3_config": {"retries": {"max_attempts": 5, "mode": "standard"}},
+                "_boto3_config": {"retries": {"max_attempts": 1, "mode": "standard"}},
                 "clustermgtd_timeout": 180,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                 "disable_computemgtd_actions": False,
-                "_slurm_nodename_file": "/opt/parallelcluster/configs/slurm/slurm_nodename",
+                "_slurm_nodename_file": "/etc/parallelcluster/slurm_plugin/slurm_nodename",
                 "nodename": "some_nodename",
                 "loop_time": 60,
                 "logging_config": os.path.join(
@@ -43,7 +55,7 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbe
                 "nodename": "some_nodename",
                 "disable_computemgtd_actions": True,
                 "_boto3_config": {
-                    "retries": {"max_attempts": 5, "mode": "standard"},
+                    "retries": {"max_attempts": 1, "mode": "standard"},
                     "proxies": {"https": "my.resume.proxy"},
                 },
                 "logging_config": "/path/to/logging/config",
