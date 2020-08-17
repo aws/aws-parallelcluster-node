@@ -46,7 +46,7 @@ BOTO3_PAGINATION_PAGE_SIZE = 1000
 # YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM[:SS[.ffffff]]
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def log_exception(
@@ -112,7 +112,7 @@ class InstanceManager:
         instances_to_launch = self._parse_requested_instances(node_list)
         for queue, queue_instances in instances_to_launch.items():
             for instance_type, slurm_node_list in queue_instances.items():
-                log.info("Launching instances for slurm nodes %s", slurm_node_list)
+                logger.info("Launching instances for slurm nodes %s", slurm_node_list)
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
                         launched_instances = self._launch_ec2_instances(queue, instance_type, len(batch_nodes))
@@ -124,7 +124,7 @@ class InstanceManager:
                                 list(batch_nodes), instance_ids, instance_ips, instance_hostnames
                             )
                     except Exception as e:
-                        log.error(
+                        logger.error(
                             "Encountered exception when launching instances for nodes %s: %s", list(batch_nodes), e
                         )
                         self.failed_nodes.extend(batch_nodes)
@@ -133,7 +133,7 @@ class InstanceManager:
         """Update node information in slurm with info from launched EC2 instance."""
         try:
             update_nodes(slurm_nodes, nodeaddrs=instance_ips, nodehostnames=instance_hostnames, raise_on_error=True)
-            log.info(
+            logger.info(
                 "Nodes %s are now configured with instance=%s private_ip=%s nodehostname=%s",
                 slurm_nodes,
                 instance_ids,
@@ -141,7 +141,7 @@ class InstanceManager:
                 instance_hostnames,
             )
         except subprocess.CalledProcessError:
-            log.error(
+            logger.error(
                 "Encountered error when updating node %s with instance=%s private_ip=%s nodehostname=%s",
                 slurm_nodes,
                 instance_ids,
@@ -176,9 +176,9 @@ class InstanceManager:
                 queue_name, instance_type = capture
                 instances_to_launch[queue_name][instance_type].append(node)
             except self.InvalidNodenameError:
-                log.warning("Discarding NodeName with invalid format: %s", node)
+                logger.warning("Discarding NodeName with invalid format: %s", node)
                 self.failed_nodes.append(node)
-        log.info("Launch configuration requested by nodes = %s", instances_to_launch)
+        logger.info("Launch configuration requested by nodes = %s", instances_to_launch)
 
         return instances_to_launch
 
@@ -208,7 +208,7 @@ class InstanceManager:
     def terminate_associated_instances(self, slurm_nodes, terminate_batch_size):
         """Terminate instances associated with given nodes in batches."""
         instance_ids_to_nodename = self.get_instance_ids_to_nodename(slurm_nodes)
-        log.info("Terminating the following instances for respective associated nodes: %s", instance_ids_to_nodename)
+        logger.info("Terminating the following instances for respective associated nodes: %s", instance_ids_to_nodename)
         if instance_ids_to_nodename:
             self.delete_instances(
                 list(instance_ids_to_nodename.keys()), terminate_batch_size,
@@ -235,16 +235,16 @@ class InstanceManager:
     def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-        log.info("Terminating instances %s", instance_ids_to_terminate)
+        logger.info("Terminating instances %s", instance_ids_to_terminate)
         for instances in grouper(instance_ids_to_terminate, terminate_batch_size):
             try:
                 # Boto3 clients retries on connection errors only
                 ec2_client.terminate_instances(InstanceIds=list(instances),)
             except ClientError as e:
-                log.error("Failed when terminating instances %s with error %s", instances, e)
+                logger.error("Failed when terminating instances %s with error %s", instances, e)
 
     @log_exception(
-        log, "getting health status for unhealthy EC2 instances", catch_exception=Exception, raise_on_error=True
+        logger, "getting health status for unhealthy EC2 instances", catch_exception=Exception, raise_on_error=True
     )
     def get_unhealthy_cluster_instance_status(self, cluster_instance_ids):
         """
@@ -286,7 +286,7 @@ class InstanceManager:
 
         return list(instance_health_states.values())
 
-    @log_exception(log, "getting cluster instances from EC2", catch_exception=Exception, raise_on_error=True)
+    @log_exception(logger, "getting cluster instances from EC2", catch_exception=Exception, raise_on_error=True)
     def get_cluster_instances(self, include_master=False, alive_states_only=True):
         """Get instances that are associated with the cluster."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
@@ -310,6 +310,15 @@ class InstanceManager:
             for instance_info in filtered_iterator
         ]
 
+    def terminate_all_compute_nodes(self, terminate_batch_size):
+        try:
+            compute_nodes = self.get_cluster_instances()
+            self.delete_instances([instance.id for instance in compute_nodes], terminate_batch_size)
+            return True
+        except Exception as e:
+            logging.error("Failed when terminating compute fleet with error %s", e)
+            return False
+
 
 def time_is_up(initial_time, current_time, grace_time):
     """Check if timeout is exceeded."""
@@ -317,10 +326,10 @@ def time_is_up(initial_time, current_time, grace_time):
     # All timestamps used in this function should be already localized
     # Assume timestamp was taken from UTC is there is no localization info
     if not initial_time.tzinfo:
-        log.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.")
+        logger.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.")
         initial_time = initial_time.replace(tzinfo=timezone.utc)
     if not current_time.tzinfo:
-        log.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC")
+        logger.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC")
         current_time = current_time.replace(tzinfo=timezone.utc)
     time_diff = (current_time - initial_time).total_seconds()
     return time_diff >= grace_time
