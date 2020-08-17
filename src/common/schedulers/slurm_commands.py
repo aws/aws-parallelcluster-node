@@ -13,6 +13,7 @@
 import collections
 import logging
 import math
+from enum import Enum
 from textwrap import wrap
 
 from retrying import retry
@@ -47,6 +48,16 @@ _SQUEUE_FIELDS = [
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SCONTROL = "/opt/slurm/bin/scontrol"
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
+
+
+class PartitionStatus(Enum):
+    UP = "up"
+    DOWN = "down"
+    INACTIVE = "inactive"
+    DRAIN = "drain"
+
+    def __str__(self):
+        return str(self.value)
 
 
 class SlurmNode:
@@ -149,6 +160,28 @@ def update_nodes(
         if hostnames:
             node_info += f" nodehostname={hostnames}"
         run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout)
+
+
+def update_partitions(partitions, state):
+    succeeded_partitions = []
+    for partition in partitions:
+        try:
+            run_command(f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True)
+            succeeded_partitions.append(partition)
+        except Exception as e:
+            logging.error("Failed when setting partition %s to %s with error %s", partition, state, e)
+
+    return succeeded_partitions
+
+
+def update_all_partitions(state):
+    try:
+        partitions = [partition.name for partition in get_partition_info()]
+        succeeded_partitions = update_partitions(partitions, state)
+        return succeeded_partitions == partitions
+    except Exception as e:
+        logging.error("Failed when updating partitions with error %s", e)
+        return False
 
 
 def _batch_attribute(attribute, batch_size, expected_length=None):
