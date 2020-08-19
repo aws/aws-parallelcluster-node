@@ -673,7 +673,7 @@ class ClusterManager:
                 node, instance_ips_in_cluster=list(private_ip_to_instance_map.keys())
             ) and self._is_node_state_healthy(node, private_ip_to_instance_map)
 
-    @log_exception(log, "maintaining unhealthy dynamic nodes", catch_exception=Exception, raise_on_error=False)
+    @log_exception(log, "maintaining unhealthy dynamic nodes", raise_on_error=False)
     def _handle_unhealthy_dynamic_nodes(self, unhealthy_dynamic_nodes, private_ip_to_instance_map):
         """
         Maintain any unhealthy dynamic node.
@@ -705,7 +705,7 @@ class ClusterManager:
 
         return list(backing_instances)
 
-    @log_exception(log, "maintaining unhealthy static nodes", catch_exception=Exception, raise_on_error=False)
+    @log_exception(log, "maintaining unhealthy static nodes", raise_on_error=False)
     def _handle_unhealthy_static_nodes(self, unhealthy_static_nodes, private_ip_to_instance_map):
         """
         Maintain any unhealthy static node.

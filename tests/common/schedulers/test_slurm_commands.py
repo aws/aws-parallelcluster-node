@@ -721,26 +721,26 @@ def test_get_pending_jobs_info(
     [
         (
             (
-                "multiple-dynamic-c5.xlarge-1\n"
+                "multiple-dynamic-c5-xlarge-1\n"
                 "172.31.10.155\n"
                 "172-31-10-155\n"
                 "MIXED+CLOUD\n"
-                "multiple-dynamic-c5.xlarge-2\n"
+                "multiple-dynamic-c5-xlarge-2\n"
                 "172.31.7.218\n"
                 "172-31-7-218\n"
                 "IDLE+CLOUD+POWER\n"
-                "multiple-dynamic-c5.xlarge-3\n"
-                "multiple-dynamic-c5.xlarge-3\n"
-                "multiple-dynamic-c5.xlarge-3\n"
+                "multiple-dynamic-c5-xlarge-3\n"
+                "multiple-dynamic-c5-xlarge-3\n"
+                "multiple-dynamic-c5-xlarge-3\n"
                 "IDLE+CLOUD+POWER"
             ),
             [
-                SlurmNode("multiple-dynamic-c5.xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
-                SlurmNode("multiple-dynamic-c5.xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
+                SlurmNode("multiple-dynamic-c5-xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
+                SlurmNode("multiple-dynamic-c5-xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
                 SlurmNode(
-                    "multiple-dynamic-c5.xlarge-3",
-                    "multiple-dynamic-c5.xlarge-3",
-                    "multiple-dynamic-c5.xlarge-3",
+                    "multiple-dynamic-c5-xlarge-3",
+                    "multiple-dynamic-c5-xlarge-3",
+                    "multiple-dynamic-c5-xlarge-3",
                     "IDLE+CLOUD+POWER",
                 ),
             ],

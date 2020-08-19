@@ -278,7 +278,7 @@ def get_nodes_info(nodes, command_timeout=5):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
-    Sample slurm nodelist notation: queue1-dynamic-c5.xlarge-[1-3],queue2-static-t2.micro-5.
+    Sample slurm nodelist notation: queue1-dynamic-c5_xlarge-[1-3],queue2-static-t2_micro-5.
     """
     show_node_info_command = (
         f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '

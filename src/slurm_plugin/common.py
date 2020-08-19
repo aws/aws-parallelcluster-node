@@ -95,19 +95,23 @@ class InstanceManager:
         r"""
         Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
 
-        Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
-        And match: ^([a-z0-9\-_]+)-(static|dynamic)-([a-z0-9-]+.[a-z0-9-]+)-\d+$
-        Sample NodeName: queue1-static-c5.xlarge-2
+        Valid NodeName format: {queue-name}-{static/dynamic}-{instance-type}-{number}
+        And match: ^([a-z0-9\-]+)-(static|dynamic)-([a-z0-9-]+-[a-z0-9-]+)-\d+$
+        Sample NodeName: queue-1-static-c5-xlarge-2
         """
 
         pass
 
-    def __init__(self, region, cluster_name, boto3_config):
+    def __init__(self, region, cluster_name, boto3_config, table_name=None, hosted_zone=None, dns_domain=None):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
         self._cluster_name = cluster_name
         self._boto3_config = boto3_config
         self.failed_nodes = []
+        self._ddb_resource = boto3.resource("dynamodb", region_name=region, config=boto3_config)
+        self._table = self._ddb_resource.Table(table_name) if table_name else None
+        self._hosted_zone = hosted_zone
+        self._dns_domain = dns_domain
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -125,7 +129,12 @@ class InstanceManager:
                     try:
                         launched_instances = self._launch_ec2_instances(queue, instance_type, len(batch_nodes))
                         if update_node_address:
-                            self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
+                            assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
+                            try:
+                                self._store_assigned_hostnames(assigned_nodes)
+                                self._update_dns_hostnames(assigned_nodes)
+                            except Exception:
+                                self.failed_nodes.extend(list(assigned_nodes.keys()))
                     except Exception as e:
                         logger.error(
                             "Encountered exception when launching instances for nodes %s: %s",
@@ -144,12 +153,8 @@ class InstanceManager:
             fail_launch_nodes = slurm_nodes[len(launched_instances):]
             # fmt: on
             if launched_nodes:
-                update_nodes(
-                    launched_nodes,
-                    nodeaddrs=[instance.private_ip for instance in launched_instances],
-                    nodehostnames=[instance.hostname for instance in launched_instances],
-                    raise_on_error=True,
-                )
+                # We don't need to pass nodehostnames because they are equal to node names
+                update_nodes(launched_nodes, nodeaddrs=[instance.private_ip for instance in launched_instances])
                 logger.info(
                     "Nodes are now configured with instances: %s",
                     print_with_count(zip(launched_nodes, launched_instances)),
@@ -157,6 +162,9 @@ class InstanceManager:
             if fail_launch_nodes:
                 logger.info("Failed to launch instances for following nodes: %s", print_with_count(fail_launch_nodes))
                 self.failed_nodes.extend(fail_launch_nodes)
+
+            return dict(zip(launched_nodes, launched_instances))
+
         except subprocess.CalledProcessError:
             logger.info(
                 "Encountered error when updating node %s with instance %s",
@@ -165,18 +173,65 @@ class InstanceManager:
             )
             self.failed_nodes.extend(slurm_nodes)
 
+    @log_exception(logger, "saving assigned hostnames in DynamoDB", raise_on_error=True)
+    def _store_assigned_hostnames(self, nodes):
+        logger.info("Saving assigned hostnames in DynamoDB")
+        if not self._table:
+            raise Exception("Empty table name configuration parameter.")
+
+        if nodes:
+            with self._table.batch_writer() as batch_writer:
+                for nodename, instance in nodes.items():
+                    # Note: These items will be never removed, but the put_item method
+                    # will replace old items if the hostnames are already associated with an old instance_id.
+                    batch_writer.put_item(Item={"Id": nodename, "InstanceId": instance.id})
+
+        logger.info("Database update: COMPLETED")
+
+    @log_exception(logger, "updating DNS records", raise_on_error=True)
+    def _update_dns_hostnames(self, nodes):
+        logger.info("Updating DNS records for %s - %s", self._hosted_zone, self._dns_domain)
+        if not self._hosted_zone or not self._dns_domain:
+            logger.info("Empty DNS domain name or hosted zone configuration parameter.")
+            return
+
+        changes = []
+        for hostname, instance in nodes.items():
+            changes.append(
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": f"{hostname}.{self._dns_domain}",
+                        "ResourceRecords": [{"Value": instance.private_ip}],
+                        "Type": "A",
+                        "TTL": 120,
+                    },
+                }
+            )
+
+        if changes:
+            # Submit calls to change_resource_record_sets in batches of 500 elements each.
+            # change_resource_record_sets API call has limit of 1000 changes,
+            # but the UPSERT action counts for 2 calls
+            route53_client = boto3.client("route53", region_name=self._region, config=self._boto3_config)
+            changes_batch_size = 500
+            for changes_batch in grouper(changes, changes_batch_size):
+                route53_client.change_resource_record_sets(
+                    HostedZoneId=self._hosted_zone, ChangeBatch={"Changes": list(changes_batch)}
+                )
+        logger.info("DNS records update: COMPLETED")
+
     def _parse_requested_instances(self, node_list):
         """
         Parse out which launch configurations (queue/instance type) are requested by slurm nodes from NodeName.
 
         Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
-        Sample NodeName: queue1-static-c5.xlarge-2
+        Sample NodeName: queue1-static-c5_xlarge-2
         """
         instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
         for node in node_list:
             try:
-                capture = self._parse_nodename(node)
-                queue_name, instance_type = capture
+                queue_name, instance_type = self._parse_nodename(node)
                 instances_to_launch[queue_name][instance_type].append(node)
             except self.InvalidNodenameError:
                 logger.warning("Discarding NodeName with invalid format: %s", node)
@@ -212,11 +267,19 @@ class InstanceManager:
 
     def _parse_nodename(self, nodename):
         """Parse queue_name and instance_type from nodename."""
-        nodename_capture = re.match(r"^([a-z0-9\-_]+)-(static|dynamic)-([a-z0-9-]+.[a-z0-9-]+)-\d+$", nodename)
+        nodename_capture = re.match(r"^([a-z0-9\-]+)-(static|dynamic)-([a-z0-9-]+-[a-z0-9-]+)-\d+$", nodename)
         if not nodename_capture:
             raise self.InvalidNodenameError
 
-        return nodename_capture.group(1, 3)
+        queue_name, instance_type = nodename_capture.group(1, 3)
+        # In the hostname we're using the "_" in the instance_type to avoid conflicts with subdomain
+        # We have to replace the "-" with "." to have a real instance_type value.
+        # FIXME it doesn't support instance type like: i3en.metal-2tb
+        size_separator_index = instance_type.rfind("-")
+        # fmt: off
+        real_instance_type = instance_type[:size_separator_index] + "." + instance_type[size_separator_index + 1:]
+        # fmt: on
+        return queue_name, real_instance_type
 
     def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
@@ -229,9 +292,7 @@ class InstanceManager:
             except ClientError as e:
                 logger.error("Failed when terminating instances %s with error %s", print_with_count(instances), e)
 
-    @log_exception(
-        logger, "getting health status for unhealthy EC2 instances", catch_exception=Exception, raise_on_error=True
-    )
+    @log_exception(logger, "getting health status for unhealthy EC2 instances", raise_on_error=True)
     def get_unhealthy_cluster_instance_status(self, cluster_instance_ids):
         """
         Get health status for unhealthy EC2 instances.
@@ -272,7 +333,7 @@ class InstanceManager:
 
         return list(instance_health_states.values())
 
-    @log_exception(logger, "getting cluster instances from EC2", catch_exception=Exception, raise_on_error=True)
+    @log_exception(logger, "getting cluster instances from EC2", raise_on_error=True)
     def get_cluster_instances(self, include_master=False, alive_states_only=True):
         """Get instances that are associated with the cluster."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
