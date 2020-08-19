@@ -53,6 +53,9 @@ class SlurmResumeConfig:
 
         self.region = config.get("slurm_resume", "region")
         self.cluster_name = config.get("slurm_resume", "cluster_name")
+        self.dynamodb_table = config.get("slurm_resume", "dynamodb_table")
+        self.hosted_zone = config.get("slurm_resume", "hosted_zone")
+        self.dns_domain = config.get("slurm_resume", "dns_domain")
         self.max_batch_size = config.getint(
             "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
         )
@@ -99,7 +102,14 @@ def _resume(arg_nodes, resume_config):
     node_list = [node.name for node in get_nodes_info(arg_nodes)]
     log.debug("Retrieved nodelist: %s", node_list)
 
-    instance_manager = InstanceManager(resume_config.region, resume_config.cluster_name, resume_config.boto3_config)
+    instance_manager = InstanceManager(
+        resume_config.region,
+        resume_config.cluster_name,
+        resume_config.boto3_config,
+        resume_config.dynamodb_table,
+        resume_config.hosted_zone,
+        resume_config.dns_domain,
+    )
     instance_manager.add_instances_for_nodes(node_list, resume_config.max_batch_size, resume_config.update_node_address)
     success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
     log.info("Successfully launched nodes %s", print_with_count(success_nodes))

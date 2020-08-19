@@ -297,7 +297,9 @@ def test_clean_up_inactive_parititon(
 @pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
 def test_get_ec2_instances(mocker):
     # Test setup
-    mock_sync_config = SimpleNamespace(region="us-east-2", cluster_name="hit-test", boto3_config="some config")
+    mock_sync_config = SimpleNamespace(
+        region="us-east-2", cluster_name="hit-test", boto3_config=botocore.config.Config()
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
     # Run test
@@ -396,7 +398,7 @@ def test_perform_health_check_actions(
         disable_scheduled_event_health_check=disable_scheduled_event_health_check,
         region="us-east-2",
         cluster_name="hit-test",
-        boto3_config="some config",
+        boto3_config=botocore.config.Config(),
         dynamodb_table="table_name",
     )
     # Mock functions
@@ -642,8 +644,8 @@ def test_is_node_being_replaced(
 @pytest.mark.parametrize(
     "node, expected_result",
     [
-        (SlurmNode("node-static-c5.xlarge-1", "node-static-c5.xlarge-1", "hostname", "IDLE+CLOUD"), False),
-        (SlurmNode("node-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), True),
+        (SlurmNode("node-static-c5-xlarge-1", "node-static-c5-xlarge-1", "hostname", "IDLE+CLOUD"), False),
+        (SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), True),
     ],
     ids=["static_addr_not_set", "static_valid"],
 )
@@ -654,14 +656,14 @@ def test_is_static_node_configuration_valid(node, expected_result):
 @pytest.mark.parametrize(
     "node, instances_ips_in_cluster, expected_result",
     [
-        (SlurmNode("node-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), ["ip-2"], False,),
+        (SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), ["ip-2"], False,),
         (
-            SlurmNode("node-dynamic-c5.xlarge-1", "node-dynamic-c5.xlarge-1", "hostname", "IDLE+CLOUD+POWER"),
+            SlurmNode("node-dynamic-c5-xlarge-1", "node-dynamic-c5-xlarge-1", "hostname", "IDLE+CLOUD+POWER"),
             ["ip-2"],
             True,
         ),
-        (SlurmNode("node-dynamic-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"), ["ip-2"], False,),
-        (SlurmNode("node-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"), ["ip-1"], True,),
+        (SlurmNode("node-dynamic-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"), ["ip-2"], False,),
+        (SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"), ["ip-1"], True,),
     ],
     ids=["static_no_backing", "dynamic_power_save", "dynamic_no_backing", "static_valid"],
 )
@@ -738,7 +740,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
     "node, private_ip_to_instance_map, instance_ips_in_cluster, expected_result",
     [
         (
-            SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -747,7 +749,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             True,
         ),
         (
-            SlurmNode("queue-static-c5.xlarge-1", "queue-static-c5.xlarge-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-static-c5-xlarge-1", "queue-static-c5-xlarge-1", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -756,7 +758,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             False,
         ),
         (
-            SlurmNode("queue-dynamic-c5.xlarge-1", "queue-dynamic-c5.xlarge-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-dynamic-c5-xlarge-1", "queue-dynamic-c5-xlarge-1", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -765,7 +767,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             True,
         ),
         (
-            SlurmNode("queue-dynamic-c5.xlarge-1", "ip-3", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-dynamic-c5-xlarge-1", "ip-3", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -774,7 +776,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             False,
         ),
         (
-            SlurmNode("queue-static-c5.xlarge-1", "ip-2", "hostname", "DOWN+CLOUD"),
+            SlurmNode("queue-static-c5-xlarge-1", "ip-2", "hostname", "DOWN+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -907,6 +909,8 @@ def test_handle_unhealthy_static_nodes(
     delete_instance_list,
     add_node_list,
     mocker,
+    caplog,
+    request,
 ):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -915,10 +919,11 @@ def test_handle_unhealthy_static_nodes(
         update_node_address=True,
         region="us-east-2",
         cluster_name="hit-test",
-        boto3_config="some config",
+        boto3_config=botocore.config.Config(),
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
+
     # Mock associated function
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
     cluster_manager._instance_manager._parse_requested_instances = mocker.MagicMock(
@@ -926,6 +931,8 @@ def test_handle_unhealthy_static_nodes(
     )
     cluster_manager._instance_manager._launch_ec2_instances = mocker.MagicMock(return_value=launched_instances)
     mocker.patch("slurm_plugin.common.update_nodes")
+    cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
+    cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
     # Mock add_instances_for_nodes but still try to execute original code
     original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
     cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
@@ -941,6 +948,8 @@ def test_handle_unhealthy_static_nodes(
     else:
         cluster_manager._instance_manager.delete_instances.assert_not_called()
     cluster_manager._instance_manager.add_instances_for_nodes.assert_called_with(add_node_list, 5, True)
+    if "partial_launch" not in request.node.name:
+        assert_that(caplog.text).is_empty()
     assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_replacing_nodes)
 
 
@@ -1057,7 +1066,7 @@ def test_terminate_orphaned_instances(
         terminate_max_batch_size=4,
         region="us-east-2",
         cluster_name="hit-test",
-        boto3_config="some config",
+        boto3_config=botocore.config.Config(),
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
@@ -1138,7 +1147,7 @@ def test_manage_cluster(
         disable_all_health_checks=disable_health_check,
         region="us-east-2",
         cluster_name="hit-test",
-        boto3_config="NONE",
+        boto3_config=botocore.config.Config(),
     )
     ip_to_slurm_node_map = {node.nodeaddr: node for node in mock_active_nodes}
     cluster_manager = ClusterManager(mock_sync_config)
@@ -1214,15 +1223,15 @@ def test_manage_cluster(
             "default.conf",
             [
                 # This node fail scheduler state check and corresponding instance will be terminated and replaced
-                SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN"),
+                SlurmNode("queue-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN"),
                 # This node fail scheduler state check and node will be power_down
-                SlurmNode("queue-dynamic-c5.xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
                 # This node is good and should not be touched by clustermgtd
-                SlurmNode("queue-dynamic-c5.xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
-                SlurmNode("queue-static-c5.xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-static-c5-xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1368,13 +1377,13 @@ def test_manage_cluster(
             # failures: All failure tolerant module will have an exception, but the program should not crash
             "default.conf",
             [
-                SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-static-c5-xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
-                SlurmNode("queue-static-c5.xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-static-c5-xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1531,13 +1540,13 @@ def test_manage_cluster(
             # critical_failure_1: _get_ec2_instances will have an exception, but the program should not crash
             "default.conf",
             [
-                SlurmNode("queue-static-c5.xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-static-c5-xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
-                SlurmNode("queue-static-c5.xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue-dynamic-c5.xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-static-c5-xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dynamic-c5-xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1603,6 +1612,8 @@ def test_manage_cluster_boto3(
         mocker.patch.object(
             cluster_manager, "_get_node_info_from_partition", return_value=(mocked_active_nodes, mocked_inactive_nodes),
         )
+    cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
+    cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
     cluster_manager.manage_cluster()
 
     assert_that(expected_error_messages).is_length(len(caplog.records))
