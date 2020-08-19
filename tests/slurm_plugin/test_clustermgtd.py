@@ -29,108 +29,116 @@ def boto3_stubber_path():
     return "slurm_plugin.common.boto3"
 
 
-@pytest.mark.parametrize(
-    ("config_file", "expected_attributes"),
-    [
-        (
-            "default.conf",
-            {
-                # basic configs
-                "cluster_name": "hit",
-                "region": "us-east-2",
-                "_boto3_config": {"retries": {"max_attempts": 5, "mode": "standard"}},
-                "loop_time": 30,
-                "disable_all_cluster_management": False,
-                "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
-                "logging_config": os.path.join(
-                    os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
-                ),
-                "dynamodb_table": "table-name",
-                # launch configs
-                "update_node_address": True,
-                "launch_max_batch_size": 100,
-                # terminate configs
-                "terminate_max_batch_size": 1000,
-                "node_replacement_timeout": 600,
-                "terminate_drain_nodes": True,
-                "terminate_down_nodes": True,
-                "orphaned_instance_timeout": 180,
-                # health check configs
-                "disable_ec2_health_check": False,
-                "disable_scheduled_event_health_check": False,
-                "disable_all_health_checks": False,
-                "health_check_timeout": 180,
-            },
-        ),
-        (
-            "all_options.conf",
-            {
-                # basic configs
-                "cluster_name": "hit",
-                "region": "us-east-1",
-                "_boto3_config": {
-                    "retries": {"max_attempts": 5, "mode": "standard"},
-                    "proxies": {"https": "https://fake.proxy"},
+class TestClustermgtdConfig:
+    @pytest.mark.parametrize(
+        ("config_file", "expected_attributes"),
+        [
+            (
+                "default.conf",
+                {
+                    # basic configs
+                    "cluster_name": "hit",
+                    "region": "us-east-2",
+                    "_boto3_config": {"retries": {"max_attempts": 5, "mode": "standard"}},
+                    "loop_time": 30,
+                    "disable_all_cluster_management": False,
+                    "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
+                    "logging_config": os.path.join(
+                        os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
+                    ),
+                    "dynamodb_table": "table-name",
+                    # launch configs
+                    "update_node_address": True,
+                    "launch_max_batch_size": 100,
+                    # terminate configs
+                    "terminate_max_batch_size": 1000,
+                    "node_replacement_timeout": 600,
+                    "terminate_drain_nodes": True,
+                    "terminate_down_nodes": True,
+                    "orphaned_instance_timeout": 180,
+                    # health check configs
+                    "disable_ec2_health_check": False,
+                    "disable_scheduled_event_health_check": False,
+                    "disable_all_health_checks": False,
+                    "health_check_timeout": 180,
                 },
-                "loop_time": 60,
-                "disable_all_cluster_management": True,
-                "heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
-                "logging_config": "/my/logging/config",
-                "dynamodb_table": "table-name",
-                # launch configs
-                "update_node_address": False,
-                "launch_max_batch_size": 1,
-                # terminate configs
-                "terminate_max_batch_size": 500,
-                "node_replacement_timeout": 10,
-                "terminate_drain_nodes": False,
-                "terminate_down_nodes": False,
-                "orphaned_instance_timeout": 60,
-                # health check configs
-                "disable_ec2_health_check": True,
-                "disable_scheduled_event_health_check": True,
-                "disable_all_health_checks": False,
-                "health_check_timeout": 10,
-            },
-        ),
-        (
-            "health_check.conf",
-            {
-                # basic configs
-                "cluster_name": "hit",
-                "region": "us-east-1",
-                "_boto3_config": {
-                    "retries": {"max_attempts": 5, "mode": "standard"},
-                    "proxies": {"https": "https://fake.proxy"},
+            ),
+            (
+                "all_options.conf",
+                {
+                    # basic configs
+                    "cluster_name": "hit",
+                    "region": "us-east-1",
+                    "_boto3_config": {
+                        "retries": {"max_attempts": 5, "mode": "standard"},
+                        "proxies": {"https": "https://fake.proxy"},
+                    },
+                    "loop_time": 60,
+                    "disable_all_cluster_management": True,
+                    "heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
+                    "logging_config": "/my/logging/config",
+                    "dynamodb_table": "table-name",
+                    # launch configs
+                    "update_node_address": False,
+                    "launch_max_batch_size": 1,
+                    # terminate configs
+                    "terminate_max_batch_size": 500,
+                    "node_replacement_timeout": 10,
+                    "terminate_drain_nodes": False,
+                    "terminate_down_nodes": False,
+                    "orphaned_instance_timeout": 60,
+                    # health check configs
+                    "disable_ec2_health_check": True,
+                    "disable_scheduled_event_health_check": True,
+                    "disable_all_health_checks": False,
+                    "health_check_timeout": 10,
                 },
-                "loop_time": 60,
-                "disable_all_cluster_management": True,
-                "heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
-                "logging_config": "/my/logging/config",
-                "dynamodb_table": "table-name",
-                # launch configs
-                "update_node_address": False,
-                "launch_max_batch_size": 1,
-                # terminate configs
-                "terminate_max_batch_size": 500,
-                "node_replacement_timeout": 10,
-                "terminate_drain_nodes": False,
-                "terminate_down_nodes": False,
-                "orphaned_instance_timeout": 60,
-                # health check configs
-                "disable_ec2_health_check": True,
-                "disable_scheduled_event_health_check": True,
-                "disable_all_health_checks": True,
-                "health_check_timeout": 10,
-            },
-        ),
-    ],
-    ids=["default", "all_options", "health_check"],
-)
-def test_clustermgtd_config(config_file, expected_attributes, test_datadir):
-    sync_config = ClustermgtdConfig(test_datadir / config_file)
-    for key in expected_attributes:
-        assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
+            ),
+            (
+                "health_check.conf",
+                {
+                    # basic configs
+                    "cluster_name": "hit",
+                    "region": "us-east-1",
+                    "_boto3_config": {
+                        "retries": {"max_attempts": 5, "mode": "standard"},
+                        "proxies": {"https": "https://fake.proxy"},
+                    },
+                    "loop_time": 60,
+                    "disable_all_cluster_management": True,
+                    "heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
+                    "logging_config": "/my/logging/config",
+                    "dynamodb_table": "table-name",
+                    # launch configs
+                    "update_node_address": False,
+                    "launch_max_batch_size": 1,
+                    # terminate configs
+                    "terminate_max_batch_size": 500,
+                    "node_replacement_timeout": 10,
+                    "terminate_drain_nodes": False,
+                    "terminate_down_nodes": False,
+                    "orphaned_instance_timeout": 60,
+                    # health check configs
+                    "disable_ec2_health_check": True,
+                    "disable_scheduled_event_health_check": True,
+                    "disable_all_health_checks": True,
+                    "health_check_timeout": 10,
+                },
+            ),
+        ],
+        ids=["default", "all_options", "health_check"],
+    )
+    def test_config_parsing(self, config_file, expected_attributes, test_datadir):
+        sync_config = ClustermgtdConfig(test_datadir / config_file)
+        for key in expected_attributes:
+            assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
+
+    def test_config_comparison(self, test_datadir):
+        config = test_datadir / "config.conf"
+        config_modified = test_datadir / "config_modified.conf"
+
+        assert_that(ClustermgtdConfig(config)).is_equal_to(ClustermgtdConfig(config))
+        assert_that(ClustermgtdConfig(config)).is_not_equal_to(ClustermgtdConfig(config_modified))
 
 
 def test_set_config(initialize_instance_manager_mock, initialize_compute_fleet_status_manager_mock):
