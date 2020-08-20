@@ -103,7 +103,9 @@ def get_asg_settings(region, proxy_config, asg_name):
         raise
 
 
-def check_command_output(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60):
+def check_command_output(
+    command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60, shell=False
+):
     """
     Execute shell command and retrieve command output.
 
@@ -125,7 +127,7 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
-            shell=True,
+            shell=shell,
         ),
         command,
         env,
@@ -137,7 +139,7 @@ def check_command_output(command, env=None, raise_on_error=True, execute_as_user
     return result.stdout if hasattr(result, "stdout") else ""
 
 
-def run_command(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60):
+def run_command(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60, shell=False):
     """
     Execute shell command.
 
@@ -149,7 +151,7 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
-            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, check=True, encoding="utf-8", shell=True,
+            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, check=True, encoding="utf-8", shell=shell,
         ),
         command,
         env,

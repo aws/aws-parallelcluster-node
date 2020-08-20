@@ -275,7 +275,7 @@ def get_nodes_info(nodes, command_timeout=5):
         f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '
         'NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)"'
     )
-    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout)
+    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)
 
     return _parse_nodes_info(nodeinfo_str)
 
@@ -285,7 +285,7 @@ def get_partition_info(command_timeout=5):
     show_partition_info_command = (
         f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| ' 'Nodes=\\K(\\S+)| State=\\K(\\S+)"'
     )
-    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout)
+    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)
 
     return _parse_partition_info(partition_info_str)
 
