@@ -307,15 +307,10 @@ def _parse_partition_name_and_state(partition_info):
 
 def _get_partition_nodes(partition_name, command_timeout=5):
     """Get up nodes in a parition by querying sinfo, and filtering out power_down nodes."""
-    show_all_nodes_command = (
-        f"{SINFO} -h -p {partition_name} "
-        # PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-        # Get last column(NODELIST)
-        "| awk '{print $NF}'"
-    )
+    show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N | tr ',' '\n'"
     # To-do: add logic to include power_down nodes that are not idle
     # The above should not happen if system is functioning correctly and can be manually cleared with scontrol
-    show_power_down_nodes_command = f"{SINFO} -h -p {partition_name} -t power_down,powering_down" "| awk '{print $NF}'"
+    show_power_down_nodes_command = f"{SINFO} -h -p {partition_name} -t power_down,powering_down -o %N | tr ',' '\n'"
     # Results nodelists are grouped by dominating states and displayed in separate lines, split into a list
     all_nodes = check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).splitlines()
     power_down_nodes = check_command_output(
@@ -329,7 +324,11 @@ def _get_partition_nodes(partition_name, command_timeout=5):
     # This simple not-in logic works because power_down nodes has to be a subset of all nodes
     # At worst, if nodelist notation do not match exactly, we will just end up getting all nodes
     # Which is the same as getting all nodes from scontrol
-    return ",".join([nodename for nodename in all_nodes if (nodename not in power_down_nodes and nodename != "n/a")])
+    nodes = []
+    for nodename in all_nodes:
+        if "-static-" in nodename or (nodename not in power_down_nodes and nodename != "n/a"):
+            nodes.append(nodename)
+    return ",".join(nodes)
 
 
 def _parse_nodes_info(slurm_node_info):
