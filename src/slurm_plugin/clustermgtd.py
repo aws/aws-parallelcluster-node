@@ -432,12 +432,14 @@ class ClusterManager:
     def _clean_up_inactive_partition(self, inactive_nodes, cluster_instances):
         """Terminate all other instances associated with nodes in INACTIVE partition directly through EC2."""
         try:
-            log.info(
-                "Clean up instances associated with nodes in INACTIVE partitions: %s", print_with_count(inactive_nodes)
-            )
+            log.info("Cleaning up INACTIVE partitions.")
             private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
             instances_to_terminate = ClusterManager._get_backing_instance_ids(
                 inactive_nodes, private_ip_to_instance_map
+            )
+            log.info(
+                "Clean up instances associated with nodes in INACTIVE partitions: %s",
+                print_with_count(instances_to_terminate),
             )
             if instances_to_terminate:
                 self._instance_manager.delete_instances(
