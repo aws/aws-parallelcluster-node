@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import pwd
+import shlex
 import subprocess
 import sys
 import time
@@ -117,6 +118,8 @@ def check_command_output(
     :return: the command output
     :raise: subprocess.CalledProcessError if the command fails
     """
+    if isinstance(command, str) and not shell:
+        command = shlex.split(command)
     result = _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
@@ -149,6 +152,8 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     :param log_error: control whether to log or not an error
     :raise: subprocess.CalledProcessError if the command fails
     """
+    if isinstance(command, str) and not shell:
+        command = shlex.split(command)
     _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, check=True, encoding="utf-8", shell=shell,
