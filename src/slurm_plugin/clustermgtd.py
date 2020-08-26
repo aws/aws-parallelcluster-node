@@ -137,6 +137,10 @@ class ClustermgtdConfig:
         "disable_scheduled_event_health_check": False,
         "disable_all_cluster_management": False,
         "health_check_timeout": 180,
+        # DNS domain configs
+        "hosted_zone": None,
+        "dns_domain": None,
+        "use_private_hostname": False,
     }
 
     def __init__(self, config_file_path):
@@ -222,6 +226,14 @@ class ClustermgtdConfig:
             "clustermgtd", "orphaned_instance_timeout", fallback=self.DEFAULTS.get("orphaned_instance_timeout")
         )
 
+    def _get_dns_config(self, config):
+        """Get config option related to Route53 DNS domain."""
+        self.hosted_zone = config.get("clustermgtd", "hosted_zone", fallback=self.DEFAULTS.get("hosted_zone"))
+        self.dns_domain = config.get("clustermgtd", "dns_domain", fallback=self.DEFAULTS.get("dns_domain"))
+        self.use_private_hostname = config.getboolean(
+            "clustermgtd", "use_private_hostname", fallback=self.DEFAULTS.get("use_private_hostname")
+        )
+
     @log_exception(log, "reading cluster manager configuration file", catch_exception=IOError, raise_on_error=True)
     def _get_config(self, config_file_path):
         """Get clustermgtd configuration."""
@@ -234,6 +246,7 @@ class ClustermgtdConfig:
         self._get_health_check_config(self._config)
         self._get_launch_config(self._config)
         self._get_terminate_config(self._config)
+        self._get_dns_config(self._config)
 
 
 class ClusterManager:
@@ -283,7 +296,15 @@ class ClusterManager:
     @staticmethod
     def _initialize_instance_manager(config):
         """Initialize instance manager class that will be used to launch/terminate/describe instances."""
-        return InstanceManager(config.region, config.cluster_name, config.boto3_config)
+        return InstanceManager(
+            config.region,
+            config.cluster_name,
+            config.boto3_config,
+            table_name=config.dynamodb_table,
+            hosted_zone=config.hosted_zone,
+            dns_domain=config.dns_domain,
+            use_private_hostname=config.use_private_hostname,
+        )
 
     @staticmethod
     def _initialize_compute_fleet_status_manager(config):

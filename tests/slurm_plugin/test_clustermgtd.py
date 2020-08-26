@@ -298,7 +298,13 @@ def test_clean_up_inactive_parititon(
 def test_get_ec2_instances(mocker):
     # Test setup
     mock_sync_config = SimpleNamespace(
-        region="us-east-2", cluster_name="hit-test", boto3_config=botocore.config.Config()
+        region="us-east-2",
+        cluster_name="hit-test",
+        boto3_config=botocore.config.Config(),
+        dynamodb_table="table_name",
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
@@ -400,6 +406,9 @@ def test_perform_health_check_actions(
         cluster_name="hit-test",
         boto3_config=botocore.config.Config(),
         dynamodb_table="table_name",
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     # Mock functions
     cluster_manager = ClusterManager(mock_sync_config)
@@ -920,6 +929,10 @@ def test_handle_unhealthy_static_nodes(
         region="us-east-2",
         cluster_name="hit-test",
         boto3_config=botocore.config.Config(),
+        dynamodb_table="table_name",
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
@@ -1067,6 +1080,10 @@ def test_terminate_orphaned_instances(
         region="us-east-2",
         cluster_name="hit-test",
         boto3_config=botocore.config.Config(),
+        dynamodb_table="table_name",
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
@@ -1148,6 +1165,10 @@ def test_manage_cluster(
         region="us-east-2",
         cluster_name="hit-test",
         boto3_config=botocore.config.Config(),
+        dynamodb_table="table_name",
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     ip_to_slurm_node_map = {node.nodeaddr: node for node in mock_active_nodes}
     cluster_manager = ClusterManager(mock_sync_config)
@@ -1693,6 +1714,9 @@ def test_manage_compute_fleet_status_transitions(
         boto3_config=botocore.config.Config(),
         dynamodb_table="table_name",
         terminate_max_batch_size=4,
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     cluster_manager = ClusterManager(config)
     mocker.patch("subprocess.run", side_effect=None if partitions_updated_successfully else Exception)
@@ -1739,6 +1763,9 @@ def test_manage_compute_fleet_status_transitions_concurrency(mocker, caplog):
         boto3_config=botocore.config.Config(),
         dynamodb_table="table_name",
         terminate_max_batch_size=4,
+        hosted_zone="hosted_zone",
+        dns_domain="dns.domain",
+        use_private_hostname=False,
     )
     cluster_manager = ClusterManager(config)
     mocker.patch("slurm_plugin.clustermgtd.update_all_partitions")

@@ -54,8 +54,10 @@ class TestInstanceManager:
             region="us-east-2",
             cluster_name="hit",
             boto3_config=botocore.config.Config(),
+            table_name="table_name",
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
+            use_private_hostname=False,
         )
         mocker.patch.object(instance_manager, "_table")
         return instance_manager
@@ -552,31 +554,64 @@ class TestInstanceManager:
             assert_that(instance_manager.failed_nodes).is_empty()
 
     @pytest.mark.parametrize(
-        "node_list, launched_nodes, expected_update_nodes_call, expected_failed_nodes",
+        (
+            "node_list, launched_nodes, expected_update_nodes_call, "
+            "expected_failed_nodes, use_private_hostname, dns_domain"
+        ),
         [
             (
                 ["node-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"]),
+                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=None),
                 [],
+                False,
+                "dns.domain",
             ),
-            (["node-1"], [], None, ["node-1"],),
+            (["node-1"], [], None, ["node-1"], False, "dns.domain"),
             (
                 ["node-1", "node-2", "node-3", "node-4"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
                 ],
-                call(["node-1", "node-2"], nodeaddrs=["ip-1", "ip-2"]),
+                call(["node-1", "node-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
                 ["node-3", "node-4"],
+                False,
+                "dns.domain",
+            ),
+            (
+                ["node-1"],
+                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
+                [],
+                True,
+                "dns.domain",
+            ),
+            (
+                ["node-1"],
+                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                [],
+                False,
+                "",
             ),
         ],
-        ids=("all_launched", "nothing_launched", "partial_launched"),
+        ids=("all_launched", "nothing_launched", "partial_launched", "forced_private_hostname", "no_dns_domain"),
     )
     def test_update_slurm_node_addrs(
-        self, node_list, launched_nodes, expected_update_nodes_call, expected_failed_nodes, instance_manager, mocker
+        self,
+        node_list,
+        launched_nodes,
+        expected_update_nodes_call,
+        expected_failed_nodes,
+        use_private_hostname,
+        dns_domain,
+        instance_manager,
+        mocker,
     ):
         mock_update_nodes = mocker.patch("slurm_plugin.common.update_nodes")
+        instance_manager._use_private_hostname = use_private_hostname
+        instance_manager._dns_domain = dns_domain
 
         instance_manager._update_slurm_node_addrs(node_list, launched_nodes)
         if expected_update_nodes_call:
