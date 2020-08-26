@@ -102,7 +102,16 @@ class InstanceManager:
 
         pass
 
-    def __init__(self, region, cluster_name, boto3_config, table_name=None, hosted_zone=None, dns_domain=None):
+    def __init__(
+        self,
+        region,
+        cluster_name,
+        boto3_config,
+        table_name=None,
+        hosted_zone=None,
+        dns_domain=None,
+        use_private_hostname=False,
+    ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
         self._cluster_name = cluster_name
@@ -112,6 +121,7 @@ class InstanceManager:
         self._table = self._ddb_resource.Table(table_name) if table_name else None
         self._hosted_zone = hosted_zone
         self._dns_domain = dns_domain
+        self._use_private_hostname = use_private_hostname
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -153,8 +163,18 @@ class InstanceManager:
             fail_launch_nodes = slurm_nodes[len(launched_instances):]
             # fmt: on
             if launched_nodes:
-                # We don't need to pass nodehostnames because they are equal to node names
-                update_nodes(launched_nodes, nodeaddrs=[instance.private_ip for instance in launched_instances])
+                # When using a cluster DNS domain we don't need to pass nodehostnames
+                # because they are equal to node names.
+                # It is possible to force the use of private hostnames by setting
+                # use_private_hostname = "true" as extra json parameter
+                node_hostnames = (
+                    None if not self._use_private_hostname else [instance.hostname for instance in launched_instances]
+                )
+                update_nodes(
+                    launched_nodes,
+                    nodeaddrs=[instance.private_ip for instance in launched_instances],
+                    nodehostnames=node_hostnames,
+                )
                 logger.info(
                     "Nodes are now configured with instances: %s",
                     print_with_count(zip(launched_nodes, launched_instances)),
