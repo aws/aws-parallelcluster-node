@@ -31,6 +31,9 @@ class SlurmResumeConfig:
         "update_node_address": True,
         "proxy": "NONE",
         "logging_config": os.path.join(os.path.dirname(__file__), "logging", "parallelcluster_resume_logging.conf"),
+        "hosted_zone": None,
+        "dns_domain": None,
+        "use_private_hostname": False,
     }
 
     def __init__(self, config_file_path):
@@ -54,9 +57,13 @@ class SlurmResumeConfig:
         self.region = config.get("slurm_resume", "region")
         self.cluster_name = config.get("slurm_resume", "cluster_name")
         self.dynamodb_table = config.get("slurm_resume", "dynamodb_table")
-        self.hosted_zone = config.get("slurm_resume", "hosted_zone", fallback=None)
-        self.dns_domain = config.get("slurm_resume", "dns_domain", fallback=None)
-        self.use_private_hostname = config.getboolean("slurm_resume", "use_private_hostname", fallback=False)
+        self.hosted_zone = config.get("slurm_resume", "hosted_zone", fallback=self.DEFAULTS.get("hosted_zone"))
+        self.dns_domain = config.get("slurm_resume", "dns_domain", fallback=self.DEFAULTS.get("dns_domain"))
+        self.use_private_hostname = config.getboolean(
+            "slurm_resume", "use_private_hostname", fallback=self.DEFAULTS.get("use_private_hostname")
+        )
+        self.master_private_ip = config.get("slurm_resume", "master_private_ip")
+        self.master_hostname = config.get("slurm_resume", "master_hostname")
         self.max_batch_size = config.getint(
             "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
         )
@@ -111,6 +118,8 @@ def _resume(arg_nodes, resume_config):
         hosted_zone=resume_config.hosted_zone,
         dns_domain=resume_config.dns_domain,
         use_private_hostname=resume_config.use_private_hostname,
+        master_private_ip=resume_config.master_private_ip,
+        master_hostname=resume_config.master_hostname,
     )
     instance_manager.add_instances_for_nodes(node_list, resume_config.max_batch_size, resume_config.update_node_address)
     success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]

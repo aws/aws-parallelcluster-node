@@ -55,6 +55,8 @@ class TestInstanceManager:
             cluster_name="hit",
             boto3_config=botocore.config.Config(),
             table_name="table_name",
+            master_private_ip="master.ip",
+            master_hostname="master-hostname",
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
             use_private_hostname=False,
@@ -636,7 +638,16 @@ class TestInstanceManager:
                 "table_name",
                 ["node-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                [call(Item={"Id": "node-1", "InstanceId": "id-1"})],
+                [
+                    call(
+                        Item={
+                            "Id": "node-1",
+                            "InstanceId": "id-1",
+                            "MasterPrivateIp": "master.ip",
+                            "MasterHostname": "master-hostname",
+                        }
+                    )
+                ],
                 None,
             ),
             (
@@ -646,7 +657,24 @@ class TestInstanceManager:
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
                 ],
-                [call(Item={"Id": "node-1", "InstanceId": "id-1"}), call(Item={"Id": "node-2", "InstanceId": "id-2"})],
+                [
+                    call(
+                        Item={
+                            "Id": "node-1",
+                            "InstanceId": "id-1",
+                            "MasterPrivateIp": "master.ip",
+                            "MasterHostname": "master-hostname",
+                        }
+                    ),
+                    call(
+                        Item={
+                            "Id": "node-2",
+                            "InstanceId": "id-2",
+                            "MasterPrivateIp": "master.ip",
+                            "MasterHostname": "master-hostname",
+                        }
+                    ),
+                ],
                 None,
             ),
         ],
