@@ -78,10 +78,10 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5-xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c5-2xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"]},
+                    "queue2": {"c5.xlarge": ["queue2-st-c5-xlarge-1", "queue2-dy-c5-xlarge-1"]},
                 },
                 10,
                 True,
@@ -154,15 +154,15 @@ class TestInstanceManager:
                 None,
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5-xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue1-static-c5-2xlarge-1"],
+                        ["queue1-st-c5-2xlarge-1"],
                         [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-st-c5-xlarge-1", "queue2-dy-c5-xlarge-1"],
                         [
                             EC2Instance(
                                 "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
@@ -178,10 +178,10 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5-xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c5-2xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"]},
+                    "queue2": {"c5.xlarge": ["queue2-st-c5-xlarge-1", "queue2-dy-c5-xlarge-1"]},
                 },
                 10,
                 True,
@@ -242,14 +242,14 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                ["queue1-static-c5-2xlarge-1"],
+                ["queue1-st-c5-2xlarge-1"],
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5-xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-st-c5-xlarge-1", "queue2-dy-c5-xlarge-1"],
                         [
                             EC2Instance(
                                 "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
@@ -263,7 +263,7 @@ class TestInstanceManager:
             ),
             # no_update
             (
-                {"queue1": {"c5.xlarge": ["queue1-static-c5-xlarge-2"]}},
+                {"queue1": {"c5.xlarge": ["queue1-st-c5-xlarge-2"]}},
                 10,
                 False,
                 [
@@ -294,14 +294,14 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5-xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c5-2xlarge-1"],
                     },
                     "queue2": {
                         "c5.xlarge": [
-                            "queue2-static-c5-xlarge-1",
-                            "queue2-static-c5-xlarge-2",
-                            "queue2-dynamic-c5-xlarge-1",
+                            "queue2-st-c5-xlarge-1",
+                            "queue2-st-c5-xlarge-2",
+                            "queue2-dy-c5-xlarge-1",
                         ],
                     },
                 },
@@ -349,14 +349,14 @@ class TestInstanceManager:
                     ),
                 ],
                 [
-                    "queue1-static-c5-2xlarge-1",
-                    "queue2-static-c5-xlarge-1",
-                    "queue2-static-c5-xlarge-2",
-                    "queue2-dynamic-c5-xlarge-1",
+                    "queue1-st-c5-2xlarge-1",
+                    "queue2-st-c5-xlarge-1",
+                    "queue2-st-c5-xlarge-2",
+                    "queue2-dy-c5-xlarge-1",
                 ],
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5-xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     )
                 ],
@@ -365,14 +365,14 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5-xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c5-2xlarge-1"],
                     },
                     "queue2": {
                         "c5.xlarge": [
-                            "queue2-static-c5-xlarge-1",
-                            "queue2-static-c5-xlarge-2",
-                            "queue2-dynamic-c5-xlarge-1",
+                            "queue2-st-c5-xlarge-1",
+                            "queue2-st-c5-xlarge-2",
+                            "queue2-dy-c5-xlarge-1",
                         ],
                     },
                 },
@@ -457,18 +457,18 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                ["queue1-static-c5-2xlarge-1", "queue2-static-c5-xlarge-2"],
+                ["queue1-st-c5-2xlarge-1", "queue2-st-c5-xlarge-2"],
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5-xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-static-c5-xlarge-1"],
+                        ["queue2-st-c5-xlarge-1"],
                         [EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-dy-c5-xlarge-1"],
                         [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                 ],
@@ -477,9 +477,9 @@ class TestInstanceManager:
                 {
                     "queue2": {
                         "c5.xlarge": [
-                            "queue2-static-c5-xlarge-1",
-                            "queue2-static-c5-xlarge-2",
-                            "queue2-dynamic-c5-xlarge-1",
+                            "queue2-st-c5-xlarge-1",
+                            "queue2-st-c5-xlarge-2",
+                            "queue2-dy-c5-xlarge-1",
                         ],
                     },
                 },
@@ -505,10 +505,10 @@ class TestInstanceManager:
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
                     },
                 ),
-                ["queue2-static-c5-xlarge-2", "queue2-dynamic-c5-xlarge-1"],
+                ["queue2-st-c5-xlarge-2", "queue2-dy-c5-xlarge-1"],
                 [
                     call(
-                        ["queue2-static-c5-xlarge-1", "queue2-static-c5-xlarge-2", "queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-st-c5-xlarge-1", "queue2-st-c5-xlarge-2", "queue2-dy-c5-xlarge-1"],
                         [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     )
                 ],
@@ -895,12 +895,15 @@ class TestInstanceManager:
     @pytest.mark.parametrize(
         ("nodename", "expected_queue", "expected_instance_type", "expected_failure"),
         [
-            ("queue1-static-c5-xlarge-1", "queue1", "c5.xlarge", False),
-            ("queue-1-static-c5-xlarge-1", "queue-1", "c5.xlarge", False),
-            # ("queue1-static-i3en-metal-2tb-1", "queue1", "i3en.metal-2tb", False), not supported for now
-            ("queue1-static-u-6tb1-metal-1", "queue1", "u-6tb1.metal", False),
-            ("queue1-static-c5.xlarge-1", "queue1", "c5.xlarge", True),
-            ("queue_1-static-c5-xlarge-1", "queue_1", "c5.xlarge", True),
+            ("queue1-st-c5-xlarge-1", "queue1", "c5.xlarge", False),
+            ("queue-1-st-c5-xlarge-1", "queue-1", "c5.xlarge", False),
+            ("queue1-st-dy-c5-xlarge-1", "queue1-st", "c5.xlarge", False),
+            ("queue1-dy-st-c5-xlarge-1", "queue1-dy", "c5.xlarge", False),
+            ("queue1-dy-dy-dy-dy-c5-xlarge-1", "queue1-dy-dy-dy", "c5.xlarge", False),
+            # ("queue1-st-i3en-metal-2tb-1", "queue1", "i3en.metal-2tb", False), not supported for now
+            ("queue1-st-u-6tb1-metal-1", "queue1", "u-6tb1.metal", False),
+            ("queue1-st-c5.xlarge-1", "queue1", "c5.xlarge", True),
+            ("queue_1-st-c5-xlarge-1", "queue_1", "c5.xlarge", True),
         ],
     )
     def test_parse_nodename(self, nodename, expected_queue, expected_instance_type, expected_failure, instance_manager):
@@ -917,36 +920,36 @@ class TestInstanceManager:
         [
             (
                 [
-                    "queue1-static-c5-xlarge-1",
-                    "queue1-static-c5-xlarge-2",
-                    "queue1-dynamic-c5-xlarge-201",
-                    "queue2-static-g3-4xlarge-1",
-                    "in-valid/queue.name-static-c5-xlarge-2",
-                    "noBrackets-static-c5-xlarge-[1-2]",
-                    "queue2-dynamic-g3-8xlarge-1",
-                    "queue2-static-u-6tb1-metal-1",
+                    "queue1-st-c5-xlarge-1",
+                    "queue1-st-c5-xlarge-2",
+                    "queue1-dy-c5-xlarge-201",
+                    "queue2-st-g3-4xlarge-1",
+                    "in-valid/queue.name-st-c5-xlarge-2",
+                    "noBrackets-st-c5-xlarge-[1-2]",
+                    "queue2-dy-g3-8xlarge-1",
+                    "queue2-st-u-6tb1-metal-1",
                     "queue2-invalidnodetype-c5-xlarge-12",
-                    "queuename-with-dash-and_underscore-static-i3en-metal-2tb-1",
+                    "queuename-with-dash-and_underscore-st-i3en-metal-2tb-1",
                 ],
                 {
                     "queue1": {
                         "c5.xlarge": [
-                            "queue1-static-c5-xlarge-1",
-                            "queue1-static-c5-xlarge-2",
-                            "queue1-dynamic-c5-xlarge-201",
+                            "queue1-st-c5-xlarge-1",
+                            "queue1-st-c5-xlarge-2",
+                            "queue1-dy-c5-xlarge-201",
                         ]
                     },
                     "queue2": {
-                        "g3.4xlarge": ["queue2-static-g3-4xlarge-1"],
-                        "g3.8xlarge": ["queue2-dynamic-g3-8xlarge-1"],
-                        "u-6tb1.metal": ["queue2-static-u-6tb1-metal-1"],
+                        "g3.4xlarge": ["queue2-st-g3-4xlarge-1"],
+                        "g3.8xlarge": ["queue2-dy-g3-8xlarge-1"],
+                        "u-6tb1.metal": ["queue2-st-u-6tb1-metal-1"],
                     },
                 },
                 [
-                    "in-valid/queue.name-static-c5-xlarge-2",
-                    "noBrackets-static-c5-xlarge-[1-2]",
+                    "in-valid/queue.name-st-c5-xlarge-2",
+                    "noBrackets-st-c5-xlarge-[1-2]",
                     "queue2-invalidnodetype-c5-xlarge-12",
-                    "queuename-with-dash-and_underscore-static-i3en-metal-2tb-1",
+                    "queuename-with-dash-and_underscore-st-i3en-metal-2tb-1",
                 ],
             ),
         ],

@@ -79,9 +79,9 @@ class SlurmNode:
         """
         Check if the node is static or dynamic.
 
-        Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
+        Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
         """
-        return "static" in self.name
+        return "-st-" in self.name
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -278,7 +278,7 @@ def get_nodes_info(nodes, command_timeout=5):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
-    Sample slurm nodelist notation: queue1-dynamic-c5_xlarge-[1-3],queue2-static-t2_micro-5.
+    Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
     """
     show_node_info_command = (
         f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '
@@ -326,7 +326,7 @@ def _get_partition_nodes(partition_name, command_timeout=5):
     # Which is the same as getting all nodes from scontrol
     nodes = []
     for nodename in all_nodes:
-        if "-static-" in nodename or (nodename not in power_down_nodes and nodename != "n/a"):
+        if "-st-" in nodename or (nodename not in power_down_nodes and nodename != "n/a"):
             nodes.append(nodename)
     return ",".join(nodes)
 
