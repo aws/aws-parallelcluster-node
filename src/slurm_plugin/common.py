@@ -111,6 +111,8 @@ class InstanceManager:
         hosted_zone=None,
         dns_domain=None,
         use_private_hostname=False,
+        master_private_ip=None,
+        master_hostname=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -122,6 +124,8 @@ class InstanceManager:
         self._hosted_zone = hosted_zone
         self._dns_domain = dns_domain
         self._use_private_hostname = use_private_hostname
+        self._master_private_ip = master_private_ip
+        self._master_hostname = master_hostname
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -204,7 +208,14 @@ class InstanceManager:
                 for nodename, instance in nodes.items():
                     # Note: These items will be never removed, but the put_item method
                     # will replace old items if the hostnames are already associated with an old instance_id.
-                    batch_writer.put_item(Item={"Id": nodename, "InstanceId": instance.id})
+                    batch_writer.put_item(
+                        Item={
+                            "Id": nodename,
+                            "InstanceId": instance.id,
+                            "MasterPrivateIp": self._master_private_ip,
+                            "MasterHostname": self._master_hostname,
+                        }
+                    )
 
         logger.info("Database update: COMPLETED")
 

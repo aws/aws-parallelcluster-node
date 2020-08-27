@@ -163,6 +163,8 @@ class ClustermgtdConfig:
         self.region = config.get("clustermgtd", "region")
         self.cluster_name = config.get("clustermgtd", "cluster_name")
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
+        self.master_private_ip = config.get("clustermgtd", "master_private_ip")
+        self.master_hostname = config.get("clustermgtd", "master_hostname")
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -304,6 +306,8 @@ class ClusterManager:
             hosted_zone=config.hosted_zone,
             dns_domain=config.dns_domain,
             use_private_hostname=config.use_private_hostname,
+            master_private_ip=config.master_private_ip,
+            master_hostname=config.master_hostname,
         )
 
     @staticmethod
