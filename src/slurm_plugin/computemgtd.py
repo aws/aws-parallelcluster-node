@@ -71,10 +71,14 @@ class ComputemgtdConfig:
         self._boto3_config = {"retries": {"max_attempts": self._boto3_retry, "mode": "standard"}}
         self.loop_time = config.getint("computemgtd", "loop_time", fallback=self.DEFAULTS.get("loop_time"))
         self.clustermgtd_timeout = config.getint(
-            "computemgtd", "clustermgtd_timeout", fallback=self.DEFAULTS.get("clustermgtd_timeout"),
+            "computemgtd",
+            "clustermgtd_timeout",
+            fallback=self.DEFAULTS.get("clustermgtd_timeout"),
         )
         self.disable_computemgtd_actions = config.getboolean(
-            "computemgtd", "disable_computemgtd_actions", fallback=self.DEFAULTS.get("disable_computemgtd_actions"),
+            "computemgtd",
+            "disable_computemgtd_actions",
+            fallback=self.DEFAULTS.get("disable_computemgtd_actions"),
         )
         self.clustermgtd_heartbeat_file_path = config.get("computemgtd", "clustermgtd_heartbeat_file_path")
         self._slurm_nodename_file = config.get(

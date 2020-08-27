@@ -386,7 +386,12 @@ def test_get_ec2_instances(mocker):
                 )
             ],
         ),
-        ([], False, False, [],),
+        (
+            [],
+            False,
+            False,
+            [],
+        ),
     ],
     ids=["basic", "disable_ec2", "disable_all", "disable_scheduled", "no_unhealthy_instance"],
 )
@@ -514,7 +519,11 @@ def test_fail_ec2_health_check(instance_health_state, current_time, expected_res
     [
         (
             EC2InstanceHealthState(
-                "id-12345", "running", {"Details": [{}], "Status": "ok"}, {"Details": [{}], "Status": "ok"}, [],
+                "id-12345",
+                "running",
+                {"Details": [{}], "Status": "ok"},
+                {"Details": [{}], "Status": "ok"},
+                [],
             ),
             False,
         ),
@@ -561,7 +570,8 @@ def test_handle_health_check(
         "ip-2": SlurmNode("nodename-2", "ip-2", "host-2", "some_states"),
     }
     mock_ec2_health_check = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._fail_ec2_health_check", side_effect=mock_fail_ec2_side_effect,
+        "slurm_plugin.clustermgtd.ClusterManager._fail_ec2_health_check",
+        side_effect=mock_fail_ec2_side_effect,
     )
     mock_scheduled_health_check = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._fail_scheduled_events_check",
@@ -627,7 +637,13 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
             datetime(2020, 1, 1, 0, 0, 29),
             False,
         ),
-        ({"node-1"}, SlurmNode("node-1", "ip-1", "hostname", "IDLE+CLOUD"), {}, datetime(2020, 1, 1, 0, 0, 29), False,),
+        (
+            {"node-1"},
+            SlurmNode("node-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            {},
+            datetime(2020, 1, 1, 0, 0, 29),
+            False,
+        ),
         (
             {"node-1"},
             SlurmNode("node-1", "ip-1", "hostname", "DOWN+CLOUD"),
@@ -671,14 +687,26 @@ def test_is_static_node_configuration_valid(node, expected_result):
 @pytest.mark.parametrize(
     "node, instances_ips_in_cluster, expected_result",
     [
-        (SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), ["ip-2"], False,),
+        (
+            SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            ["ip-2"],
+            False,
+        ),
         (
             SlurmNode("node-dynamic-c5-xlarge-1", "node-dynamic-c5-xlarge-1", "hostname", "IDLE+CLOUD+POWER"),
             ["ip-2"],
             True,
         ),
-        (SlurmNode("node-dynamic-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"), ["ip-2"], False,),
-        (SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"), ["ip-1"], True,),
+        (
+            SlurmNode("node-dynamic-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"),
+            ["ip-2"],
+            False,
+        ),
+        (
+            SlurmNode("node-static-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"),
+            ["ip-1"],
+            True,
+        ),
     ],
     ids=["static_no_backing", "dynamic_power_save", "dynamic_no_backing", "static_valid"],
 )
@@ -1153,7 +1181,13 @@ def test_terminate_orphaned_instances(
                 SlurmNode("some_inactive_node2", "ip", "hostname", "some_state"),
             ],
         ),
-        (False, True, [EC2Instance("id-1", "ip-1", "hostname", "launch_time")], [], [],),
+        (
+            False,
+            True,
+            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            [],
+            [],
+        ),
     ],
     ids=["all_enabled", "disable_all", "disable_health_check", "no_active", "no_node"],
 )
@@ -1639,11 +1673,15 @@ def test_manage_cluster_boto3(
     mocker.patch.object(cluster_manager, "_write_timestamp_to_file", auto_spec=True)
     if mocked_active_nodes is Exception or mocked_active_nodes is Exception:
         mocker.patch.object(
-            cluster_manager, "_get_node_info_from_partition", side_effect=ClusterManager.SchedulerUnavailable,
+            cluster_manager,
+            "_get_node_info_from_partition",
+            side_effect=ClusterManager.SchedulerUnavailable,
         )
     else:
         mocker.patch.object(
-            cluster_manager, "_get_node_info_from_partition", return_value=(mocked_active_nodes, mocked_inactive_nodes),
+            cluster_manager,
+            "_get_node_info_from_partition",
+            return_value=(mocked_active_nodes, mocked_inactive_nodes),
         )
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
@@ -1811,8 +1849,16 @@ class TestComputeFleetStatusManager:
         "get_item_response, fallback, expected_status",
         [
             ({"Item": {"Id": "COMPUTE_FLEET", "Status": "RUNNING"}}, None, ComputeFleetStatus.RUNNING),
-            ({}, ComputeFleetStatus.STOPPED, ComputeFleetStatus.STOPPED,),
-            (Exception, ComputeFleetStatus.STOPPED, ComputeFleetStatus.STOPPED,),
+            (
+                {},
+                ComputeFleetStatus.STOPPED,
+                ComputeFleetStatus.STOPPED,
+            ),
+            (
+                Exception,
+                ComputeFleetStatus.STOPPED,
+                ComputeFleetStatus.STOPPED,
+            ),
         ],
         ids=["success", "empty_response", "exception"],
     )
@@ -1830,7 +1876,10 @@ class TestComputeFleetStatusManager:
     @pytest.mark.parametrize(
         "put_item_response, expected_exception",
         [
-            ({}, None,),
+            (
+                {},
+                None,
+            ),
             (
                 boto3.client("dynamodb", region_name="us-east-1").exceptions.ConditionalCheckFailedException(
                     {"Error": {}}, {}

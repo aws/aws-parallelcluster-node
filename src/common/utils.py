@@ -156,7 +156,13 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
         command = shlex.split(command)
     _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
-            _command, env=_env, preexec_fn=_preexec_fn, timeout=timeout, check=True, encoding="utf-8", shell=shell,
+            _command,
+            env=_env,
+            preexec_fn=_preexec_fn,
+            timeout=timeout,
+            check=True,
+            encoding="utf-8",
+            shell=shell,
         ),
         command,
         env,
