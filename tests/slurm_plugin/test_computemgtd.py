@@ -91,10 +91,22 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
 @pytest.mark.parametrize(
     "mock_node_info, expected_result",
     [
-        ([SlurmNode("nodename-1", "ip-1", "host-1", "DOWN*+CLOUD")], True,),
-        ([SlurmNode("nodename-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")], False,),
-        ([SlurmNode("nodename-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")], True,),
-        (Exception, True,),
+        (
+            [SlurmNode("nodename-1", "ip-1", "host-1", "DOWN*+CLOUD")],
+            True,
+        ),
+        (
+            [SlurmNode("nodename-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")],
+            False,
+        ),
+        (
+            [SlurmNode("nodename-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")],
+            True,
+        ),
+        (
+            Exception,
+            True,
+        ),
     ],
     ids=["node_down", "node_drained_idle", "node_drained_down", "cant_get_node_info"],
 )

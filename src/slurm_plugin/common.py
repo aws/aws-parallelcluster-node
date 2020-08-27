@@ -319,7 +319,9 @@ class InstanceManager:
         for instances in grouper(instance_ids_to_terminate, terminate_batch_size):
             try:
                 # Boto3 clients retries on connection errors only
-                ec2_client.terminate_instances(InstanceIds=list(instances),)
+                ec2_client.terminate_instances(
+                    InstanceIds=list(instances),
+                )
             except ClientError as e:
                 logger.error("Failed when terminating instances %s with error %s", print_with_count(instances), e)
 

@@ -633,7 +633,13 @@ class TestInstanceManager:
                 None,
                 "Empty table name configuration parameter",
             ),
-            ("table_name", ["node-1"], [], None, None,),
+            (
+                "table_name",
+                ["node-1"],
+                [],
+                None,
+                None,
+            ),
             (
                 "table_name",
                 ["node-1"],
@@ -681,7 +687,14 @@ class TestInstanceManager:
         ids=("empty_table", "nothing_stored", "single_store", "multiple_store"),
     )
     def test_store_assigned_hostnames(
-        self, table_name, node_list, slurm_nodes, expected_put_item_calls, expected_message, mocker, instance_manager,
+        self,
+        table_name,
+        node_list,
+        slurm_nodes,
+        expected_put_item_calls,
+        expected_message,
+        mocker,
+        instance_manager,
     ):
         # Mock other methods
         instance_manager._update_dns_hostnames = mocker.MagicMock()
@@ -834,7 +847,14 @@ class TestInstanceManager:
                 True,
             ),
         ],
-        ids=("no_hosted_zone", "no_domain_name", "nothing_stored", "single_store", "multiple_store", "client_error",),
+        ids=(
+            "no_hosted_zone",
+            "no_domain_name",
+            "nothing_stored",
+            "single_store",
+            "multiple_store",
+            "client_error",
+        ),
     )
     def test_update_dns_hostnames(
         self,
