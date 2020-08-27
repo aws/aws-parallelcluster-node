@@ -721,26 +721,26 @@ def test_get_pending_jobs_info(
     [
         (
             (
-                "multiple-dynamic-c5-xlarge-1\n"
+                "multiple-dy-c5-xlarge-1\n"
                 "172.31.10.155\n"
                 "172-31-10-155\n"
                 "MIXED+CLOUD\n"
-                "multiple-dynamic-c5-xlarge-2\n"
+                "multiple-dy-c5-xlarge-2\n"
                 "172.31.7.218\n"
                 "172-31-7-218\n"
                 "IDLE+CLOUD+POWER\n"
-                "multiple-dynamic-c5-xlarge-3\n"
-                "multiple-dynamic-c5-xlarge-3\n"
-                "multiple-dynamic-c5-xlarge-3\n"
+                "multiple-dy-c5-xlarge-3\n"
+                "multiple-dy-c5-xlarge-3\n"
+                "multiple-dy-c5-xlarge-3\n"
                 "IDLE+CLOUD+POWER"
             ),
             [
-                SlurmNode("multiple-dynamic-c5-xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
-                SlurmNode("multiple-dynamic-c5-xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
+                SlurmNode("multiple-dy-c5-xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
+                SlurmNode("multiple-dy-c5-xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
                 SlurmNode(
-                    "multiple-dynamic-c5-xlarge-3",
-                    "multiple-dynamic-c5-xlarge-3",
-                    "multiple-dynamic-c5-xlarge-3",
+                    "multiple-dy-c5-xlarge-3",
+                    "multiple-dy-c5-xlarge-3",
+                    "multiple-dy-c5-xlarge-3",
                     "IDLE+CLOUD+POWER",
                 ),
             ],
@@ -1019,8 +1019,8 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue-_name-static-t2.mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
-        (SlurmNode("queuename-dynamic-t2.micro-1", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("queue-_name-st-t2.mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queuename-dy-t2.micro-1", "nodeip", "nodehostname", "somestate"), False),
     ],
 )
 def test_slurm_node_is_static(node, expected_output):
@@ -1030,8 +1030,8 @@ def test_slurm_node_is_static(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue-_name-static-t2.mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
-        (SlurmNode("queuename-dynamic-t2.micro-1", "queuename-dynamic-t2.micro-1", "nodehostname", "somestate"), False),
+        (SlurmNode("queue-_name-st-t2.mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queuename-dy-t2.micro-1", "queuename-dy-t2.micro-1", "nodehostname", "somestate"), False),
     ],
 )
 def test_slurm_node_is_nodeaddr_set(node, expected_output):

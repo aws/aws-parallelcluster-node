@@ -95,9 +95,9 @@ class InstanceManager:
         r"""
         Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
 
-        Valid NodeName format: {queue-name}-{static/dynamic}-{instance-type}-{number}
-        And match: ^([a-z0-9\-]+)-(static|dynamic)-([a-z0-9-]+-[a-z0-9-]+)-\d+$
-        Sample NodeName: queue-1-static-c5-xlarge-2
+        Valid NodeName format: {queue-name}-{st/dy}-{instance-type}-{number}
+        And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+-[a-z0-9-]+)-\d+$
+        Sample NodeName: queue-1-st-c5-xlarge-2
         """
 
         pass
@@ -256,8 +256,8 @@ class InstanceManager:
         """
         Parse out which launch configurations (queue/instance type) are requested by slurm nodes from NodeName.
 
-        Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
-        Sample NodeName: queue1-static-c5_xlarge-2
+        Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
+        Sample NodeName: queue1-st-c5_xlarge-2
         """
         instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
         for node in node_list:
@@ -298,7 +298,7 @@ class InstanceManager:
 
     def _parse_nodename(self, nodename):
         """Parse queue_name and instance_type from nodename."""
-        nodename_capture = re.match(r"^([a-z0-9\-]+)-(static|dynamic)-([a-z0-9-]+-[a-z0-9-]+)-\d+$", nodename)
+        nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+-[a-z0-9-]+)-\d+$", nodename)
         if not nodename_capture:
             raise self.InvalidNodenameError
 
