@@ -32,40 +32,46 @@ from tests.common import read_text
 
 
 @pytest.mark.parametrize(
-    ("nodename", "expected_queue", "expected_node_type", "expected_instance_type", "expected_failure"),
+    (
+        "nodename",
+        "expected_queue",
+        "expected_node_type",
+        "expected_instance_name",
+        "expected_failure",
+    ),
     [
-        ("queue1-st-c5-xlarge-1", "queue1", "st", "c5.xlarge", False),
-        ("queue-1-st-c5-xlarge-1", "queue-1", "st", "c5.xlarge", False),
-        ("queue1-st-dy-c5-xlarge-1", "queue1-st", "dy", "c5.xlarge", False),
-        ("queue1-dy-st-c5-xlarge-1", "queue1-dy", "st", "c5.xlarge", False),
-        ("queue1-dy-dy-dy-dy-c5-xlarge-1", "queue1-dy-dy-dy", "dy", "c5.xlarge", False),
-        # ("queue1-st-i3enmetal2tb-1", "queue1", "st", "i3en.metal-2tb", False), Not supported yet
-        ("queue1-st-u-6tb1-metal-1", "queue1", "st", "u-6tb1.metal", False),
+        ("queue1-st-c5xlarge-1", "queue1", "st", "c5xlarge", False),
+        ("queue-1-st-c5xlarge-1", "queue-1", "st", "c5xlarge", False),
+        ("queue1-st-dy-c5xlarge-1", "queue1-st", "dy", "c5xlarge", False),
+        ("queue1-dy-st-c5xlarge-1", "queue1-dy", "st", "c5xlarge", False),
+        ("queue1-dy-dy-dy-dy-c5xlarge-1", "queue1-dy-dy-dy", "dy", "c5xlarge", False),
+        ("queue1-st-i3enmetal2tb-1", "queue1", "st", "i3enmetal2tb", False),
+        ("queue1-st-u6tb1metal-1", "queue1", "st", "u6tb1metal", False),
         ("queue1-st-c5.xlarge-1", None, None, None, True),
         ("queue_1-st-c5-xlarge-1", None, None, None, True),
     ],
 )
-def test_parse_nodename(nodename, expected_queue, expected_node_type, expected_instance_type, expected_failure):
+def test_parse_nodename(nodename, expected_queue, expected_node_type, expected_instance_name, expected_failure):
     if expected_failure:
         with pytest.raises(Exception):
             parse_nodename(nodename)
     else:
-        queue_name, node_type, instance_type = parse_nodename(nodename)
+        queue_name, node_type, instance_name = parse_nodename(nodename)
         assert_that(expected_queue).is_equal_to(queue_name)
         assert_that(expected_node_type).is_equal_to(node_type)
-        assert_that(expected_instance_type).is_equal_to(instance_type)
+        assert_that(expected_instance_name).is_equal_to(instance_name)
 
 
 @pytest.mark.parametrize(
     ("nodename", "expected_is_static"),
     [
-        ("queue1-st-c5-xlarge-1", True),
-        ("queue-1-st-c5-xlarge-1", True),
-        ("queue1-st-dy-c5-xlarge-1", False),
-        ("queue1-dy-st-c5-xlarge-1", True),
-        ("queue1-dy-dy-dy-dy-c5-xlarge-1", False),
-        # ("queue1-st-i3en-metal2tb-1", True), Not supported yet
-        ("queue1-st-u-6tb1-metal-1", True),
+        ("queue1-st-c5xlarge-1", True),
+        ("queue-1-st-c5xlarge-1", True),
+        ("queue1-st-dy-c5xlarge-1", False),
+        ("queue1-dy-st-c5xlarge-1", True),
+        ("queue1-dy-dy-dy-dy-c5xlarge-1", False),
+        ("queue1-st-i3enmetal2tb-1", True),
+        ("queue1-st-u6tb1metal-1", True),
     ],
 )
 def test_is_static_node(nodename, expected_is_static):
@@ -764,33 +770,33 @@ def test_get_pending_jobs_info(
     [
         (
             (
-                "multiple-dy-c5-xlarge-1\n"
+                "multiple-dy-c5xlarge-1\n"
                 "172.31.10.155\n"
                 "172-31-10-155\n"
                 "MIXED+CLOUD\n"
-                "multiple-dy-c5-xlarge-2\n"
+                "multiple-dy-c5xlarge-2\n"
                 "172.31.7.218\n"
                 "172-31-7-218\n"
                 "IDLE+CLOUD+POWER\n"
-                "multiple-dy-c5-xlarge-3\n"
-                "multiple-dy-c5-xlarge-3\n"
-                "multiple-dy-c5-xlarge-3\n"
+                "multiple-dy-c5xlarge-3\n"
+                "multiple-dy-c5xlarge-3\n"
+                "multiple-dy-c5xlarge-3\n"
                 "IDLE+CLOUD+POWER"
             ),
             [
-                SlurmNode("multiple-dy-c5-xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
-                SlurmNode("multiple-dy-c5-xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
+                SlurmNode("multiple-dy-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
+                SlurmNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
                 SlurmNode(
-                    "multiple-dy-c5-xlarge-3",
-                    "multiple-dy-c5-xlarge-3",
-                    "multiple-dy-c5-xlarge-3",
+                    "multiple-dy-c5xlarge-3",
+                    "multiple-dy-c5xlarge-3",
+                    "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
                 ),
             ],
         )
     ],
 )
-def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
+def test_parse_nodes_info(node_info, expected_parsed_nodes_output, mocker):
     assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
 
 
@@ -798,73 +804,73 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
     "nodenames, nodeaddrs, hostnames, batch_size, expected_result",
     [
         (
-            "queue1-st-c5-xlarge-1,queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3",
+            "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
             None,
             None,
             2,
-            [("queue1-st-c5-xlarge-1,queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3", None, None)],
+            [("queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
         ),
         (
             # Only split on commas after bucket
-            # So nodename like queue1-st-c5-xlarge-[1,3] can be processed safely
-            "queue1-st-c5-xlarge-[1-2],queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3,queue1-st-c5-xlarge-[4,6]",
+            # So nodename like queue1-st-c5xlarge-[1,3] can be processed safely
+            "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-3,queue1-st-c5xlarge-[4,6]",
             "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]",
             None,
             2,
             [
                 (
-                    "queue1-st-c5-xlarge-[1-2],queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3,queue1-st-c5-xlarge-[4,6]",
+                    "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-3,queue1-st-c5xlarge-[4,6]",
                     "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]",
                     None,
                 )
             ],
         ),
         (
-            "queue1-st-c5-xlarge-[1-2],queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-[3],queue1-st-c5-xlarge-[4,6]",
+            "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-[3],queue1-st-c5xlarge-[4,6]",
             "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3],nodeaddr-[4,6]",
             "nodehostname-[1-2],nodehostname-2,nodehostname-[3],nodehostname-[4,6]",
             2,
             [
                 (
-                    "queue1-st-c5-xlarge-[1-2],queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-[3]",
+                    "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-[3]",
                     "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3]",
                     "nodehostname-[1-2],nodehostname-2,nodehostname-[3]",
                 ),
-                ("queue1-st-c5-xlarge-[4,6]", "nodeaddr-[4,6]", "nodehostname-[4,6]"),
+                ("queue1-st-c5xlarge-[4,6]", "nodeaddr-[4,6]", "nodehostname-[4,6]"),
             ],
         ),
-        ("queue1-st-c5-xlarge-1,queue1-st-c5-xlarge-[2],queue1-st-c5-xlarge-3", ["nodeaddr-1"], None, 2, ValueError),
+        ("queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3", ["nodeaddr-1"], None, 2, ValueError),
         (
-            "queue1-st-c5-xlarge-1,queue1-st-c5-xlarge-[2],queue1-st-c5-xlarge-3",
+            "queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3",
             None,
             ["nodehostname-1"],
             2,
             ValueError,
         ),
         (
-            "queue1-st-c5-xlarge-1,queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3",
+            "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
             ["nodeaddr-1", "nodeaddr-2"],
             "nodehostname-1,nodehostname-2,nodehostname-3",
             2,
             ValueError,
         ),
         (
-            ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-3"],
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             "nodeaddr-[1],nodeaddr-[2],nodeaddr-3",
             ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
             2,
             [
                 (
-                    "queue1-st-c5-xlarge-1,queue1-st-c5-xlarge-2",
+                    "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2",
                     "nodeaddr-[1],nodeaddr-[2]",
                     "nodehostname-1,nodehostname-2",
                 ),
-                ("queue1-st-c5-xlarge-3", "nodeaddr-3", "nodehostname-3"),
+                ("queue1-st-c5xlarge-3", "nodeaddr-3", "nodehostname-3"),
             ],
         ),
         (
             # Test with strings of same length but different number of node entries
-            "queue1-st-c5-xlarge-[1-fillerr],queue1-st-c5-xlarge-[2-fillerr],queue1-st-c5-xlarge-[3-filler]",
+            "queue1-st-c5xlarge-[1-fillerr],queue1-st-c5xlarge-[2-fillerr],queue1-st-c5xlarge-[3-filler]",
             "nodeaddr-1,nodeaddr-2,nodeaddr-3",
             ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
             2,
@@ -1012,19 +1018,19 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
     "batch_node_info, state, reason, raise_on_error, run_command_calls",
     [
         (
-            [("queue1-st-c5-xlarge-1", None, None), ("queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3", None, None)],
+            [("queue1-st-c5xlarge-1", None, None), ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
             None,
             None,
             False,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5-xlarge-1",
+                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-1",
                     raise_on_error=False,
                     timeout=60,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3",
+                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
                     raise_on_error=False,
                     timeout=60,
                     shell=True,
@@ -1033,8 +1039,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5-xlarge-1", None, "hostname-1"),
-                ("queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3", "addr-2,addr-3", None),
+                ("queue1-st-c5xlarge-1", None, "hostname-1"),
+                ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", "addr-2,addr-3", None),
             ],
             "power_down",
             None,
@@ -1042,14 +1048,14 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             [
                 call(
                     "/opt/slurm/bin/scontrol update state=power_down "
-                    "nodename=queue1-st-c5-xlarge-1 nodehostname=hostname-1",
+                    "nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1",
                     raise_on_error=True,
                     timeout=60,
                     shell=True,
                 ),
                 call(
                     "/opt/slurm/bin/scontrol update state=power_down "
-                    "nodename=queue1-st-c5-xlarge-2,queue1-st-c5-xlarge-3 nodeaddr=addr-2,addr-3",
+                    "nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3 nodeaddr=addr-2,addr-3",
                     raise_on_error=True,
                     timeout=60,
                     shell=True,
@@ -1058,8 +1064,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5-xlarge-1", None, "hostname-1"),
-                ("queue1-st-c5-xlarge-[3-6]", "addr-[3-6]", "hostname-[3-6]"),
+                ("queue1-st-c5xlarge-1", None, "hostname-1"),
+                ("queue1-st-c5xlarge-[3-6]", "addr-[3-6]", "hostname-[3-6]"),
             ],
             "down",
             "debugging",
@@ -1068,7 +1074,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 call(
                     (
                         '/opt/slurm/bin/scontrol update state=down reason="debugging"'
-                        + " nodename=queue1-st-c5-xlarge-1 nodehostname=hostname-1"
+                        + " nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1"
                     ),
                     raise_on_error=True,
                     timeout=60,
@@ -1077,7 +1083,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 call(
                     (
                         '/opt/slurm/bin/scontrol update state=down reason="debugging"'
-                        + " nodename=queue1-st-c5-xlarge-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
+                        + " nodename=queue1-st-c5xlarge-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
                     ),
                     raise_on_error=True,
                     timeout=60,
@@ -1097,10 +1103,10 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue-name-st-t2-mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
-        (SlurmNode("queue-name-st-dy-t2-mic-ro-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queuename-dy-t2-micro-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queuename-dy-dy-dy-st-t2-micro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queue-name-st-dy-t2micro-1", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("queuename-dy-t2micro-1", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("queuename-dy-dy-dy-st-t2micro-1", "nodeip", "nodehostname", "somestate"), True),
     ],
 )
 def test_slurm_node_is_static(node, expected_output):
@@ -1110,8 +1116,8 @@ def test_slurm_node_is_static(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue-name-st-t2-mic-ro-1", "nodeip", "nodehostname", "somestate"), True),
-        (SlurmNode("queuename-dy-t2-micro-1", "queuename-dy-t2-micro-1", "nodehostname", "somestate"), False),
+        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queuename-dy-t2micro-1", "queuename-dy-t2micro-1", "nodehostname", "somestate"), False),
     ],
 )
 def test_slurm_node_is_nodeaddr_set(node, expected_output):
@@ -1121,12 +1127,12 @@ def test_slurm_node_is_nodeaddr_set(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), True),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), True),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN"), True),
     ],
 )
 def test_slurm_node_has_job(node, expected_output):
@@ -1136,11 +1142,11 @@ def test_slurm_node_has_job(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN"), True),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN"), True),
     ],
 )
 def test_slurm_node_is_drained(node, expected_output):
@@ -1150,11 +1156,11 @@ def test_slurm_node_is_drained(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN"), True),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD"), True),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER"), True),
     ],
 )
 def test_slurm_node_is_down(node, expected_output):
@@ -1164,11 +1170,11 @@ def test_slurm_node_is_down(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER"), True),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD"), True),
     ],
 )
 def test_slurm_node_is_up(node, expected_output):

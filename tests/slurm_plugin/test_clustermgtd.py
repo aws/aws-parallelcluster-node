@@ -181,23 +181,23 @@ def test_set_config(initialize_instance_manager_mock, initialize_compute_fleet_s
             ],
             [
                 [
-                    SlurmNode("queue1-st-c5-xlarge-1", "nodeaddr", "nodeaddr", "DOWN"),
-                    SlurmNode("queue1-st-c5-xlarge-2", "nodeaddr", "nodeaddr", "IDLE"),
+                    SlurmNode("queue1-st-c5xlarge-1", "nodeaddr", "nodeaddr", "DOWN"),
+                    SlurmNode("queue1-st-c5xlarge-2", "nodeaddr", "nodeaddr", "IDLE"),
                 ],
                 [
-                    SlurmNode("queue1-st-c5-xlarge-3", "nodeaddr", "nodeaddr", "IDLE"),
-                    SlurmNode("queue1-st-c5-xlarge-4", "nodeaddr", "nodeaddr", "IDLE"),
+                    SlurmNode("queue1-st-c5xlarge-3", "nodeaddr", "nodeaddr", "IDLE"),
+                    SlurmNode("queue1-st-c5xlarge-4", "nodeaddr", "nodeaddr", "IDLE"),
                 ],
-                [SlurmNode("queue1-st-c5-xlarge-5", "nodeaddr", "nodeaddr", "DRAIN")],
+                [SlurmNode("queue1-st-c5xlarge-5", "nodeaddr", "nodeaddr", "DRAIN")],
             ],
             [
-                SlurmNode("queue1-st-c5-xlarge-3", "nodeaddr", "nodeaddr", "IDLE"),
-                SlurmNode("queue1-st-c5-xlarge-4", "nodeaddr", "nodeaddr", "IDLE"),
+                SlurmNode("queue1-st-c5xlarge-3", "nodeaddr", "nodeaddr", "IDLE"),
+                SlurmNode("queue1-st-c5xlarge-4", "nodeaddr", "nodeaddr", "IDLE"),
             ],
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "nodeaddr", "nodeaddr", "DOWN"),
-                SlurmNode("queue1-st-c5-xlarge-2", "nodeaddr", "nodeaddr", "IDLE"),
-                SlurmNode("queue1-st-c5-xlarge-5", "nodeaddr", "nodeaddr", "DRAIN"),
+                SlurmNode("queue1-st-c5xlarge-1", "nodeaddr", "nodeaddr", "DOWN"),
+                SlurmNode("queue1-st-c5xlarge-2", "nodeaddr", "nodeaddr", "IDLE"),
+                SlurmNode("queue1-st-c5xlarge-5", "nodeaddr", "nodeaddr", "DRAIN"),
             ],
         ),
     ],
@@ -278,7 +278,7 @@ def test_clean_up_inactive_parititon(
     mocker,
 ):
     # Test setup
-    inactive_nodes = [SlurmNode("queue1-st-c5-xlarge-3", "ip-3", "hostname", "some_state")]
+    inactive_nodes = [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")]
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
@@ -295,7 +295,7 @@ def test_clean_up_inactive_parititon(
     result = cluster_manager._clean_up_inactive_partition(inactive_nodes, mock_cluster_instances)
     mock_instance_manager.delete_instances.assert_called_with(mock_backing_instances, terminate_batch_size=4)
     if delete_instances_side_effect is not Exception:
-        mock_reset_node.assert_called_with(["queue1-st-c5-xlarge-3"], raise_on_error=False)
+        mock_reset_node.assert_called_with(["queue1-st-c5xlarge-3"], raise_on_error=False)
     assert_that(result).is_equal_to(expected_result)
 
 
@@ -313,6 +313,7 @@ def test_get_ec2_instances(mocker):
         dns_domain="dns.domain",
         use_private_hostname=False,
     )
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
     # Run test
@@ -425,11 +426,13 @@ def test_perform_health_check_actions(
         use_private_hostname=False,
     )
     # Mock functions
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_unhealthy_cluster_instance_status = mocker.MagicMock(
         return_value=mock_instance_health_states
     )
     cluster_manager._handle_health_check = mocker.MagicMock().patch()
+
     # Run test
     cluster_manager._perform_health_check_actions(mock_cluster_instances, ip_to_slurm_node_map)
     # Check function calls
@@ -550,8 +553,8 @@ def test_fail_scheduled_events_health_check(instance_health_state, expected_resu
 @pytest.mark.parametrize(
     "health_check_type, mock_fail_ec2_side_effect, mock_fail_scheduled_events_side_effect, expected_failed_nodes",
     [
-        (ClusterManager.HealthCheckTypes.scheduled_event, [True, False], [False, True], ["queue1-st-c5-xlarge-2"]),
-        (ClusterManager.HealthCheckTypes.ec2_health, [True, False], [False, True], ["queue1-st-c5-xlarge-1"]),
+        (ClusterManager.HealthCheckTypes.scheduled_event, [True, False], [False, True], ["queue1-st-c5xlarge-2"]),
+        (ClusterManager.HealthCheckTypes.ec2_health, [True, False], [False, True], ["queue1-st-c5xlarge-1"]),
         (ClusterManager.HealthCheckTypes.ec2_health, [False, False], [False, True], []),
     ],
     ids=["scheduled_event", "ec2_health", "all_healthy"],
@@ -569,8 +572,8 @@ def test_handle_health_check(
         "id-2": EC2Instance("id-2", "ip-2", "host-2", "some_launch_time"),
     }
     ip_to_slurm_node_map = {
-        "ip-1": SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "host-1", "some_states"),
-        "ip-2": SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "host-2", "some_states"),
+        "ip-1": SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "some_states"),
+        "ip-2": SlurmNode("queue1-st-c5xlarge-2", "ip-2", "host-2", "some_states"),
     }
     mock_ec2_health_check = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._fail_ec2_health_check",
@@ -611,13 +614,13 @@ def test_handle_health_check(
     "current_replacing_nodes, slurm_nodes, expected_replacing_nodes",
     [
         (
-            {"queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-4"},
+            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-4"},
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-3", "ip", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD"),
             ],
-            {"queue1-st-c5-xlarge-2"},
+            {"queue1-st-c5xlarge-2"},
         )
     ],
     ids=["mixed"],
@@ -635,28 +638,28 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
     [
         (
             set(),
-            SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
             {"ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0))},
             datetime(2020, 1, 1, 0, 0, 29),
             False,
         ),
         (
-            {"queue1-st-c5-xlarge-1"},
-            SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            {"queue1-st-c5xlarge-1"},
+            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
             {},
             datetime(2020, 1, 1, 0, 0, 29),
             False,
         ),
         (
-            {"queue1-st-c5-xlarge-1"},
-            SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
+            {"queue1-st-c5xlarge-1"},
+            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
             {"ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0))},
             datetime(2020, 1, 1, 0, 0, 29),
             True,
         ),
         (
-            {"queue1-st-c5-xlarge-1"},
-            SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            {"queue1-st-c5xlarge-1"},
+            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
             {"ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0))},
             datetime(2020, 1, 1, 0, 0, 30),
             False,
@@ -678,8 +681,8 @@ def test_is_node_being_replaced(
 @pytest.mark.parametrize(
     "node, expected_result",
     [
-        (SlurmNode("queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-1", "hostname", "IDLE+CLOUD"), False),
-        (SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"), True),
     ],
     ids=["static_addr_not_set", "static_valid"],
 )
@@ -691,22 +694,22 @@ def test_is_static_node_configuration_valid(node, expected_result):
     "node, instances_ips_in_cluster, expected_result",
     [
         (
-            SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
             ["ip-2"],
             False,
         ),
         (
-            SlurmNode("node-dy-c5-xlarge-1", "node-dy-c5-xlarge-1", "hostname", "IDLE+CLOUD+POWER"),
+            SlurmNode("node-dy-c5xlarge-1", "node-dy-c5xlarge-1", "hostname", "IDLE+CLOUD+POWER"),
             ["ip-2"],
             True,
         ),
         (
-            SlurmNode("node-dy-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"),
+            SlurmNode("node-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"),
             ["ip-2"],
             False,
         ),
         (
-            SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"),
+            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER"),
             ["ip-1"],
             True,
         ),
@@ -721,43 +724,43 @@ def test_is_backing_instance_valid(node, instances_ips_in_cluster, expected_resu
     "node, mock_sync_config, mock_is_node_being_replaced, expected_result",
     [
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "MIXED+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "MIXED+CLOUD"),
             SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
             None,
             True,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN"),
             SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
             False,
             False,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN"),
             SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
             True,
             True,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN"),
             SimpleNamespace(terminate_drain_nodes=False, terminate_down_nodes=True),
             False,
             True,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "DOWN+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD"),
             SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
             False,
             False,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "DOWN+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD"),
             SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
             True,
             True,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "some_ip", "hostname", "DOWN+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD"),
             SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=False),
             False,
             True,
@@ -786,7 +789,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
     "node, private_ip_to_instance_map, instance_ips_in_cluster, expected_result",
     [
         (
-            SlurmNode("queue-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -795,7 +798,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             True,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "queue-st-c5-xlarge-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "queue-st-c5xlarge-1", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -804,7 +807,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             False,
         ),
         (
-            SlurmNode("queue-dy-c5-xlarge-1", "queue-dy-c5-xlarge-1", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -813,7 +816,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             True,
         ),
         (
-            SlurmNode("queue-dy-c5-xlarge-1", "ip-3", "hostname", "IDLE+CLOUD"),
+            SlurmNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -822,7 +825,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
             False,
         ),
         (
-            SlurmNode("queue-st-c5-xlarge-1", "ip-2", "hostname", "DOWN+CLOUD"),
+            SlurmNode("queue-st-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD"),
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
@@ -845,11 +848,11 @@ def test_is_node_healthy(node, private_ip_to_instance_map, instance_ips_in_clust
     [
         (
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-1", "hostname", "IDLE+CLOUD"),
             ],
             ["id-1", "id-2"],
-            ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2"],
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
         )
     ],
     ids=["basic"],
@@ -884,11 +887,11 @@ def test_handle_unhealthy_dynamic_nodes(
     ),
     [
         (
-            {"current-queue1-st-c5-xlarge-6"},
+            {"current-queue1-st-c5xlarge-6"},
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
@@ -900,20 +903,20 @@ def test_handle_unhealthy_dynamic_nodes(
                 EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
             ],
             {
-                "current-queue1-st-c5-xlarge-6",
-                "queue1-st-c5-xlarge-1",
-                "queue1-st-c5-xlarge-2",
-                "queue1-st-c5-xlarge-3",
+                "current-queue1-st-c5xlarge-6",
+                "queue1-st-c5xlarge-1",
+                "queue1-st-c5xlarge-2",
+                "queue1-st-c5xlarge-3",
             },
             list({"id-1", "id-2"}),
-            ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-3"],
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
         ),
         (
-            {"current-queue1-st-c5-xlarge-6"},
+            {"current-queue1-st-c5xlarge-6"},
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             {
                 "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
@@ -925,20 +928,20 @@ def test_handle_unhealthy_dynamic_nodes(
                 EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
             ],
             {
-                "current-queue1-st-c5-xlarge-6",
-                "queue1-st-c5-xlarge-1",
-                "queue1-st-c5-xlarge-2",
-                "queue1-st-c5-xlarge-3",
+                "current-queue1-st-c5xlarge-6",
+                "queue1-st-c5xlarge-1",
+                "queue1-st-c5xlarge-2",
+                "queue1-st-c5xlarge-3",
             },
             [],
-            ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-3"],
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
         ),
         (
-            {"current-queue1-st-c5-xlarge-6"},
+            {"current-queue1-st-c5xlarge-6"},
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue1-st-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             {
                 "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
@@ -948,9 +951,9 @@ def test_handle_unhealthy_dynamic_nodes(
                 EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                 EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
             ],
-            {"current-queue1-st-c5-xlarge-6", "queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2"},
+            {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
             [],
-            ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-3"],
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
         ),
     ],
     ids=["basic", "no_associated_instances", "partial_launch"],
@@ -983,6 +986,7 @@ def test_handle_unhealthy_static_nodes(
         dns_domain="dns.domain",
         use_private_hostname=False,
     )
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
 
@@ -991,7 +995,7 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._instance_manager._parse_requested_instances = mocker.MagicMock(
         return_value={
             "some_queue": {
-                "some_instance_type": ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-3"]
+                "some_instance_type": ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"]
             }
         }
     )
@@ -1024,10 +1028,10 @@ def test_handle_unhealthy_static_nodes(
     [
         (
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-3", "ip-3", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-999", "ip-1", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-999", "ip-1", "hostname", "some_state"),
             ],
             {
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
@@ -1051,19 +1055,19 @@ def test_get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map, expec
         (
             {"ip-1", EC2Instance("id-1", "ip-1", "hostname", "launch_time")},
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state"),
             ],
-            (["queue1-st-c5-xlarge-1"], ["queue1-st-c5-xlarge-2"]),
+            (["queue1-st-c5xlarge-1"], ["queue1-st-c5xlarge-2"]),
         ),
         (
             {"ip-1", EC2Instance("id-1", "ip-1", "hostname", "launch_time")},
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip-2", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state"),
             ],
-            (["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-1-repetitive-ip"], ["queue1-st-c5-xlarge-2"]),
+            (["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1"], ["queue1-st-c5xlarge-2"]),
         ),
     ],
     ids=["basic", "repetitive_ip"],
@@ -1140,6 +1144,7 @@ def test_terminate_orphaned_instances(
         dns_domain="dns.domain",
         use_private_hostname=False,
     )
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
@@ -1163,8 +1168,8 @@ def test_terminate_orphaned_instances(
                 EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
             ],
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state"),
             ],
             [],
         ),
@@ -1173,8 +1178,8 @@ def test_terminate_orphaned_instances(
             False,
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state"),
             ],
             [],
         ),
@@ -1183,8 +1188,8 @@ def test_terminate_orphaned_instances(
             True,
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [
-                SlurmNode("queue1-st-c5-xlarge-1", "ip", "hostname", "some_state"),
-                SlurmNode("queue1-st-c5-xlarge-2", "ip", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state"),
             ],
             [],
         ),
@@ -1194,8 +1199,8 @@ def test_terminate_orphaned_instances(
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [],
             [
-                SlurmNode("inactive-queue1-st-c5-xlarge-1", "ip", "hostname", "some_state"),
-                SlurmNode("inactive-queue1-st-c5-xlarge-2", "ip", "hostname", "some_state"),
+                SlurmNode("inactive-queue1-st-c5xlarge-1", "ip", "hostname", "some_state"),
+                SlurmNode("inactive-queue1-st-c5xlarge-2", "ip", "hostname", "some_state"),
             ],
         ),
         (
@@ -1307,15 +1312,15 @@ def test_manage_cluster(
             "default.conf",
             [
                 # This node fail scheduler state check and corresponding instance will be terminated and replaced
-                SlurmNode("queue-st-c5-xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN"),
+                SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN"),
                 # This node fail scheduler state check and node will be power_down
-                SlurmNode("queue-dy-c5-xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
                 # This node is good and should not be touched by clustermgtd
-                SlurmNode("queue-dy-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
-                SlurmNode("queue-st-c5-xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1461,13 +1466,13 @@ def test_manage_cluster(
             # failures: All failure tolerant module will have an exception, but the program should not crash
             "default.conf",
             [
-                SlurmNode("queue-st-c5-xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
-                SlurmNode("queue-st-c5-xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1616,7 +1621,7 @@ def test_manage_cluster(
                 r"Failed when performing health check action with exception",
                 r"Failed when terminating instances \(x1\) \['i-2'\]",
                 r"Failed when terminating instances \(x1\) \['i-1'\]",
-                r"Encountered exception when launching instances for nodes \(x1\) \['queue-st-c5.xlarge-1'\]",
+                r"Encountered exception when launching instances for nodes \(x1\) \['queue-st-c5xlarge-1'\]",
                 r"Failed when terminating instances \(x1\) \['i-999'\]",
             ],
         ),
@@ -1624,13 +1629,13 @@ def test_manage_cluster(
             # critical_failure_1: _get_ec2_instances will have an exception, but the program should not crash
             "default.conf",
             [
-                SlurmNode("queue-st-c5-xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD"),
             ],
             [
-                SlurmNode("queue-st-c5-xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
-                SlurmNode("queue-dy-c5-xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
+                SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1683,6 +1688,7 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     sync_config = ClustermgtdConfig(test_datadir / config_file)
     cluster_manager = ClusterManager(sync_config)
     dynamodb_table_mock = mocker.patch.object(cluster_manager._compute_fleet_status_manager, "_table")
@@ -1787,6 +1793,7 @@ def test_manage_compute_fleet_status_transitions(
         dns_domain="dns.domain",
         use_private_hostname=False,
     )
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(config)
     mocker.patch("subprocess.run", side_effect=None if partitions_updated_successfully else Exception)
     update_all_partitions_spy = mocker.patch(
@@ -1838,6 +1845,7 @@ def test_manage_compute_fleet_status_transitions_concurrency(mocker, caplog):
         dns_domain="dns.domain",
         use_private_hostname=False,
     )
+    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(config)
     mocker.patch("slurm_plugin.clustermgtd.update_all_partitions")
     compute_fleet_status_manager_mock = mocker.patch.object(

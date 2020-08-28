@@ -19,7 +19,12 @@ from datetime import timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from common.schedulers.slurm_commands import InvalidNodenameError, parse_nodename, update_nodes
+from common.schedulers.slurm_commands import (
+    InvalidNodenameError,
+    parse_nodename,
+    retrieve_instance_type_mapping,
+    update_nodes,
+)
 from common.utils import grouper
 
 CONFIG_FILE_DIR = "/etc/parallelcluster/slurm_plugin"
@@ -117,6 +122,7 @@ class InstanceManager:
         self._use_private_hostname = use_private_hostname
         self._master_private_ip = master_private_ip
         self._master_hostname = master_hostname
+        self._instance_name_type_mapping = retrieve_instance_type_mapping()
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -253,9 +259,10 @@ class InstanceManager:
         instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
         for node in node_list:
             try:
-                queue_name, node_type, instance_type = parse_nodename(node)
+                queue_name, node_type, instance_name = parse_nodename(node)
+                instance_type = self._instance_name_type_mapping.get(instance_name)
                 instances_to_launch[queue_name][instance_type].append(node)
-            except InvalidNodenameError:
+            except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
                 self.failed_nodes.append(node)
         logger.debug("Launch configuration requested by nodes = %s", instances_to_launch)
