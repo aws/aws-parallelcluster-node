@@ -11,8 +11,11 @@
 
 
 import collections
+import errno
+import json
 import logging
 import math
+import os
 import re
 from enum import Enum
 from textwrap import wrap
@@ -49,6 +52,8 @@ _SQUEUE_FIELDS = [
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SCONTROL = "/opt/slurm/bin/scontrol"
 SINFO = "/opt/slurm/bin/sinfo"
+INSTANCE_NAME_TYPE_MAPPINGS_FILE = "/opt/slurm/etc/instance_name_type_mappings.json"
+
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
 
 
@@ -124,39 +129,48 @@ class InvalidNodenameError(ValueError):
     r"""
     Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
 
-    Valid NodeName format: {queue-name}-{st/dy}-{instance-type}-{number}
-    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+-[a-z0-9-]+)-\d+$
-    Sample NodeName: queue-1-st-c5-xlarge-2
+    Valid NodeName format: {queue-name}-{st/dy}-{instancetype}-{number}
+    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+)-\d+$
+    Sample NodeName: queue-1-st-c5xlarge-2
     """
 
     pass
 
 
 def parse_nodename(nodename):
-    """Parse queue_name, node_type (st/dy) and instance_type from nodename."""
-    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+-[a-z0-9-]+)-\d+$", nodename)
+    """Parse queue_name, node_type (st vs dy) and instance_type from nodename."""
+    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9]+)-\d+$", nodename)
     if not nodename_capture:
         raise InvalidNodenameError
 
     queue_name, node_type, instance_name = nodename_capture.groups()
-    # In the hostname we're using the "_" in the instance_type to avoid conflicts with subdomain
-    # We have to replace the "-" with "." to have a real instance_type value.
-    # FIXME it doesn't support instance type like: i3en.metal-2tb
-    size_separator_index = instance_name.rfind("-")
-    # fmt: off
-    real_instance_type = instance_name[:size_separator_index] + "." + instance_name[size_separator_index + 1:]
-    # fmt: on
-    return queue_name, node_type, real_instance_type
+    return queue_name, node_type, instance_name
 
 
 def is_static_node(nodename):
     """
     Check if the node is static or dynamic.
 
-    Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
+    Valid NodeName format: {queue_name}-{st/dy}-{instancetype}-{number}
     """
     _, node_type, _ = parse_nodename(nodename)
     return "st" == node_type
+
+
+def retrieve_instance_type_mapping():
+    """Retrieve instance type mapping file content."""
+    if os.path.isfile(INSTANCE_NAME_TYPE_MAPPINGS_FILE):
+        try:
+            with open(INSTANCE_NAME_TYPE_MAPPINGS_FILE) as mapping_file:
+                return json.loads(mapping_file.read())
+        except Exception as e:
+            logging.error(
+                "Unable to get instance_type mapping from '%s'. Failed with exception: %s",
+                INSTANCE_NAME_TYPE_MAPPINGS_FILE,
+                e,
+            )
+    else:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), INSTANCE_NAME_TYPE_MAPPINGS_FILE)
 
 
 def update_nodes(

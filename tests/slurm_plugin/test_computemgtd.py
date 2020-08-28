@@ -92,15 +92,15 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
     "mock_node_info, expected_result",
     [
         (
-            [SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD")],
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD")],
             True,
         ),
         (
-            [SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")],
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")],
             False,
         ),
         (
-            [SlurmNode("queue1-st-c5-xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")],
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")],
             True,
         ),
         (
@@ -116,4 +116,4 @@ def test_is_self_node_down(mock_node_info, expected_result, mocker):
     else:
         mocker.patch("slurm_plugin.computemgtd._get_nodes_info_with_retry", return_value=mock_node_info)
 
-    assert_that(_is_self_node_down("queue1-st-c5-xlarge-1")).is_equal_to(expected_result)
+    assert_that(_is_self_node_down("queue1-st-c5xlarge-1")).is_equal_to(expected_result)
