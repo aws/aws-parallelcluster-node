@@ -622,7 +622,7 @@ class ClusterManager:
         unhealthy_dynamic_nodes = []
         for node in slurm_nodes:
             if not self._is_node_healthy(node, private_ip_to_instance_map):
-                if node.is_static_node():
+                if node.is_static:
                     unhealthy_static_nodes.append(node)
                 else:
                     unhealthy_dynamic_nodes.append(node)
@@ -675,8 +675,8 @@ class ClusterManager:
                 log.debug("Node state check: node %s in DOWN but is currently being replaced, ignoring.", node)
                 return True
             else:
-                if not node.is_static_node() and not node.is_nodeaddr_set():
-                    # Sliently handle failed to launch dynamic node to clean up normal logging
+                if not node.is_static and not node.is_nodeaddr_set():
+                    # Silently handle failed to launch dynamic node to clean up normal logging
                     log.debug("Node state check: node %s in DOWN, replacing node", node)
                 else:
                     log.warning("Node state check: node %s in DOWN, replacing node", node)
@@ -685,7 +685,7 @@ class ClusterManager:
 
     def _is_node_healthy(self, node, private_ip_to_instance_map):
         """Check if a slurm node is considered healthy."""
-        if node.is_static_node():
+        if node.is_static:
             return (
                 ClusterManager._is_static_node_configuration_valid(node)
                 and ClusterManager._is_backing_instance_valid(
