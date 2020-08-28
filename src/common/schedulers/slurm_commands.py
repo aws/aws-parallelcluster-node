@@ -71,17 +71,10 @@ class SlurmNode:
     def __init__(self, name, nodeaddr, nodehostname, state):
         """Initialize slurm node with attributes."""
         self.name = name
+        self.is_static = is_static_node(name)
         self.nodeaddr = nodeaddr
         self.nodehostname = nodehostname
         self.state = state
-
-    def is_static_node(self):
-        """
-        Check if the node is static or dynamic.
-
-        Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
-        """
-        return "-st-" in self.name
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -125,6 +118,45 @@ class SlurmNode:
 
     def __str__(self):
         return f"{self.name}({self.nodeaddr})"
+
+
+class InvalidNodenameError(ValueError):
+    r"""
+    Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
+
+    Valid NodeName format: {queue-name}-{st/dy}-{instance-type}-{number}
+    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+-[a-z0-9-]+)-\d+$
+    Sample NodeName: queue-1-st-c5-xlarge-2
+    """
+
+    pass
+
+
+def parse_nodename(nodename):
+    """Parse queue_name, node_type (st/dy) and instance_type from nodename."""
+    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+-[a-z0-9-]+)-\d+$", nodename)
+    if not nodename_capture:
+        raise InvalidNodenameError
+
+    queue_name, node_type, instance_name = nodename_capture.groups()
+    # In the hostname we're using the "_" in the instance_type to avoid conflicts with subdomain
+    # We have to replace the "-" with "." to have a real instance_type value.
+    # FIXME it doesn't support instance type like: i3en.metal-2tb
+    size_separator_index = instance_name.rfind("-")
+    # fmt: off
+    real_instance_type = instance_name[:size_separator_index] + "." + instance_name[size_separator_index + 1:]
+    # fmt: on
+    return queue_name, node_type, real_instance_type
+
+
+def is_static_node(nodename):
+    """
+    Check if the node is static or dynamic.
+
+    Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
+    """
+    _, node_type, _ = parse_nodename(nodename)
+    return "st" == node_type
 
 
 def update_nodes(

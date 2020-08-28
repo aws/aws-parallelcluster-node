@@ -562,37 +562,39 @@ class TestInstanceManager:
         ),
         [
             (
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                call(["queue1-st-c5-xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
                 [],
                 False,
                 "dns.domain",
             ),
-            (["node-1"], [], None, ["node-1"], False, "dns.domain"),
+            (["queue1-st-c5-xlarge-1"], [], None, ["queue1-st-c5-xlarge-1"], False, "dns.domain"),
             (
-                ["node-1", "node-2", "node-3", "node-4"],
+                ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2", "queue1-st-c5-xlarge-3", "queue1-st-c5-xlarge-4"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
                 ],
-                call(["node-1", "node-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
-                ["node-3", "node-4"],
+                call(
+                    ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None
+                ),
+                ["queue1-st-c5-xlarge-3", "queue1-st-c5-xlarge-4"],
                 False,
                 "dns.domain",
             ),
             (
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
+                call(["queue1-st-c5-xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
                 [],
                 True,
                 "dns.domain",
             ),
             (
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                call(["queue1-st-c5-xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
                 [],
                 False,
                 "",
@@ -628,26 +630,26 @@ class TestInstanceManager:
         [
             (
                 None,
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 None,
                 "Empty table name configuration parameter",
             ),
             (
                 "table_name",
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [],
                 None,
                 None,
             ),
             (
                 "table_name",
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 [
                     call(
                         Item={
-                            "Id": "node-1",
+                            "Id": "queue1-st-c5-xlarge-1",
                             "InstanceId": "id-1",
                             "MasterPrivateIp": "master.ip",
                             "MasterHostname": "master-hostname",
@@ -658,7 +660,7 @@ class TestInstanceManager:
             ),
             (
                 "table_name",
-                ["node-1", "node-2"],
+                ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -666,7 +668,7 @@ class TestInstanceManager:
                 [
                     call(
                         Item={
-                            "Id": "node-1",
+                            "Id": "queue1-st-c5-xlarge-1",
                             "InstanceId": "id-1",
                             "MasterPrivateIp": "master.ip",
                             "MasterHostname": "master-hostname",
@@ -674,7 +676,7 @@ class TestInstanceManager:
                     ),
                     call(
                         Item={
-                            "Id": "node-2",
+                            "Id": "queue1-st-c5-xlarge-2",
                             "InstanceId": "id-2",
                             "MasterPrivateIp": "master.ip",
                             "MasterHostname": "master-hostname",
@@ -727,18 +729,26 @@ class TestInstanceManager:
             (
                 None,
                 "dns.domain",
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 None,
                 "Empty table name configuration parameter",
                 False,
             ),
-            ("hosted_zone", None, ["node-1"], [], None, "Empty table name configuration parameter", False),
-            ("hosted_zone", "dns.domain", ["node-1"], [], None, None, False),
+            (
+                "hosted_zone",
+                None,
+                ["queue1-st-c5-xlarge-1"],
+                [],
+                None,
+                "Empty table name configuration parameter",
+                False,
+            ),
+            ("hosted_zone", "dns.domain", ["queue1-st-c5-xlarge-1"], [], None, None, False),
             (
                 "hosted_zone",
                 "dns.domain",
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 MockedBoto3Request(
                     method="change_resource_record_sets",
@@ -756,7 +766,7 @@ class TestInstanceManager:
                                 {
                                     "Action": "UPSERT",
                                     "ResourceRecordSet": {
-                                        "Name": "node-1.dns.domain",
+                                        "Name": "queue1-st-c5-xlarge-1.dns.domain",
                                         "ResourceRecords": [{"Value": "ip-1"}],
                                         "Type": "A",
                                         "TTL": 120,
@@ -772,7 +782,7 @@ class TestInstanceManager:
             (
                 "hosted_zone",
                 "dns.domain",
-                ["node-1", "node-2"],
+                ["queue1-st-c5-xlarge-1", "queue1-st-c5-xlarge-2"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -794,7 +804,7 @@ class TestInstanceManager:
                                     {
                                         "Action": "UPSERT",
                                         "ResourceRecordSet": {
-                                            "Name": "node-1.dns.domain",
+                                            "Name": "queue1-st-c5-xlarge-1.dns.domain",
                                             "ResourceRecords": [{"Value": "ip-1"}],
                                             "Type": "A",
                                             "TTL": 120,
@@ -803,7 +813,7 @@ class TestInstanceManager:
                                     {
                                         "Action": "UPSERT",
                                         "ResourceRecordSet": {
-                                            "Name": "node-2.dns.domain",
+                                            "Name": "queue1-st-c5-xlarge-2.dns.domain",
                                             "ResourceRecords": [{"Value": "ip-2"}],
                                             "Type": "A",
                                             "TTL": 120,
@@ -820,7 +830,7 @@ class TestInstanceManager:
             (
                 "hosted_zone",
                 "dns.domain",
-                ["node-1"],
+                ["queue1-st-c5-xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 MockedBoto3Request(
                     method="change_resource_record_sets",
@@ -832,7 +842,7 @@ class TestInstanceManager:
                                 {
                                     "Action": "UPSERT",
                                     "ResourceRecordSet": {
-                                        "Name": "node-1.dns.domain",
+                                        "Name": "queue1-st-c5-xlarge-1.dns.domain",
                                         "ResourceRecords": [{"Value": "ip-1"}],
                                         "Type": "A",
                                         "TTL": 120,
@@ -891,29 +901,6 @@ class TestInstanceManager:
                 instance_manager._update_dns_hostnames(assigned_nodes)
         else:
             instance_manager._update_dns_hostnames(assigned_nodes)
-
-    @pytest.mark.parametrize(
-        ("nodename", "expected_queue", "expected_instance_type", "expected_failure"),
-        [
-            ("queue1-st-c5-xlarge-1", "queue1", "c5.xlarge", False),
-            ("queue-1-st-c5-xlarge-1", "queue-1", "c5.xlarge", False),
-            ("queue1-st-dy-c5-xlarge-1", "queue1-st", "c5.xlarge", False),
-            ("queue1-dy-st-c5-xlarge-1", "queue1-dy", "c5.xlarge", False),
-            ("queue1-dy-dy-dy-dy-c5-xlarge-1", "queue1-dy-dy-dy", "c5.xlarge", False),
-            # ("queue1-st-i3en-metal-2tb-1", "queue1", "i3en.metal-2tb", False), not supported for now
-            ("queue1-st-u-6tb1-metal-1", "queue1", "u-6tb1.metal", False),
-            ("queue1-st-c5.xlarge-1", "queue1", "c5.xlarge", True),
-            ("queue_1-st-c5-xlarge-1", "queue_1", "c5.xlarge", True),
-        ],
-    )
-    def test_parse_nodename(self, nodename, expected_queue, expected_instance_type, expected_failure, instance_manager):
-        if expected_failure:
-            with pytest.raises(Exception):
-                instance_manager._parse_nodename(nodename)
-        else:
-            queue_name, instance_type = instance_manager._parse_nodename(nodename)
-            assert_that(expected_queue).is_equal_to(queue_name)
-            assert_that(expected_instance_type).is_equal_to(instance_type)
 
     @pytest.mark.parametrize(
         ("node_list", "expected_results", "expected_failed_nodes"),
