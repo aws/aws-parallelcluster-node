@@ -130,7 +130,7 @@ class ClustermgtdConfig:
         # Terminate configs
         "terminate_max_batch_size": 1000,
         # Timeout to wait for node initialization, should be the same as ResumeTimeout
-        "node_replacement_timeout": 600,
+        "node_replacement_timeout": 3600,
         "terminate_drain_nodes": True,
         "terminate_down_nodes": True,
         "orphaned_instance_timeout": 120,
@@ -458,7 +458,7 @@ class ClusterManager:
 
             return active_nodes, inactive_nodes
         except Exception as e:
-            log.error("Failed when getting partition/node states from scheduler with exception %s" % e)
+            log.error("Failed when getting partition/node states from scheduler with exception %s", e)
             raise ClusterManager.SchedulerUnavailable
 
     def _clean_up_inactive_partition(self, inactive_nodes, cluster_instances):
@@ -502,7 +502,7 @@ class ClusterManager:
         try:
             return self._instance_manager.get_cluster_instances(include_master=False, alive_states_only=True)
         except Exception as e:
-            log.error("Failed when getting instance info from EC2 with exception %s" % e)
+            log.error("Failed when getting instance info from EC2 with exception %s", e)
             raise ClusterManager.EC2InstancesInfoUnavailable
 
     @log_exception(log, "performing health check action", catch_exception=Exception, raise_on_error=False)
@@ -789,10 +789,10 @@ class ClusterManager:
             slurm_nodes, private_ip_to_instance_map
         )
         if unhealthy_dynamic_nodes:
-            log.info("Found the following unhealthy dynamic nodes: %s", unhealthy_dynamic_nodes)
+            log.info("Found the following unhealthy dynamic nodes: %s", print_with_count(unhealthy_dynamic_nodes))
             self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, private_ip_to_instance_map)
         if unhealthy_static_nodes:
-            log.info("Found the following unhealthy static nodes: %s", unhealthy_static_nodes)
+            log.info("Found the following unhealthy static nodes: %s", print_with_count(unhealthy_static_nodes))
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
