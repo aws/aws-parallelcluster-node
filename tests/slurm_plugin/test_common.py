@@ -50,7 +50,6 @@ class TestInstanceManager:
 
     @pytest.fixture
     def instance_manager(self, mocker):
-        mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
         instance_manager = InstanceManager(
             region="us-east-2",
             cluster_name="hit",
@@ -61,6 +60,7 @@ class TestInstanceManager:
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
             use_private_hostname=False,
+            instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         )
         mocker.patch.object(instance_manager, "_table")
         return instance_manager
@@ -614,7 +614,6 @@ class TestInstanceManager:
         mocker,
     ):
         mock_update_nodes = mocker.patch("slurm_plugin.common.update_nodes")
-        mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
         instance_manager._use_private_hostname = use_private_hostname
         instance_manager._dns_domain = dns_domain
 
@@ -700,7 +699,6 @@ class TestInstanceManager:
         instance_manager,
     ):
         # Mock other methods
-        mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
         instance_manager._update_dns_hostnames = mocker.MagicMock()
         instance_manager._update_slurm_node_addrs = mocker.MagicMock()
 
@@ -1216,10 +1214,6 @@ class TestInstanceManager:
     ):
         # patch boto3 call
         boto3_stubber("ec2", mocked_boto3_request)
-        mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
-        mocker.patch(
-            "common.schedulers.slurm_commands.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"}
-        )
         # run test
         result = instance_manager.get_cluster_instances(**mock_kwargs)
         assert_that(result).is_equal_to(expected_parsed_result)
