@@ -49,6 +49,7 @@ _SQUEUE_FIELDS = [
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SCONTROL = "/opt/slurm/bin/scontrol"
 SINFO = "/opt/slurm/bin/sinfo"
+
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
 
 
@@ -71,17 +72,10 @@ class SlurmNode:
     def __init__(self, name, nodeaddr, nodehostname, state):
         """Initialize slurm node with attributes."""
         self.name = name
+        self.is_static = is_static_node(name)
         self.nodeaddr = nodeaddr
         self.nodehostname = nodehostname
         self.state = state
-
-    def is_static_node(self):
-        """
-        Check if the node is static or dynamic.
-
-        Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
-        """
-        return "static" in self.name
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -125,6 +119,38 @@ class SlurmNode:
 
     def __str__(self):
         return f"{self.name}({self.nodeaddr})"
+
+
+class InvalidNodenameError(ValueError):
+    r"""
+    Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
+
+    Valid NodeName format: {queue-name}-{st/dy}-{instancetype}-{number}
+    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+)-\d+$
+    Sample NodeName: queue-1-st-c5xlarge-2
+    """
+
+    pass
+
+
+def parse_nodename(nodename):
+    """Parse queue_name, node_type (st vs dy) and instance_type from nodename."""
+    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9]+)-\d+$", nodename)
+    if not nodename_capture:
+        raise InvalidNodenameError
+
+    queue_name, node_type, instance_name = nodename_capture.groups()
+    return queue_name, node_type, instance_name
+
+
+def is_static_node(nodename):
+    """
+    Check if the node is static or dynamic.
+
+    Valid NodeName format: {queue_name}-{st/dy}-{instancetype}-{number}
+    """
+    _, node_type, _ = parse_nodename(nodename)
+    return "st" == node_type
 
 
 def update_nodes(
@@ -278,7 +304,7 @@ def get_nodes_info(nodes, command_timeout=5):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
-    Sample slurm nodelist notation: queue1-dynamic-c5_xlarge-[1-3],queue2-static-t2_micro-5.
+    Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
     """
     show_node_info_command = (
         f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '
@@ -326,7 +352,7 @@ def _get_partition_nodes(partition_name, command_timeout=5):
     # Which is the same as getting all nodes from scontrol
     nodes = []
     for nodename in all_nodes:
-        if "-static-" in nodename or (nodename not in power_down_nodes and nodename != "n/a"):
+        if "-st-" in nodename or (nodename not in power_down_nodes and nodename != "n/a"):
             nodes.append(nodename)
     return ",".join(nodes)
 

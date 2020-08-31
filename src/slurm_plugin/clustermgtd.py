@@ -42,6 +42,7 @@ from slurm_plugin.common import (
     InstanceManager,
     log_exception,
     print_with_count,
+    retrieve_instance_type_mapping,
     time_is_up,
 )
 
@@ -122,6 +123,7 @@ class ClustermgtdConfig:
         "logging_config": os.path.join(
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
+        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
         # Launch configs
         "launch_max_batch_size": 500,
         "update_node_address": True,
@@ -152,7 +154,7 @@ class ClustermgtdConfig:
 
     def __eq__(self, other):
         if type(other) is type(self):
-            return self._config == other._config
+            return self._config == other._config and self.instance_name_type_mapping == other.instance_name_type_mapping
         return False
 
     def __ne__(self, other):
@@ -165,6 +167,10 @@ class ClustermgtdConfig:
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
         self.master_private_ip = config.get("clustermgtd", "master_private_ip")
         self.master_hostname = config.get("clustermgtd", "master_hostname")
+        instance_name_type_mapping_file = config.get(
+            "clustermgtd", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
+        )
+        self.instance_name_type_mapping = retrieve_instance_type_mapping(instance_name_type_mapping_file)
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -308,6 +314,7 @@ class ClusterManager:
             use_private_hostname=config.use_private_hostname,
             master_private_ip=config.master_private_ip,
             master_hostname=config.master_hostname,
+            instance_name_type_mapping=config.instance_name_type_mapping,
         )
 
     @staticmethod
@@ -622,7 +629,7 @@ class ClusterManager:
         unhealthy_dynamic_nodes = []
         for node in slurm_nodes:
             if not self._is_node_healthy(node, private_ip_to_instance_map):
-                if node.is_static_node():
+                if node.is_static:
                     unhealthy_static_nodes.append(node)
                 else:
                     unhealthy_dynamic_nodes.append(node)
@@ -675,8 +682,8 @@ class ClusterManager:
                 log.debug("Node state check: node %s in DOWN but is currently being replaced, ignoring.", node)
                 return True
             else:
-                if not node.is_static_node() and not node.is_nodeaddr_set():
-                    # Sliently handle failed to launch dynamic node to clean up normal logging
+                if not node.is_static and not node.is_nodeaddr_set():
+                    # Silently handle failed to launch dynamic node to clean up normal logging
                     log.debug("Node state check: node %s in DOWN, replacing node", node)
                 else:
                     log.warning("Node state check: node %s in DOWN, replacing node", node)
@@ -685,7 +692,7 @@ class ClusterManager:
 
     def _is_node_healthy(self, node, private_ip_to_instance_map):
         """Check if a slurm node is considered healthy."""
-        if node.is_static_node():
+        if node.is_static:
             return (
                 ClusterManager._is_static_node_configuration_valid(node)
                 and ClusterManager._is_backing_instance_valid(
@@ -807,14 +814,22 @@ class ClusterManager:
 
 def _run_clustermgtd():
     """Run clustermgtd actions."""
-    config = ClustermgtdConfig(os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf"))
+    clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
+    config = ClustermgtdConfig(clustermgtd_config_file)
     cluster_manager = ClusterManager(config=config)
     while True:
         # Get loop start time
         start_time = datetime.now(tz=timezone.utc)
         # Get program config
-        config = ClustermgtdConfig(os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf"))
-        cluster_manager.set_config(config)
+        try:
+            config = ClustermgtdConfig(clustermgtd_config_file)
+            cluster_manager.set_config(config)
+        except Exception as e:
+            log.warning(
+                "Unable to reload daemon config from %s, using previous one.\nException: %s",
+                clustermgtd_config_file,
+                e,
+            )
         # Configure root logger
         try:
             fileConfig(config.logging_config, disable_existing_loggers=False)

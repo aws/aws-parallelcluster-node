@@ -51,7 +51,8 @@ from slurm_plugin.resume import SlurmResumeConfig
         ),
     ],
 )
-def test_resume_config(config_file, expected_attributes, test_datadir):
+def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
+    mocker.patch("slurm_plugin.resume.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     resume_config = SlurmResumeConfig(test_datadir / config_file)
     for key in expected_attributes:
         assert_that(resume_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))

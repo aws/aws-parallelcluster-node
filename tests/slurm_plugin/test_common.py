@@ -60,6 +60,7 @@ class TestInstanceManager:
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
             use_private_hostname=False,
+            instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         )
         mocker.patch.object(instance_manager, "_table")
         return instance_manager
@@ -78,10 +79,10 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"]},
+                    "queue2": {"c5.xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
                 },
                 10,
                 True,
@@ -154,15 +155,15 @@ class TestInstanceManager:
                 None,
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue1-static-c5-2xlarge-1"],
+                        ["queue1-st-c52xlarge-1"],
                         [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
                         [
                             EC2Instance(
                                 "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
@@ -178,10 +179,10 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"]},
+                    "queue2": {"c5.xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
                 },
                 10,
                 True,
@@ -242,14 +243,14 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                ["queue1-static-c5-2xlarge-1"],
+                ["queue1-st-c52xlarge-1"],
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-static-c5-xlarge-1", "queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
                         [
                             EC2Instance(
                                 "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
@@ -263,7 +264,7 @@ class TestInstanceManager:
             ),
             # no_update
             (
-                {"queue1": {"c5.xlarge": ["queue1-static-c5-xlarge-2"]}},
+                {"queue1": {"c5.xlarge": ["queue1-st-c5xlarge-2"]}},
                 10,
                 False,
                 [
@@ -294,14 +295,14 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
                     },
                     "queue2": {
                         "c5.xlarge": [
-                            "queue2-static-c5-xlarge-1",
-                            "queue2-static-c5-xlarge-2",
-                            "queue2-dynamic-c5-xlarge-1",
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
                         ],
                     },
                 },
@@ -349,14 +350,14 @@ class TestInstanceManager:
                     ),
                 ],
                 [
-                    "queue1-static-c5-2xlarge-1",
-                    "queue2-static-c5-xlarge-1",
-                    "queue2-static-c5-xlarge-2",
-                    "queue2-dynamic-c5-xlarge-1",
+                    "queue1-st-c52xlarge-1",
+                    "queue2-st-c5xlarge-1",
+                    "queue2-st-c5xlarge-2",
+                    "queue2-dy-c5xlarge-1",
                 ],
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     )
                 ],
@@ -365,14 +366,14 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-static-c5-xlarge-2"],
-                        "c5.2xlarge": ["queue1-static-c5-2xlarge-1"],
+                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
+                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
                     },
                     "queue2": {
                         "c5.xlarge": [
-                            "queue2-static-c5-xlarge-1",
-                            "queue2-static-c5-xlarge-2",
-                            "queue2-dynamic-c5-xlarge-1",
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
                         ],
                     },
                 },
@@ -457,18 +458,18 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                ["queue1-static-c5-2xlarge-1", "queue2-static-c5-xlarge-2"],
+                ["queue1-st-c52xlarge-1", "queue2-st-c5xlarge-2"],
                 [
                     call(
-                        ["queue1-static-c5-xlarge-2"],
+                        ["queue1-st-c5xlarge-2"],
                         [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-static-c5-xlarge-1"],
+                        ["queue2-st-c5xlarge-1"],
                         [EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                     call(
-                        ["queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-dy-c5xlarge-1"],
                         [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     ),
                 ],
@@ -477,9 +478,9 @@ class TestInstanceManager:
                 {
                     "queue2": {
                         "c5.xlarge": [
-                            "queue2-static-c5-xlarge-1",
-                            "queue2-static-c5-xlarge-2",
-                            "queue2-dynamic-c5-xlarge-1",
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
                         ],
                     },
                 },
@@ -505,10 +506,10 @@ class TestInstanceManager:
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
                     },
                 ),
-                ["queue2-static-c5-xlarge-2", "queue2-dynamic-c5-xlarge-1"],
+                ["queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
                 [
                     call(
-                        ["queue2-static-c5-xlarge-1", "queue2-static-c5-xlarge-2", "queue2-dynamic-c5-xlarge-1"],
+                        ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
                         [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
                     )
                 ],
@@ -529,6 +530,7 @@ class TestInstanceManager:
         instance_manager,
     ):
         mocker.patch("slurm_plugin.common.update_nodes")
+
         # patch internal functions
         instance_manager._store_assigned_hostnames = mocker.MagicMock()
         instance_manager._update_dns_hostnames = mocker.MagicMock()
@@ -562,37 +564,37 @@ class TestInstanceManager:
         ),
         [
             (
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
                 [],
                 False,
                 "dns.domain",
             ),
-            (["node-1"], [], None, ["node-1"], False, "dns.domain"),
+            (["queue1-st-c5xlarge-1"], [], None, ["queue1-st-c5xlarge-1"], False, "dns.domain"),
             (
-                ["node-1", "node-2", "node-3", "node-4"],
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
                 ],
-                call(["node-1", "node-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
-                ["node-3", "node-4"],
+                call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
+                ["queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4"],
                 False,
                 "dns.domain",
             ),
             (
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
                 [],
                 True,
                 "dns.domain",
             ),
             (
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["node-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
                 [],
                 False,
                 "",
@@ -628,26 +630,26 @@ class TestInstanceManager:
         [
             (
                 None,
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 None,
                 "Empty table name configuration parameter",
             ),
             (
                 "table_name",
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [],
                 None,
                 None,
             ),
             (
                 "table_name",
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 [
                     call(
                         Item={
-                            "Id": "node-1",
+                            "Id": "queue1-st-c5xlarge-1",
                             "InstanceId": "id-1",
                             "MasterPrivateIp": "master.ip",
                             "MasterHostname": "master-hostname",
@@ -658,7 +660,7 @@ class TestInstanceManager:
             ),
             (
                 "table_name",
-                ["node-1", "node-2"],
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -666,7 +668,7 @@ class TestInstanceManager:
                 [
                     call(
                         Item={
-                            "Id": "node-1",
+                            "Id": "queue1-st-c5xlarge-1",
                             "InstanceId": "id-1",
                             "MasterPrivateIp": "master.ip",
                             "MasterHostname": "master-hostname",
@@ -674,7 +676,7 @@ class TestInstanceManager:
                     ),
                     call(
                         Item={
-                            "Id": "node-2",
+                            "Id": "queue1-st-c5xlarge-2",
                             "InstanceId": "id-2",
                             "MasterPrivateIp": "master.ip",
                             "MasterHostname": "master-hostname",
@@ -727,18 +729,26 @@ class TestInstanceManager:
             (
                 None,
                 "dns.domain",
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 None,
                 "Empty table name configuration parameter",
                 False,
             ),
-            ("hosted_zone", None, ["node-1"], [], None, "Empty table name configuration parameter", False),
-            ("hosted_zone", "dns.domain", ["node-1"], [], None, None, False),
+            (
+                "hosted_zone",
+                None,
+                ["queue1-st-c5xlarge-1"],
+                [],
+                None,
+                "Empty table name configuration parameter",
+                False,
+            ),
+            ("hosted_zone", "dns.domain", ["queue1-st-c5xlarge-1"], [], None, None, False),
             (
                 "hosted_zone",
                 "dns.domain",
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 MockedBoto3Request(
                     method="change_resource_record_sets",
@@ -756,7 +766,7 @@ class TestInstanceManager:
                                 {
                                     "Action": "UPSERT",
                                     "ResourceRecordSet": {
-                                        "Name": "node-1.dns.domain",
+                                        "Name": "queue1-st-c5xlarge-1.dns.domain",
                                         "ResourceRecords": [{"Value": "ip-1"}],
                                         "Type": "A",
                                         "TTL": 120,
@@ -772,7 +782,7 @@ class TestInstanceManager:
             (
                 "hosted_zone",
                 "dns.domain",
-                ["node-1", "node-2"],
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
                 [
                     EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -794,7 +804,7 @@ class TestInstanceManager:
                                     {
                                         "Action": "UPSERT",
                                         "ResourceRecordSet": {
-                                            "Name": "node-1.dns.domain",
+                                            "Name": "queue1-st-c5xlarge-1.dns.domain",
                                             "ResourceRecords": [{"Value": "ip-1"}],
                                             "Type": "A",
                                             "TTL": 120,
@@ -803,7 +813,7 @@ class TestInstanceManager:
                                     {
                                         "Action": "UPSERT",
                                         "ResourceRecordSet": {
-                                            "Name": "node-2.dns.domain",
+                                            "Name": "queue1-st-c5xlarge-2.dns.domain",
                                             "ResourceRecords": [{"Value": "ip-2"}],
                                             "Type": "A",
                                             "TTL": 120,
@@ -820,7 +830,7 @@ class TestInstanceManager:
             (
                 "hosted_zone",
                 "dns.domain",
-                ["node-1"],
+                ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 MockedBoto3Request(
                     method="change_resource_record_sets",
@@ -832,7 +842,7 @@ class TestInstanceManager:
                                 {
                                     "Action": "UPSERT",
                                     "ResourceRecordSet": {
-                                        "Name": "node-1.dns.domain",
+                                        "Name": "queue1-st-c5xlarge-1.dns.domain",
                                         "ResourceRecords": [{"Value": "ip-1"}],
                                         "Type": "A",
                                         "TTL": 120,
@@ -893,65 +903,57 @@ class TestInstanceManager:
             instance_manager._update_dns_hostnames(assigned_nodes)
 
     @pytest.mark.parametrize(
-        ("nodename", "expected_queue", "expected_instance_type", "expected_failure"),
-        [
-            ("queue1-static-c5-xlarge-1", "queue1", "c5.xlarge", False),
-            ("queue-1-static-c5-xlarge-1", "queue-1", "c5.xlarge", False),
-            # ("queue1-static-i3en-metal-2tb-1", "queue1", "i3en.metal-2tb", False), not supported for now
-            ("queue1-static-u-6tb1-metal-1", "queue1", "u-6tb1.metal", False),
-            ("queue1-static-c5.xlarge-1", "queue1", "c5.xlarge", True),
-            ("queue_1-static-c5-xlarge-1", "queue_1", "c5.xlarge", True),
-        ],
-    )
-    def test_parse_nodename(self, nodename, expected_queue, expected_instance_type, expected_failure, instance_manager):
-        if expected_failure:
-            with pytest.raises(Exception):
-                instance_manager._parse_nodename(nodename)
-        else:
-            queue_name, instance_type = instance_manager._parse_nodename(nodename)
-            assert_that(expected_queue).is_equal_to(queue_name)
-            assert_that(expected_instance_type).is_equal_to(instance_type)
-
-    @pytest.mark.parametrize(
         ("node_list", "expected_results", "expected_failed_nodes"),
         [
             (
                 [
-                    "queue1-static-c5-xlarge-1",
-                    "queue1-static-c5-xlarge-2",
-                    "queue1-dynamic-c5-xlarge-201",
-                    "queue2-static-g3-4xlarge-1",
-                    "in-valid/queue.name-static-c5-xlarge-2",
-                    "noBrackets-static-c5-xlarge-[1-2]",
-                    "queue2-dynamic-g3-8xlarge-1",
-                    "queue2-static-u-6tb1-metal-1",
-                    "queue2-invalidnodetype-c5-xlarge-12",
-                    "queuename-with-dash-and_underscore-static-i3en-metal-2tb-1",
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-dy-c5xlarge-201",
+                    "queue2-st-g34xlarge-1",
+                    "in-valid/queue.name-st-c5xlarge-2",
+                    "noBrackets-st-c5xlarge-[1-2]",
+                    "queue2-dy-g38xlarge-1",
+                    "queue2-st-u6tb1metal-1",
+                    "queue2-invalidnodetype-c5xlarge-12",
+                    "queuename-with-dash-and_underscore-st-i3enmetal2tb-1",
                 ],
                 {
                     "queue1": {
                         "c5.xlarge": [
-                            "queue1-static-c5-xlarge-1",
-                            "queue1-static-c5-xlarge-2",
-                            "queue1-dynamic-c5-xlarge-201",
+                            "queue1-st-c5xlarge-1",
+                            "queue1-st-c5xlarge-2",
+                            "queue1-dy-c5xlarge-201",
                         ]
                     },
                     "queue2": {
-                        "g3.4xlarge": ["queue2-static-g3-4xlarge-1"],
-                        "g3.8xlarge": ["queue2-dynamic-g3-8xlarge-1"],
-                        "u-6tb1.metal": ["queue2-static-u-6tb1-metal-1"],
+                        "g3.4xlarge": ["queue2-st-g34xlarge-1"],
+                        "g3.8xlarge": ["queue2-dy-g38xlarge-1"],
+                        "u-6tb1.metal": ["queue2-st-u6tb1metal-1"],
                     },
                 },
                 [
-                    "in-valid/queue.name-static-c5-xlarge-2",
-                    "noBrackets-static-c5-xlarge-[1-2]",
-                    "queue2-invalidnodetype-c5-xlarge-12",
-                    "queuename-with-dash-and_underscore-static-i3en-metal-2tb-1",
+                    "in-valid/queue.name-st-c5xlarge-2",
+                    "noBrackets-st-c5xlarge-[1-2]",
+                    "queue2-invalidnodetype-c5xlarge-12",
+                    "queuename-with-dash-and_underscore-st-i3enmetal2tb-1",
                 ],
             ),
         ],
     )
-    def test_parse_requested_instances(self, node_list, expected_results, expected_failed_nodes, instance_manager):
+    def test_parse_requested_instances(
+        self, node_list, expected_results, expected_failed_nodes, instance_manager, mocker
+    ):
+        # Mock instance name/type mapping
+        instance_name_type_mapping = {
+            "c5xlarge": "c5.xlarge",
+            "g34xlarge": "g3.4xlarge",
+            "g38xlarge": "g3.8xlarge",
+            "u6tb1metal": "u-6tb1.metal",
+            "i3enmetal2tb": "i3en.metal-2tb",
+        }
+        instance_manager._instance_name_type_mapping = instance_name_type_mapping
+
         assert_that(instance_manager._parse_requested_instances(node_list)).is_equal_to(expected_results)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
@@ -1208,7 +1210,7 @@ class TestInstanceManager:
         ids=["default", "empty_response", "custom_args"],
     )
     def test_get_cluster_instances(
-        self, mock_kwargs, mocked_boto3_request, expected_parsed_result, instance_manager, boto3_stubber
+        self, mock_kwargs, mocked_boto3_request, expected_parsed_result, instance_manager, boto3_stubber, mocker
     ):
         # patch boto3 call
         boto3_stubber("ec2", mocked_boto3_request)

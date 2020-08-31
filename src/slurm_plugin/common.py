@@ -12,15 +12,15 @@
 
 import collections
 import functools
+import json
 import logging
-import re
 import subprocess
 from datetime import timezone
 
 import boto3
 from botocore.exceptions import ClientError
 
-from common.schedulers.slurm_commands import update_nodes
+from common.schedulers.slurm_commands import InvalidNodenameError, parse_nodename, update_nodes
 from common.utils import grouper
 
 CONFIG_FILE_DIR = "/etc/parallelcluster/slurm_plugin"
@@ -28,6 +28,7 @@ EC2Instance = collections.namedtuple("EC2Instance", ["id", "private_ip", "hostna
 EC2InstanceHealthState = collections.namedtuple(
     "EC2InstanceHealthState", ["id", "state", "instance_status", "system_status", "scheduled_events"]
 )
+
 # Possible ec2 health status: 'ok'|'impaired'|'insufficient-data'|'not-applicable'|'initializing'
 EC2_HEALTH_STATUS_UNHEALTHY_STATES = {"impaired"}
 # Possible instance states: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
@@ -41,12 +42,14 @@ EC2_SCHEDULED_EVENT_CODES = [
     "instance-retirement",
     "instance-stop",
 ]
+
 # PageSize parameter used for Boto3 paginated calls
 # Corresponds to MaxResults in describe_instances and describe_instance_status API
 BOTO3_PAGINATION_PAGE_SIZE = 1000
 # timestamp used by clustermgtd and computemgtd should be in default ISO format
 # YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM[:SS[.ffffff]]
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
+
 
 logger = logging.getLogger(__name__)
 
@@ -91,17 +94,6 @@ class InstanceManager:
     Used when launching instance, terminating instance, and retrieving instance info for slurm integration.
     """
 
-    class InvalidNodenameError(ValueError):
-        r"""
-        Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
-
-        Valid NodeName format: {queue-name}-{static/dynamic}-{instance-type}-{number}
-        And match: ^([a-z0-9\-]+)-(static|dynamic)-([a-z0-9-]+-[a-z0-9-]+)-\d+$
-        Sample NodeName: queue-1-static-c5-xlarge-2
-        """
-
-        pass
-
     def __init__(
         self,
         region,
@@ -113,6 +105,7 @@ class InstanceManager:
         use_private_hostname=False,
         master_private_ip=None,
         master_hostname=None,
+        instance_name_type_mapping=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -126,6 +119,7 @@ class InstanceManager:
         self._use_private_hostname = use_private_hostname
         self._master_private_ip = master_private_ip
         self._master_hostname = master_hostname
+        self._instance_name_type_mapping = instance_name_type_mapping or {}
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -256,15 +250,16 @@ class InstanceManager:
         """
         Parse out which launch configurations (queue/instance type) are requested by slurm nodes from NodeName.
 
-        Valid NodeName format: {queue_name}-{static/dynamic}-{instance_type}-{number}
-        Sample NodeName: queue1-static-c5_xlarge-2
+        Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
+        Sample NodeName: queue1-st-c5_xlarge-2
         """
         instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
         for node in node_list:
             try:
-                queue_name, instance_type = self._parse_nodename(node)
+                queue_name, node_type, instance_name = parse_nodename(node)
+                instance_type = self._instance_name_type_mapping[instance_name]
                 instances_to_launch[queue_name][instance_type].append(node)
-            except self.InvalidNodenameError:
+            except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
                 self.failed_nodes.append(node)
         logger.debug("Launch configuration requested by nodes = %s", instances_to_launch)
@@ -295,22 +290,6 @@ class InstanceManager:
             )
             for instance_info in result["Instances"]
         ]
-
-    def _parse_nodename(self, nodename):
-        """Parse queue_name and instance_type from nodename."""
-        nodename_capture = re.match(r"^([a-z0-9\-]+)-(static|dynamic)-([a-z0-9-]+-[a-z0-9-]+)-\d+$", nodename)
-        if not nodename_capture:
-            raise self.InvalidNodenameError
-
-        queue_name, instance_type = nodename_capture.group(1, 3)
-        # In the hostname we're using the "_" in the instance_type to avoid conflicts with subdomain
-        # We have to replace the "-" with "." to have a real instance_type value.
-        # FIXME it doesn't support instance type like: i3en.metal-2tb
-        size_separator_index = instance_type.rfind("-")
-        # fmt: off
-        real_instance_type = instance_type[:size_separator_index] + "." + instance_type[size_separator_index + 1:]
-        # fmt: on
-        return queue_name, real_instance_type
 
     def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
@@ -413,3 +392,17 @@ def time_is_up(initial_time, current_time, grace_time):
         current_time = current_time.replace(tzinfo=timezone.utc)
     time_diff = (current_time - initial_time).total_seconds()
     return time_diff >= grace_time
+
+
+def retrieve_instance_type_mapping(file_path):
+    """Retrieve instance type mapping file content."""
+    try:
+        with open(file_path) as mapping_file:
+            return json.load(mapping_file)
+    except Exception as e:
+        logging.error(
+            "Unable to get instance_type mapping from '%s'. Failed with exception: %s",
+            file_path,
+            e,
+        )
+        raise

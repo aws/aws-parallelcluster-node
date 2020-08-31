@@ -19,7 +19,7 @@ from botocore.config import Config
 from configparser import ConfigParser
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
-from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, print_with_count
+from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, print_with_count, retrieve_instance_type_mapping
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ class SlurmResumeConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
+        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
     }
 
     def __init__(self, config_file_path):
@@ -70,6 +71,10 @@ class SlurmResumeConfig:
         self.update_node_address = config.getboolean(
             "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
         )
+        instance_name_type_mapping_file = config.get(
+            "slurm_resume", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
+        )
+        self.instance_name_type_mapping = retrieve_instance_type_mapping(instance_name_type_mapping_file)
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("slurm_resume", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -120,6 +125,7 @@ def _resume(arg_nodes, resume_config):
         use_private_hostname=resume_config.use_private_hostname,
         master_private_ip=resume_config.master_private_ip,
         master_hostname=resume_config.master_hostname,
+        instance_name_type_mapping=resume_config.instance_name_type_mapping,
     )
     instance_manager.add_instances_for_nodes(node_list, resume_config.max_batch_size, resume_config.update_node_address)
     success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
