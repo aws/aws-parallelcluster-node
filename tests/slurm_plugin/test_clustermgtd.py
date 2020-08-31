@@ -64,7 +64,7 @@ class TestClustermgtdConfig:
                     "launch_max_batch_size": 500,
                     # terminate configs
                     "terminate_max_batch_size": 1000,
-                    "node_replacement_timeout": 600,
+                    "node_replacement_timeout": 3600,
                     "terminate_drain_nodes": True,
                     "terminate_down_nodes": True,
                     "orphaned_instance_timeout": 120,
