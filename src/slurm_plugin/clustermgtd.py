@@ -123,7 +123,7 @@ class ClustermgtdConfig:
         "logging_config": os.path.join(
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
-        "instance_type_mapping": "/opt/slurm/etc/instance_name_type_mappings.json",
+        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
         # Launch configs
         "launch_max_batch_size": 500,
         "update_node_address": True,

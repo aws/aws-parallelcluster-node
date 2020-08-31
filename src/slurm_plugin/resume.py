@@ -34,7 +34,7 @@ class SlurmResumeConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
-        "instance_type_mapping": "/opt/slurm/etc/instance_name_type_mappings.json",
+        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
     }
 
     def __init__(self, config_file_path):
