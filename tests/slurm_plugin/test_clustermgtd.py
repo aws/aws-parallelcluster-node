@@ -142,12 +142,14 @@ class TestClustermgtdConfig:
         ],
         ids=["default", "all_options", "health_check"],
     )
-    def test_config_parsing(self, config_file, expected_attributes, test_datadir):
+    def test_config_parsing(self, config_file, expected_attributes, test_datadir, mocker):
+        mocker.patch("slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
         sync_config = ClustermgtdConfig(test_datadir / config_file)
         for key in expected_attributes:
             assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
 
-    def test_config_comparison(self, test_datadir):
+    def test_config_comparison(self, test_datadir, mocker):
+        mocker.patch("slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
         config = test_datadir / "config.conf"
         config_modified = test_datadir / "config_modified.conf"
 
@@ -312,8 +314,8 @@ def test_get_ec2_instances(mocker):
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
+        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
     )
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
     # Run test
@@ -424,9 +426,9 @@ def test_perform_health_check_actions(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
+        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
     )
     # Mock functions
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_unhealthy_cluster_instance_status = mocker.MagicMock(
         return_value=mock_instance_health_states
@@ -985,8 +987,8 @@ def test_handle_unhealthy_static_nodes(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
+        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
     )
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
 
@@ -1143,8 +1145,8 @@ def test_terminate_orphaned_instances(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
+        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
     )
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
@@ -1688,7 +1690,7 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
+    mocker.patch("slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     sync_config = ClustermgtdConfig(test_datadir / config_file)
     cluster_manager = ClusterManager(sync_config)
     dynamodb_table_mock = mocker.patch.object(cluster_manager._compute_fleet_status_manager, "_table")
@@ -1792,8 +1794,8 @@ def test_manage_compute_fleet_status_transitions(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
+        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
     )
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(config)
     mocker.patch("subprocess.run", side_effect=None if partitions_updated_successfully else Exception)
     update_all_partitions_spy = mocker.patch(
@@ -1844,8 +1846,8 @@ def test_manage_compute_fleet_status_transitions_concurrency(mocker, caplog):
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
+        instance_name_type_mapping={},
     )
-    mocker.patch("slurm_plugin.common.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
     cluster_manager = ClusterManager(config)
     mocker.patch("slurm_plugin.clustermgtd.update_all_partitions")
     compute_fleet_status_manager_mock = mocker.patch.object(

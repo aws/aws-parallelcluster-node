@@ -11,11 +11,8 @@
 
 
 import collections
-import errno
-import json
 import logging
 import math
-import os
 import re
 from enum import Enum
 from textwrap import wrap
@@ -52,7 +49,6 @@ _SQUEUE_FIELDS = [
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SCONTROL = "/opt/slurm/bin/scontrol"
 SINFO = "/opt/slurm/bin/sinfo"
-INSTANCE_NAME_TYPE_MAPPINGS_FILE = "/opt/slurm/etc/instance_name_type_mappings.json"
 
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
 
@@ -155,22 +151,6 @@ def is_static_node(nodename):
     """
     _, node_type, _ = parse_nodename(nodename)
     return "st" == node_type
-
-
-def retrieve_instance_type_mapping():
-    """Retrieve instance type mapping file content."""
-    if os.path.isfile(INSTANCE_NAME_TYPE_MAPPINGS_FILE):
-        try:
-            with open(INSTANCE_NAME_TYPE_MAPPINGS_FILE) as mapping_file:
-                return json.loads(mapping_file.read())
-        except Exception as e:
-            logging.error(
-                "Unable to get instance_type mapping from '%s'. Failed with exception: %s",
-                INSTANCE_NAME_TYPE_MAPPINGS_FILE,
-                e,
-            )
-    else:
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), INSTANCE_NAME_TYPE_MAPPINGS_FILE)
 
 
 def update_nodes(

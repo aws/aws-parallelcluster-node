@@ -12,6 +12,7 @@
 
 import collections
 import functools
+import json
 import logging
 import subprocess
 from datetime import timezone
@@ -19,12 +20,7 @@ from datetime import timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from common.schedulers.slurm_commands import (
-    InvalidNodenameError,
-    parse_nodename,
-    retrieve_instance_type_mapping,
-    update_nodes,
-)
+from common.schedulers.slurm_commands import InvalidNodenameError, parse_nodename, update_nodes
 from common.utils import grouper
 
 CONFIG_FILE_DIR = "/etc/parallelcluster/slurm_plugin"
@@ -109,6 +105,7 @@ class InstanceManager:
         use_private_hostname=False,
         master_private_ip=None,
         master_hostname=None,
+        instance_name_type_mapping=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -122,7 +119,7 @@ class InstanceManager:
         self._use_private_hostname = use_private_hostname
         self._master_private_ip = master_private_ip
         self._master_hostname = master_hostname
-        self._instance_name_type_mapping = retrieve_instance_type_mapping()
+        self._instance_name_type_mapping = instance_name_type_mapping or {}
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -260,7 +257,7 @@ class InstanceManager:
         for node in node_list:
             try:
                 queue_name, node_type, instance_name = parse_nodename(node)
-                instance_type = self._instance_name_type_mapping.get(instance_name)
+                instance_type = self._instance_name_type_mapping[instance_name]
                 instances_to_launch[queue_name][instance_type].append(node)
             except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
@@ -395,3 +392,17 @@ def time_is_up(initial_time, current_time, grace_time):
         current_time = current_time.replace(tzinfo=timezone.utc)
     time_diff = (current_time - initial_time).total_seconds()
     return time_diff >= grace_time
+
+
+def retrieve_instance_type_mapping(file_path):
+    """Retrieve instance type mapping file content."""
+    try:
+        with open(file_path) as mapping_file:
+            return json.load(mapping_file)
+    except Exception as e:
+        logging.error(
+            "Unable to get instance_type mapping from '%s'. Failed with exception: %s",
+            file_path,
+            e,
+        )
+        raise
