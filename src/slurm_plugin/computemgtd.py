@@ -37,7 +37,7 @@ class ComputemgtdConfig:
         "max_retry": 1,
         "loop_time": LOOP_TIME,
         "proxy": "NONE",
-        "clustermgtd_timeout": 180,
+        "clustermgtd_timeout": 300,
         "disable_computemgtd_actions": False,
         "slurm_nodename_file": os.path.join(CONFIG_FILE_DIR, "slurm_nodename"),
         "logging_config": os.path.join(
