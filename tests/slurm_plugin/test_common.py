@@ -103,7 +103,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                     MockedBoto3Request(
@@ -122,7 +122,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                     ),
                     MockedBoto3Request(
@@ -148,7 +148,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 2,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                 ],
@@ -203,7 +203,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                     MockedBoto3Request(
@@ -212,7 +212,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
                     ),
@@ -239,7 +239,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 2,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                 ],
@@ -284,7 +284,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                 ],
@@ -325,7 +325,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                     MockedBoto3Request(
@@ -334,7 +334,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
                     ),
@@ -344,7 +344,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 3,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
                     ),
@@ -396,7 +396,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                     MockedBoto3Request(
@@ -405,7 +405,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
                     ),
@@ -425,7 +425,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                     MockedBoto3Request(
@@ -434,7 +434,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
                     ),
@@ -454,7 +454,7 @@ class TestInstanceManager:
                         expected_params={
                             "MinCount": 1,
                             "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                     ),
                 ],
@@ -503,7 +503,7 @@ class TestInstanceManager:
                     expected_params={
                         "MinCount": 1,
                         "MaxCount": 3,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge"},
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                     },
                 ),
                 ["queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
