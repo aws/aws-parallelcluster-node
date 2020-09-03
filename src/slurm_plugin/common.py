@@ -280,7 +280,10 @@ class InstanceManager:
             # LaunchTemplate is different for every instance type in every queue
             # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
             # Sample LT name: hit-queue1-c5.xlarge
-            LaunchTemplate={"LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}"},
+            LaunchTemplate={
+                "LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}",
+                "Version": "$Latest",
+            },
         )
 
         return [

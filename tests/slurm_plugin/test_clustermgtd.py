@@ -1450,7 +1450,7 @@ def test_manage_cluster(
                     expected_params={
                         "MinCount": 1,
                         "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge"},
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge", "Version": "$Latest"},
                     },
                     generate_error=False,
                 ),
