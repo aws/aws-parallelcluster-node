@@ -26,6 +26,7 @@ from common.utils import check_command_output, sleep_remaining_loop_time
 from slurm_plugin.common import CONFIG_FILE_DIR, TIMESTAMP_FORMAT, InstanceManager, log_exception, time_is_up
 
 LOOP_TIME = 60
+RELOAD_CONFIG_ITERATIONS = 10
 # Computemgtd config is under /opt/slurm/etc/pcluster/.slurm_plugin/; all compute nodes share a config
 COMPUTEMGTD_CONFIG_PATH = "/opt/slurm/etc/pcluster/.slurm_plugin/parallelcluster_computemgtd.conf"
 log = logging.getLogger(__name__)
@@ -174,25 +175,38 @@ def _fail_self_check(last_heartbeat, current_time, computemgtd_config):
     ) and _is_self_node_down(computemgtd_config.nodename)
 
 
+def _load_daemon_config():
+    # Get program config
+    computemgtd_config = ComputemgtdConfig(os.path.join(COMPUTEMGTD_CONFIG_PATH))
+    # Configure root logger
+    try:
+        fileConfig(computemgtd_config.logging_config, disable_existing_loggers=False)
+    except Exception as e:
+        log.warning(
+            "Unable to configure logging from %s, using default logging settings.\nException: %s",
+            computemgtd_config.logging_config,
+            e,
+        )
+    return computemgtd_config
+
+
 def _run_computemgtd():
     """Run computemgtd actions."""
     # Initial default heartbeat time as computemgtd startup time
     last_heartbeat = datetime.now(tz=timezone.utc)
     log.info("Initializing clustermgtd heartbeat to be computemgtd startup time: %s", last_heartbeat)
+    computemgtd_config = None
+    reload_config_counter = 0
     while True:
         # Get current time
         current_time = datetime.now(tz=timezone.utc)
-        # Get program config
-        computemgtd_config = ComputemgtdConfig(os.path.join(COMPUTEMGTD_CONFIG_PATH))
-        # Configure root logger
-        try:
-            fileConfig(computemgtd_config.logging_config, disable_existing_loggers=False)
-        except Exception as e:
-            log.warning(
-                "Unable to configure logging from %s, using default logging settings.\nException: %s",
-                computemgtd_config.logging_config,
-                e,
-            )
+
+        if not computemgtd_config or reload_config_counter <= 0:
+            computemgtd_config = _load_daemon_config()
+            reload_config_counter = RELOAD_CONFIG_ITERATIONS
+        else:
+            reload_config_counter -= 1
+
         # Check heartbeat
         try:
             last_heartbeat = _get_clustermgtd_heartbeat(computemgtd_config.clustermgtd_heartbeat_file_path)
