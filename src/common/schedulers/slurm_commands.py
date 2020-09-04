@@ -205,11 +205,14 @@ def update_partitions(partitions, state):
 def update_all_partitions(state, reset_node_addrs_hostname):
     """Update partitions to a state and reset nodesaddr/nodehostname if needed."""
     try:
-        partitions = get_partition_info()
+        # Get all nodes from partition as opposed to ignoring power_down nodes
+        partitions = get_partition_info(get_all_nodes=True)
         partition_to_update = []
         for part in partitions:
             if PartitionStatus(part.state) != PartitionStatus(state):
+                logging.info(f"Setting partition {part.name} state from {part.state} to {state}")
                 if reset_node_addrs_hostname:
+                    logging.info(f"Resetting partition nodes {part.nodes}")
                     reset_nodes(part.nodes)
                 partition_to_update.append(part.name)
         succeeded_partitions = update_partitions(partition_to_update, state)
@@ -322,20 +325,30 @@ def get_nodes_info(nodes, command_timeout=5):
     return _parse_nodes_info(nodeinfo_str)
 
 
-def get_partition_info(command_timeout=5):
+def get_partition_info(command_timeout=5, get_all_nodes=False):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
     partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)
-    paritions_info = _parse_partition_name_and_state(partition_info_str)
+    partitions_info = _parse_partition_name_and_state(partition_info_str)
     return [
-        SlurmPartition(partition_name, _get_partition_nodes(partition_name), partition_state)
-        for partition_name, partition_state in paritions_info
+        SlurmPartition(
+            partition_name,
+            _get_all_partition_nodes(partition_name) if get_all_nodes else _get_partition_nodes(partition_name),
+            partition_state,
+        )
+        for partition_name, partition_state in partitions_info
     ]
 
 
 def _parse_partition_name_and_state(partition_info):
     """Parse partition name and state from scontrol output."""
     return grouper(partition_info.splitlines(), 2)
+
+
+def _get_all_partition_nodes(partition_name, command_timeout=5):
+    """Get all nodes in partition."""
+    show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N"
+    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()
 
 
 def _get_partition_nodes(partition_name, command_timeout=5):
