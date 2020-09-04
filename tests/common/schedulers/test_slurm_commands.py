@@ -14,8 +14,10 @@ import pytest
 from assertpy import assert_that
 
 from common.schedulers.slurm_commands import (
+    PartitionStatus,
     SlurmJob,
     SlurmNode,
+    SlurmPartition,
     _batch_node_info,
     _parse_nodes_info,
     get_jobs_info,
@@ -26,7 +28,9 @@ from common.schedulers.slurm_commands import (
     set_nodes_drain,
     set_nodes_idle,
     set_nodes_power_down,
+    update_all_partitions,
     update_nodes,
+    update_partitions,
 )
 from tests.common import read_text
 
@@ -970,23 +974,33 @@ def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
 @pytest.mark.parametrize(
     "nodes, reason, reset_addrs, update_call_kwargs",
     [
-        ("nodes-1,nodes[2-6]", None, False, {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": None}),
+        (
+            "nodes-1,nodes[2-6]",
+            None,
+            False,
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": None, "raise_on_error": True},
+        ),
         (
             "nodes-1,nodes[2-6]",
             "debugging",
             True,
-            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": "debugging"},
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": "debugging", "raise_on_error": True},
         ),
         (
             ["nodes-1", "nodes[2-4]", "nodes-5"],
             "debugging",
             True,
-            {"nodes": ["nodes-1", "nodes[2-4]", "nodes-5"], "state": "power_down", "reason": "debugging"},
+            {
+                "nodes": ["nodes-1", "nodes[2-4]", "nodes-5"],
+                "state": "power_down",
+                "reason": "debugging",
+                "raise_on_error": True,
+            },
         ),
     ],
 )
 def test_set_nodes_power_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
-    update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    update_mock = mocker.patch("common.schedulers.slurm_commands.reset_nodes", autospec=True)
     set_nodes_power_down(nodes, reason)
     update_mock.assert_called_with(**update_call_kwargs)
 
@@ -1179,3 +1193,152 @@ def test_slurm_node_is_down(node, expected_output):
 )
 def test_slurm_node_is_up(node, expected_output):
     assert_that(node.is_up()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "partitions, state, run_command_calls, run_command_side_effects, expected_succeeded_partitions",
+    [
+        (
+            ["part-1", "part-2"],
+            PartitionStatus.INACTIVE,
+            [
+                call(
+                    "/opt/slurm/bin/scontrol update partitionname=part-1 state=INACTIVE",
+                    raise_on_error=True,
+                    shell=True,
+                ),
+                call(
+                    "/opt/slurm/bin/scontrol update partitionname=part-2 state=INACTIVE",
+                    raise_on_error=True,
+                    shell=True,
+                ),
+            ],
+            [Exception, None],
+            ["part-2"],
+        ),
+        (
+            ["part-1", "part-2"],
+            "UP",
+            [
+                call("/opt/slurm/bin/scontrol update partitionname=part-1 state=UP", raise_on_error=True, shell=True),
+                call("/opt/slurm/bin/scontrol update partitionname=part-2 state=UP", raise_on_error=True, shell=True),
+            ],
+            [Exception, None],
+            ["part-2"],
+        ),
+        (
+            [],
+            "UP",
+            [],
+            [],
+            [],
+        ),
+    ],
+)
+def test_update_partitions(
+    partitions, state, run_command_calls, run_command_side_effects, expected_succeeded_partitions, mocker
+):
+    run_command_spy = mocker.patch(
+        "common.schedulers.slurm_commands.run_command", side_effect=run_command_side_effects, auto_spec=True
+    )
+    assert_that(update_partitions(partitions, state)).is_equal_to(expected_succeeded_partitions)
+    if run_command_calls:
+        run_command_spy.assert_has_calls(run_command_calls)
+    else:
+        run_command_spy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    (
+        "mock_partitions",
+        "state",
+        "reset_node_info",
+        "expected_reset_nodes_calls",
+        "partitions_to_update",
+        "mock_succeeded_partitions",
+        "expected_results",
+    ),
+    [
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "INACTIVE"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+            ],
+            PartitionStatus.INACTIVE,
+            True,
+            [call("node-3,node-4")],
+            ["part-2"],
+            ["part-2"],
+            True,
+        ),
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "DRAIN"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+            ],
+            PartitionStatus.INACTIVE,
+            True,
+            [call("node-1,node-2"), call("node-3,node-4")],
+            ["part-1", "part-2"],
+            ["part-1", "part-2"],
+            True,
+        ),
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "DRAIN"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+            ],
+            PartitionStatus.INACTIVE,
+            False,
+            [],
+            ["part-1", "part-2"],
+            ["part-1", "part-2"],
+            True,
+        ),
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "DRAIN"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+            ],
+            PartitionStatus.UP,
+            False,
+            [],
+            ["part-1"],
+            [],
+            False,
+        ),
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "DRAIN"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+            ],
+            "UP",
+            False,
+            [],
+            ["part-1"],
+            ["part-1"],
+            True,
+        ),
+    ],
+)
+def test_update_all_partitions(
+    mock_partitions,
+    state,
+    reset_node_info,
+    expected_reset_nodes_calls,
+    partitions_to_update,
+    mock_succeeded_partitions,
+    expected_results,
+    mocker,
+):
+    reset_node_spy = mocker.patch("common.schedulers.slurm_commands.reset_nodes", auto_spec=True)
+    update_partitions_spy = mocker.patch(
+        "common.schedulers.slurm_commands.update_partitions", return_value=mock_succeeded_partitions, auto_spec=True
+    )
+    mocker.patch("common.schedulers.slurm_commands.get_partition_info", return_value=mock_partitions, auto_spec=True)
+    assert_that(update_all_partitions(state, reset_node_addrs_hostname=reset_node_info)).is_equal_to(expected_results)
+    if expected_reset_nodes_calls:
+        reset_node_spy.assert_has_calls(expected_reset_nodes_calls)
+    else:
+        reset_node_spy.assert_not_called()
+    update_partitions_spy.assert_called_with(partitions_to_update, state)

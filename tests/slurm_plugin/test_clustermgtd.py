@@ -1812,7 +1812,10 @@ def test_manage_compute_fleet_status_transitions(
 
     # Check partitions updated correctly
     if update_partition_status:
-        update_all_partitions_spy.assert_called_with(update_partition_status)
+        if update_partition_status == PartitionStatus.UP:
+            update_all_partitions_spy.assert_called_with(update_partition_status, reset_node_addrs_hostname=False)
+        else:
+            update_all_partitions_spy.assert_called_with(update_partition_status, reset_node_addrs_hostname=True)
     else:
         update_all_partitions_spy.assert_not_called()
     # Check nodes terminated correctly
