@@ -352,7 +352,10 @@ class ClusterManager:
                 # partitions and EC2 instances
                 if self._compute_fleet_status == ComputeFleetStatus.STOP_REQUESTED:
                     self._update_compute_fleet_status(ComputeFleetStatus.STOPPING)
-                partitions_deactivated_successfully = update_all_partitions(PartitionStatus.INACTIVE)
+                # When setting partition to INACTIVE, always try to reset nodeaddr/nodehostname to avoid issue
+                partitions_deactivated_successfully = update_all_partitions(
+                    PartitionStatus.INACTIVE, reset_node_addrs_hostname=True
+                )
                 nodes_terminated = self._instance_manager.terminate_all_compute_nodes(
                     self._config.terminate_max_batch_size
                 )
@@ -362,7 +365,10 @@ class ClusterManager:
             elif ComputeFleetStatus.is_start_in_progress(self._compute_fleet_status):
                 if self._compute_fleet_status == ComputeFleetStatus.START_REQUESTED:
                     self._update_compute_fleet_status(ComputeFleetStatus.STARTING)
-                partitions_activated_successfully = update_all_partitions(PartitionStatus.UP)
+                # When setting partition to UP, DO NOT reset nodeaddr/nodehostname to avoid breaking nodes already up
+                partitions_activated_successfully = update_all_partitions(
+                    PartitionStatus.UP, reset_node_addrs_hostname=False
+                )
                 if partitions_activated_successfully:
                     self._update_compute_fleet_status(ComputeFleetStatus.RUNNING)
         except ComputeFleetStatusManager.ConditionalStatusUpdateFailed:

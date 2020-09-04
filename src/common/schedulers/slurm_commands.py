@@ -54,10 +54,10 @@ SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "sta
 
 
 class PartitionStatus(Enum):
-    UP = "up"
-    DOWN = "down"
-    INACTIVE = "inactive"
-    DRAIN = "drain"
+    UP = "UP"
+    DOWN = "DOWN"
+    INACTIVE = "INACTIVE"
+    DRAIN = "DRAIN"
 
     def __str__(self):
         return str(self.value)
@@ -202,11 +202,18 @@ def update_partitions(partitions, state):
     return succeeded_partitions
 
 
-def update_all_partitions(state):
+def update_all_partitions(state, reset_node_addrs_hostname):
+    """Update partitions to a state and reset nodesaddr/nodehostname if needed."""
     try:
-        partitions = [partition.name for partition in get_partition_info()]
-        succeeded_partitions = update_partitions(partitions, state)
-        return succeeded_partitions == partitions
+        partitions = get_partition_info()
+        partition_to_update = []
+        for part in partitions:
+            if PartitionStatus(part.state) != PartitionStatus(state):
+                if reset_node_addrs_hostname:
+                    reset_nodes(part.nodes)
+                partition_to_update.append(part.name)
+        succeeded_partitions = update_partitions(partition_to_update, state)
+        return succeeded_partitions == partition_to_update
     except Exception as e:
         logging.error("Failed when updating partitions with error %s", e)
         return False
@@ -260,8 +267,8 @@ def set_nodes_drain(nodes, reason):
 
 
 def set_nodes_power_down(nodes, reason=None):
-    """Place slurm node into power_down state."""
-    update_nodes(nodes, state="power_down", reason=reason)
+    """Place slurm node into power_down state and reset nodeaddr/nodehostname."""
+    reset_nodes(nodes=nodes, state="power_down", reason=reason, raise_on_error=True)
 
 
 def reset_nodes(nodes, state=None, reason=None, raise_on_error=False):
