@@ -3,5 +3,6 @@ pytest-cov
 pytest-datadir
 pytest-html
 pytest-mock
+pytest-xdist
 assertpy
 codecov
