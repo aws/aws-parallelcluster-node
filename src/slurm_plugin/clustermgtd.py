@@ -485,7 +485,12 @@ class ClusterManager:
                 )
                 # Try to reset nodeaddr if possible to avoid potential problems
                 try:
-                    reset_nodes([node.name for node in inactive_nodes], raise_on_error=False)
+                    reset_nodes(
+                        [node.name for node in inactive_nodes],
+                        raise_on_error=False,
+                        state="power_down",
+                        reason="inactive partition",
+                    )
                 except Exception as e:
                     log.error("Encountered exception when resetting nodeaddr for INACTIVE nodes: %s", e)
             instances_still_in_cluster = []
