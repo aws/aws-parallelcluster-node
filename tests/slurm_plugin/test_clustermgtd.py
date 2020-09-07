@@ -297,7 +297,9 @@ def test_clean_up_inactive_parititon(
     result = cluster_manager._clean_up_inactive_partition(inactive_nodes, mock_cluster_instances)
     mock_instance_manager.delete_instances.assert_called_with(mock_backing_instances, terminate_batch_size=4)
     if delete_instances_side_effect is not Exception:
-        mock_reset_node.assert_called_with(["queue1-st-c5xlarge-3"], raise_on_error=False)
+        mock_reset_node.assert_called_with(
+            ["queue1-st-c5xlarge-3"], raise_on_error=False, reason="inactive partition", state="power_down"
+        )
     assert_that(result).is_equal_to(expected_result)
 
 
