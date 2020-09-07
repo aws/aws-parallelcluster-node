@@ -125,7 +125,7 @@ def _get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):
         # Note: heartbeat must be written with datetime.strftime to convert localized datetime into str
         # datetime.strptime will not work with str(datetime)
         # Example timestamp written to heartbeat file: 2020-07-30 19:34:02.613338+00:00
-        return datetime.strptime(timestamp_file.read(), TIMESTAMP_FORMAT)
+        return datetime.strptime(timestamp_file.read().strip(), TIMESTAMP_FORMAT)
 
 
 def _expired_clustermgtd_heartbeat(last_heartbeat, current_time, clustermgtd_timeout):
