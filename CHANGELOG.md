@@ -3,6 +3,17 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.9.0
+-----
+**ENHANCEMENTS**
+
+- Add support for multiple queues and multiple instance types feature with the Slurm scheduler.
+
+**CHANGES**
+- Optimize scaling logic with Slurm scheduler, no longer based on Auto Scaling groups. 
+- A Route53 private hosted zone is now created together with the cluster and used in DNS resolution inside cluster nodes
+  when using Slurm scheduler.
+
 2.8.1
 -----
 
