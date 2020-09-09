@@ -32,7 +32,7 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbe
                 "cluster_name": "hit",
                 "region": "us-east-2",
                 "_boto3_config": {"retries": {"max_attempts": 1, "mode": "standard"}},
-                "clustermgtd_timeout": 300,
+                "clustermgtd_timeout": 600,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                 "disable_computemgtd_actions": False,
                 "_slurm_nodename_file": "/etc/parallelcluster/slurm_plugin/slurm_nodename",
