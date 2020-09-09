@@ -68,6 +68,7 @@ class SlurmNode:
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
+    SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
 
     def __init__(self, name, nodeaddr, nodehostname, state):
         """Initialize slurm node with attributes."""
@@ -99,13 +100,17 @@ class SlurmNode:
             self.SLURM_SCONTROL_IDLE_STATE in self.state or self.SLURM_SCONTROL_DOWN_STATE in self.state
         )
 
+    def is_powering_down(self):
+        """Check if slurm node is in powering down state."""
+        return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.state
+
     def is_down(self):
         """Check if slurm node is in a down state."""
-        return self.SLURM_SCONTROL_DOWN_STATE in self.state
+        return self.SLURM_SCONTROL_DOWN_STATE in self.state and not self.is_powering_down()
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""
-        return not self._is_drain() and not self.is_down()
+        return not self._is_drain() and not self.is_down() and not self.is_powering_down()
 
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
@@ -325,7 +330,7 @@ def get_nodes_info(nodes, command_timeout=5):
     return _parse_nodes_info(nodeinfo_str)
 
 
-def get_partition_info(command_timeout=5, get_all_nodes=False):
+def get_partition_info(command_timeout=5, get_all_nodes=True):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
     partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)
