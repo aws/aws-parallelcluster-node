@@ -84,7 +84,7 @@ def print_with_count(resource_list):
     """Print resource list with the len of the list."""
     if isinstance(resource_list, str):
         return resource_list
-    resource_list = list(resource_list)
+    resource_list = [str(elem) for elem in resource_list]
     return f"(x{len(resource_list)}) {str(resource_list)}"
 
 
