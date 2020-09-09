@@ -13,6 +13,7 @@
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
@@ -400,6 +401,8 @@ class ClusterManager:
                 return
             # Get all non-terminating instances in EC2
             try:
+                # After reading Slurm nodes wait for 5 seconds to let instances appear in EC2 describe_instances call
+                time.sleep(5)
                 cluster_instances = self._get_ec2_instances()
             except ClusterManager.EC2InstancesInfoUnavailable:
                 log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
