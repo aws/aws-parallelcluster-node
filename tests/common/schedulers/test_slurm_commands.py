@@ -1175,6 +1175,7 @@ def test_slurm_node_is_drained(node, expected_output):
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD"), True),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN"), False),
     ],
 )
 def test_slurm_node_is_down(node, expected_output):

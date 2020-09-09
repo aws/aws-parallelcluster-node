@@ -438,7 +438,7 @@ class ClusterManager:
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_partition_info_with_retry():
-        return get_partition_info(command_timeout=5)
+        return get_partition_info(command_timeout=5, get_all_nodes=True)
 
     @staticmethod
     def _get_node_info_from_partition():
@@ -483,16 +483,26 @@ class ClusterManager:
                 self._instance_manager.delete_instances(
                     instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
                 )
-                # Try to reset nodeaddr if possible to avoid potential problems
+            # Try to reset nodeaddr if possible to avoid potential problems
+            nodes_to_reset = [node.name for node in inactive_nodes if node.is_nodeaddr_set()]
+            if nodes_to_reset:
+                log.info(
+                    "Resetting nodeaddr/nodehostname and powering down for following nodes: %s",
+                    print_with_count(nodes_to_reset),
+                )
                 try:
                     reset_nodes(
-                        [node.name for node in inactive_nodes],
+                        nodes_to_reset,
                         raise_on_error=False,
                         state="power_down",
                         reason="inactive partition",
                     )
                 except Exception as e:
-                    log.error("Encountered exception when resetting nodeaddr for INACTIVE nodes: %s", e)
+                    log.error(
+                        "Encountered exception when resetting nodeaddr for INACTIVE nodes %s: %s",
+                        print_with_count(nodes_to_reset),
+                        e,
+                    )
             instances_still_in_cluster = []
             for instance in cluster_instances:
                 if instance.id not in instances_to_terminate:
