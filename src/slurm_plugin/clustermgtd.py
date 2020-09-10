@@ -393,9 +393,10 @@ class ClusterManager:
         }:
             # Get node states for nodes in inactive and active partitions
             try:
+                log.info("Retrieving nodes info from the scheduler")
                 active_nodes, inactive_nodes = self._get_node_info_from_partition()
-                log.debug("Current active slurm nodes in scheduler: %s", print_with_count(active_nodes))
-                log.debug("Current inactive slurm nodes in scheduler: %s", print_with_count(inactive_nodes))
+                log.debug("Current active slurm nodes in scheduler: %s", active_nodes)
+                log.debug("Current inactive slurm nodes in scheduler: %s", inactive_nodes)
             except ClusterManager.SchedulerUnavailable:
                 log.error("Unable to get partition/node info from slurm, no other action can be performed. Sleeping...")
                 return
@@ -403,17 +404,20 @@ class ClusterManager:
             try:
                 # After reading Slurm nodes wait for 5 seconds to let instances appear in EC2 describe_instances call
                 time.sleep(5)
+                log.info("Retrieving list of EC2 instances associated with the cluster")
                 cluster_instances = self._get_ec2_instances()
             except ClusterManager.EC2InstancesInfoUnavailable:
                 log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
                 return
             # Initialize mapping data structures
             ip_to_slurm_node_map = {node.nodeaddr: node for node in active_nodes}
+            log.debug("ip_to_slurm_node_map %s", ip_to_slurm_node_map)
             # Handle inactive partition and terminate backing instances
             if inactive_nodes:
                 cluster_instances = self._clean_up_inactive_partition(inactive_nodes, cluster_instances)
             log.debug("Current cluster instances in EC2: %s", cluster_instances)
             private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
+            log.debug("private_ip_to_instance_map %s", private_ip_to_instance_map)
             # Clean up orphaned instances and skip all other operations if no active node
             if active_nodes:
                 # Perform health check actions
@@ -441,7 +445,7 @@ class ClusterManager:
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_partition_info_with_retry():
-        return get_partition_info(command_timeout=5, get_all_nodes=True)
+        return get_partition_info(command_timeout=10, get_all_nodes=True)
 
     @staticmethod
     def _get_node_info_from_partition():
@@ -751,6 +755,31 @@ class ClusterManager:
             [node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed"
         )
 
+    @log_exception(log, "maintaining powering down nodes", raise_on_error=False)
+    def _handle_powering_down_nodes(self, slurm_nodes, private_ip_to_instance_map):
+        """
+        Handle nodes that are powering down.
+
+        Terminate instances backing the powering down node if any.
+        Reset the nodeaddr for the powering down node. Node state is not changed.
+        """
+        powering_down_nodes = []
+        for node in slurm_nodes:
+            if not node.is_static and node.is_nodeaddr_set() and (node.is_power() or node.is_powering_down()):
+                powering_down_nodes.append(node)
+
+        if powering_down_nodes:
+            log.info("Resetting powering down nodes: %s", print_with_count(powering_down_nodes))
+            reset_nodes(nodes=[node.name for node in powering_down_nodes])
+            instances_to_terminate = ClusterManager._get_backing_instance_ids(
+                powering_down_nodes, private_ip_to_instance_map
+            )
+            if instances_to_terminate:
+                log.info("Terminating instances that are backing powering down nodes")
+                self._instance_manager.delete_instances(
+                    instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
+                )
+
     @staticmethod
     def _get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map):
         backing_instances = set()
@@ -804,6 +833,8 @@ class ClusterManager:
         A list of slurm nodes is passed in and slurm node map with IP/nodeaddr as key should be avoided.
         """
         log.info("Performing node maintenance actions")
+        self._handle_powering_down_nodes(slurm_nodes, private_ip_to_instance_map)
+
         # Update self.static_nodes_in_replacement by removing any up nodes from the set
         self._update_static_nodes_in_replacement(slurm_nodes)
         log.info(
