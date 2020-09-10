@@ -52,7 +52,7 @@ class TestClustermgtdConfig:
                     "cluster_name": "hit",
                     "region": "us-east-2",
                     "_boto3_config": {"retries": {"max_attempts": 1, "mode": "standard"}},
-                    "loop_time": 30,
+                    "loop_time": 60,
                     "disable_all_cluster_management": False,
                     "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                     "logging_config": os.path.join(
@@ -85,7 +85,7 @@ class TestClustermgtdConfig:
                         "retries": {"max_attempts": 10, "mode": "standard"},
                         "proxies": {"https": "https://fake.proxy"},
                     },
-                    "loop_time": 60,
+                    "loop_time": 30,
                     "disable_all_cluster_management": True,
                     "heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
                     "logging_config": "/my/logging/config",
@@ -116,7 +116,7 @@ class TestClustermgtdConfig:
                         "retries": {"max_attempts": 1, "mode": "standard"},
                         "proxies": {"https": "https://fake.proxy"},
                     },
-                    "loop_time": 60,
+                    "loop_time": 30,
                     "disable_all_cluster_management": True,
                     "heartbeat_file_path": "/home/ubuntu/clustermgtd_heartbeat",
                     "logging_config": "/my/logging/config",
@@ -221,6 +221,8 @@ def test_get_node_info_from_partition(
         "mock_cluster_instances",
         "mock_backing_instances",
         "expected_result",
+        "slurm_inactive_nodes",
+        "expected_reset",
         "delete_instances_side_effect",
         "reset_nodes_side_effect",
     ),
@@ -236,6 +238,16 @@ def test_get_node_info_from_partition(
                 EC2Instance("id-1", "ip-1", "hostname", "some_time"),
                 EC2Instance("id-2", "ip-2", "hostname", "some_time"),
             ],
+            [
+                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-5", "queue1-st-c5xlarge-5", "queue1-st-c5xlarge-5", "some_state"),
+                SlurmNode("queue1-dy-c5xlarge-4", "queue1-dy-c5xlarge-4", "queue1-dy-c5xlarge-4", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE"),
+                SlurmNode("queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN"),
+                SlurmNode("queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "IDLE*"),
+                SlurmNode("queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "IDLE*"),
+            ],
+            ["queue1-st-c5xlarge-3", "queue1-dy-c5xlarge-4", "queue1-st-c5xlarge-6", "queue1-dy-c5xlarge-8"],
             None,
             None,
         ),
@@ -251,6 +263,8 @@ def test_get_node_info_from_partition(
                 EC2Instance("id-2", "ip-2", "hostname", "some_time"),
                 EC2Instance("id-3", "ip-3", "hostname", "some_time"),
             ],
+            [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")],
+            None,
             Exception,
             None,
         ),
@@ -265,6 +279,8 @@ def test_get_node_info_from_partition(
                 EC2Instance("id-1", "ip-1", "hostname", "some_time"),
                 EC2Instance("id-2", "ip-2", "hostname", "some_time"),
             ],
+            [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")],
+            ["queue1-st-c5xlarge-3"],
             None,
             Exception,
         ),
@@ -274,13 +290,14 @@ def test_get_node_info_from_partition(
 def test_clean_up_inactive_parititon(
     mock_cluster_instances,
     mock_backing_instances,
+    slurm_inactive_nodes,
+    expected_reset,
     expected_result,
     delete_instances_side_effect,
     reset_nodes_side_effect,
     mocker,
 ):
     # Test setup
-    inactive_nodes = [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")]
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
@@ -294,12 +311,14 @@ def test_clean_up_inactive_parititon(
         )
     else:
         mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
-    result = cluster_manager._clean_up_inactive_partition(inactive_nodes, mock_cluster_instances)
+    result = cluster_manager._clean_up_inactive_partition(slurm_inactive_nodes, mock_cluster_instances)
     mock_instance_manager.delete_instances.assert_called_with(mock_backing_instances, terminate_batch_size=4)
-    if delete_instances_side_effect is not Exception:
+    if expected_reset:
         mock_reset_node.assert_called_with(
-            ["queue1-st-c5xlarge-3"], raise_on_error=False, reason="inactive partition", state="power_down"
+            expected_reset, raise_on_error=False, reason="inactive partition", state="down"
         )
+    else:
+        mock_reset_node.assert_not_called()
     assert_that(result).is_equal_to(expected_result)
 
 
@@ -880,6 +899,40 @@ def test_handle_unhealthy_dynamic_nodes(
 
 
 @pytest.mark.parametrize(
+    "slurm_nodes, mock_backing_instances, expected_powering_down_nodes",
+    [
+        (
+            [
+                SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD"),
+                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN"),
+                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER"),
+                SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_"),
+                SlurmNode("queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "POWERING_DOWN"),
+                SlurmNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN"),
+            ],
+            ["id-1", "id-2"],
+            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3"],
+        )
+    ],
+    ids=["basic"],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expected_powering_down_nodes, mocker):
+    mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
+    cluster_manager = ClusterManager(mock_sync_config)
+    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
+    mocker.patch(
+        "slurm_plugin.clustermgtd.ClusterManager._get_backing_instance_ids",
+        return_value=mock_backing_instances,
+        auto_spec=True,
+    )
+    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+    cluster_manager._handle_powering_down_nodes(slurm_nodes, {"placeholder": "map"})
+    mock_instance_manager.delete_instances.assert_called_with(["id-1", "id-2"], terminate_batch_size=4)
+    reset_nodes_mock.assert_called_with(nodes=expected_powering_down_nodes)
+
+
+@pytest.mark.parametrize(
     (
         "current_replacing_nodes",
         "unhealthy_static_nodes",
@@ -1088,6 +1141,9 @@ def test_maintain_nodes(private_ip_to_instance_map, active_nodes, mock_unhealthy
     )
     mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", auto_spec=True)
     mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", auto_spec=True)
+    mock_handle_powering_down_nodes = mocker.patch.object(
+        cluster_manager, "_handle_powering_down_nodes", auto_spec=True
+    )
     # Run test
     cluster_manager._maintain_nodes(private_ip_to_instance_map, active_nodes)
     # Check function calls
@@ -1095,6 +1151,7 @@ def test_maintain_nodes(private_ip_to_instance_map, active_nodes, mock_unhealthy
     mock_find_unhealthy.assert_called_with(active_nodes, private_ip_to_instance_map)
     mock_handle_dynamic.assert_called_with(mock_unhealthy_nodes[0], private_ip_to_instance_map)
     mock_handle_static.assert_called_with(mock_unhealthy_nodes[1], private_ip_to_instance_map)
+    mock_handle_powering_down_nodes.assert_called_with(active_nodes, private_ip_to_instance_map)
 
 
 @pytest.mark.parametrize(
@@ -1242,6 +1299,7 @@ def test_manage_cluster(
         dns_domain="dns.domain",
         use_private_hostname=False,
     )
+    mocker.patch("time.sleep")
     ip_to_slurm_node_map = {node.nodeaddr: node for node in mock_active_nodes}
     cluster_manager = ClusterManager(mock_sync_config)
     # Set up function mocks
@@ -1689,6 +1747,7 @@ def test_manage_cluster_boto3(
     caplog.set_level(logging.ERROR)
     # This test only patches I/O and boto3 calls to ensure that all boto3 calls are expected
     mocker.patch("subprocess.run")
+    mocker.patch("time.sleep")
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
