@@ -508,7 +508,9 @@ class ClusterManager:
         # Try to reset nodeaddr if possible to avoid potential problems
         nodes_to_reset = []
         for node in inactive_nodes:
-            if node.is_nodeaddr_set() or (not node.is_static and not (node.is_power() or node.is_powering_down())):
+            if node.is_nodeaddr_set() or (
+                not node.is_static and not (node.is_power() or node.is_powering_down() or node.is_down())
+            ):
                 nodes_to_reset.append(node.name)
         if nodes_to_reset:
             # Setting to down and not power_down cause while inactive power_down doesn't seem to be applied
