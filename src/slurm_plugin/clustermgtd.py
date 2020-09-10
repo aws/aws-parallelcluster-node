@@ -491,17 +491,21 @@ class ClusterManager:
                     instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
                 )
             # Try to reset nodeaddr if possible to avoid potential problems
-            nodes_to_reset = [node.name for node in inactive_nodes if node.is_nodeaddr_set()]
+            nodes_to_reset = []
+            for node in inactive_nodes:
+                if node.is_nodeaddr_set() or (not node.is_static and not (node.is_power() or node.is_powering_down())):
+                    nodes_to_reset.append(node.name)
             if nodes_to_reset:
+                # Setting to down and not power_down cause while inactive power_down doesn't seem to be applied
                 log.info(
-                    "Resetting nodeaddr/nodehostname and powering down for following nodes: %s",
+                    "Resetting nodeaddr/nodehostname and setting to down the following nodes: %s",
                     print_with_count(nodes_to_reset),
                 )
                 try:
                     reset_nodes(
                         nodes_to_reset,
                         raise_on_error=False,
-                        state="power_down",
+                        state="down",
                         reason="inactive partition",
                     )
                 except Exception as e:

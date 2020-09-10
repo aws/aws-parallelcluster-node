@@ -221,6 +221,8 @@ def test_get_node_info_from_partition(
         "mock_cluster_instances",
         "mock_backing_instances",
         "expected_result",
+        "slurm_inactive_nodes",
+        "expected_reset",
         "delete_instances_side_effect",
         "reset_nodes_side_effect",
     ),
@@ -236,6 +238,16 @@ def test_get_node_info_from_partition(
                 EC2Instance("id-1", "ip-1", "hostname", "some_time"),
                 EC2Instance("id-2", "ip-2", "hostname", "some_time"),
             ],
+            [
+                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-5", "queue1-st-c5xlarge-5", "queue1-st-c5xlarge-5", "some_state"),
+                SlurmNode("queue1-dy-c5xlarge-4", "queue1-dy-c5xlarge-4", "queue1-dy-c5xlarge-4", "some_state"),
+                SlurmNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE"),
+                SlurmNode("queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN"),
+                SlurmNode("queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "IDLE*"),
+                SlurmNode("queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "IDLE*"),
+            ],
+            ["queue1-st-c5xlarge-3", "queue1-dy-c5xlarge-4", "queue1-st-c5xlarge-6", "queue1-dy-c5xlarge-8"],
             None,
             None,
         ),
@@ -251,6 +263,8 @@ def test_get_node_info_from_partition(
                 EC2Instance("id-2", "ip-2", "hostname", "some_time"),
                 EC2Instance("id-3", "ip-3", "hostname", "some_time"),
             ],
+            [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")],
+            None,
             Exception,
             None,
         ),
@@ -265,6 +279,8 @@ def test_get_node_info_from_partition(
                 EC2Instance("id-1", "ip-1", "hostname", "some_time"),
                 EC2Instance("id-2", "ip-2", "hostname", "some_time"),
             ],
+            [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")],
+            ["queue1-st-c5xlarge-3"],
             None,
             Exception,
         ),
@@ -274,13 +290,14 @@ def test_get_node_info_from_partition(
 def test_clean_up_inactive_parititon(
     mock_cluster_instances,
     mock_backing_instances,
+    slurm_inactive_nodes,
+    expected_reset,
     expected_result,
     delete_instances_side_effect,
     reset_nodes_side_effect,
     mocker,
 ):
     # Test setup
-    inactive_nodes = [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state")]
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
@@ -294,12 +311,14 @@ def test_clean_up_inactive_parititon(
         )
     else:
         mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
-    result = cluster_manager._clean_up_inactive_partition(inactive_nodes, mock_cluster_instances)
+    result = cluster_manager._clean_up_inactive_partition(slurm_inactive_nodes, mock_cluster_instances)
     mock_instance_manager.delete_instances.assert_called_with(mock_backing_instances, terminate_batch_size=4)
-    if delete_instances_side_effect is not Exception:
+    if expected_reset:
         mock_reset_node.assert_called_with(
-            ["queue1-st-c5xlarge-3"], raise_on_error=False, reason="inactive partition", state="power_down"
+            expected_reset, raise_on_error=False, reason="inactive partition", state="down"
         )
+    else:
+        mock_reset_node.assert_not_called()
     assert_that(result).is_equal_to(expected_result)
 
 
