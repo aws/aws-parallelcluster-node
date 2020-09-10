@@ -47,7 +47,7 @@ from slurm_plugin.common import (
     time_is_up,
 )
 
-LOOP_TIME = 30
+LOOP_TIME = 60
 log = logging.getLogger(__name__)
 
 
