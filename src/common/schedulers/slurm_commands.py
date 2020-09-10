@@ -69,6 +69,7 @@ class SlurmNode:
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
     SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
+    SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWER"
 
     def __init__(self, name, nodeaddr, nodehostname, state):
         """Initialize slurm node with attributes."""
@@ -103,6 +104,10 @@ class SlurmNode:
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
         return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.state
+
+    def is_power(self):
+        """Check if slurm node is in power state."""
+        return self.SLURM_SCONTROL_POWER_STATE == self.state
 
     def is_down(self):
         """Check if slurm node is in a down state."""
