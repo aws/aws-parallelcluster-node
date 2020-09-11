@@ -15,11 +15,14 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **ENHANCEMENTS**
 
 - Add support for multiple queues and multiple instance types feature with the Slurm scheduler.
-
-**CHANGES**
-- Optimize scaling logic with Slurm scheduler, no longer based on Auto Scaling groups. 
-- A Route53 private hosted zone is now created together with the cluster and used in DNS resolution inside cluster nodes
-  when using Slurm scheduler.
+  - Replace the previously available scaling components with: `clustermgtd` daemon that
+    takes care of handling compute fleet management operations, included the processing of health check failures coming
+    from EC2 and cluster start/stop operations; `slurm_resume` and `slurm_suspend` scripts that integrate with Slurm
+    power saving plugin; `computemgtd` daemon that monitors the health of the system from the compute nodes.
+  - Replace Auto Scaling Group with plain EC2 APIs when provisioning cluster nodes.
+  - Register cluster nodes in a Route53 private hosted zone when DNS resolution is enabled for the cluster.
+  - Register mapping between Slurm node names and EC2 instances in DynamoDB table.
+  - Create log files for the new components in `/var/log/parallelcluster/` dir.
 
 2.8.1
 -----
