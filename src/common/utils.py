@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and limitations under the License.
 import collections
 import itertools
-import json
 import logging
 import os
 import pwd
@@ -23,6 +22,7 @@ from datetime import datetime, timezone
 from enum import Enum
 
 import boto3
+from botocore.exceptions import ClientError
 from retrying import retry
 
 from common.time_utils import seconds
@@ -241,20 +241,50 @@ def _read_cfnconfig():
     return cfnconfig_params
 
 
+@retry(
+    stop_max_attempt_number=5,
+    wait_exponential_multiplier=5000,
+    retry_on_exception=lambda exception: isinstance(exception, ClientError)
+    and exception.response.get("Error").get("Code") == "RequestLimitExceeded",
+)
+def _fetch_instance_info(region, proxy_config, instance_type):
+    """
+    Fetch instance type information from EC2's DescribeInstanceTypes API.
+
+    :param region: AWS region
+    :param proxy_config: proxy configuration
+    :param instance_type: instance type to get info for
+    :return: dict with the same format as those returned in the "InstanceTypes" array of the
+             object returned by DescribeInstanceTypes
+    """
+    emsg_format = "Error when calling DescribeInstanceTypes for instance type {instance_type}: {exception_message}"
+    ec2_client = boto3.client("ec2", region_name=region, config=proxy_config)
+    try:
+        return ec2_client.describe_instance_types(InstanceTypes=[instance_type]).get("InstanceTypes")[0]
+    except ClientError as client_error:
+        log.critical(
+            emsg_format.format(
+                instance_type=instance_type, exception_message=client_error.response.get("Error").get("Message")
+            )
+        )
+        raise  # NOTE: raising ClientError is necessary to trigger retries
+    except Exception as exception:
+        emsg = emsg_format.format(instance_type=instance_type, exception_message=exception)
+        log.critical(emsg)
+        raise CriticalError(emsg)
+
+
 def _get_instance_info_from_pricing_file(region, proxy_config, instance_type):
     """
-    Read pricing file and get number of vcpus and gpus for the given instance type.
+    Call the DescribeInstanceTypes to get number of vcpus and gpus for the given instance type.
 
     :return: (the number of vcpus or -1 if the instance type cannot be found,
                 number of gpus or None if the instance does not have gpu)
     """
-    instances = _fetch_pricing_file(region, proxy_config)
-    if instance_type not in instances:
-        error_msg = "Instance type {0} not found in instances.json file.".format(instance_type)
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-
-    return _get_vcpus_by_instance_type(instances, instance_type), _get_gpus_by_instance_type(instances, instance_type)
+    log.debug("Fetching info for instance_type {0}".format(instance_type))
+    instance_info = _fetch_instance_info(region, proxy_config, instance_type)
+    log.debug("Received the following information for instance type {0}: {1}".format(instance_type, instance_info))
+    return _get_vcpus_from_instance_info(instance_info), _get_gpus_from_instance_info(instance_info)
 
 
 def get_instance_properties(region, proxy_config, instance_type):
@@ -308,67 +338,38 @@ def get_instance_properties(region, proxy_config, instance_type):
     return get_instance_properties.cache[instance_type]
 
 
-@retry(stop_max_attempt_number=3, wait_fixed=5000)
-def _fetch_pricing_file(region, proxy_config):
+def _get_vcpus_from_instance_info(instance_info):
     """
-    Download pricing file.
+    Return the number of vCPUs the instance described by instance_info has.
 
-    :param region: AWS Region
-    :param proxy_config: Proxy Configuration
-    :raise Exception if unable to download the pricing file.
-    """
-    bucket_name = "%s-aws-parallelcluster" % region
-
-    try:
-        s3 = boto3.resource("s3", region_name=region, config=proxy_config)
-        instances_file_content = s3.Object(bucket_name, "instances/instances.json").get()["Body"].read()
-        return json.loads(instances_file_content)
-    except Exception as e:
-        log.critical(
-            "Could not load instance mapping file from S3 bucket {0}. Failed with exception: {1}".format(bucket_name, e)
-        )
-        raise
-
-
-def _get_vcpus_by_instance_type(instances, instance_type):
-    """
-    Get vcpus for the given instance type from the pricing file.
-
-    :param instances: dictionary conatining the content of the instances file
-    :param instance_type: The instance type to search for
-    :return: the number of vcpus for the given instance type
-    :raise CriticalError if unable to find the given instance or whatever error.
+    :param instance_info: dict as returned _fetch_instance_info
+    :return: number of vCPUs for the instance type
     """
     try:
-        vcpus = int(instances[instance_type]["vcpus"])
-        return vcpus
-    except KeyError:
-        error_msg = "Unable to get vcpus from instances file. Instance type {0} not found.".format(instance_type)
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-    except Exception as e:
-        error_msg = "Unable to get vcpus for the instance type {0} from file. Failed with exception {1}".format(
-            instance_type, e
+        return int(instance_info.get("VCpuInfo", {}).get("DefaultVCpus"))
+    except Exception as exception:
+        error_msg = "Unable to get vcpus for the instance type {0}. Failed with exception {1}".format(
+            instance_info.get("InstanceType") if hasattr(instance_info, "get") else None, exception
         )
         log.critical(error_msg)
         raise CriticalError(error_msg)
 
 
-def _get_gpus_by_instance_type(instances, instance_type):
+def _get_gpus_from_instance_info(instance_info):
     """
-    Get gpus for the given instance type from the pricing file.
+    Return the number of GPUs the instance described by instance_info has.
 
-    :param instances: dictionary conatining the content of the instances file
-    :param instance_type: The instance type to search for
-    :return: the number of GPU for the given instance type
-    :raise CriticalError if unable to find the given instance or whatever error.
+    :param instance_info: dict as returned _fetch_instance_info
+    :return: number of GPUs for the instance type
     """
     try:
-        gpus = int(instances[instance_type]["gpu"])
-        return gpus
-    except KeyError:
-        # If instance has no GPU, return 0
-        return 0
+        return sum([gpu_entry.get("Count", 0) for gpu_entry in instance_info.get("GpuInfo", {}).get("Gpus", [])])
+    except Exception as exception:
+        error_msg = "Unable to get gpus for the instance type {0}. Failed with exception {1}".format(
+            instance_info.get("InstanceType") if hasattr(instance_info, "get") else None, exception
+        )
+        log.critical(error_msg)
+        raise CriticalError(error_msg)
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
