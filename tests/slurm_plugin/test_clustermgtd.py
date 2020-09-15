@@ -23,7 +23,13 @@ from assertpy import assert_that
 
 import slurm_plugin
 from common.schedulers.slurm_commands import PartitionStatus, SlurmNode, SlurmPartition, update_all_partitions
-from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
+from slurm_plugin.clustermgtd import (
+    ClusterManager,
+    ClusterMetrics,
+    ClustermgtdConfig,
+    ComputeFleetStatus,
+    ComputeFleetStatusManager,
+)
 from slurm_plugin.common import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -1329,8 +1335,11 @@ def test_manage_cluster(
         return_value=(mock_active_nodes, mock_inactive_nodes),
     )
 
+    cluster_metrics = ClusterMetrics()
+    # TODO add mock.assert_called_once() if we had setters instead of setting attributes directly
+
     # Run test
-    cluster_manager.manage_cluster()
+    cluster_manager.manage_cluster(cluster_metrics)
     # Assert function calls
     initialize_instance_manager_mock.assert_called_once()
     initialize_compute_fleet_status_manager_mock.assert_called_once()
@@ -1771,7 +1780,8 @@ def test_manage_cluster_boto3(
         )
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
-    cluster_manager.manage_cluster()
+    cluster_metrics = ClusterMetrics()
+    cluster_manager.manage_cluster(cluster_metrics)
 
     assert_that(expected_error_messages).is_length(len(caplog.records))
     for actual, expected in zip(caplog.records, expected_error_messages):
@@ -2008,3 +2018,7 @@ def initialize_compute_fleet_status_manager_mock(mocker):
         spec=ClusterManager._initialize_compute_fleet_status_manager,
         return_value=compute_fleet_status_manager_mock,
     )
+
+
+# TODO Add tests to verify the behaviour of _upload_cluster_metrics (we could mock boto3 calls as in
+# test_manage_cluster_boto3 maybe)

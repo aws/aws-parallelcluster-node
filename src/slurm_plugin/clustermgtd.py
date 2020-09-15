@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
+from threading import Thread
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -379,7 +380,7 @@ class ClusterManager:
                 self._compute_fleet_status,
             )
 
-    def manage_cluster(self):
+    def manage_cluster(self, cloudwatch_metrics):
         """Manage cluster by syncing scheduler states with EC2 states and performing node maintenance actions."""
         # Initialization
         log.info("Managing cluster...")
@@ -395,8 +396,8 @@ class ClusterManager:
             try:
                 log.info("Retrieving nodes info from the scheduler")
                 active_nodes, inactive_nodes = self._get_node_info_from_partition()
-                log.debug("Current active slurm nodes in scheduler: %s", active_nodes)
-                log.debug("Current inactive slurm nodes in scheduler: %s", inactive_nodes)
+                cloudwatch_metrics._slurm_active_nodes = active_nodes
+                cloudwatch_metrics._slurm_inactive_nodes = inactive_nodes
             except ClusterManager.SchedulerUnavailable:
                 log.error("Unable to get partition/node info from slurm, no other action can be performed. Sleeping...")
                 return
@@ -406,6 +407,7 @@ class ClusterManager:
                 time.sleep(5)
                 log.info("Retrieving list of EC2 instances associated with the cluster")
                 cluster_instances = self._get_ec2_instances()
+                cloudwatch_metrics._ec2_nodes = cluster_instances
             except ClusterManager.EC2InstancesInfoUnavailable:
                 log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
                 return
@@ -879,10 +881,8 @@ class ClusterManager:
             )
 
 
-def _run_clustermgtd():
+def _run_clustermgtd(clustermgtd_config_file, config, custom_metrics):
     """Run clustermgtd actions."""
-    clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
-    config = ClustermgtdConfig(clustermgtd_config_file)
     cluster_manager = ClusterManager(config=config)
     while True:
         # Get loop start time
@@ -890,6 +890,7 @@ def _run_clustermgtd():
         # Get program config
         try:
             config = ClustermgtdConfig(clustermgtd_config_file)
+            custom_metrics._config = config
             cluster_manager.set_config(config)
         except Exception as e:
             log.warning(
@@ -907,7 +908,69 @@ def _run_clustermgtd():
                 e,
             )
         # Manage cluster
-        cluster_manager.manage_cluster()
+        cluster_manager.manage_cluster(custom_metrics)
+        custom_metrics._has_received = True
+        sleep_remaining_loop_time(config.loop_time, start_time)
+
+
+class ClusterMetrics:
+    def __init__(self):
+        self._has_received = False
+        self._slurm_active_nodes = None
+        self._slurm_inactive_nodes = None
+        self._ec2_nodes = None
+        self._config = None
+
+    def get_config(self):
+        return self._config
+
+    def get_values(self):
+        if self._has_received:
+            return [
+                {"name": "slurm_number_active_nodes", "value": len(self._slurm_active_nodes)},
+                {"name": "slurm_number_inactive_nodes", "value": len(self._slurm_inactive_nodes)},
+                {"name": "number_ec2_nodes", "value": len(self._ec2_nodes)},
+            ]
+        return []
+
+
+def _upload_cluster_metrics(custom_metrics):
+
+    # FIXME 'StorageResolution' should not be specified I think, here just for faster tests
+    log.info("beginning of collect and upload custom metrics")
+    config = custom_metrics.get_config()
+    while True:
+        start_time = datetime.now(tz=timezone.utc)
+
+        # get most recent values ([] if no values were uploaded at all (should happen only the first time)
+        metrics_to_upload = custom_metrics.get_values()
+
+        # upload metrics
+        if metrics_to_upload:
+            config = custom_metrics.get_config()
+            cw_client = boto3.client("cloudwatch", region_name=config.region, config=config.boto3_config)
+            cw_client.put_metric_data(
+                Namespace="Custom Namespace",
+                MetricData=[
+                    {
+                        "MetricName": metric["name"],
+                        "Dimensions": [{"Name": "ClusterName", "Value": config.cluster_name}],
+                        "Timestamp": start_time,
+                        "Value": metric["value"],
+                        "Unit": "Count",
+                        "StorageResolution": 1,
+                    }
+                    for metric in metrics_to_upload
+                ],
+            )
+        else:
+            log.info("No metrics to upload")
+
+        # FIXME What happens if the put_metric_data call takes too much time (more than config.loop_time) ?
+        # At the moment, the delay would simply add up every time... Should we have this or should we
+        # upload faster if we are late? This could be an idea but a problem is that if it happens because of
+        # performance problems (instance very busy?), then, it would make it even more difficult for the instance
+        # to do its work.
         sleep_remaining_loop_time(config.loop_time, start_time)
 
 
@@ -916,7 +979,30 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("ClusterManager Startup")
     try:
-        _run_clustermgtd()
+
+        custom_metrics = ClusterMetrics()
+        clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
+        config = ClustermgtdConfig(clustermgtd_config_file)
+        custom_metrics._config = config
+
+        thread_clustermgtd = Thread(
+            target=_run_clustermgtd,
+            args=(
+                clustermgtd_config_file,
+                config,
+                custom_metrics,
+            ),
+        )
+        thread_cloudwatch = Thread(target=_upload_cluster_metrics, args=(custom_metrics,))
+        thread_clustermgtd.start()
+        thread_cloudwatch.start()
+
+        # while True: #TODO check for errors in threads using a queue? and raise if there is a problem
+
+        # should be useless as those do not stop
+        thread_clustermgtd.join()
+        thread_cloudwatch.join()
+
     except Exception as e:
         log.exception("An unexpected error occurred: %s", e)
         raise
