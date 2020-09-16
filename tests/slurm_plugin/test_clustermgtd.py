@@ -79,6 +79,8 @@ class TestClustermgtdConfig:
                     "disable_scheduled_event_health_check": False,
                     "disable_all_health_checks": False,
                     "health_check_timeout": 180,
+                    # Disable pushing cluster metrics to cloudwatch
+                    "disable_push_metrics_to_cloudwatch": False,
                 },
             ),
             (
@@ -110,6 +112,8 @@ class TestClustermgtdConfig:
                     "disable_scheduled_event_health_check": True,
                     "disable_all_health_checks": False,
                     "health_check_timeout": 10,
+                    # Disable pushing cluster metrics to cloudwatch
+                    "disable_push_metrics_to_cloudwatch": True,
                 },
             ),
             (

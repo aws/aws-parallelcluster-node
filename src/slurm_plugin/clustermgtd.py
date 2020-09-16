@@ -53,9 +53,7 @@ log = logging.getLogger(__name__)
 
 
 class ThreadException(Exception):
-    """
-    Raised if one of the sub-threads created by main raises an exception
-    """
+    """Raised if one of the sub-threads created by main raises an exception."""
 
     pass
 
@@ -153,6 +151,8 @@ class ClustermgtdConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
+        # Disable pushing cluster metrics to cloudwatch
+        "disable_push_metrics_to_cloudwatch": False,
     }
 
     def __init__(self, config_file_path):
@@ -198,6 +198,11 @@ class ClustermgtdConfig:
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
         self.logging_config = config.get("clustermgtd", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
+        self.disable_push_metrics_to_cloudwatch = config.getboolean(
+            "clustermgtd",
+            "disable_push_metrics_to_cloudwatch",
+            fallback=self.DEFAULTS.get("disable_push_metrics_to_cloudwatch"),
+        )
 
     def _get_launch_config(self, config):
         """Get config options related to launching instances."""
@@ -927,15 +932,29 @@ def _run_clustermgtd(clustermgtd_config_file, config, cluster_metrics, exception
 class ClusterMetrics:
     def __init__(self):
         self._has_received = False
-        self.slurm_active_nodes = None
-        self.slurm_inactive_nodes = None
-        self.ec2_nodes = None
+        self.slurm_active_nodes = []
+        self.slurm_inactive_nodes = []
+        self.ec2_nodes = []
+        self.num_power_up_nodes = 0
+        self.num_power_down_nodes = 0
         self.config = None
+
+    def _update_power_up_down_nodes(self):
+        self.num_power_up_nodes = 0
+        self.num_power_down_nodes = 0
+
+        for node in self.slurm_active_nodes:
+            if node.is_nodeaddr_set():
+                self.num_power_up_nodes += 1
+            else:
+                self.num_power_down_nodes += 1
 
     def get_values(self):
         if self._has_received:
+            self._update_power_up_down_nodes()
             return [
-                {"name": "slurm_number_active_nodes", "value": len(self.slurm_active_nodes)},
+                {"name": "slurm_number_power_up_nodes", "value": self.num_power_up_nodes},
+                {"name": "slurm_number_power_down_nodes", "value": self.num_power_down_nodes},
                 {"name": "slurm_number_inactive_nodes", "value": len(self.slurm_inactive_nodes)},
                 {"name": "number_ec2_nodes", "value": len(self.ec2_nodes)},
             ]
@@ -945,7 +964,7 @@ class ClusterMetrics:
 def _push_metrics_to_cloudwatch(cluster_metrics, exceptions_list):
 
     try:
-        # FIXME 'StorageResolution' sh(config.loop_time, start_time)ould not be specified I think, here just for faster tests
+        # FIXME 'StorageResolution' should not be specified I think, here just for faster tests
         config = cluster_metrics.config
         while True:
             start_time = datetime.now(tz=timezone.utc)
@@ -954,6 +973,7 @@ def _push_metrics_to_cloudwatch(cluster_metrics, exceptions_list):
             metrics = cluster_metrics.get_values()
 
             # upload metrics
+            # TODO: Change Namespace to Cluster Metrics
             if metrics:
                 config = cluster_metrics.config
                 cw_client = boto3.client("cloudwatch", region_name=config.region, config=config.boto3_config)
@@ -1007,25 +1027,34 @@ def main():
         exceptions_list = []
 
         # TODO: create thread and start it only if it is not disabled by the user
-        thread_clustermgtd = Thread(
-            target=_run_clustermgtd,
-            args=(clustermgtd_config_file, config, cluster_metrics, exceptions_list),
+        subthreads = []
+        # cluster management deamon
+        subthreads.append(
+            Thread(
+                target=_run_clustermgtd,
+                args=(clustermgtd_config_file, config, cluster_metrics, exceptions_list),
+            )
         )
-        thread_cloudwatch = Thread(
-            target=_push_metrics_to_cloudwatch,
-            args=(
-                cluster_metrics,
-                exceptions_list,
-            ),
-        )
-        thread_clustermgtd.start()
-        thread_cloudwatch.start()
+
+        if not config.disable_push_metrics_to_cloudwatch:
+            subthreads.append(
+                Thread(
+                    target=_push_metrics_to_cloudwatch,
+                    args=(
+                        cluster_metrics,
+                        exceptions_list,
+                    ),
+                )
+            )
+
+        for subthread in subthreads:
+            subthread.start()
 
         _monitor_threads(cluster_metrics, exceptions_list)
 
         # should be useless as those do not stop
-        thread_clustermgtd.join()
-        thread_cloudwatch.join()
+        for subthread in subthreads:
+            subthread.join()
 
     except ThreadException:
         raise
