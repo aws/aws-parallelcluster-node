@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
-from threading import Thread
+from threading import Thread, currentThread
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -52,8 +52,20 @@ LOOP_TIME = 60
 log = logging.getLogger(__name__)
 
 
-class ThreadException(Exception):
-    """Raised if one of the sub-threads created by main raises an exception."""
+class ClusterMgtdException(Exception):
+    """Raised if the cluster management deamon thread created by main raises an exception."""
+
+    pass
+
+
+class ClusterMetricsException(Exception):
+    """Raised if the thread pushing metrics to CloudWatch created by main raises an exception."""
+
+    pass
+
+
+class CriticalThreadException(Exception):
+    """Raised if the main function failed when executing _create_and_monitor_threads."""
 
     pass
 
@@ -894,11 +906,12 @@ class ClusterManager:
             )
 
 
-def _run_clustermgtd(clustermgtd_config_file, config, cluster_metrics, exceptions_list):
+def _run_clustermgtd(clustermgtd_config_file, cluster_metrics, exceptions_list):
     """Run clustermgtd actions."""
     try:
-        cluster_manager = ClusterManager(config=config)
-        while True:
+        cluster_manager = ClusterManager(config=cluster_metrics.config)
+        current_thread = currentThread()
+        while getattr(current_thread, "keep_running", True):
             # Get loop start time
             start_time = datetime.now(tz=timezone.utc)
             # Get program config
@@ -926,12 +939,16 @@ def _run_clustermgtd(clustermgtd_config_file, config, cluster_metrics, exception
             cluster_metrics._has_received = True
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        exceptions_list.append(e)
+        exceptions_list.append(ClusterMgtdException(e))
+        return
+    log.info("Leaving _run_clustermgtd")
 
 
 class ClusterMetrics:
     def __init__(self):
         self._has_received = False
+        # one attr for Metrics
+        # one for special metrics like ActiveNodeMetricProvider
         self.slurm_active_nodes = []
         self.slurm_inactive_nodes = []
         self.ec2_nodes = []
@@ -939,7 +956,7 @@ class ClusterMetrics:
         self.num_power_down_nodes = 0
         self.config = None
 
-    def _update_power_up_down_nodes(self):
+    def _update_power_up_down_nodes(self):  # TODO erase to use Metric and ActiveNodeMetricProvider
         self.num_power_up_nodes = 0
         self.num_power_down_nodes = 0
 
@@ -950,6 +967,7 @@ class ClusterMetrics:
                 self.num_power_down_nodes += 1
 
     def get_values(self):
+        # TODO: let's use yield when we have multiple lists and have to iterate on them
         if self._has_received:
             self._update_power_up_down_nodes()
             return [
@@ -966,7 +984,8 @@ def _push_metrics_to_cloudwatch(cluster_metrics, exceptions_list):
     try:
         # FIXME 'StorageResolution' should not be specified I think, here just for faster tests
         config = cluster_metrics.config
-        while True:
+        current_thread = currentThread()
+        while getattr(current_thread, "keep_running", True):
             start_time = datetime.now(tz=timezone.utc)
 
             # get most recent values ([] if no values were uploaded at all (should happen only the first time)
@@ -1001,17 +1020,91 @@ def _push_metrics_to_cloudwatch(cluster_metrics, exceptions_list):
             # to do its work.
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        exceptions_list.append(e)
+        exceptions_list.append(ClusterMetricsException(e))
+        return
+    log.info("Leaving _push_metrics_to_cloudwatch")
 
 
-def _monitor_threads(cluster_metrics, exceptions_list):
-    while True:  # TODO check for errors in threads using a queue? and raise if there is a problem
-        start_time = datetime.now(tz=timezone.utc)
-        if exceptions_list:
-            for exception in exceptions_list:
-                log.exception("An unexpected error occurred: %s", exception)
-            raise ThreadException()
-        sleep_remaining_loop_time(cluster_metrics.config.loop_time, start_time)
+class RestartableThread(Thread):
+    def __init__(self, *args, **kwargs):
+        self._myargs, self._mykwargs = args, kwargs
+        super().__init__(*self._myargs, **self._mykwargs)
+
+    def clone(self):
+        return RestartableThread(*self._myargs, **self._mykwargs)
+
+
+def _terminate_threads(subthreads):
+    log.info("Killing children threads")
+
+    # signal children threads they should stop
+    for subthread in subthreads:
+        subthread.keep_running = False
+
+    # wait that children threads stop (join is a blocking action)
+    for subthread in subthreads:
+        # Check if thread is alive as calling join() on a unstarted thread raises an exception
+        if subthread.is_alive():
+            subthread.join()
+    log.info("Stopping main, will retry later")
+
+
+def _create_and_start_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list):
+    # cluster management deamon
+    subthreads.append(
+        RestartableThread(
+            target=_run_clustermgtd,
+            args=(clustermgtd_config_file, cluster_metrics, exceptions_list),
+        )
+    )
+
+    # pushing metrics to CloudWatch deamon
+    if not cluster_metrics.config.disable_push_metrics_to_cloudwatch:
+        subthreads.append(
+            RestartableThread(
+                target=_push_metrics_to_cloudwatch,
+                args=(
+                    cluster_metrics,
+                    exceptions_list,
+                ),
+            )
+        )
+
+    for subthread in subthreads:
+        subthread.start()
+
+
+def _monitor_and_restart_threads(subthreads, cluster_metrics, exceptions_list):
+    while True:
+        try:
+            start_time = datetime.now(tz=timezone.utc)
+            if exceptions_list:
+                exception = exceptions_list.pop()
+                log.error("An unexpected error occurred: %s", exception)
+                raise exception
+            sleep_remaining_loop_time(cluster_metrics.config.loop_time // 2, start_time)
+        except ClusterMgtdException:
+            # restart _run_clustermgtd thread
+            log.info("Restarting _run_clustermgtd thread")
+            subthreads[0] = subthreads[0].clone()
+            subthreads[0].start()
+        except ClusterMetricsException:
+            # restart _push_metrics_to_cloudwatch thread
+            log.info("Restarting _push_metrics_to_cloudwatch thread")
+            subthreads[1] = subthreads[1].clone()
+            subthreads[1].start()
+
+
+def _create_and_monitor_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list):
+
+    try:
+        _create_and_start_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list)
+
+        _monitor_and_restart_threads(subthreads, cluster_metrics, exceptions_list)
+
+    except Exception as e:
+        log.error("An unexpected error occurred: %s", e)
+        raise CriticalThreadException()
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))
@@ -1019,47 +1112,21 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("ClusterManager Startup")
     try:
-
         cluster_metrics = ClusterMetrics()
         clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
         config = ClustermgtdConfig(clustermgtd_config_file)
         cluster_metrics.config = config
         exceptions_list = []
 
-        # TODO: create thread and start it only if it is not disabled by the user
         subthreads = []
-        # cluster management deamon
-        subthreads.append(
-            Thread(
-                target=_run_clustermgtd,
-                args=(clustermgtd_config_file, config, cluster_metrics, exceptions_list),
-            )
-        )
 
-        if not config.disable_push_metrics_to_cloudwatch:
-            subthreads.append(
-                Thread(
-                    target=_push_metrics_to_cloudwatch,
-                    args=(
-                        cluster_metrics,
-                        exceptions_list,
-                    ),
-                )
-            )
+        try:
+            _create_and_monitor_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list)
+        except CriticalThreadException:
+            _terminate_threads(subthreads)
 
-        for subthread in subthreads:
-            subthread.start()
-
-        _monitor_threads(cluster_metrics, exceptions_list)
-
-        # should be useless as those do not stop
-        for subthread in subthreads:
-            subthread.join()
-
-    except ThreadException:
-        raise
     except Exception as e:
-        log.exception("An unexpected error occurred: %s", e)
+        log.error("An unexpected error occurred: %s", e)
         raise
 
 
