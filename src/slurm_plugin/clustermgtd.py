@@ -59,18 +59,6 @@ LOOP_TIME = 60
 log = logging.getLogger(__name__)
 
 
-class ScalingThreadException(Exception):
-    """Raised if the cluster management deamon thread created by main raises an exception."""
-
-    pass
-
-
-class MetricsUploaderThreadException(Exception):
-    """Raised if the thread pushing metrics to CloudWatch created by main raises an exception."""
-
-    pass
-
-
 class CriticalThreadException(Exception):
     """Raised if the main function failed when executing _create_and_monitor_threads."""
 
@@ -428,13 +416,11 @@ class ClusterManager:
             try:
                 log.info("Retrieving nodes info from the scheduler")
                 active_nodes, inactive_nodes = self._get_node_info_from_partition()
-                log.warning("Adding active nodes")
                 metrics_collector.add_metrics_provider(
                     "active_nodes_metric_provider", ActiveNodesMetricsProvider(active_nodes)
                 )
                 # TODO: we might want to get more information from inactive nodes (would have to create a new
                 #   MetricsProvider subclass InactiveNodesMetricsProvider
-                log.warning("Adding INactive nodes")
                 metrics_collector.add_metric("slurm_number_inactive_nodes", len(inactive_nodes))
             except ClusterManager.SchedulerUnavailable:
                 log.error("Unable to get partition/node info from slurm, no other action can be performed. Sleeping...")
@@ -447,7 +433,6 @@ class ClusterManager:
                 cluster_instances = self._get_ec2_instances()
                 # TODO: we might want to get more information from inactive nodes (would have to create a new
                 #   MetricsProvider subclass EC2InstancesMetricsProvider
-                log.warning("Adding ec2 nodes")
                 metrics_collector.add_metric("number_ec2_nodes", len(cluster_instances))
             except ClusterManager.EC2InstancesInfoUnavailable:
                 log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
@@ -922,7 +907,7 @@ class ClusterManager:
             )
 
 
-def _run_clustermgtd(clustermgtd_config_file, metrics_collector, exceptions_list):
+def _run_clustermgtd(clustermgtd_config_file, metrics_collector, failed_threads):
     """Run clustermgtd actions."""
     try:
         cluster_manager = ClusterManager(config=metrics_collector.config)
@@ -955,7 +940,8 @@ def _run_clustermgtd(clustermgtd_config_file, metrics_collector, exceptions_list
             metrics_collector.timestamp = datetime.now(tz=timezone.utc)  # FIXME is it ok to call it again? I guess so
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        exceptions_list.append(ScalingThreadException(e))
+        failed_threads.append("scaling")
+        log.exception("An unexpected error occurred: %s", e)
         return
     log.info("Leaving _run_clustermgtd")
 
@@ -1008,7 +994,7 @@ class MetricsCollector:
         return {}
 
 
-def _push_metrics_to_cloudwatch(metrics_collector, exceptions_list):
+def _push_metrics_to_cloudwatch(metrics_collector, failed_threads):
     try:
         config = metrics_collector.config
         current_thread = currentThread()
@@ -1029,8 +1015,8 @@ def _push_metrics_to_cloudwatch(metrics_collector, exceptions_list):
                 }
                 for metric_name, metric_value in metrics.items()
             ]
-            log.info(metricdata)
             if metricdata:
+                log.info("Pushing metrics to CloudWatch")
                 config = metrics_collector.config
                 cw_client = boto3.client("cloudwatch", region_name=config.region, config=config.boto3_config)
                 # TODO: Change Namespace to Cluster Metrics or a better name
@@ -1051,7 +1037,8 @@ def _push_metrics_to_cloudwatch(metrics_collector, exceptions_list):
             # to do its work.
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        exceptions_list.append(MetricsUploaderThreadException(e))
+        failed_threads.append("metrics uploader")
+        log.exception("An unexpected error occurred: %s", e)
         return
     log.info("Leaving _push_metrics_to_cloudwatch")
 
@@ -1069,73 +1056,65 @@ def _terminate_threads(subthreads):
     log.info("Killing children threads")
 
     # signal children threads they should stop
-    for subthread in subthreads:
+    for subthread in subthreads.values():
         subthread.keep_running = False
 
     # wait that children threads stop (join is a blocking action)
-    for subthread in subthreads:
+    for subthread in subthreads.values():
         # Check if thread is alive as calling join() on a unstarted thread raises an exception
         if subthread.is_alive():
             subthread.join()
     log.info("Stopping main, will retry later")
 
 
-def _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list):
+def _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads):
     # cluster management deamon
-    subthreads.append(
-        RestartableThread(
-            target=_run_clustermgtd,
-            args=(clustermgtd_config_file, metrics_collector, exceptions_list),
-        )
+    subthreads["scaling"] = RestartableThread(
+        target=_run_clustermgtd,
+        args=(clustermgtd_config_file, metrics_collector, failed_threads),
     )
 
     # pushing metrics to CloudWatch deamon
     if not metrics_collector.config.disable_push_metrics_to_cloudwatch:
-        subthreads.append(
-            RestartableThread(
-                target=_push_metrics_to_cloudwatch,
-                args=(
-                    metrics_collector,
-                    exceptions_list,
-                ),
-            )
+        subthreads["metrics uploader"] = RestartableThread(
+            target=_push_metrics_to_cloudwatch,
+            args=(
+                metrics_collector,
+                failed_threads,
+            ),
         )
 
-    for subthread in subthreads:
+    for subthread in subthreads.values():
         subthread.start()
 
 
-def _monitor_and_restart_threads(subthreads, metrics_collector, exceptions_list):
+def _monitor_and_restart_threads(subthreads, metrics_collector, failed_threads):
     while True:
         start_time = datetime.now(tz=timezone.utc)
-        try:
-            if exceptions_list:
-                exception = exceptions_list.pop()
-                log.error("An unexpected error occurred: %s", exception)
-                raise exception
-        except ScalingThreadException:
-            # restart _run_clustermgtd thread
-            log.info("Restarting scaling thread")
-            subthreads[0] = subthreads[0].clone()
-            subthreads[0].start()
-        except MetricsUploaderThreadException:
-            # restart _push_metrics_to_cloudwatch thread
-            log.info("Restarting metrics uploader thread")
-            subthreads[1] = subthreads[1].clone()
-            subthreads[1].start()
-        finally:
-            sleep_remaining_loop_time(metrics_collector.config.loop_time // 2, start_time)
+        thread_names = []
+
+        while failed_threads:
+            thread_name = failed_threads.pop()
+            thread_names.append(thread_name)
+            subthreads[thread_name] = subthreads[thread_name].clone()
+
+        # Restarting failed threads
+        for thread_name in thread_names:
+            log.info("Restarting %s thread", thread_name)
+            subthreads[thread_name].start()
+
+        sleep_remaining_loop_time(metrics_collector.config.loop_time // 2, start_time)
 
 
-def _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list):
+def _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads):
 
     try:
-        _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list)
+        _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads)
 
-        _monitor_and_restart_threads(subthreads, metrics_collector, exceptions_list)
+        _monitor_and_restart_threads(subthreads, metrics_collector, failed_threads)
 
     except Exception as e:
-        log.error("An unexpected error occurred: %s", e)
+        log.exception("An unexpected error occurred: %s", e)
         raise CriticalThreadException()
 
 
@@ -1148,17 +1127,17 @@ def main():
         clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
         config = ClustermgtdConfig(clustermgtd_config_file)
         metrics_collector.config = config
-        exceptions_list = []
+        failed_threads = []
 
-        subthreads = []
+        subthreads = {}
 
         try:
-            _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list)
+            _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads)
         except CriticalThreadException:
             _terminate_threads(subthreads)
 
     except Exception as e:
-        log.error("An unexpected error occurred: %s", e)
+        log.exception("An unexpected error occurred: %s", e)
         raise
 
 
