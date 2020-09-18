@@ -11,13 +11,20 @@
 # limitations under the License.
 
 
+import abc
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
 from threading import Thread, currentThread
+
+if sys.version_info >= (3, 4):  # FIXME: Is it really needed? Which Python version is installed on Master instance?
+    ABC = abc.ABC
+else:
+    ABC = abc.ABCMeta("ABC", (), {})
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -52,13 +59,13 @@ LOOP_TIME = 60
 log = logging.getLogger(__name__)
 
 
-class ClusterMgtdException(Exception):
+class ScalingThreadException(Exception):
     """Raised if the cluster management deamon thread created by main raises an exception."""
 
     pass
 
 
-class ClusterMetricsException(Exception):
+class MetricsUploaderThreadException(Exception):
     """Raised if the thread pushing metrics to CloudWatch created by main raises an exception."""
 
     pass
@@ -405,7 +412,7 @@ class ClusterManager:
                 self._compute_fleet_status,
             )
 
-    def manage_cluster(self, cluster_metrics):
+    def manage_cluster(self, metrics_collector):
         """Manage cluster by syncing scheduler states with EC2 states and performing node maintenance actions."""
         # Initialization
         log.info("Managing cluster...")
@@ -421,8 +428,14 @@ class ClusterManager:
             try:
                 log.info("Retrieving nodes info from the scheduler")
                 active_nodes, inactive_nodes = self._get_node_info_from_partition()
-                cluster_metrics.slurm_active_nodes = active_nodes
-                cluster_metrics.slurm_inactive_nodes = inactive_nodes
+                log.warning("Adding active nodes")
+                metrics_collector.add_metrics_provider(
+                    "active_nodes_metric_provider", ActiveNodesMetricsProvider(active_nodes)
+                )
+                # TODO: we might want to get more information from inactive nodes (would have to create a new
+                #   MetricsProvider subclass InactiveNodesMetricsProvider
+                log.warning("Adding INactive nodes")
+                metrics_collector.add_metric("slurm_number_inactive_nodes", len(inactive_nodes))
             except ClusterManager.SchedulerUnavailable:
                 log.error("Unable to get partition/node info from slurm, no other action can be performed. Sleeping...")
                 return
@@ -432,7 +445,10 @@ class ClusterManager:
                 time.sleep(5)
                 log.info("Retrieving list of EC2 instances associated with the cluster")
                 cluster_instances = self._get_ec2_instances()
-                cluster_metrics.ec2_nodes = cluster_instances
+                # TODO: we might want to get more information from inactive nodes (would have to create a new
+                #   MetricsProvider subclass EC2InstancesMetricsProvider
+                log.warning("Adding ec2 nodes")
+                metrics_collector.add_metric("number_ec2_nodes", len(cluster_instances))
             except ClusterManager.EC2InstancesInfoUnavailable:
                 log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
                 return
@@ -906,10 +922,10 @@ class ClusterManager:
             )
 
 
-def _run_clustermgtd(clustermgtd_config_file, cluster_metrics, exceptions_list):
+def _run_clustermgtd(clustermgtd_config_file, metrics_collector, exceptions_list):
     """Run clustermgtd actions."""
     try:
-        cluster_manager = ClusterManager(config=cluster_metrics.config)
+        cluster_manager = ClusterManager(config=metrics_collector.config)
         current_thread = currentThread()
         while getattr(current_thread, "keep_running", True):
             # Get loop start time
@@ -917,7 +933,7 @@ def _run_clustermgtd(clustermgtd_config_file, cluster_metrics, exceptions_list):
             # Get program config
             try:
                 config = ClustermgtdConfig(clustermgtd_config_file)
-                cluster_metrics.config = config
+                metrics_collector.config = config
                 cluster_manager.set_config(config)
             except Exception as e:
                 log.warning(
@@ -935,83 +951,98 @@ def _run_clustermgtd(clustermgtd_config_file, cluster_metrics, exceptions_list):
                     e,
                 )
             # Manage cluster
-            cluster_manager.manage_cluster(cluster_metrics)
-            cluster_metrics._has_received = True
+            cluster_manager.manage_cluster(metrics_collector)
+            metrics_collector.timestamp = datetime.now(tz=timezone.utc)  # FIXME is it ok to call it again? I guess so
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        exceptions_list.append(ClusterMgtdException(e))
+        exceptions_list.append(ScalingThreadException(e))
         return
     log.info("Leaving _run_clustermgtd")
 
 
-class ClusterMetrics:
+class MetricsProvider(ABC):
+    @abc.abstractmethod
+    def update_metric_values(self, metrics):
+        pass
+
+
+class ActiveNodesMetricsProvider(MetricsProvider):
+    def __init__(self, slurm_active_nodes):
+        self._slurm_active_nodes = slurm_active_nodes
+
+    def update_metric_values(self, metrics):
+        num_power_up_nodes = 0
+        num_power_down_nodes = 0
+
+        for node in self._slurm_active_nodes:
+            if node.is_nodeaddr_set():
+                num_power_up_nodes += 1
+            else:
+                num_power_down_nodes += 1
+        metrics["slurm_number_power_up_nodes"] = num_power_up_nodes
+        metrics["slurm_number_power_down_nodes"] = num_power_down_nodes
+
+
+class MetricsCollector:
     def __init__(self):
-        self._has_received = False
-        # one attr for Metrics
-        # one for special metrics like ActiveNodeMetricProvider
-        self.slurm_active_nodes = []
-        self.slurm_inactive_nodes = []
-        self.ec2_nodes = []
-        self.num_power_up_nodes = 0
-        self.num_power_down_nodes = 0
+        self.timestamp = datetime(2020, 7, 6, tzinfo=timezone.utc)
+        self.metrics = {}
+        self.metrics_providers = {}
         self.config = None
 
-    def _update_power_up_down_nodes(self):  # TODO erase to use Metric and ActiveNodeMetricProvider
-        self.num_power_up_nodes = 0
-        self.num_power_down_nodes = 0
+    def add_metric(self, name, value):
+        self.metrics[name] = value
 
-        for node in self.slurm_active_nodes:
-            if node.is_nodeaddr_set():
-                self.num_power_up_nodes += 1
-            else:
-                self.num_power_down_nodes += 1
+    def add_metrics_provider(self, name, metrics_provider):
+        self.metrics_providers[name] = metrics_provider
 
     def get_values(self):
-        # TODO: let's use yield when we have multiple lists and have to iterate on them
-        if self._has_received:
-            self._update_power_up_down_nodes()
-            return [
-                {"name": "slurm_number_power_up_nodes", "value": self.num_power_up_nodes},
-                {"name": "slurm_number_power_down_nodes", "value": self.num_power_down_nodes},
-                {"name": "slurm_number_inactive_nodes", "value": len(self.slurm_inactive_nodes)},
-                {"name": "number_ec2_nodes", "value": len(self.ec2_nodes)},
-            ]
-        return []
+        time_since_last_metric = int((datetime.now(tz=timezone.utc) - self.timestamp).total_seconds())
+        time_between_metrics_update = self.config.loop_time if self.config else -1
+        # TODO: create a config parameter that replaces '3', the factor
+        if time_since_last_metric < 3 * time_between_metrics_update:
+            # Getting metrics from metrics providers
+            for metrics_provider in self.metrics_providers.values():
+                metrics_provider.update_metric_values(self.metrics)
+            return self.metrics
+        return {}
 
 
-def _push_metrics_to_cloudwatch(cluster_metrics, exceptions_list):
-
+def _push_metrics_to_cloudwatch(metrics_collector, exceptions_list):
     try:
-        # FIXME 'StorageResolution' should not be specified I think, here just for faster tests
-        config = cluster_metrics.config
+        config = metrics_collector.config
         current_thread = currentThread()
         while getattr(current_thread, "keep_running", True):
             start_time = datetime.now(tz=timezone.utc)
 
             # get most recent values ([] if no values were uploaded at all (should happen only the first time)
-            metrics = cluster_metrics.get_values()
+            metrics = metrics_collector.get_values()
 
             # upload metrics
-            # TODO: Change Namespace to Cluster Metrics
-            if metrics:
-                config = cluster_metrics.config
+            metricdata = [
+                {
+                    "MetricName": metric_name,
+                    "Dimensions": [{"Name": "ClusterName", "Value": config.cluster_name}],
+                    "Timestamp": start_time,
+                    "Value": metric_value,
+                    "Unit": "Count",
+                }
+                for metric_name, metric_value in metrics.items()
+            ]
+            log.info(metricdata)
+            if metricdata:
+                config = metrics_collector.config
                 cw_client = boto3.client("cloudwatch", region_name=config.region, config=config.boto3_config)
+                # TODO: Change Namespace to Cluster Metrics or a better name
                 cw_client.put_metric_data(
                     Namespace="Custom Namespace",
-                    MetricData=[
-                        {
-                            "MetricName": metric["name"],
-                            "Dimensions": [{"Name": "ClusterName", "Value": config.cluster_name}],
-                            "Timestamp": start_time,
-                            "Value": metric["value"],
-                            "Unit": "Count",
-                            "StorageResolution": 1,
-                        }
-                        for metric in metrics
-                    ],
+                    MetricData=metricdata,
                 )
             else:
-                log.info("No metrics to upload")
+                log.warning(
+                    "No metrics to upload: Either no metric was uploaded or the clustermgtd deamon"
+                    " has not uploaded new values for some time"
+                )
 
             # FIXME What happens if the put_metric_data call takes too much time (more than config.loop_time) ?
             # At the moment, the delay would simply add up every time... Should we have this or should we
@@ -1020,7 +1051,7 @@ def _push_metrics_to_cloudwatch(cluster_metrics, exceptions_list):
             # to do its work.
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        exceptions_list.append(ClusterMetricsException(e))
+        exceptions_list.append(MetricsUploaderThreadException(e))
         return
     log.info("Leaving _push_metrics_to_cloudwatch")
 
@@ -1049,22 +1080,22 @@ def _terminate_threads(subthreads):
     log.info("Stopping main, will retry later")
 
 
-def _create_and_start_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list):
+def _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list):
     # cluster management deamon
     subthreads.append(
         RestartableThread(
             target=_run_clustermgtd,
-            args=(clustermgtd_config_file, cluster_metrics, exceptions_list),
+            args=(clustermgtd_config_file, metrics_collector, exceptions_list),
         )
     )
 
     # pushing metrics to CloudWatch deamon
-    if not cluster_metrics.config.disable_push_metrics_to_cloudwatch:
+    if not metrics_collector.config.disable_push_metrics_to_cloudwatch:
         subthreads.append(
             RestartableThread(
                 target=_push_metrics_to_cloudwatch,
                 args=(
-                    cluster_metrics,
+                    metrics_collector,
                     exceptions_list,
                 ),
             )
@@ -1074,33 +1105,34 @@ def _create_and_start_threads(subthreads, clustermgtd_config_file, cluster_metri
         subthread.start()
 
 
-def _monitor_and_restart_threads(subthreads, cluster_metrics, exceptions_list):
+def _monitor_and_restart_threads(subthreads, metrics_collector, exceptions_list):
     while True:
+        start_time = datetime.now(tz=timezone.utc)
         try:
-            start_time = datetime.now(tz=timezone.utc)
             if exceptions_list:
                 exception = exceptions_list.pop()
                 log.error("An unexpected error occurred: %s", exception)
                 raise exception
-            sleep_remaining_loop_time(cluster_metrics.config.loop_time // 2, start_time)
-        except ClusterMgtdException:
+        except ScalingThreadException:
             # restart _run_clustermgtd thread
-            log.info("Restarting _run_clustermgtd thread")
+            log.info("Restarting scaling thread")
             subthreads[0] = subthreads[0].clone()
             subthreads[0].start()
-        except ClusterMetricsException:
+        except MetricsUploaderThreadException:
             # restart _push_metrics_to_cloudwatch thread
-            log.info("Restarting _push_metrics_to_cloudwatch thread")
+            log.info("Restarting metrics uploader thread")
             subthreads[1] = subthreads[1].clone()
             subthreads[1].start()
+        finally:
+            sleep_remaining_loop_time(metrics_collector.config.loop_time // 2, start_time)
 
 
-def _create_and_monitor_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list):
+def _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list):
 
     try:
-        _create_and_start_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list)
+        _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list)
 
-        _monitor_and_restart_threads(subthreads, cluster_metrics, exceptions_list)
+        _monitor_and_restart_threads(subthreads, metrics_collector, exceptions_list)
 
     except Exception as e:
         log.error("An unexpected error occurred: %s", e)
@@ -1112,16 +1144,16 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("ClusterManager Startup")
     try:
-        cluster_metrics = ClusterMetrics()
+        metrics_collector = MetricsCollector()
         clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
         config = ClustermgtdConfig(clustermgtd_config_file)
-        cluster_metrics.config = config
+        metrics_collector.config = config
         exceptions_list = []
 
         subthreads = []
 
         try:
-            _create_and_monitor_threads(subthreads, clustermgtd_config_file, cluster_metrics, exceptions_list)
+            _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, exceptions_list)
         except CriticalThreadException:
             _terminate_threads(subthreads)
 
