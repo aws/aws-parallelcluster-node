@@ -11,20 +11,13 @@
 # limitations under the License.
 
 
-import abc
 import logging
 import os
-import sys
 import time
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
 from threading import Thread, currentThread
-
-if sys.version_info >= (3, 4):  # FIXME: Is it really needed? Which Python version is installed on Master instance?
-    ABC = abc.ABC
-else:
-    ABC = abc.ABCMeta("ABC", (), {})
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -54,13 +47,18 @@ from slurm_plugin.common import (
     retrieve_instance_type_mapping,
     time_is_up,
 )
+from slurm_plugin.metrics import MISSED_METRICS_UPDATE_FACTOR, ActiveNodesMetricsProvider, MetricsCollector
 
 LOOP_TIME = 60
 log = logging.getLogger(__name__)
 
 
+SCALING_THREAD_NAME = "scaling"
+METRICS_UPLOADER_THREAD_NAME = "metrics uploader"
+
+
 class CriticalThreadException(Exception):
-    """Raised if the main function failed when executing _create_and_monitor_threads."""
+    """Raised when the main function fails."""
 
     pass
 
@@ -158,8 +156,7 @@ class ClustermgtdConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
-        # Disable pushing cluster metrics to cloudwatch
-        "disable_push_metrics_to_cloudwatch": False,
+        "disable_cloudwatch_metrics": False,
     }
 
     def __init__(self, config_file_path):
@@ -205,10 +202,10 @@ class ClustermgtdConfig:
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
         self.logging_config = config.get("clustermgtd", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
-        self.disable_push_metrics_to_cloudwatch = config.getboolean(
+        self.disable_cloudwatch_metrics = config.getboolean(
             "clustermgtd",
-            "disable_push_metrics_to_cloudwatch",
-            fallback=self.DEFAULTS.get("disable_push_metrics_to_cloudwatch"),
+            "disable_cloudwatch_metrics",
+            fallback=self.DEFAULTS.get("disable_cloudwatch_metrics"),
         )
 
     def _get_launch_config(self, config):
@@ -940,58 +937,10 @@ def _run_clustermgtd(clustermgtd_config_file, metrics_collector, failed_threads)
             metrics_collector.timestamp = datetime.now(tz=timezone.utc)  # FIXME is it ok to call it again? I guess so
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        failed_threads.append("scaling")
+        failed_threads.append(SCALING_THREAD_NAME)
         log.exception("An unexpected error occurred: %s", e)
         return
-    log.info("Leaving _run_clustermgtd")
-
-
-class MetricsProvider(ABC):
-    @abc.abstractmethod
-    def update_metric_values(self, metrics):
-        pass
-
-
-class ActiveNodesMetricsProvider(MetricsProvider):
-    def __init__(self, slurm_active_nodes):
-        self._slurm_active_nodes = slurm_active_nodes
-
-    def update_metric_values(self, metrics):
-        num_power_up_nodes = 0
-        num_power_down_nodes = 0
-
-        for node in self._slurm_active_nodes:
-            if node.is_nodeaddr_set():
-                num_power_up_nodes += 1
-            else:
-                num_power_down_nodes += 1
-        metrics["slurm_number_power_up_nodes"] = num_power_up_nodes
-        metrics["slurm_number_power_down_nodes"] = num_power_down_nodes
-
-
-class MetricsCollector:
-    def __init__(self):
-        self.timestamp = datetime(2020, 7, 6, tzinfo=timezone.utc)
-        self.metrics = {}
-        self.metrics_providers = {}
-        self.config = None
-
-    def add_metric(self, name, value):
-        self.metrics[name] = value
-
-    def add_metrics_provider(self, name, metrics_provider):
-        self.metrics_providers[name] = metrics_provider
-
-    def get_values(self):
-        time_since_last_metric = int((datetime.now(tz=timezone.utc) - self.timestamp).total_seconds())
-        time_between_metrics_update = self.config.loop_time if self.config else -1
-        # TODO: create a config parameter that replaces '3', the factor
-        if time_since_last_metric < 3 * time_between_metrics_update:
-            # Getting metrics from metrics providers
-            for metrics_provider in self.metrics_providers.values():
-                metrics_provider.update_metric_values(self.metrics)
-            return self.metrics
-        return {}
+    log.debug("Leaving _run_clustermgtd")
 
 
 def _push_metrics_to_cloudwatch(metrics_collector, failed_threads):
@@ -1005,7 +954,7 @@ def _push_metrics_to_cloudwatch(metrics_collector, failed_threads):
             metrics = metrics_collector.get_values()
 
             # upload metrics
-            metricdata = [
+            metric_data = [
                 {
                     "MetricName": metric_name,
                     "Dimensions": [{"Name": "ClusterName", "Value": config.cluster_name}],
@@ -1015,20 +964,18 @@ def _push_metrics_to_cloudwatch(metrics_collector, failed_threads):
                 }
                 for metric_name, metric_value in metrics.items()
             ]
-            if metricdata:
+            config = metrics_collector.config
+            if metric_data:
                 log.info("Pushing metrics to CloudWatch")
-                config = metrics_collector.config
-                cw_client = boto3.client("cloudwatch", region_name=config.region, config=config.boto3_config)
-                # TODO: Change Namespace to Cluster Metrics or a better name
-                cw_client.put_metric_data(
-                    Namespace="Custom Namespace",
-                    MetricData=metricdata,
+                boto3.client("cloudwatch", region_name=config.region, config=config.boto3_config).put_metric_data(
+                    Namespace="Cluster Metrics",
+                    MetricData=metric_data,
                 )
             else:
                 log.warning(
                     "No metrics to upload: Either no metric was uploaded or the clustermgtd deamon"
-                    " has not uploaded new values for some time"
-                )
+                    " has not uploaded new values for more than {} seconds"
+                ).format(MISSED_METRICS_UPDATE_FACTOR * config.loop_time)
 
             # FIXME What happens if the put_metric_data call takes too much time (more than config.loop_time) ?
             # At the moment, the delay would simply add up every time... Should we have this or should we
@@ -1037,10 +984,10 @@ def _push_metrics_to_cloudwatch(metrics_collector, failed_threads):
             # to do its work.
             sleep_remaining_loop_time(config.loop_time, start_time)
     except Exception as e:
-        failed_threads.append("metrics uploader")
+        failed_threads.append(METRICS_UPLOADER_THREAD_NAME)
         log.exception("An unexpected error occurred: %s", e)
         return
-    log.info("Leaving _push_metrics_to_cloudwatch")
+    log.debug("Leaving _push_metrics_to_cloudwatch")
 
 
 class RestartableThread(Thread):
@@ -1053,7 +1000,7 @@ class RestartableThread(Thread):
 
 
 def _terminate_threads(subthreads):
-    log.info("Killing children threads")
+    log.debug("Killing children threads")
 
     # signal children threads they should stop
     for subthread in subthreads.values():
@@ -1064,19 +1011,19 @@ def _terminate_threads(subthreads):
         # Check if thread is alive as calling join() on a unstarted thread raises an exception
         if subthread.is_alive():
             subthread.join()
-    log.info("Stopping main, will retry later")
+    log.debug("Stopping main, will retry later")
 
 
 def _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads):
     # cluster management deamon
-    subthreads["scaling"] = RestartableThread(
+    subthreads[SCALING_THREAD_NAME] = RestartableThread(
         target=_run_clustermgtd,
         args=(clustermgtd_config_file, metrics_collector, failed_threads),
     )
 
     # pushing metrics to CloudWatch deamon
-    if not metrics_collector.config.disable_push_metrics_to_cloudwatch:
-        subthreads["metrics uploader"] = RestartableThread(
+    if not metrics_collector.config.disable_cloudwatch_metrics:
+        subthreads[METRICS_UPLOADER_THREAD_NAME] = RestartableThread(
             target=_push_metrics_to_cloudwatch,
             args=(
                 metrics_collector,
@@ -1091,18 +1038,19 @@ def _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_colle
 def _monitor_and_restart_threads(subthreads, metrics_collector, failed_threads):
     while True:
         start_time = datetime.now(tz=timezone.utc)
-        thread_names = []
+        failed_thread_names = []
 
         while failed_threads:
-            thread_name = failed_threads.pop()
-            thread_names.append(thread_name)
-            subthreads[thread_name] = subthreads[thread_name].clone()
+            failed_thread_name = failed_threads.pop()
+            failed_thread_names.append(failed_thread_name)
+            subthreads[failed_thread_name] = subthreads[failed_thread_name].clone()
 
         # Restarting failed threads
-        for thread_name in thread_names:
-            log.info("Restarting %s thread", thread_name)
-            subthreads[thread_name].start()
+        for failed_thread_name in failed_thread_names:
+            log.info("Restarting %s thread", failed_thread_name)
+            subthreads[failed_thread_name].start()
 
+        # Sleep twice less to restart subthreads faster
         sleep_remaining_loop_time(metrics_collector.config.loop_time // 2, start_time)
 
 
