@@ -993,25 +993,10 @@ def _push_metrics_to_cloudwatch(metrics_collector, failed_threads):
 class RestartableThread(Thread):
     def __init__(self, *args, **kwargs):
         self._myargs, self._mykwargs = args, kwargs
-        super().__init__(*self._myargs, **self._mykwargs)
+        super().__init__(*self._myargs, **self._mykwargs, daemon=True)
 
     def clone(self):
         return RestartableThread(*self._myargs, **self._mykwargs)
-
-
-def _terminate_threads(subthreads):
-    log.debug("Killing children threads")
-
-    # signal children threads they should stop
-    for subthread in subthreads.values():
-        subthread.keep_running = False
-
-    # wait that children threads stop (join is a blocking action)
-    for subthread in subthreads.values():
-        # Check if thread is alive as calling join() on a unstarted thread raises an exception
-        if subthread.is_alive():
-            subthread.join()
-    log.debug("Stopping main, will retry later")
 
 
 def _create_and_start_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads):
@@ -1082,7 +1067,7 @@ def main():
         try:
             _create_and_monitor_threads(subthreads, clustermgtd_config_file, metrics_collector, failed_threads)
         except CriticalThreadException:
-            _terminate_threads(subthreads)
+            return
 
     except Exception as e:
         log.exception("An unexpected error occurred: %s", e)
