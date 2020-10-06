@@ -46,16 +46,18 @@ def test_get_instance_info_from_pricing_file(caplog, mocker):
     dummy_instance_type = "dummy-instance-type"
     dummy_args = ("dummy-region", "dummy-proxy-config", dummy_instance_type)
     dummy_instance_info = {"InstanceType": dummy_instance_type}
-    dummy_vcpus, dummy_gpus = 3, 1
+    dummy_vcpus, dummy_gpus, dummy_memory = 3, 1, 2
     fetch_instance_info_patch = mocker.patch("common.utils._fetch_instance_info", return_value=dummy_instance_info)
     get_vcpus_patch = mocker.patch("common.utils._get_vcpus_from_instance_info", return_value=dummy_vcpus)
     get_gpus_patch = mocker.patch("common.utils._get_gpus_from_instance_info", return_value=dummy_gpus)
-    returned_vcpus, returned_gpus = utils._get_instance_info_from_pricing_file(*dummy_args)
+    get_memory_patch = mocker.patch("common.utils._get_memory_from_instance_info", return_value=dummy_memory)
+    returned_vcpus, returned_gpus, returned_memory = utils._get_instance_info_from_pricing_file(*dummy_args)
     fetch_instance_info_patch.assert_called_with(*dummy_args)
-    for instance_info_func_patch in (get_vcpus_patch, get_gpus_patch):
+    for instance_info_func_patch in (get_vcpus_patch, get_gpus_patch, get_memory_patch):
         instance_info_func_patch.assert_called_with(dummy_instance_info)
     assert_that(returned_vcpus).is_equal_to(dummy_vcpus)
     assert_that(returned_gpus).is_equal_to(dummy_gpus)
+    assert_that(returned_memory).is_equal_to(dummy_memory)
     for log_message in [
         "Fetching info for instance_type {0}".format(dummy_instance_type),
         "Received the following information for instance type {0}: {1}".format(

@@ -274,11 +274,12 @@ def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_at
     # Get instances properties for each event because instance types
     # from instance and CloudFormation could be out-of-sync
     instance_properties = get_instance_properties(sqs_config_region, sqs_config_proxy, instance_type)
+    memory = instance_properties["memory"]
     gpus = instance_properties["gpus"]
     slots = message_attrs.get("Slots")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
     _retry_on_request_limit_exceeded(lambda: table.put_item(Item={"instanceId": instance_id, "hostname": hostname}))
-    return UpdateEvent(EventType.ADD, message, Host(instance_id, hostname, slots, gpus))
+    return UpdateEvent(EventType.ADD, message, Host(instance_id, hostname, slots, gpus, memory))
 
 
 def _process_instance_terminate_event(message_attrs, message, table, queue):
@@ -295,7 +296,7 @@ def _process_instance_terminate_event(message_attrs, message, table, queue):
 
     if item.get("Item") is not None:
         hostname = item.get("Item").get("hostname")
-        return UpdateEvent(EventType.REMOVE, message, Host(instance_id, hostname, None, None))
+        return UpdateEvent(EventType.REMOVE, message, Host(instance_id, hostname, None, None, None))
     else:
         log.error("Instance %s not found in the database.", instance_id)
         _requeue_message(queue, message)

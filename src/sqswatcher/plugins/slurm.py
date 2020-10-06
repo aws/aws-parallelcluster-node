@@ -136,8 +136,11 @@ def _update_node_lists(update_events):
         elif event.action == EventType.ADD:
             # Only include GPU info if instance has GPU
             gpu_info = "Gres=gpu:tesla:{gpus} ".format(gpus=event.host.gpus) if event.host.gpus != 0 else ""
-            new_node = "NodeName={nodename} CPUs={cpus} {gpu_info}State=UNKNOWN\n".format(
-                nodename=event.host.hostname, cpus=event.host.slots, gpu_info=gpu_info
+            new_node = "NodeName={nodename} CPUs={cpus} RealMemory={memory} {gpu_info}State=UNKNOWN\n".format(
+                nodename=event.host.hostname,
+                cpus=event.host.slots,
+                memory=int(event.host.memory * 0.95),  # We can only use ~95% of the total physical RAM with slurm
+                gpu_info=gpu_info,
             )
 
             if new_node not in node_list:
