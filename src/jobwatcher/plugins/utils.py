@@ -11,8 +11,6 @@
 import copy
 import logging
 
-from common.schedulers.slurm_commands import job_runnable_on_given_node
-
 log = logging.getLogger(__name__)
 
 
@@ -63,3 +61,27 @@ def get_optimal_nodes(nodes_requested, resources_requested, instance_properties)
     # return the number of nodes added
     log.info("Computed following allocation for required nodes %s", resources_remaining_per_node)
     return len(resources_remaining_per_node)
+
+
+def job_runnable_on_given_node(job_resources_per_node, resources_available, existing_node=False):
+    """Check to see if job can be run on a given node."""
+    for resource_type in job_resources_per_node:
+        try:
+            if resources_available[resource_type] < job_resources_per_node[resource_type]:
+                # Don't log an insufficient node resources message if the node exists.
+                # Doing so pollutes the logs.
+                if not existing_node:
+                    logging.warning(
+                        (
+                            "Resource:{0} required per node ({1}) is greater than resources "
+                            "available on single node ({2}), skipping job..."
+                        ).format(
+                            resource_type, job_resources_per_node[resource_type], resources_available[resource_type]
+                        )
+                    )
+                return False
+        except KeyError as e:
+            logging.warning(e)
+            return False
+
+    return True

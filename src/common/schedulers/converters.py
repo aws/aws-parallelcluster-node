@@ -53,43 +53,6 @@ def from_xml_to_obj(xml, obj_type):
     return obj
 
 
-def from_table_to_obj_list(table, obj_type, separator="|"):
-    """
-    Map a given tabular output into a python object.
-
-    The python object you want to map the table into needs to define a MAPPINGS dictionary which declare how
-    to map each row element into the object itself.
-    Each entry of the MAPPINGS dictionary is composed as follow:
-    - key: name of the table column (specified in the header)
-    - value: a dict containing:
-        - field: name of the object attribute you want to map the value to
-        - transformation: a function that will be called on the value before assigning this to the object attribute.
-    Default values can be defined in the class __init__ definition.
-
-    :param table: string containing the table to parse
-    :param obj_type: type of the object you want to map the table into
-    :param separator: separator for the row items
-    :return: a list obj_type instances containing the parsed data
-    """
-    lines = table.splitlines()
-    results = []
-    if len(lines) > 1:
-        mappings = obj_type.MAPPINGS
-        columns = lines[0].split(separator)
-        rows = lines[1:]
-        for row in rows:
-            obj = obj_type()
-            for item, column in zip(row.split(separator), columns):
-                mapping = mappings.get(column)
-                if mapping:
-                    transformation_func = mapping.get("transformation")
-                    value = item if transformation_func is None else transformation_func(item)
-                    setattr(obj, mapping["field"], value)
-            results.append(obj)
-
-    return results
-
-
 @add_metaclass(ABCMeta)
 class ComparableObject:
     def __eq__(self, other):
