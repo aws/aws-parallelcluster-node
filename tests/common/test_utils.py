@@ -40,7 +40,7 @@ def test_grouper(source_object, chunk_size, expected_grouped_output):
     assert_that(list(utils.grouper(source_object, chunk_size))).is_equal_to(expected_grouped_output)
 
 
-def test_get_instance_info_from_pricing_file(caplog, mocker):
+def test_get_instance_info(caplog, mocker):
     """Verify function that returns instance vCPU and GPU info is calling the expected functions."""
     caplog.set_level(logging.DEBUG)
     dummy_instance_type = "dummy-instance-type"
@@ -50,7 +50,7 @@ def test_get_instance_info_from_pricing_file(caplog, mocker):
     fetch_instance_info_patch = mocker.patch("common.utils._fetch_instance_info", return_value=dummy_instance_info)
     get_vcpus_patch = mocker.patch("common.utils._get_vcpus_from_instance_info", return_value=dummy_vcpus)
     get_gpus_patch = mocker.patch("common.utils._get_gpus_from_instance_info", return_value=dummy_gpus)
-    returned_vcpus, returned_gpus = utils._get_instance_info_from_pricing_file(*dummy_args)
+    returned_vcpus, returned_gpus = utils._get_instance_info(*dummy_args)
     fetch_instance_info_patch.assert_called_with(*dummy_args)
     for instance_info_func_patch in (get_vcpus_patch, get_gpus_patch):
         instance_info_func_patch.assert_called_with(dummy_instance_info)
@@ -151,3 +151,24 @@ def test_fetch_instance_info(mocker, boto3_stubber, generate_boto3_error, respon
         assert_that(utils._fetch_instance_info(dummy_region, dummy_proxy_config, dummy_instance_type)).is_equal_to(
             response.get("InstanceTypes")[0]
         )
+
+
+@pytest.mark.parametrize(
+    "region, instance_type, cfn_param, expected_slots",
+    [
+        ("us-east-1", "c5.2xlarge", {"cfn_scheduler_slots": "vcpus"}, 8),
+        ("us-west-1", "c5.2xlarge", {"cfn_scheduler_slots": "cores"}, 4),
+        # cfn_scheduler_slots is passed by extra json as integer
+        ("us-east-2", "c5.2xlarge", {"cfn_scheduler_slots": "1"}, 1),
+        ("us-west-1", "c5.2xlarge", {"cfn_scheduler_slots": "-1"}, 8),
+        # cfn_scheduler_slots is not in cfnconfig
+        ("us-west-1", "c5.2xlarge", {}, 8),
+    ],
+)
+def test_get_instance_properties(mocker, region, instance_type, cfn_param, expected_slots):
+    mocker.patch("common.utils.hasattr").return_value = False
+    mocker.patch("common.utils._get_instance_info").return_value = 8, 0
+    mocker.patch("common.utils._read_cfnconfig").return_value = cfn_param
+    assert_that(utils.get_instance_properties(region, "dummy_proxy", instance_type).get("slots")).is_equal_to(
+        expected_slots
+    )
