@@ -274,7 +274,7 @@ def _fetch_instance_info(region, proxy_config, instance_type):
         raise CriticalError(emsg)
 
 
-def _get_instance_info_from_pricing_file(region, proxy_config, instance_type):
+def _get_instance_info(region, proxy_config, instance_type):
     """
     Call the DescribeInstanceTypes to get number of vcpus and gpus for the given instance type.
 
@@ -299,10 +299,13 @@ def get_instance_properties(region, proxy_config, instance_type):
 
     if instance_type not in get_instance_properties.cache:
         # get vcpus and gpus from the pricing file, gpus = 0 if instance does not have GPU
-        vcpus, gpus = _get_instance_info_from_pricing_file(region, proxy_config, instance_type)
+        vcpus, gpus = _get_instance_info(region, proxy_config, instance_type)
 
         try:
             cfnconfig_params = _read_cfnconfig()
+            # cfn_scheduler_slots could be vcpus/cores based on disable_hyperthreading = false/true
+            # cfn_scheduler_slots could be vcpus/cores/integer based on extra json
+            # {'cfn_scheduler_slots' = 'vcpus'/'cores'/integer}
             cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
         except KeyError:
             log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
