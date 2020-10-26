@@ -127,7 +127,9 @@ class InstanceManager:
         """Clear and reset failed nodes list."""
         self.failed_nodes = []
 
-    def add_instances_for_nodes(self, node_list, launch_batch_size, update_node_address=True):
+    def add_instances_for_nodes(
+        self, node_list, launch_batch_size, update_node_address=True, all_or_nothing_batch=False
+    ):
         """Launch requested EC2 instances for nodes."""
         # Reset failed_nodes
         self._clear_failed_nodes()
@@ -137,7 +139,9 @@ class InstanceManager:
                 logger.info("Launching instances for slurm nodes %s", print_with_count(slurm_node_list))
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
-                        launched_instances = self._launch_ec2_instances(queue, instance_type, len(batch_nodes))
+                        launched_instances = self._launch_ec2_instances(
+                            queue, instance_type, len(batch_nodes), all_or_nothing_batch=all_or_nothing_batch
+                        )
                         if update_node_address:
                             assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
                             try:
@@ -268,14 +272,14 @@ class InstanceManager:
 
         return instances_to_launch
 
-    def _launch_ec2_instances(self, queue, instance_type, current_batch_size, best_effort=True):
+    def _launch_ec2_instances(self, queue, instance_type, current_batch_size, all_or_nothing_batch=False):
         """Launch a batch of ec2 instances."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         result = ec2_client.run_instances(
-            # If best_effort scaling, set MinCount=1
+            # If not all_or_nothing_batch scaling, set MinCount=1
             # so run_instances call will succeed even if entire count cannot be satisfied
             # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
-            MinCount=1 if best_effort else current_batch_size,
+            MinCount=1 if not all_or_nothing_batch else current_batch_size,
             MaxCount=current_batch_size,
             # LaunchTemplate is different for every instance type in every queue
             # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
