@@ -35,6 +35,7 @@ class SlurmResumeConfig:
         "dns_domain": None,
         "use_private_hostname": False,
         "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
+        "all_or_nothing_batch": False,
     }
 
     def __init__(self, config_file_path):
@@ -70,6 +71,9 @@ class SlurmResumeConfig:
         )
         self.update_node_address = config.getboolean(
             "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
+        )
+        self.all_or_nothing_batch = config.getboolean(
+            "slurm_resume", "all_or_nothing_batch", fallback=self.DEFAULTS.get("all_or_nothing_batch")
         )
         instance_name_type_mapping_file = config.get(
             "slurm_resume", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
@@ -127,7 +131,12 @@ def _resume(arg_nodes, resume_config):
         master_hostname=resume_config.master_hostname,
         instance_name_type_mapping=resume_config.instance_name_type_mapping,
     )
-    instance_manager.add_instances_for_nodes(node_list, resume_config.max_batch_size, resume_config.update_node_address)
+    instance_manager.add_instances_for_nodes(
+        node_list=node_list,
+        launch_batch_size=resume_config.max_batch_size,
+        update_node_address=resume_config.update_node_address,
+        all_or_nothing_batch=resume_config.all_or_nothing_batch,
+    )
     success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
     log.info("Successfully launched nodes %s", print_with_count(success_nodes))
     if instance_manager.failed_nodes:
@@ -160,6 +169,7 @@ def main():
                 default_log_file,
                 e,
             )
+        log.info("ResumeProgram config: %s", resume_config)
         _resume(args.nodes, resume_config)
         log.info("ResumeProgram finished.")
     except Exception as e:
