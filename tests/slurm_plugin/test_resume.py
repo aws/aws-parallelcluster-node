@@ -13,12 +13,14 @@
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import call
 
 import botocore
 import pytest
 from assertpy import assert_that
 
 import slurm_plugin
+from slurm_plugin.common import EC2Instance
 from slurm_plugin.resume import SlurmResumeConfig, _resume
 from tests.common import MockedBoto3Request
 
@@ -72,7 +74,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
 
 
 @pytest.mark.parametrize(
-    ("mock_node_lists", "batch_size", "all_or_nothing_batch", "mock_boto3_response", "expected_failed_nodes"),
+    (
+        "mock_node_lists",
+        "batch_size",
+        "all_or_nothing_batch",
+        "mock_boto3_response",
+        "expected_failed_nodes",
+        "expected_update_node_calls",
+        "expected_assigned_nodes",
+    ),
     [
         # all_or_nothing_batch
         (
@@ -130,6 +140,23 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 ),
             ],
             ["queue1-st-c5xlarge-2"],
+            [
+                call(
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
+                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
+                    nodehostnames=None,
+                )
+            ],
+            dict(
+                zip(
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
+                    [
+                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
+                )
+            ),
         ),
         # best_effort
         (
@@ -173,12 +200,29 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 ),
             ],
             ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+            [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
+            dict(
+                zip(
+                    ["queue1-dy-c5xlarge-1"],
+                    [
+                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
+                )
+            ),
         ),
     ],
     ids=["all_or_nothing", "best_effort"],
 )
 def test_resume_launch(
-    mock_node_lists, batch_size, all_or_nothing_batch, mock_boto3_response, expected_failed_nodes, mocker, boto3_stubber
+    mock_node_lists,
+    batch_size,
+    all_or_nothing_batch,
+    mock_boto3_response,
+    expected_failed_nodes,
+    expected_update_node_calls,
+    expected_assigned_nodes,
+    mocker,
+    boto3_stubber,
 ):
     # Test that all or nothing batch settings are working correctly
     mock_resume_config = SimpleNamespace(
@@ -200,11 +244,19 @@ def test_resume_launch(
     boto3_stubber("ec2", mock_boto3_response)
     mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", auto_spec=True)
     # patch slurm calls
-    mocker.patch("slurm_plugin.common.update_nodes", auto_spec=True)
+    mock_update_nodes = mocker.patch("slurm_plugin.common.update_nodes", auto_spec=True)
     mocker.patch("slurm_plugin.resume.get_nodes_info", return_value=mock_node_lists, auto_spec=True)
     # patch DNS related functions
-    mocker.patch.object(slurm_plugin.common.InstanceManager, "_store_assigned_hostnames", auto_spec=True)
-    mocker.patch.object(slurm_plugin.common.InstanceManager, "_update_dns_hostnames", auto_spec=True)
+    mock_store_hostname = mocker.patch.object(
+        slurm_plugin.common.InstanceManager, "_store_assigned_hostnames", auto_spec=True
+    )
+    mock_update_dns = mocker.patch.object(slurm_plugin.common.InstanceManager, "_update_dns_hostnames", auto_spec=True)
 
     _resume("some_arg_nodes", mock_resume_config)
-    mock_handle_failed_nodes.assert_called_with(expected_failed_nodes)
+    if expected_failed_nodes:
+        mock_handle_failed_nodes.assert_called_with(expected_failed_nodes)
+    if expected_update_node_calls:
+        mock_update_nodes.assert_has_calls(expected_update_node_calls)
+    if expected_assigned_nodes:
+        mock_store_hostname.assert_called_with(expected_assigned_nodes)
+        mock_update_dns.assert_called_with(expected_assigned_nodes)

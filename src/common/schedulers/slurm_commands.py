@@ -49,6 +49,11 @@ SINFO = "/opt/slurm/bin/sinfo"
 
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
 
+# Set default timeouts for running different slurm commands.
+# These timeouts might be needed when running on large scale
+DEFAULT_GET_INFO_COMMAND_TIMEOUT = 10
+DEFAULT_UPDATE_COMMAND_TIMEOUT = 60
+
 
 class PartitionStatus(Enum):
     UP = "UP"
@@ -161,7 +166,13 @@ def is_static_node(nodename):
 
 
 def update_nodes(
-    nodes, nodeaddrs=None, nodehostnames=None, state=None, reason=None, raise_on_error=True, command_timeout=60
+    nodes,
+    nodeaddrs=None,
+    nodehostnames=None,
+    state=None,
+    reason=None,
+    raise_on_error=True,
+    command_timeout=DEFAULT_UPDATE_COMMAND_TIMEOUT,
 ):
     """
     Update slurm nodes with scontrol call.
@@ -317,7 +328,7 @@ def set_nodes_down_and_power_save(node_list, reason):
     set_nodes_power_down(node_list, reason=reason)
 
 
-def get_nodes_info(nodes, command_timeout=5):
+def get_nodes_info(nodes, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
@@ -332,7 +343,7 @@ def get_nodes_info(nodes, command_timeout=5):
     return _parse_nodes_info(nodeinfo_str)
 
 
-def get_partition_info(command_timeout=5, get_all_nodes=True):
+def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all_nodes=True):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
     partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)
@@ -352,13 +363,13 @@ def _parse_partition_name_and_state(partition_info):
     return grouper(partition_info.splitlines(), 2)
 
 
-def _get_all_partition_nodes(partition_name, command_timeout=5):
+def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get all nodes in partition."""
     show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N"
     return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()
 
 
-def _get_partition_nodes(partition_name, command_timeout=5):
+def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get up nodes in a parition by querying sinfo, and filtering out power_down nodes."""
     show_all_nodes_command = f"{SINFO} -h -p {partition_name} -N -o %N"
     show_power_down_nodes_command = f"{SINFO} -h -p {partition_name} -t power_down,powering_down -N -o %N"
