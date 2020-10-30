@@ -650,6 +650,9 @@ class ClusterManager:
                     nodes_failing_health_check.append(unhealthy_node.name)
         if nodes_failing_health_check:
             # Place unhealthy node into drain, this operation is idempotent
+            log.warning(
+                "Setting nodes failing health check type %s to DRAIN: %s", health_check_type, nodes_failing_health_check
+            )
             set_nodes_drain(nodes_failing_health_check, reason=f"Node failing {health_check_type}")
 
     def _update_static_nodes_in_replacement(self, slurm_nodes):
