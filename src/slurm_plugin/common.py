@@ -274,31 +274,35 @@ class InstanceManager:
 
     def _launch_ec2_instances(self, queue, instance_type, current_batch_size, all_or_nothing_batch=False):
         """Launch a batch of ec2 instances."""
-        ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-        result = ec2_client.run_instances(
-            # If not all_or_nothing_batch scaling, set MinCount=1
-            # so run_instances call will succeed even if entire count cannot be satisfied
-            # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
-            MinCount=1 if not all_or_nothing_batch else current_batch_size,
-            MaxCount=current_batch_size,
-            # LaunchTemplate is different for every instance type in every queue
-            # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
-            # Sample LT name: hit-queue1-c5.xlarge
-            LaunchTemplate={
-                "LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}",
-                "Version": "$Latest",
-            },
-        )
-
-        return [
-            EC2Instance(
-                instance_info["InstanceId"],
-                instance_info["PrivateIpAddress"],
-                instance_info["PrivateDnsName"].split(".")[0],
-                instance_info["LaunchTime"],
+        try:
+            ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+            result = ec2_client.run_instances(
+                # If not all_or_nothing_batch scaling, set MinCount=1
+                # so run_instances call will succeed even if entire count cannot be satisfied
+                # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
+                MinCount=1 if not all_or_nothing_batch else current_batch_size,
+                MaxCount=current_batch_size,
+                # LaunchTemplate is different for every instance type in every queue
+                # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
+                # Sample LT name: hit-queue1-c5.xlarge
+                LaunchTemplate={
+                    "LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}",
+                    "Version": "$Latest",
+                },
             )
-            for instance_info in result["Instances"]
-        ]
+
+            return [
+                EC2Instance(
+                    instance_info["InstanceId"],
+                    instance_info["PrivateIpAddress"],
+                    instance_info["PrivateDnsName"].split(".")[0],
+                    instance_info["LaunchTime"],
+                )
+                for instance_info in result["Instances"]
+            ]
+        except ClientError as e:
+            logger.error("Failed RunInstances request: %s", e.response.get("ResponseMetadata").get("RequestId"))
+            raise
 
     def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
@@ -311,6 +315,9 @@ class InstanceManager:
                     InstanceIds=list(instances),
                 )
             except ClientError as e:
+                logger.error(
+                    "Failed TerminateInstances request: %s", e.response.get("ResponseMetadata").get("RequestId")
+                )
                 logger.error("Failed when terminating instances %s with error %s", print_with_count(instances), e)
 
     @log_exception(logger, "getting health status for unhealthy EC2 instances", raise_on_error=True)
