@@ -1594,7 +1594,7 @@ def test_manage_cluster(
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="terminate_instances",
-                    response={},
+                    response={"error for i-4"},
                     expected_params={"InstanceIds": ["i-4"]},
                     generate_error=True,
                 ),
@@ -1656,7 +1656,7 @@ def test_manage_cluster(
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="terminate_instances",
-                    response={},
+                    response={"error for i-2"},
                     expected_params={"InstanceIds": ["i-2"]},
                     generate_error=True,
                 ),
@@ -1664,27 +1664,45 @@ def test_manage_cluster(
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="terminate_instances",
-                    response={},
+                    response={"error for i-1"},
                     expected_params={"InstanceIds": ["i-1"]},
+                    generate_error=True,
+                ),
+                MockedBoto3Request(
+                    method="run_instances",
+                    response={"some run_instances error"},
+                    expected_params={
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge", "Version": "$Latest"},
+                        "MaxCount": 1,
+                        "MinCount": 1,
+                    },
                     generate_error=True,
                 ),
                 # _terminate_orphaned_instances: terminate orphaned instances
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
                     method="terminate_instances",
-                    response={},
+                    response={"error for i-999"},
                     expected_params={"InstanceIds": ["i-999"]},
                     generate_error=True,
                 ),
             ],
             [
-                r"Failed when terminating instances \(x1\) \['i-4'\]",
+                r"Failed TerminateInstances request:",
+                r"Failed when terminating instances \(x1\) \['i-4'\].*{'error for i-4'}",
                 r"Failed when getting health status for unhealthy EC2 instances",
                 r"Failed when performing health check action with exception",
-                r"Failed when terminating instances \(x1\) \['i-2'\]",
-                r"Failed when terminating instances \(x1\) \['i-1'\]",
-                r"Encountered exception when launching instances for nodes \(x1\) \['queue-st-c5xlarge-1'\]",
-                r"Failed when terminating instances \(x1\) \['i-999'\]",
+                r"Failed TerminateInstances request:",
+                r"Failed when terminating instances \(x1\) \['i-2'\].*{'error for i-2'}",
+                r"Failed TerminateInstances request:",
+                r"Failed when terminating instances \(x1\) \['i-1'\].*{'error for i-1'}",
+                r"Failed RunInstances request:",
+                (
+                    r"Encountered exception when launching instances for nodes \(x1\) \['queue-st-c5xlarge-1'\].*"
+                    r"{'some run_instances error'}"
+                ),
+                r"Failed TerminateInstances request:",
+                r"Failed when terminating instances \(x1\) \['i-999'\].*{'error for i-999'}",
             ],
         ),
         (
