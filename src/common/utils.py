@@ -387,20 +387,14 @@ def get_compute_instance_type(region, proxy_config, stack_name, fallback):
 
 
 def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
-    end_time = datetime.now()
+    end_time = datetime.now(tz=timezone.utc)
     if not loop_start_time:
         loop_start_time = end_time
-    # Always try to localize datetime objects to UTC if not previously localized
-    # For example, datetime in tradition daemons are not localized(sqswatcher, jobwatcher, ...)
-    # Daemons in HIT integration are required to use localized datetime
-    # This operation DOES NOT convert datetime from 1 timezone into UTC
-    # It simply replaces the timezone info if datetime is not localized
-    if not end_time.tzinfo:
-        end_time = end_time.replace(tzinfo=timezone.utc)
-    if not loop_start_time.tzinfo:
-        loop_start_time = loop_start_time.replace(tzinfo=timezone.utc)
+    # Always convert the received loop_start_time to utc timezone. This is so that we never rely on the system local
+    # time and risk to compare naive datatime instances with localized ones
+    loop_start_time = loop_start_time.astimezone(tz=timezone.utc)
     time_delta = (end_time - loop_start_time).total_seconds()
-    if time_delta < total_loop_time:
+    if 0 <= time_delta < total_loop_time:
         time.sleep(total_loop_time - time_delta)
 
 
