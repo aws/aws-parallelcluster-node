@@ -3,6 +3,14 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+
+2.10.0
+-----
+
+**BUG FIXES**
+- Fix a bug that was causing clustermgtd and computemgtd sleep interval to be incorrectly computed when
+  system timezone is not set to UTC.
+
 2.9.1
 -----
 
