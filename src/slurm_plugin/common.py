@@ -399,13 +399,13 @@ def time_is_up(initial_time, current_time, grace_time):
     """Check if timeout is exceeded."""
     # Localize datetime objects to UTC if not previously localized
     # All timestamps used in this function should be already localized
-    # Assume timestamp was taken from UTC is there is no localization info
+    # Assume timestamp was taken from system local time if there is no localization info
     if not initial_time.tzinfo:
         logger.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.")
-        initial_time = initial_time.replace(tzinfo=timezone.utc)
+        initial_time = initial_time.astimezone(tz=timezone.utc)
     if not current_time.tzinfo:
         logger.warning("Timestamp %s is not localized. Please double check that this is expected, localizing to UTC")
-        current_time = current_time.replace(tzinfo=timezone.utc)
+        current_time = current_time.astimezone(tz=timezone.utc)
     time_diff = (current_time - initial_time).total_seconds()
     return time_diff >= grace_time
 

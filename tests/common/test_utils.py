@@ -10,6 +10,7 @@
 # limitations under the License.
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from assertpy import assert_that
@@ -172,3 +173,59 @@ def test_get_instance_properties(mocker, region, instance_type, cfn_param, expec
     assert_that(utils.get_instance_properties(region, "dummy_proxy", instance_type).get("slots")).is_equal_to(
         expected_slots
     )
+
+
+@pytest.mark.parametrize(
+    "loop_start_time, loop_end_time, loop_total_time, expected_sleep_time",
+    [
+        (
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            60,
+            60,
+        ),
+        (
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, 0, 1, 00, tzinfo=timezone.utc),
+            60,
+            30,
+        ),
+        (
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, 0, 1, 30, tzinfo=timezone.utc),
+            60,
+            0,
+        ),
+        (
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            60,
+            0,
+        ),
+        (
+            datetime(2020, 1, 1, 1, 0, 0, tzinfo=timezone(timedelta(hours=1))),
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            60,
+            30,
+        ),
+        (
+            datetime(2020, 1, 1, 1, 0, 0),
+            datetime(2020, 1, 1, 0, 0, 30, tzinfo=timezone.utc),
+            60,
+            None,  # can't assert this with naive timezone since the value depends on the system timezone
+        ),
+    ],
+)
+def test_sleep_remaining_loop_time(mocker, loop_start_time, loop_end_time, loop_total_time, expected_sleep_time):
+    sleep_mock = mocker.patch("time.sleep")
+    datetime_now_mock = mocker.MagicMock()
+    datetime_now_mock.now = mocker.MagicMock(return_value=loop_end_time, spec=datetime.now)
+    mocker.patch("common.utils.datetime", datetime_now_mock)
+
+    utils.sleep_remaining_loop_time(loop_total_time, loop_start_time)
+
+    if expected_sleep_time:
+        sleep_mock.assert_called_with(expected_sleep_time)
+    elif expected_sleep_time == 0:
+        sleep_mock.assert_not_called()
+    datetime_now_mock.now.assert_called_with(tz=timezone.utc)
