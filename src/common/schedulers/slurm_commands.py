@@ -51,7 +51,7 @@ SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "sta
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
-DEFAULT_GET_INFO_COMMAND_TIMEOUT = 10
+DEFAULT_GET_INFO_COMMAND_TIMEOUT = 30
 DEFAULT_UPDATE_COMMAND_TIMEOUT = 60
 
 
