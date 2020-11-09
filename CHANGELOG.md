@@ -7,6 +7,9 @@ This file is used to list changes made in each version of the aws-parallelcluste
 2.10.0
 -----
 
+**CHANGES**
+- Increase default timeout for Slurm commands submitted by clustermgtd and computemgtd from 10 to 30 seconds.
+
 **BUG FIXES**
 - Fix a bug that was causing clustermgtd and computemgtd sleep interval to be incorrectly computed when
   system timezone is not set to UTC.

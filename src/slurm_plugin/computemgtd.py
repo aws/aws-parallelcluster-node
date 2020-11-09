@@ -143,7 +143,7 @@ def _expired_clustermgtd_heartbeat(last_heartbeat, current_time, clustermgtd_tim
 
 @retry(stop_max_attempt_number=3, wait_fixed=1500)
 def _get_nodes_info_with_retry(nodes):
-    return get_nodes_info(nodes, command_timeout=10)
+    return get_nodes_info(nodes)
 
 
 def _is_self_node_down(self_nodename):
