@@ -440,12 +440,12 @@ class ClusterManager:
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_node_info_with_retry(nodes):
-        return get_nodes_info(nodes, command_timeout=10)
+        return get_nodes_info(nodes)
 
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_partition_info_with_retry():
-        return get_partition_info(command_timeout=10, get_all_nodes=True)
+        return get_partition_info(get_all_nodes=True)
 
     @staticmethod
     def _get_node_info_from_partition():
