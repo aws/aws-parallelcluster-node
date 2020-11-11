@@ -73,13 +73,14 @@ class SlurmNode:
     SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
     SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWER"
 
-    def __init__(self, name, nodeaddr, nodehostname, state):
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
         """Initialize slurm node with attributes."""
         self.name = name
         self.is_static = is_static_node(name)
         self.nodeaddr = nodeaddr
         self.nodehostname = nodehostname
         self.state = state
+        self.partitions = partitions.strip().split(",") if partitions else None
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -328,15 +329,18 @@ def set_nodes_down_and_power_save(node_list, reason):
     set_nodes_power_down(node_list, reason=reason)
 
 
-def get_nodes_info(nodes, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
+def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
     Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
     """
+    # awk is used to replace the \n\n record separator with '---\n'
+    # Note: In case the node does not belong to any partition the Partitions field is missing from Slurm output
     show_node_info_command = (
-        f'{SCONTROL} show nodes {nodes} | grep -oP "^NodeName=\\K(\\S+)| '
-        'NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)"'
+        f'{SCONTROL} show nodes {nodes} | awk \'BEGIN{{RS="\\n\\n" ; ORS="---\\n";}} {{print}}\' | '
+        'grep -oP "^NodeName=\\K(\\S+)| NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)|'
+        ' Partitions=\\K(\\S+)|(---)"'
     )
     nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)
 
@@ -393,4 +397,36 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
 
 def _parse_nodes_info(slurm_node_info):
     """Parse slurm node info into SlurmNode objects."""
-    return [SlurmNode(*node) for node in grouper(slurm_node_info.splitlines(), 4)]
+    # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
+    # | awk 'BEGIN{RS="\n\n" ; ORS="---\n";} {print}' | grep -oP "^NodeName=\K(\S+)| NodeAddr=\K(\S+)|\
+    # NodeHostName=\K(\S+)| State=\K(\S+)| Partitions=\K(\S+)|(---)"
+    # compute-dy-c5xlarge-1
+    # 1.2.3.4
+    # compute-dy-c5xlarge-1
+    # IDLE+CLOUD+POWER
+    # compute,compute2
+    # ---
+    # compute-dy-c5xlarge-2
+    # 1.2.3.4
+    # compute-dy-c5xlarge-2
+    # IDLE+CLOUD+POWER
+    # compute,compute2
+    # ---
+    # compute-dy-c5xlarge-3
+    # 1.2.3.4
+    # compute-dy-c5xlarge-3
+    # IDLE+CLOUD+POWER
+    # compute,compute2
+    # ---
+    # compute-dy-c5xlarge-50001
+    # 1.2.3.4
+    # compute-dy-c5xlarge-50001
+    # IDLE+CLOUD+POWER
+    # ---
+    node_info = slurm_node_info.split("---")
+    slurm_nodes = []
+    for node in node_info:
+        lines = node.strip().splitlines()
+        if lines:
+            slurm_nodes.append(SlurmNode(*lines))
+    return slurm_nodes

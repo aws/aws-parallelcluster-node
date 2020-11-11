@@ -87,29 +87,62 @@ def test_is_static_node(nodename, expected_is_static):
                 "172.31.10.155\n"
                 "172-31-10-155\n"
                 "MIXED+CLOUD\n"
+                "multiple\n"
+                "---\n"
                 "multiple-dy-c5xlarge-2\n"
                 "172.31.7.218\n"
                 "172-31-7-218\n"
                 "IDLE+CLOUD+POWER\n"
+                "multiple\n"
+                "---\n"
                 "multiple-dy-c5xlarge-3\n"
                 "multiple-dy-c5xlarge-3\n"
                 "multiple-dy-c5xlarge-3\n"
-                "IDLE+CLOUD+POWER"
+                "IDLE+CLOUD+POWER\n"
+                "multiple\n"
+                "---\n"
+                "multiple-dy-c5xlarge-4\n"
+                "multiple-dy-c5xlarge-4\n"
+                "multiple-dy-c5xlarge-4\n"
+                "IDLE+CLOUD+POWER\n"
+                "multiple,multiple2\n"
+                "---\n"
+                "multiple-dy-c5xlarge-5\n"
+                "multiple-dy-c5xlarge-5\n"
+                "multiple-dy-c5xlarge-5\n"
+                "IDLE+CLOUD+POWER\n"
+                # missing partitions
+                "---"
             ),
             [
-                SlurmNode("multiple-dy-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD"),
-                SlurmNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER"),
+                SlurmNode("multiple-dy-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
+                SlurmNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER", "multiple"),
                 SlurmNode(
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
+                    "multiple",
+                ),
+                SlurmNode(
+                    "multiple-dy-c5xlarge-4",
+                    "multiple-dy-c5xlarge-4",
+                    "multiple-dy-c5xlarge-4",
+                    "IDLE+CLOUD+POWER",
+                    "multiple,multiple2",
+                ),
+                SlurmNode(
+                    "multiple-dy-c5xlarge-5",
+                    "multiple-dy-c5xlarge-5",
+                    "multiple-dy-c5xlarge-5",
+                    "IDLE+CLOUD+POWER",
+                    None,
                 ),
             ],
         )
     ],
 )
-def test_parse_nodes_info(node_info, expected_parsed_nodes_output, mocker):
+def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
     assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
 
 
@@ -426,10 +459,13 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate"), True),
-        (SlurmNode("queue-name-st-dy-t2micro-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queuename-dy-t2micro-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queuename-dy-dy-dy-st-t2micro-1", "nodeip", "nodehostname", "somestate"), True),
+        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate", "queue-name"), True),
+        (SlurmNode("queue-name-st-dy-t2micro-1", "nodeip", "nodehostname", "somestate", "queue-name-st"), False),
+        (SlurmNode("queuename-dy-t2micro-1", "nodeip", "nodehostname", "somestate", "queuename"), False),
+        (
+            SlurmNode("queuename-dy-dy-dy-st-t2micro-1", "nodeip", "nodehostname", "somestate", "queuename-dy-dy-dy"),
+            True,
+        ),
     ],
 )
 def test_slurm_node_is_static(node, expected_output):
@@ -439,8 +475,11 @@ def test_slurm_node_is_static(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate"), True),
-        (SlurmNode("queuename-dy-t2micro-1", "queuename-dy-t2micro-1", "nodehostname", "somestate"), False),
+        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate", "queue-name"), True),
+        (
+            SlurmNode("queuename-dy-t2micro-1", "queuename-dy-t2micro-1", "nodehostname", "somestate", "queuename"),
+            False,
+        ),
     ],
 )
 def test_slurm_node_is_nodeaddr_set(node, expected_output):
@@ -450,12 +489,12 @@ def test_slurm_node_is_nodeaddr_set(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN", "queue1"), True),
     ],
 )
 def test_slurm_node_has_job(node, expected_output):
@@ -465,11 +504,11 @@ def test_slurm_node_has_job(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
     ],
 )
 def test_slurm_node_is_drained(node, expected_output):
@@ -479,12 +518,12 @@ def test_slurm_node_is_drained(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN", "queue1"), False),
     ],
 )
 def test_slurm_node_is_down(node, expected_output):
@@ -494,11 +533,11 @@ def test_slurm_node_is_down(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD", "queue1"), True),
     ],
 )
 def test_slurm_node_is_up(node, expected_output):

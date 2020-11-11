@@ -8,6 +8,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 -----
 
 **CHANGES**
+- Optimized the retrieval of nodes info from Slurm scheduler.
 - Increase default timeout for Slurm commands submitted by clustermgtd and computemgtd from 10 to 30 seconds.
 
 **BUG FIXES**
