@@ -92,15 +92,15 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
     "mock_node_info, expected_result",
     [
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD")],
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1")],
             True,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN")],
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN", "queue1")],
             False,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN")],
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN", "queue1")],
             True,
         ),
         (

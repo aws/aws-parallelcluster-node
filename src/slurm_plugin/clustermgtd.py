@@ -439,7 +439,7 @@ class ClusterManager:
 
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
-    def _get_node_info_with_retry(nodes):
+    def _get_node_info_with_retry(nodes=""):
         return get_nodes_info(nodes)
 
     @staticmethod
@@ -457,18 +457,22 @@ class ClusterManager:
         try:
             inactive_nodes = []
             active_nodes = []
-            partitions = ClusterManager._get_partition_info_with_retry()
+            ignored_nodes = []
+            partitions = {partition.name: partition for partition in ClusterManager._get_partition_info_with_retry()}
             log.debug("Partitions: %s", partitions)
-            for part in partitions:
-                # Get node info if partition has relevant node
-                # See SlurmNode.SLURM_RELEVANT_SINFO_STATES
-                if part.nodes:
-                    nodes = ClusterManager._get_node_info_with_retry(part.nodes)
-                    if "INACTIVE" in part.state:
-                        inactive_nodes.extend(nodes)
-                    else:
-                        active_nodes.extend(nodes)
+            nodes = ClusterManager._get_node_info_with_retry()
+            log.debug("Nodes: %s", nodes)
+            for node in nodes:
+                if not node.partitions or any(p not in partitions for p in node.partitions):
+                    # ignore nodes not belonging to any partition
+                    ignored_nodes.append(node)
+                elif any("INACTIVE" not in partitions[p].state for p in node.partitions):
+                    active_nodes.append(node)
+                else:
+                    inactive_nodes.append(node)
 
+            if ignored_nodes:
+                log.warning("Ignoring following nodes because they do not belong to any partition: %s", ignored_nodes)
             return active_nodes, inactive_nodes
         except Exception as e:
             log.error("Failed when getting partition/node states from scheduler with exception %s", e)
