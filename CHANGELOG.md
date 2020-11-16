@@ -6,26 +6,30 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 2.10.0
 -----
+**ENHANCEMENTS**
+- Add new `all_or_nothing_batch` configuration parameter for `slurm_resume` script. When `True`, `slurm_resume` will
+  succeed only if all the instances required by all the pending jobs in Slurm will be available.
 
 **CHANGES**
-- Optimized the retrieval of nodes info from Slurm scheduler.
-- Increase default timeout for Slurm commands submitted by clustermgtd and computemgtd from 10 to 30 seconds.
+- CentOS 6 is no longer supported.
+- Optimize retrieval of nodes info from Slurm scheduler.
+- Improve retrieval of instance type info by using `DescribeInstanceType` API.
+- Increase timeout from 10 to 30 seconds when `clustermgtd` and `computemgtd` daemons invoke Slurm commands.
 
 **BUG FIXES**
-- Fix a bug that was causing clustermgtd and computemgtd sleep interval to be incorrectly computed when
+- Retrieve the right number of compute instance slots when instance type is updated.
+- Fix a bug that was causing `clustermgtd` and `computemgtd` sleep interval to be incorrectly computed when
   system timezone is not set to UTC.
 
 2.9.1
 -----
 
 **CHANGES**
-
 - There were no notable changes for this version.
 
 2.9.0
 -----
 **ENHANCEMENTS**
-
 - Add support for multiple queues and multiple instance types feature with the Slurm scheduler.
   - Replace the previously available scaling components with: `clustermgtd` daemon that
     takes care of handling compute fleet management operations, included the processing of health check failures coming
