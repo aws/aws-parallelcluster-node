@@ -105,8 +105,8 @@ class InstanceManager:
         hosted_zone=None,
         dns_domain=None,
         use_private_hostname=False,
-        master_private_ip=None,
-        master_hostname=None,
+        head_node_private_ip=None,
+        head_node_hostname=None,
         instance_name_type_mapping=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
@@ -119,8 +119,8 @@ class InstanceManager:
         self._hosted_zone = hosted_zone
         self._dns_domain = dns_domain
         self._use_private_hostname = use_private_hostname
-        self._master_private_ip = master_private_ip
-        self._master_hostname = master_hostname
+        self._head_node_private_ip = head_node_private_ip
+        self._head_node_hostname = head_node_hostname
         self._instance_name_type_mapping = instance_name_type_mapping or {}
 
     def _clear_failed_nodes(self):
@@ -212,8 +212,8 @@ class InstanceManager:
                         Item={
                             "Id": nodename,
                             "InstanceId": instance.id,
-                            "MasterPrivateIp": self._master_private_ip,
-                            "MasterHostname": self._master_hostname,
+                            "MasterPrivateIp": self._head_node_private_ip,
+                            "MasterHostname": self._head_node_hostname,
                         }
                     )
 
@@ -362,7 +362,7 @@ class InstanceManager:
         return list(instance_health_states.values())
 
     @log_exception(logger, "getting cluster instances from EC2", raise_on_error=True)
-    def get_cluster_instances(self, include_master=False, alive_states_only=True):
+    def get_cluster_instances(self, include_head_node=False, alive_states_only=True):
         """Get instances that are associated with the cluster."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
@@ -371,7 +371,7 @@ class InstanceManager:
         }
         if alive_states_only:
             args["Filters"].append({"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)})
-        if not include_master:
+        if not include_head_node:
             args["Filters"].append({"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]})
         response_iterator = paginator.paginate(PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE}, **args)
         filtered_iterator = response_iterator.search("Reservations[].Instances[]")

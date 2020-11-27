@@ -64,8 +64,8 @@ class SlurmResumeConfig:
         self.use_private_hostname = config.getboolean(
             "slurm_resume", "use_private_hostname", fallback=self.DEFAULTS.get("use_private_hostname")
         )
-        self.master_private_ip = config.get("slurm_resume", "master_private_ip")
-        self.master_hostname = config.get("slurm_resume", "master_hostname")
+        self.head_node_private_ip = config.get("slurm_resume", "master_private_ip")
+        self.head_node_hostname = config.get("slurm_resume", "master_hostname")
         self.max_batch_size = config.getint(
             "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
         )
@@ -127,8 +127,8 @@ def _resume(arg_nodes, resume_config):
         hosted_zone=resume_config.hosted_zone,
         dns_domain=resume_config.dns_domain,
         use_private_hostname=resume_config.use_private_hostname,
-        master_private_ip=resume_config.master_private_ip,
-        master_hostname=resume_config.master_hostname,
+        head_node_private_ip=resume_config.head_node_private_ip,
+        head_node_hostname=resume_config.head_node_hostname,
         instance_name_type_mapping=resume_config.instance_name_type_mapping,
     )
     instance_manager.add_instances_for_nodes(
