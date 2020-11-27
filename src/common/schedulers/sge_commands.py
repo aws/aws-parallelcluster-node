@@ -167,7 +167,7 @@ def unlock_host(hostname):
 
 
 def _run_sge_command_for_multiple_hosts(hosts, command_template):
-    """Sequentially run an sge command on the master node for the given hostnames."""
+    """Sequentially run an sge command on the head node for the given hostnames."""
     succeeded_hosts = []
     for host in hosts:
         command = command_template.format(hostname=host.hostname, slots=host.slots)

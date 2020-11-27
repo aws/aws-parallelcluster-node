@@ -55,8 +55,8 @@ class TestInstanceManager:
             cluster_name="hit",
             boto3_config=botocore.config.Config(),
             table_name="table_name",
-            master_private_ip="master.ip",
-            master_hostname="master-hostname",
+            head_node_private_ip="master.ip",
+            head_node_hostname="master-hostname",
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
             use_private_hostname=False,
@@ -1217,7 +1217,7 @@ class TestInstanceManager:
         "mock_kwargs, mocked_boto3_request, expected_parsed_result",
         [
             (
-                {"include_master": False, "alive_states_only": True},
+                {"include_head_node": False, "alive_states_only": True},
                 MockedBoto3Request(
                     method="describe_instances",
                     response={
@@ -1256,7 +1256,7 @@ class TestInstanceManager:
                 ],
             ),
             (
-                {"include_master": False, "alive_states_only": True},
+                {"include_head_node": False, "alive_states_only": True},
                 MockedBoto3Request(
                     method="describe_instances",
                     response={"Reservations": []},
@@ -1273,7 +1273,7 @@ class TestInstanceManager:
                 [],
             ),
             (
-                {"include_master": True, "alive_states_only": False},
+                {"include_head_node": True, "alive_states_only": False},
                 MockedBoto3Request(
                     method="describe_instances",
                     response={

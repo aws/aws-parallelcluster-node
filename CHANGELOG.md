@@ -6,6 +6,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 2.10.1
 -----
 
+**CHANGES**
+- Use inclusive language in internal naming convention.
 
 2.10.0
 -----
