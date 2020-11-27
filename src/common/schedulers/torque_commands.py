@@ -146,21 +146,21 @@ def update_cluster_limits(max_nodes, node_slots):
         run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_max.nodect={0}"'.format(max_nodes))
         run_command(TORQUE_BIN_DIR + 'qmgr -c "set server resources_max.nodect={0}"'.format(max_nodes))
         run_command(TORQUE_BIN_DIR + 'qmgr -c "set queue batch resources_max.ncpus={0}"'.format(node_slots))
-        _update_master_np(max_nodes, node_slots)
+        _update_head_node_np(max_nodes, node_slots)
     except Exception as e:
         logging.error("Failed when updating cluster limits with exception %s.", e)
 
 
-def _update_master_np(max_nodes, node_slots):
-    """Master np is dynamically based on the number of compute nodes that join the cluster."""
+def _update_head_node_np(max_nodes, node_slots):
+    """Head node np is dynamically based on the number of compute nodes that join the cluster."""
     current_nodes_count = len(check_command_output("cat /var/spool/torque/server_priv/nodes").strip().splitlines()) - 1
-    # If cluster is at max size set the master np to 1 since 0 is not allowed.
-    master_node_np = max(1, (max_nodes - current_nodes_count) * node_slots)
-    master_hostname = check_command_output("hostname")
-    logging.info("Setting master np to: %d", master_node_np)
+    # If cluster is at max size set the head node np to 1 since 0 is not allowed.
+    head_node_np = max(1, (max_nodes - current_nodes_count) * node_slots)
+    head_node_hostname = check_command_output("hostname")
+    logging.info("Setting head node np to: %d", head_node_np)
     run_command(
         TORQUE_BIN_DIR
-        + 'qmgr -c "set node {hostname} np = {slots}"'.format(hostname=master_hostname, slots=master_node_np)
+        + 'qmgr -c "set node {hostname} np = {slots}"'.format(hostname=head_node_hostname, slots=head_node_np)
     )
 
 

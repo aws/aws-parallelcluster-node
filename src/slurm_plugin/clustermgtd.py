@@ -166,8 +166,8 @@ class ClustermgtdConfig:
         self.region = config.get("clustermgtd", "region")
         self.cluster_name = config.get("clustermgtd", "cluster_name")
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
-        self.master_private_ip = config.get("clustermgtd", "master_private_ip")
-        self.master_hostname = config.get("clustermgtd", "master_hostname")
+        self.head_node_private_ip = config.get("clustermgtd", "master_private_ip")
+        self.head_node_hostname = config.get("clustermgtd", "master_hostname")
         instance_name_type_mapping_file = config.get(
             "clustermgtd", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
         )
@@ -313,8 +313,8 @@ class ClusterManager:
             hosted_zone=config.hosted_zone,
             dns_domain=config.dns_domain,
             use_private_hostname=config.use_private_hostname,
-            master_private_ip=config.master_private_ip,
-            master_hostname=config.master_hostname,
+            head_node_private_ip=config.head_node_private_ip,
+            head_node_hostname=config.head_node_hostname,
             instance_name_type_mapping=config.instance_name_type_mapping,
         )
 
@@ -544,7 +544,7 @@ class ClusterManager:
         Instances returned will not contain instances previously terminated in _clean_up_inactive_partition
         """
         try:
-            return self._instance_manager.get_cluster_instances(include_master=False, alive_states_only=True)
+            return self._instance_manager.get_cluster_instances(include_head_node=False, alive_states_only=True)
         except Exception as e:
             log.error("Failed when getting instance info from EC2 with exception %s", e)
             raise ClusterManager.EC2InstancesInfoUnavailable
