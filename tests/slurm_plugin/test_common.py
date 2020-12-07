@@ -13,7 +13,7 @@
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from unittest.mock import call
+from unittest.mock import call, mock_open
 
 import botocore
 import pytest
@@ -23,9 +23,11 @@ from slurm_plugin.common import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
+    TIMESTAMP_FORMAT,
     EC2Instance,
     EC2InstanceHealthState,
     InstanceManager,
+    _get_clustermgtd_heartbeat,
     time_is_up,
 )
 from tests.common import MockedBoto3Request
@@ -1345,3 +1347,21 @@ class TestInstanceManager:
 )
 def test_time_is_up(initial_time, current_time, grace_time, expected_result):
     assert_that(time_is_up(initial_time, current_time, grace_time)).is_equal_to(expected_result)
+
+
+@pytest.mark.parametrize(
+    "time, expected_parsed_time",
+    [
+        (
+            datetime(2020, 7, 30, 19, 34, 2, 613338, tzinfo=timezone.utc),
+            datetime(2020, 7, 30, 19, 34, 2, 613338, tzinfo=timezone.utc),
+        ),
+        (
+            datetime(2020, 7, 30, 10, 1, 1, tzinfo=timezone(timedelta(hours=1))),
+            datetime(2020, 7, 30, 10, 1, 1, tzinfo=timezone(timedelta(hours=1))),
+        ),
+    ],
+)
+def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
+    mocker.patch("slurm_plugin.common.open", mock_open(read_data=time.strftime(TIMESTAMP_FORMAT)))
+    assert_that(_get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)

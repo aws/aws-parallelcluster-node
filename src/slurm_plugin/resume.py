@@ -12,6 +12,7 @@
 
 import logging
 import os
+from datetime import datetime, timezone
 from logging.config import fileConfig
 
 import argparse
@@ -19,7 +20,13 @@ from botocore.config import Config
 from configparser import ConfigParser
 
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
-from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, print_with_count, retrieve_instance_type_mapping
+from slurm_plugin.common import (
+    CONFIG_FILE_DIR,
+    InstanceManager,
+    is_clustermgtd_heartbeat_valid,
+    print_with_count,
+    retrieve_instance_type_mapping,
+)
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +36,7 @@ class SlurmResumeConfig:
         "max_retry": 1,
         "max_batch_size": 500,
         "update_node_address": True,
+        "clustermgtd_timeout": 300,
         "proxy": "NONE",
         "logging_config": os.path.join(os.path.dirname(__file__), "logging", "parallelcluster_resume_logging.conf"),
         "hosted_zone": None,
@@ -79,6 +87,12 @@ class SlurmResumeConfig:
             "slurm_resume", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
         )
         self.instance_name_type_mapping = retrieve_instance_type_mapping(instance_name_type_mapping_file)
+        self.clustermgtd_timeout = config.getint(
+            "slurm_resume",
+            "clustermgtd_timeout",
+            fallback=self.DEFAULTS.get("clustermgtd_timeout"),
+        )
+        self.clustermgtd_heartbeat_file_path = config.get("slurm_resume", "clustermgtd_heartbeat_file_path")
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("slurm_resume", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -115,6 +129,19 @@ def _handle_failed_nodes(node_list):
 
 def _resume(arg_nodes, resume_config):
     """Launch new EC2 nodes according to nodes requested by slurm."""
+    # Check heartbeat
+    current_time = datetime.now(tz=timezone.utc)
+    if not is_clustermgtd_heartbeat_valid(
+        current_time, resume_config.clustermgtd_timeout, resume_config.clustermgtd_heartbeat_file_path
+    ):
+        log.error(
+            "No valid clustermgtd heartbeat detected, clustermgtd is down!\n"
+            "Please check clustermgtd log for error.\n"
+            "Not launching nodes %s",
+            arg_nodes,
+        )
+        _handle_failed_nodes(arg_nodes)
+        return
     log.info("Launching EC2 instances for the following Slurm nodes: %s", arg_nodes)
     node_list = [node.name for node in get_nodes_info(arg_nodes)]
     log.debug("Retrieved nodelist: %s", node_list)
@@ -148,6 +175,13 @@ def _resume(arg_nodes, resume_config):
 
 
 def main():
+    default_log_file = "/var/log/parallelcluster/slurm_resume.log"
+    logging.basicConfig(
+        filename=default_log_file,
+        level=logging.INFO,
+        format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
+    )
+    log.info("ResumeProgram startup.")
     parser = argparse.ArgumentParser()
     parser.add_argument("nodes", help="Nodes to burst")
     args = parser.parse_args()
@@ -157,12 +191,6 @@ def main():
             # Configure root logger
             fileConfig(resume_config.logging_config, disable_existing_loggers=False)
         except Exception as e:
-            default_log_file = "/var/log/parallelcluster/slurm_resume.log"
-            logging.basicConfig(
-                filename=default_log_file,
-                level=logging.INFO,
-                format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
-            )
             log.warning(
                 "Unable to configure logging from %s, using default settings and writing to %s.\nException: %s",
                 resume_config.logging_config,
