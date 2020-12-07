@@ -15,7 +15,7 @@ import functools
 import json
 import logging
 import subprocess
-from datetime import timezone
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -422,3 +422,35 @@ def retrieve_instance_type_mapping(file_path):
             e,
         )
         raise
+
+
+def _get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):
+    """Get clustermgtd's last heartbeat."""
+    with open(clustermgtd_heartbeat_file_path, "r") as timestamp_file:
+        # Note: heartbeat must be written with datetime.strftime to convert localized datetime into str
+        # datetime.strptime will not work with str(datetime)
+        # Example timestamp written to heartbeat file: 2020-07-30 19:34:02.613338+00:00
+        return datetime.strptime(timestamp_file.read().strip(), TIMESTAMP_FORMAT)
+
+
+def _expired_clustermgtd_heartbeat(last_heartbeat, current_time, clustermgtd_timeout):
+    """Test if clustermgtd heartbeat is expired."""
+    if time_is_up(last_heartbeat, current_time, clustermgtd_timeout):
+        logger.error(
+            "Clustermgtd has been offline since %s. Current time is %s. Timeout of %s seconds has expired!",
+            last_heartbeat,
+            current_time,
+            clustermgtd_timeout,
+        )
+        return True
+    return False
+
+
+def is_clustermgtd_heartbeat_valid(current_time, clustermgtd_timeout, clustermgtd_heartbeat_file_path):
+    try:
+        last_heartbeat = _get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path)
+        logger.info("Latest heartbeat from clustermgtd: %s", last_heartbeat)
+        return not _expired_clustermgtd_heartbeat(last_heartbeat, current_time, clustermgtd_timeout)
+    except Exception as e:
+        logger.error("Unable to retrieve clustermgtd heartbeat with exception: %s", e)
+        return False

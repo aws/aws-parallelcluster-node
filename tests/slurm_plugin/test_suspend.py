@@ -27,9 +27,18 @@ from slurm_plugin.suspend import SlurmSuspendConfig
                 "logging_config": os.path.join(
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_suspend_logging.conf"
                 ),
+                "clustermgtd_timeout": 300,
+                "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
             },
         ),
-        ("all_options.conf", {"logging_config": "/path/to/suspend_logging/config"}),
+        (
+            "all_options.conf",
+            {
+                "logging_config": "/path/to/suspend_logging/config",
+                "clustermgtd_timeout": 5,
+                "clustermgtd_heartbeat_file_path": "alternate/clustermgtd_heartbeat",
+            },
+        ),
     ],
 )
 def test_suspend_config(config_file, expected_attributes, test_datadir):

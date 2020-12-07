@@ -12,18 +12,20 @@
 
 import logging
 import os
+from datetime import datetime, timezone
 from logging.config import fileConfig
 
 import argparse
 from configparser import ConfigParser
 
-from slurm_plugin.common import CONFIG_FILE_DIR
+from slurm_plugin.common import CONFIG_FILE_DIR, is_clustermgtd_heartbeat_valid
 
 log = logging.getLogger(__name__)
 
 
 class SlurmSuspendConfig:
     DEFAULTS = {
+        "clustermgtd_timeout": 300,
         "logging_config": os.path.join(os.path.dirname(__file__), "logging", "parallelcluster_suspend_logging.conf"),
     }
 
@@ -35,6 +37,12 @@ class SlurmSuspendConfig:
             log.error(f"Cannot read slurm cloud bursting scripts configuration file: {config_file_path}")
             raise
 
+        self.clustermgtd_timeout = config.getint(
+            "slurm_suspend",
+            "clustermgtd_timeout",
+            fallback=self.DEFAULTS.get("clustermgtd_timeout"),
+        )
+        self.clustermgtd_heartbeat_file_path = config.get("slurm_suspend", "clustermgtd_heartbeat_file_path")
         self.logging_config = config.get(
             "slurm_suspend", "logging_config", fallback=self.DEFAULTS.get("logging_config")
         )
@@ -42,6 +50,13 @@ class SlurmSuspendConfig:
 
 
 def main():
+    default_log_file = "/var/log/parallelcluster/slurm_suspend.log"
+    logging.basicConfig(
+        filename=default_log_file,
+        level=logging.INFO,
+        format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
+    )
+    log.info("SuspendProgram startup.")
     parser = argparse.ArgumentParser()
     parser.add_argument("nodes", help="Nodes to release")
     args = parser.parse_args()
@@ -50,20 +65,27 @@ def main():
         # Configure root logger
         fileConfig(suspend_config.logging_config, disable_existing_loggers=False)
     except Exception as e:
-        default_log_file = "/var/log/parallelcluster/slurm_suspend.log"
-        logging.basicConfig(
-            filename=default_log_file,
-            level=logging.INFO,
-            format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
-        )
         log.warning(
             "Unable to configure logging from %s, using default settings and writing to %s.\nException: %s",
             suspend_config.logging_config,
             default_log_file,
             e,
         )
+
     log.info("Suspending following nodes. Clustermgtd will cleanup orphaned instances: %s", args.nodes)
-    log.info("SuspendProgram finished. Nodes will be available after SuspendTimeout")
+    current_time = datetime.now(tz=timezone.utc)
+    if not is_clustermgtd_heartbeat_valid(
+        current_time, suspend_config.clustermgtd_timeout, suspend_config.clustermgtd_heartbeat_file_path
+    ):
+        log.error(
+            "No valid clustermgtd heartbeat detected, clustermgtd is down! "
+            "Please check clustermgtd log for error.\n"
+            "Nodes will be reset to POWER_SAVE state after SuspendTimeout. "
+            "The backing EC2 instances may not be correctly terminated.\n"
+            "Please check and terminate any orphaned instances in EC2!"
+        )
+    else:
+        log.info("SuspendProgram finished. Nodes will be available after SuspendTimeout")
 
 
 if __name__ == "__main__":
