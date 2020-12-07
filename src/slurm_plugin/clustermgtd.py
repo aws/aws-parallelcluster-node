@@ -432,7 +432,8 @@ class ClusterManager:
 
     def _write_timestamp_to_file(self):
         """Write timestamp into shared file so compute nodes can determine if head node is online."""
-        with open(self._config.heartbeat_file_path, "w") as timestamp_file:
+        # Make clustermgtd heartbeat readable to all users
+        with open(os.open(self._config.heartbeat_file_path, os.O_WRONLY | os.O_CREAT, 0o644), "w") as timestamp_file:
             # Note: heartbeat must be written with datetime.strftime to convert localized datetime into str
             # datetime.strptime will not work with str(datetime)
             timestamp_file.write(datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT))

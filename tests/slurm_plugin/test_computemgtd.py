@@ -11,16 +11,13 @@
 
 
 import os
-from datetime import datetime, timedelta, timezone
-from unittest.mock import mock_open
 
 import pytest
 from assertpy import assert_that
 
 import slurm_plugin
 from common.schedulers.slurm_commands import SlurmNode
-from slurm_plugin.common import TIMESTAMP_FORMAT
-from slurm_plugin.computemgtd import ComputemgtdConfig, _get_clustermgtd_heartbeat, _is_self_node_down
+from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down
 
 
 @pytest.mark.parametrize(
@@ -71,24 +68,6 @@ def test_computemgtd_config(config_file, expected_attributes, test_datadir, mock
 
 
 @pytest.mark.parametrize(
-    "time, expected_parsed_time",
-    [
-        (
-            datetime(2020, 7, 30, 19, 34, 2, 613338, tzinfo=timezone.utc),
-            datetime(2020, 7, 30, 19, 34, 2, 613338, tzinfo=timezone.utc),
-        ),
-        (
-            datetime(2020, 7, 30, 10, 1, 1, tzinfo=timezone(timedelta(hours=1))),
-            datetime(2020, 7, 30, 10, 1, 1, tzinfo=timezone(timedelta(hours=1))),
-        ),
-    ],
-)
-def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
-    mocker.patch("slurm_plugin.computemgtd.open", mock_open(read_data=time.strftime(TIMESTAMP_FORMAT)))
-    assert_that(_get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
-
-
-@pytest.mark.parametrize(
     "mock_node_info, expected_result",
     [
         (
@@ -104,11 +83,15 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
             True,
         ),
         (
+            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWER", "queue1")],
+            True,
+        ),
+        (
             Exception,
             True,
         ),
     ],
-    ids=["node_down", "node_drained_idle", "node_drained_down", "cant_get_node_info"],
+    ids=["node_down", "node_drained_idle", "node_drained_down", "node_power_save", "cant_get_node_info"],
 )
 def test_is_self_node_down(mock_node_info, expected_result, mocker):
     if mock_node_info is Exception:

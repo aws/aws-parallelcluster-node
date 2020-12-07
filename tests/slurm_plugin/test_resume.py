@@ -47,6 +47,8 @@ def boto3_stubber_path():
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_resume_logging.conf"
                 ),
                 "all_or_nothing_batch": False,
+                "clustermgtd_timeout": 300,
+                "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
             },
         ),
         (
@@ -62,6 +64,8 @@ def boto3_stubber_path():
                 },
                 "logging_config": "/path/to/resume_logging/config",
                 "all_or_nothing_batch": True,
+                "clustermgtd_timeout": 5,
+                "clustermgtd_heartbeat_file_path": "alternate/clustermgtd_heartbeat",
             },
         ),
     ],
@@ -82,6 +86,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         "expected_failed_nodes",
         "expected_update_node_calls",
         "expected_assigned_nodes",
+        "is_heartbeat_valid",
     ),
     [
         # all_or_nothing_batch
@@ -157,6 +162,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                     ],
                 )
             ),
+            True,
         ),
         # best_effort
         (
@@ -209,9 +215,20 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                     ],
                 )
             ),
+            True,
+        ),
+        (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            False,
         ),
     ],
-    ids=["all_or_nothing", "best_effort"],
+    ids=["all_or_nothing", "best_effort", "invalid_heartbeat"],
 )
 def test_resume_launch(
     mock_node_lists,
@@ -221,6 +238,7 @@ def test_resume_launch(
     expected_failed_nodes,
     expected_update_node_calls,
     expected_assigned_nodes,
+    is_heartbeat_valid,
     mocker,
     boto3_stubber,
 ):
@@ -235,28 +253,42 @@ def test_resume_launch(
         head_node_private_ip="some_ip",
         head_node_hostname="some_hostname",
         instance_name_type_mapping={"c5xlarge": "c5.xlarge", "c52xlarge": "c5.2xlarge"},
+        clustermgtd_heartbeat_file_path="some_path",
+        clustermgtd_timeout=600,
         boto3_config=botocore.config.Config(),
         hosted_zone=None,
         dns_domain=None,
         use_private_hostname=False,
     )
-    # patch boto3 call
-    boto3_stubber("ec2", mock_boto3_response)
+    mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", auto_spec=True, return_value=is_heartbeat_valid)
     mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", auto_spec=True)
     # patch slurm calls
     mock_update_nodes = mocker.patch("slurm_plugin.common.update_nodes", auto_spec=True)
-    mocker.patch("slurm_plugin.resume.get_nodes_info", return_value=mock_node_lists, auto_spec=True)
+    mock_get_node_info = mocker.patch(
+        "slurm_plugin.resume.get_nodes_info", return_value=mock_node_lists, auto_spec=True
+    )
     # patch DNS related functions
     mock_store_hostname = mocker.patch.object(
         slurm_plugin.common.InstanceManager, "_store_assigned_hostnames", auto_spec=True
     )
     mock_update_dns = mocker.patch.object(slurm_plugin.common.InstanceManager, "_update_dns_hostnames", auto_spec=True)
+    # Only mock boto3 if testing case of valid clustermgtd heartbeat
+    if is_heartbeat_valid:
+        # patch boto3 call
+        boto3_stubber("ec2", mock_boto3_response)
 
     _resume("some_arg_nodes", mock_resume_config)
-    if expected_failed_nodes:
-        mock_handle_failed_nodes.assert_called_with(expected_failed_nodes)
-    if expected_update_node_calls:
-        mock_update_nodes.assert_has_calls(expected_update_node_calls)
-    if expected_assigned_nodes:
-        mock_store_hostname.assert_called_with(expected_assigned_nodes)
-        mock_update_dns.assert_called_with(expected_assigned_nodes)
+    if not is_heartbeat_valid:
+        mock_handle_failed_nodes.assert_called_with("some_arg_nodes")
+        mock_update_nodes.assert_not_called()
+        mock_get_node_info.assert_not_called()
+        mock_store_hostname.assert_not_called()
+        mock_update_dns.assert_not_called()
+    else:
+        if expected_failed_nodes:
+            mock_handle_failed_nodes.assert_called_with(expected_failed_nodes)
+        if expected_update_node_calls:
+            mock_update_nodes.assert_has_calls(expected_update_node_calls)
+        if expected_assigned_nodes:
+            mock_store_hostname.assert_called_with(expected_assigned_nodes)
+            mock_update_dns.assert_called_with(expected_assigned_nodes)

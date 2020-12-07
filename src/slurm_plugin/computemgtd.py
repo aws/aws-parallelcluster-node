@@ -12,6 +12,7 @@
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from logging.config import fileConfig
 from subprocess import CalledProcessError
@@ -23,7 +24,7 @@ from retrying import retry
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
 from common.utils import check_command_output, sleep_remaining_loop_time
-from slurm_plugin.common import CONFIG_FILE_DIR, TIMESTAMP_FORMAT, InstanceManager, log_exception, time_is_up
+from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, is_clustermgtd_heartbeat_valid, log_exception
 
 LOOP_TIME = 60
 RELOAD_CONFIG_ITERATIONS = 10
@@ -38,8 +39,8 @@ class ComputemgtdConfig:
         "max_retry": 1,
         "loop_time": LOOP_TIME,
         "proxy": "NONE",
-        "clustermgtd_timeout": 600,
         "disable_computemgtd_actions": False,
+        "clustermgtd_timeout": 600,
         "slurm_nodename_file": os.path.join(CONFIG_FILE_DIR, "slurm_nodename"),
         "logging_config": os.path.join(
             os.path.dirname(__file__), "logging", "parallelcluster_computemgtd_logging.conf"
@@ -61,7 +62,7 @@ class ComputemgtdConfig:
         try:
             config.read_file(open(config_file_path, "r"))
         except IOError:
-            log.error(f"Cannot read cluster manager configuration file: {config_file_path}")
+            log.error(f"Cannot read computemgtd configuration file: {config_file_path}")
             raise
 
         # Get config settings
@@ -115,30 +116,11 @@ def _self_terminate(computemgtd_config):
         computemgtd_config.region, computemgtd_config.cluster_name, computemgtd_config.boto3_config
     )
     self_instance_id = check_command_output("curl -s http://169.254.169.254/latest/meta-data/instance-id", shell=True)
+    # Sleep for 10 seconds so termination log entries are uploaded to CW logs
+    log.info("Prepaing to self terminate the instance %s in 10 seconds!", self_instance_id)
+    time.sleep(10)
     log.info("Self terminating instance %s now!", self_instance_id)
     instance_manager.delete_instances([self_instance_id], terminate_batch_size=1)
-
-
-def _get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):
-    """Get clustermgtd's last heartbeat."""
-    with open(clustermgtd_heartbeat_file_path, "r") as timestamp_file:
-        # Note: heartbeat must be written with datetime.strftime to convert localized datetime into str
-        # datetime.strptime will not work with str(datetime)
-        # Example timestamp written to heartbeat file: 2020-07-30 19:34:02.613338+00:00
-        return datetime.strptime(timestamp_file.read().strip(), TIMESTAMP_FORMAT)
-
-
-def _expired_clustermgtd_heartbeat(last_heartbeat, current_time, clustermgtd_timeout):
-    """Test if clustermgtd heartbeat is expired."""
-    if time_is_up(last_heartbeat, current_time, clustermgtd_timeout):
-        log.error(
-            "Clustermgtd has been offline since %s. Current time is %s. Timeout of %s seconds has expired!",
-            last_heartbeat,
-            current_time,
-            clustermgtd_timeout,
-        )
-        return True
-    return False
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1500)
@@ -148,31 +130,26 @@ def _get_nodes_info_with_retry(nodes):
 
 def _is_self_node_down(self_nodename):
     """
-    Check if self node is down in slurm.
+    Check if self node is healthy according to the scheduler.
 
-    This check prevents termination of a node that is still well-attached to the scheduler.
-    Note: node that is not attached to the scheduler will be in DOWN* after SlurmdTimeout.
+    Node is considered healthy if:
+    1. Node is not in DOWN
+    2. Node is not in POWER_SAVE
+    Note: node that is incorrectly attached to the scheduler will be in DOWN* after SlurmdTimeout.
     """
     try:
         self_node = _get_nodes_info_with_retry(self_nodename)[0]
         log.info("Current self node state %s", self_node.__repr__())
-        if self_node.is_down():
-            log.warning("Node is in DOWN state, preparing for self termination...")
+        if self_node.is_down() or self_node.is_power():
+            log.warning("Node is incorrectly attached to scheduler, preparing for self termination...")
             return True
-        log.info("Node is not in a DOWN state and correctly attached to scheduler, not terminating...")
+        log.info("Node is correctly attached to scheduler, not terminating...")
         return False
     except Exception as e:
         # This could happen is slurmctld is down completely
         log.error("Unable to retrieve current node state from slurm with exception: %s\nConsidering node as down!", e)
 
     return True
-
-
-def _fail_self_check(last_heartbeat, current_time, computemgtd_config):
-    """Determine if self checks are failing and if the node should self-terminate."""
-    return _expired_clustermgtd_heartbeat(
-        last_heartbeat, current_time, computemgtd_config.clustermgtd_timeout
-    ) and _is_self_node_down(computemgtd_config.nodename)
 
 
 def _load_daemon_config():
@@ -208,17 +185,15 @@ def _run_computemgtd():
             reload_config_counter -= 1
 
         # Check heartbeat
-        try:
-            last_heartbeat = _get_clustermgtd_heartbeat(computemgtd_config.clustermgtd_heartbeat_file_path)
-            log.info("Latest heartbeat from clustermgtd: %s", last_heartbeat)
-        except Exception as e:
-            log.error("Unable to retrieve clustermgtd heartbeat with exception: %s", e)
-        finally:
+        if not is_clustermgtd_heartbeat_valid(
+            current_time, computemgtd_config.clustermgtd_timeout, computemgtd_config.clustermgtd_heartbeat_file_path
+        ):
             if computemgtd_config.disable_computemgtd_actions:
                 log.info("All computemgtd actions currently disabled")
-            elif _fail_self_check(last_heartbeat, current_time, computemgtd_config):
+            elif _is_self_node_down(computemgtd_config.nodename):
                 _self_terminate(computemgtd_config)
-            sleep_remaining_loop_time(computemgtd_config.loop_time, current_time)
+
+        sleep_remaining_loop_time(computemgtd_config.loop_time, current_time)
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))
