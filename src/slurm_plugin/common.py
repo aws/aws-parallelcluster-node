@@ -18,6 +18,7 @@ import subprocess
 from datetime import datetime, timezone
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from common.schedulers.slurm_commands import InvalidNodenameError, parse_nodename, update_nodes
@@ -244,7 +245,13 @@ class InstanceManager:
             # Submit calls to change_resource_record_sets in batches of 500 elements each.
             # change_resource_record_sets API call has limit of 1000 changes,
             # but the UPSERT action counts for 2 calls
-            route53_client = boto3.client("route53", region_name=self._region, config=self._boto3_config)
+            # Also pick the number of retries to be the max between the globally configured one and 3.
+            # This is done to address Route53 API throttling without changing the configured retries for all API calls.
+            configured_retry = self._boto3_config.retries.get("max_attempts", 0) if self._boto3_config.retries else 0
+            boto3_config = self._boto3_config.merge(
+                Config(retries={"max_attempts": max([configured_retry, 3]), "mode": "standard"})
+            )
+            route53_client = boto3.client("route53", region_name=self._region, config=boto3_config)
             changes_batch_size = 500
             for changes_batch in grouper(changes, changes_batch_size):
                 route53_client.change_resource_record_sets(
