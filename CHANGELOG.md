@@ -9,6 +9,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Use inclusive language in internal naming convention.
 - Improve error handling in slurm plugin processes when clustermgtd is down.
+- Increase max attempts when retrying on Route53 API call failures. 
 
 2.10.0
 -----
