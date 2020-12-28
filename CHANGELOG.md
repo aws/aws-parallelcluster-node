@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.x.x
+-----
+
+**ENHANCEMENTS**
+- SGE: make `qstat` command in nodewatcher more robust in case a custom DHCP option set is configured.
+
 2.10.1
 -----
 
