@@ -184,7 +184,8 @@ def _run_qstat(full_format=False, hostname_filter=None, job_state_filter=None):
     if full_format:
         command += " -f"
     if hostname_filter:
-        command += " -l hostname={0}".format(hostname_filter)
+        short_name = hostname_filter.split(".")[0]
+        command += " -l hostname={0}".format(short_name)
     if job_state_filter:
         command += " -s {0}".format(job_state_filter)
     return check_sge_command_output(command)
