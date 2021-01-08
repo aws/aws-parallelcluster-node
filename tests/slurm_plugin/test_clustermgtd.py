@@ -588,17 +588,44 @@ def test_fail_scheduled_events_health_check(instance_health_state, expected_resu
 
 
 @pytest.mark.parametrize(
-    "health_check_type, mock_fail_ec2_side_effect, mock_fail_scheduled_events_side_effect, expected_failed_nodes",
+    (
+        "health_check_type",
+        "mock_fail_ec2_side_effect",
+        "mock_fail_scheduled_events_side_effect",
+        "expected_failed_nodes",
+        "current_node_in_replacement",
+        "expected_node_in_replacement",
+    ),
     [
-        (ClusterManager.HealthCheckTypes.scheduled_event, [True, False], [False, True], ["queue1-st-c5xlarge-2"]),
-        (ClusterManager.HealthCheckTypes.ec2_health, [True, False], [False, True], ["queue1-st-c5xlarge-1"]),
-        (ClusterManager.HealthCheckTypes.ec2_health, [False, False], [False, True], []),
+        (
+            ClusterManager.HealthCheckTypes.scheduled_event,
+            [True, False],
+            [False, True],
+            ["queue1-st-c5xlarge-2"],
+            {"some_node_in_replacement1"},
+            {"some_node_in_replacement1"},
+        ),
+        (
+            ClusterManager.HealthCheckTypes.ec2_health,
+            [True, False],
+            [False, True],
+            ["queue1-st-c5xlarge-1"],
+            {"some_node_in_replacement1", "queue1-st-c5xlarge-1"},
+            {"some_node_in_replacement1"},
+        ),
+        (ClusterManager.HealthCheckTypes.ec2_health, [False, False], [False, True], [], {}, {}),
     ],
     ids=["scheduled_event", "ec2_health", "all_healthy"],
 )
 @pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock", "initialize_instance_manager_mock")
 def test_handle_health_check(
-    health_check_type, mock_fail_ec2_side_effect, mock_fail_scheduled_events_side_effect, expected_failed_nodes, mocker
+    health_check_type,
+    mock_fail_ec2_side_effect,
+    mock_fail_scheduled_events_side_effect,
+    expected_failed_nodes,
+    current_node_in_replacement,
+    expected_node_in_replacement,
+    mocker,
 ):
     # Define variable that will be used for all tests
     health_state_1 = EC2InstanceHealthState("id-1", "some_state", "some_status", "some_status", "some_event")
@@ -624,6 +651,7 @@ def test_handle_health_check(
     mock_sync_config = SimpleNamespace(health_check_timeout=10)
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = "some_current_time"
+    cluster_manager._static_nodes_in_replacement = current_node_in_replacement
     drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", auto_spec=True)
     # Run tests
     cluster_manager._handle_health_check(
@@ -645,6 +673,7 @@ def test_handle_health_check(
         drain_node_mock.assert_called_with(expected_failed_nodes, reason=f"Node failing {health_check_type}")
     else:
         drain_node_mock.assert_not_called()
+    assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_node_in_replacement)
 
 
 @pytest.mark.parametrize(

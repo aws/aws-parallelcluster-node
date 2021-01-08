@@ -652,6 +652,15 @@ class ClusterManager:
                         health_check_type,
                         instance,
                     )
+                    if unhealthy_node.name in self._static_nodes_in_replacement:
+                        log.warning(
+                            "Detected failed health check for static node in replacement. "
+                            "No longer considering node %s(%s) as in replacement process. "
+                            "Will attempt to replace node again immediately.",
+                            unhealthy_node.name,
+                            unhealthy_node.nodeaddr,
+                        )
+                        self._static_nodes_in_replacement.remove(unhealthy_node.name)
                     nodes_failing_health_check.append(unhealthy_node.name)
         if nodes_failing_health_check:
             # Place unhealthy node into drain, this operation is idempotent
