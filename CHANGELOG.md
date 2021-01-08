@@ -9,6 +9,9 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **ENHANCEMENTS**
 - SGE: make `qstat` command in nodewatcher more robust in case a custom DHCP option set is configured.
 
+**BUG FIXES**
+- Fix a bug that caused `clustermgtd` to not immediately replace instances with failed status check that are in replacement process.
+
 2.10.1
 -----
 
