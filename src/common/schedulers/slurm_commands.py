@@ -289,8 +289,13 @@ def set_nodes_drain(nodes, reason):
 
 
 def set_nodes_power_down(nodes, reason=None):
-    """Place slurm node into power_down state and reset nodeaddr/nodehostname."""
-    reset_nodes(nodes=nodes, state="power_down", reason=reason, raise_on_error=True)
+    """
+    Place slurm node into power_down state.
+
+    Do not reset the nodeaddr/nodehostname manually.
+    Nodeaddr/nodehostname will be reset automatically after power_down with cloud_reg_addrs.
+    """
+    update_nodes(nodes=nodes, state="power_down", reason=reason, raise_on_error=True)
 
 
 def reset_nodes(nodes, state=None, reason=None, raise_on_error=False):

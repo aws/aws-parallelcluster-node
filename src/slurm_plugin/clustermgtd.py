@@ -758,8 +758,13 @@ class ClusterManager:
                 and self._is_node_state_healthy(node, private_ip_to_instance_map)
             )
         else:
-            return ClusterManager._is_backing_instance_valid(
-                node, instance_ips_in_cluster=list(private_ip_to_instance_map.keys())
+            # Do not handle powering_down nodes
+            # powering_down nodes should be already handled by _handle_powering_down_nodes
+            return (
+                node.is_powering_down()
+                or ClusterManager._is_backing_instance_valid(
+                    node, instance_ips_in_cluster=list(private_ip_to_instance_map.keys())
+                )
             ) and self._is_node_state_healthy(node, private_ip_to_instance_map)
 
     @log_exception(log, "maintaining unhealthy dynamic nodes", raise_on_error=False)
@@ -790,16 +795,21 @@ class ClusterManager:
         Handle nodes that are powering down.
 
         Terminate instances backing the powering down node if any.
-        Reset the nodeaddr for the powering down node. Node state is not changed.
+        Do not reset the nodeaddr/nodehostname manually.
+        Nodeaddr/nodehostname will be reset automatically after power_down with cloud_reg_addrs.
+        Node state is not changed.
         """
         powering_down_nodes = []
         for node in slurm_nodes:
+            # Nodes in powering_down(i.e. down%) state will still have the nodeaddr of the backing instance.
+            # Nodeaddr is reset to nodename automatically by slurm after the power_down process,
+            # when node goes back into power_saving(i.e. idle~).
+            # If instance is not terminated during powering_down for some reason,
+            # it becomes orphaned once the nodeaddr is reset, and will be handled as an orphaned node.
             if not node.is_static and node.is_nodeaddr_set() and (node.is_power() or node.is_powering_down()):
                 powering_down_nodes.append(node)
 
         if powering_down_nodes:
-            log.info("Resetting powering down nodes: %s", print_with_count(powering_down_nodes))
-            reset_nodes(nodes=[node.name for node in powering_down_nodes])
             instances_to_terminate = ClusterManager._get_backing_instance_ids(
                 powering_down_nodes, private_ip_to_instance_map
             )
