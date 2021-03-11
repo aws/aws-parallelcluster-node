@@ -25,6 +25,7 @@ from common.utils import (
     get_asg_settings,
     get_compute_instance_type,
     get_instance_properties,
+    load_additional_instance_types_data,
     load_module,
     sleep_remaining_loop_time,
 )
@@ -36,7 +37,7 @@ log = logging.getLogger(__name__)
 
 
 JobwatcherConfig = collections.namedtuple(
-    "JobwatcherConfig", ["region", "scheduler", "stack_name", "pcluster_dir", "proxy_config"]
+    "JobwatcherConfig", ["region", "scheduler", "stack_name", "pcluster_dir", "proxy_config", "instance_types_data"]
 )
 
 
@@ -59,6 +60,7 @@ def _get_config():
     scheduler = config.get("jobwatcher", "scheduler")
     stack_name = config.get("jobwatcher", "stack_name")
     pcluster_dir = config.get("jobwatcher", "cfncluster_dir")
+    instance_types_data = load_additional_instance_types_data(config, "jobwatcher")
 
     _proxy = config.get("jobwatcher", "proxy")
     proxy_config = Config()
@@ -66,14 +68,15 @@ def _get_config():
         proxy_config = Config(proxies={"https": _proxy})
 
     log.info(
-        "Configured parameters: region=%s scheduler=%s stack_name=%s pcluster_dir=%s proxy=%s",
+        "Configured parameters: region=%s scheduler=%s stack_name=%s pcluster_dir=%s proxy=%s instance_types_data=%s",
         region,
         scheduler,
         stack_name,
         pcluster_dir,
         _proxy,
+        instance_types_data,
     )
-    return JobwatcherConfig(region, scheduler, stack_name, pcluster_dir, proxy_config)
+    return JobwatcherConfig(region, scheduler, stack_name, pcluster_dir, proxy_config, instance_types_data)
 
 
 def _poll_scheduler_status(config, asg_name, scheduler_module):
@@ -99,7 +102,9 @@ def _poll_scheduler_status(config, asg_name, scheduler_module):
             )
             if new_instance_type != instance_type:
                 instance_type = new_instance_type
-                instance_properties = get_instance_properties(config.region, config.proxy_config, instance_type)
+                instance_properties = get_instance_properties(
+                    config.region, config.proxy_config, instance_type, config.instance_types_data
+                )
         update_instance_properties_timer += LOOP_TIME
 
         # get current limits

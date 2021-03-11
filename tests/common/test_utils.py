@@ -15,8 +15,10 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from assertpy import assert_that
 from botocore.exceptions import ClientError
+from configparser import ConfigParser
 
 import common.utils as utils
+from common.utils import load_additional_instance_types_data
 from tests.common import MockedBoto3Request
 
 
@@ -41,7 +43,10 @@ def test_grouper(source_object, chunk_size, expected_grouped_output):
     assert_that(list(utils.grouper(source_object, chunk_size))).is_equal_to(expected_grouped_output)
 
 
-def test_get_instance_info(caplog, mocker):
+@pytest.mark.parametrize(
+    "additional_instance_types_data", [None, {"dummy-instance-type": {"InstanceType": "dummy-instance-type"}}]
+)
+def test_get_instance_info(caplog, mocker, additional_instance_types_data):
     """Verify function that returns instance vCPU and GPU info is calling the expected functions."""
     caplog.set_level(logging.DEBUG)
     dummy_instance_type = "dummy-instance-type"
@@ -51,19 +56,29 @@ def test_get_instance_info(caplog, mocker):
     fetch_instance_info_patch = mocker.patch("common.utils._fetch_instance_info", return_value=dummy_instance_info)
     get_vcpus_patch = mocker.patch("common.utils._get_vcpus_from_instance_info", return_value=dummy_vcpus)
     get_gpus_patch = mocker.patch("common.utils._get_gpus_from_instance_info", return_value=dummy_gpus)
-    returned_vcpus, returned_gpus = utils._get_instance_info(*dummy_args)
-    fetch_instance_info_patch.assert_called_with(*dummy_args)
+
+    returned_vcpus, returned_gpus = utils._get_instance_info(
+        *dummy_args, additional_instance_types_data=additional_instance_types_data
+    )
+
+    if not additional_instance_types_data:
+        # If no instance types data has been provided, fetch_instance_info must have been called
+        fetch_instance_info_patch.assert_called_with(*dummy_args)
+        for log_message in [
+            "Fetching info for instance_type {0}".format(dummy_instance_type),
+            "Received the following information for instance type {0}: {1}".format(
+                dummy_instance_type, dummy_instance_info
+            ),
+        ]:
+            assert_that(caplog.text).contains(log_message)
+    else:
+        # If instance types data has been provided, fetch_instance_info must not have been called
+        fetch_instance_info_patch.assert_not_called()
+
     for instance_info_func_patch in (get_vcpus_patch, get_gpus_patch):
         instance_info_func_patch.assert_called_with(dummy_instance_info)
     assert_that(returned_vcpus).is_equal_to(dummy_vcpus)
     assert_that(returned_gpus).is_equal_to(dummy_gpus)
-    for log_message in [
-        "Fetching info for instance_type {0}".format(dummy_instance_type),
-        "Received the following information for instance type {0}: {1}".format(
-            dummy_instance_type, dummy_instance_info
-        ),
-    ]:
-        assert_that(caplog.text).contains(log_message)
 
 
 @pytest.mark.parametrize(
@@ -170,7 +185,7 @@ def test_get_instance_properties(mocker, region, instance_type, cfn_param, expec
     mocker.patch("common.utils.hasattr").return_value = False
     mocker.patch("common.utils._get_instance_info").return_value = 8, 0
     mocker.patch("common.utils._read_cfnconfig").return_value = cfn_param
-    assert_that(utils.get_instance_properties(region, "dummy_proxy", instance_type).get("slots")).is_equal_to(
+    assert_that(utils.get_instance_properties(region, "dummy_proxy", instance_type, None).get("slots")).is_equal_to(
         expected_slots
     )
 
@@ -229,3 +244,37 @@ def test_sleep_remaining_loop_time(mocker, loop_start_time, loop_end_time, loop_
     elif expected_sleep_time == 0:
         sleep_mock.assert_not_called()
     datetime_now_mock.now.assert_called_with(tz=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "instance_types_data, expected_output, expected_error_msg",
+    [
+        # No instance types data in config file
+        (None, {}, None),
+        # Valid instance types data
+        ('{"key": "value"}', {"key": "value"}, None),
+        # Empty instance types data, must fallback to {}
+        ("null", {}, None),
+        ("", {}, None),
+        ("   ", {}, None),
+        # Invalid instance types data
+        ("abc", None, "Error loading instance types data from configuration"),
+        ("{a:", None, "Error loading instance types data from configuration"),
+    ],
+)
+def test_load_additional_instance_types_data(caplog, instance_types_data, expected_output, expected_error_msg):
+    caplog.set_level(logging.DEBUG)
+    config_dict = {"section": {}}
+    if instance_types_data:
+        config_dict["section"]["instance_types_data"] = instance_types_data
+
+    config = ConfigParser()
+    config.read_dict(config_dict)
+
+    if expected_error_msg:
+        with pytest.raises(Exception, match=expected_error_msg):
+            load_additional_instance_types_data(config, "section")
+    else:
+        assert_that(load_additional_instance_types_data(config, "section")).is_equal_to(expected_output)
+        if expected_output != {}:
+            assert_that(caplog.text).contains("Additional instance types data loaded for instance types")

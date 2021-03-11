@@ -31,6 +31,7 @@ from common.utils import (
     get_asg_name,
     get_compute_instance_type,
     get_instance_properties,
+    load_additional_instance_types_data,
     load_module,
     retrieve_max_cluster_size,
     sleep_remaining_loop_time,
@@ -59,6 +60,7 @@ SQSWatcherConfig = collections.namedtuple(
         "proxy_config",
         "stack_name",
         "max_processed_messages",
+        "instance_types_data",
     ],
 )
 
@@ -84,6 +86,7 @@ def _get_config():
     table_name = config.get("sqswatcher", "table_name")
     cluster_user = config.get("sqswatcher", "cluster_user")
     stack_name = config.get("sqswatcher", "stack_name")
+    instance_types_data = load_additional_instance_types_data(config, "sqswatcher")
     max_processed_messages = int(
         config.get("sqswatcher", "max_processed_messages", fallback=DEFAULT_MAX_PROCESSED_MESSAGES)
     )
@@ -95,7 +98,7 @@ def _get_config():
 
     log.info(
         "Configured parameters: region=%s scheduler=%s sqsqueue=%s table_name=%s cluster_user=%s "
-        "proxy=%s stack_name=%s max_processed_messages=%s",
+        "proxy=%s stack_name=%s max_processed_messages=%s instance_types_data=%s",
         region,
         scheduler,
         sqsqueue,
@@ -104,9 +107,18 @@ def _get_config():
         _proxy,
         stack_name,
         max_processed_messages,
+        instance_types_data,
     )
     return SQSWatcherConfig(
-        region, scheduler, sqsqueue, table_name, cluster_user, proxy_config, stack_name, max_processed_messages
+        region,
+        scheduler,
+        sqsqueue,
+        table_name,
+        cluster_user,
+        proxy_config,
+        stack_name,
+        max_processed_messages,
+        instance_types_data,
     )
 
 
@@ -226,7 +238,7 @@ def _retrieve_all_sqs_messages(queue, max_processed_messages):
     return messages
 
 
-def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, queue):
+def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, queue, additional_instance_types_data):
     add_events = []
     remove_events = []
     for message in messages:
@@ -240,7 +252,9 @@ def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, qu
             continue
 
         if event_type == "parallelcluster:COMPUTE_READY":
-            add_event = _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message, table)
+            add_event = _process_compute_ready_event(
+                sqs_config_region, sqs_config_proxy, message_attrs, message, table, additional_instance_types_data
+            )
             if add_event:
                 add_events.append(add_event)
         elif event_type == "autoscaling:EC2_INSTANCE_TERMINATE":
@@ -266,12 +280,16 @@ def _parse_sqs_messages(sqs_config_region, sqs_config_proxy, messages, table, qu
     return update_events.values()
 
 
-def _process_compute_ready_event(sqs_config_region, sqs_config_proxy, message_attrs, message, table):
+def _process_compute_ready_event(
+    sqs_config_region, sqs_config_proxy, message_attrs, message, table, additional_instance_types_data
+):
     instance_id = message_attrs.get("EC2InstanceId")
     instance_type = message_attrs.get("EC2InstanceType")
     # Get instances properties for each event because instance types
     # from instance and CloudFormation could be out-of-sync
-    instance_properties = get_instance_properties(sqs_config_region, sqs_config_proxy, instance_type)
+    instance_properties = get_instance_properties(
+        sqs_config_region, sqs_config_proxy, instance_type, additional_instance_types_data
+    )
     gpus = instance_properties["gpus"]
     slots = message_attrs.get("Slots")
     hostname = message_attrs.get("LocalHostname").split(".")[0]
@@ -392,12 +410,16 @@ def _poll_queue(sqs_config, queue, table, asg_name):
             force_cluster_update = new_max_cluster_size != max_cluster_size or new_instance_type != instance_type
             if new_instance_type != instance_type:
                 instance_type = new_instance_type
-                instance_properties = get_instance_properties(sqs_config.region, sqs_config.proxy_config, instance_type)
+                instance_properties = get_instance_properties(
+                    sqs_config.region, sqs_config.proxy_config, instance_type, sqs_config.instance_types_data
+                )
             max_cluster_size = new_max_cluster_size
         cluster_properties_refresh_timer += LOOP_TIME
 
         messages = _retrieve_all_sqs_messages(queue, sqs_config.max_processed_messages)
-        update_events = _parse_sqs_messages(sqs_config.region, sqs_config.proxy_config, messages, table, queue)
+        update_events = _parse_sqs_messages(
+            sqs_config.region, sqs_config.proxy_config, messages, table, queue, sqs_config.instance_types_data
+        )
         _process_sqs_messages(
             update_events,
             scheduler_module,
