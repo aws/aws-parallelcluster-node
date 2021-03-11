@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and limitations under the License.
 import collections
 import itertools
+import json
 import logging
 import os
 import pwd
@@ -274,20 +275,29 @@ def _fetch_instance_info(region, proxy_config, instance_type):
         raise CriticalError(emsg)
 
 
-def _get_instance_info(region, proxy_config, instance_type):
+def _get_instance_info(region, proxy_config, instance_type, additional_instance_types_data=None):
     """
     Call the DescribeInstanceTypes to get number of vcpus and gpus for the given instance type.
 
     :return: (the number of vcpus or -1 if the instance type cannot be found,
                 number of gpus or None if the instance does not have gpu)
     """
-    log.debug("Fetching info for instance_type {0}".format(instance_type))
-    instance_info = _fetch_instance_info(region, proxy_config, instance_type)
-    log.debug("Received the following information for instance type {0}: {1}".format(instance_type, instance_info))
+    instance_info = None
+
+    # First attempt to describe the instance is from configuration data, if present
+    if additional_instance_types_data:
+        instance_info = additional_instance_types_data.get(instance_type, None)
+
+    # If no data is provided from configuration we retrieve it from ec2
+    if not instance_info:
+        log.debug("Fetching info for instance_type {0}".format(instance_type))
+        instance_info = _fetch_instance_info(region, proxy_config, instance_type)
+        log.debug("Received the following information for instance type {0}: {1}".format(instance_type, instance_info))
+
     return _get_vcpus_from_instance_info(instance_info), _get_gpus_from_instance_info(instance_info)
 
 
-def get_instance_properties(region, proxy_config, instance_type):
+def get_instance_properties(region, proxy_config, instance_type, additional_instance_types_data=None):
     """
     Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
 
@@ -299,7 +309,7 @@ def get_instance_properties(region, proxy_config, instance_type):
 
     if instance_type not in get_instance_properties.cache:
         # get vcpus and gpus from the pricing file, gpus = 0 if instance does not have GPU
-        vcpus, gpus = _get_instance_info(region, proxy_config, instance_type)
+        vcpus, gpus = _get_instance_info(region, proxy_config, instance_type, additional_instance_types_data)
 
         try:
             cfnconfig_params = _read_cfnconfig()
@@ -421,3 +431,30 @@ def grouper(iterable, n):
         if not chunk:
             return
         yield chunk
+
+
+def load_additional_instance_types_data(config, section):
+    """Load instance types data from configuration, if set; an empty dict is returned otherwise."""
+    instance_types_data = {}
+    if config.has_option(section, "instance_types_data"):
+        instance_types_data_str = config.get(section, "instance_types_data")
+        if instance_types_data_str:
+            try:
+                instance_types_data_str = str(instance_types_data_str).strip()
+
+                # Load json value if not empty
+                if instance_types_data_str:
+                    instance_types_data = json.loads(instance_types_data_str)
+
+                # Fallback to empty dict if value is None
+                if not instance_types_data:
+                    instance_types_data = {}
+
+                log.info(
+                    "Additional instance types data loaded for instance types '{0}': {1}".format(
+                        instance_types_data.keys(), instance_types_data
+                    )
+                )
+            except Exception as e:
+                raise CriticalError("Error loading instance types data from configuration: {0}".format(e))
+    return instance_types_data
