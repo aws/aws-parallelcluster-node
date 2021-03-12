@@ -32,7 +32,7 @@ console_scripts = [
     "clustermgtd = slurm_plugin.clustermgtd:main",
     "computemgtd = slurm_plugin.computemgtd:main",
 ]
-version = "2.10.2"
+version = "2.10.3"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3", "paramiko>=2.4.2"]
 
 setup(
