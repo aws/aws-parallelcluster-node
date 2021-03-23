@@ -1,0 +1,41 @@
+name: ParallelCluster CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        name:
+          - Python 3.6 Tests
+          - Python 3.7 Tests
+          - Python 3.8 Tests
+          - Code Checks
+        include:
+          - name: Python 3.6 Tests
+            python: 3.6
+            toxenv: py36
+          - name: Python 3.7 Tests
+            python: 3.7
+            toxenv: py37
+          - name: Python 3.8 Tests
+            python: 3.8
+            toxenv: py38
+          - name: Code Checks
+            python: 3.6
+            toxdir: cli
+            toxenv: code-linters
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Tox and any other packages
+        run: pip install tox
+      - name: Run Tox
+        run: tox -e ${{ matrix.toxenv }}
