@@ -9,7 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 from abc import ABCMeta
-from xml.etree import ElementTree
+from xml.etree import ElementTree  # nosec
 
 from six import add_metaclass
 
@@ -33,7 +33,7 @@ def from_xml_to_obj(xml, obj_type):
     :return: an instance of obj_type containing the xml data
     """
     obj = obj_type()
-    root = ElementTree.fromstring(xml)
+    root = ElementTree.fromstring(xml)  # nosec
     for tag, mapping in obj_type.MAPPINGS.items():
         results = root.findall(tag)
         transformation_func = mapping.get("transformation")

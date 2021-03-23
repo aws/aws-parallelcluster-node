@@ -68,7 +68,7 @@ class RemoteCommandExecutor:
         logging.info("Executing remote command on {0}: {1}".format(self.__user_at_hostname, command))
         result = None
         try:
-            stdin, stdout, stderr = self.__ssh_client.exec_command(command, get_pty=True)
+            stdin, stdout, stderr = self.__ssh_client.exec_command(command, get_pty=True)  # nosec
             self._wait_for_command_execution(timeout, stdout)
             result = RemoteCommandResult(
                 return_code=stdout.channel.recv_exit_status(),

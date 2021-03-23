@@ -12,7 +12,7 @@
 import logging
 import re
 import subprocess
-from xml.etree import ElementTree
+from xml.etree import ElementTree  # nosec
 
 from common.schedulers.converters import ComparableObject, from_xml_to_obj
 from common.utils import check_command_output, run_command
@@ -171,7 +171,7 @@ def get_compute_nodes_info(hostname_filter=None):
 
     output = check_command_output(command, raise_on_error=False)
     if output.startswith("<Data>"):
-        root = ElementTree.fromstring(output)
+        root = ElementTree.fromstring(output)  # nosec
         nodes = root.findall("./Node")
         nodes_list = [TorqueHost.from_xml(ElementTree.tostring(node)) for node in nodes]
         return dict((node.name, node) for node in nodes_list if node.note != "MasterServer")
@@ -195,7 +195,7 @@ def get_jobs_info(filter_by_states=None, filter_by_exec_hosts=None):
     if not output:
         return []
 
-    root = ElementTree.fromstring(output)
+    root = ElementTree.fromstring(output)  # nosec
     jobs = root.findall("./Job")
     jobs_list = []
     for job in jobs:

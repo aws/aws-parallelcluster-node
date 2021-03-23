@@ -11,7 +11,7 @@
 import collections
 import logging
 import re
-from xml.etree import ElementTree
+from xml.etree import ElementTree  # nosec
 
 from common import sge
 from common.remote_command_executor import RemoteCommandExecutor
@@ -207,7 +207,7 @@ def get_jobs_info(hostname_filter=None, job_state_filter=None):
     if not output:
         return []
 
-    root = ElementTree.fromstring(output)
+    root = ElementTree.fromstring(output)  # nosec
     job_info = root.findall(".//job_list")
     return [SgeJob.from_xml(ElementTree.tostring(host)) for host in job_info]
 

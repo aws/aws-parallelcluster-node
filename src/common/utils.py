@@ -121,7 +121,11 @@ def check_command_output(
     """
     if isinstance(command, str) and not shell:
         command = shlex.split(command)
-    result = _run_command(
+    # A nosec comment is appended to the following line in order to disable the B602 check.
+    # This check is disabled for the following reasons:
+    # - Some callers (e.g., common slurm commands) require the use of `shell=True`.
+    # - All values passed as the command arg are constructed from known inputs.
+    result = _run_command(  # nosec
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
@@ -155,7 +159,11 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     if isinstance(command, str) and not shell:
         command = shlex.split(command)
-    _run_command(
+    # A nosec comment is appended to the following line in order to disable the B602 check.
+    # This check is disabled for the following reasons:
+    # - Some callers (e.g., common slurm commands) require the use of `shell=True`.
+    # - All values passed as the command arg are constructed from known inputs.
+    _run_command(  # nosec
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,

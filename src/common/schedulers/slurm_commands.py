@@ -206,14 +206,18 @@ def update_nodes(
             node_info += f" nodeaddr={addrs}"
         if hostnames:
             node_info += f" nodehostname={hostnames}"
-        run_command(f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True)
+        run_command(  # nosec
+            f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
+        )
 
 
 def update_partitions(partitions, state):
     succeeded_partitions = []
     for partition in partitions:
         try:
-            run_command(f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True, shell=True)
+            run_command(  # nosec
+                f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True, shell=True
+            )
             succeeded_partitions.append(partition)
         except Exception as e:
             logging.error("Failed when setting partition %s to %s with error %s", partition, state, e)
@@ -347,7 +351,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
         'grep -oP "^NodeName=\\K(\\S+)| NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)|'
         ' Partitions=\\K(\\S+)|(---)"'
     )
-    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)
+    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec
 
     return _parse_nodes_info(nodeinfo_str)
 
@@ -355,7 +359,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all_nodes=True):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
-    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)
+    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)  # nosec
     partitions_info = _parse_partition_name_and_state(partition_info_str)
     return [
         SlurmPartition(
@@ -375,7 +379,7 @@ def _parse_partition_name_and_state(partition_info):
 def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get all nodes in partition."""
     show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N"
-    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()
+    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec
 
 
 def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
@@ -384,11 +388,13 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
     show_power_down_nodes_command = f"{SINFO} -h -p {partition_name} -t power_down,powering_down -N -o %N"
     show_down_nodes_command = f"{SINFO} -h -p {partition_name} -t down -N -o %N"
     # Every node is print on a separate line
-    all_nodes = check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).splitlines()
-    power_down_nodes = check_command_output(
+    all_nodes = check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).splitlines()  # nosec
+    power_down_nodes = check_command_output(  # nosec
         show_power_down_nodes_command, timeout=command_timeout, shell=True
     ).splitlines()
-    down_nodes = check_command_output(show_down_nodes_command, timeout=command_timeout, shell=True).splitlines()
+    down_nodes = check_command_output(  # nosec
+        show_down_nodes_command, timeout=command_timeout, shell=True
+    ).splitlines()
     nodes = []
     for nodename in all_nodes:
         # Always try to maintain the following nodes:
