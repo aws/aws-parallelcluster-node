@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-
 from common.schedulers.slurm_commands import InvalidNodenameError, parse_nodename, update_nodes
 from common.utils import grouper
 

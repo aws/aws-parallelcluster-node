@@ -16,15 +16,13 @@ import logging
 import os
 import sys
 import time
+from configparser import ConfigParser
 from datetime import datetime
 from urllib.request import urlopen
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from configparser import ConfigParser
-from retrying import RetryError, retry
-
 from common.time_utils import minutes, seconds
 from common.utils import (
     CriticalError,
@@ -36,6 +34,7 @@ from common.utils import (
     retrieve_max_cluster_size,
     sleep_remaining_loop_time,
 )
+from retrying import RetryError, retry
 
 log = logging.getLogger(__name__)
 

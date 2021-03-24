@@ -14,14 +14,12 @@ import itertools
 import json
 import logging
 from collections import OrderedDict
+from configparser import ConfigParser
 from datetime import datetime
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from configparser import ConfigParser
-from retrying import retry
-
 from common.time_utils import seconds
 from common.utils import (
     CriticalError,
@@ -36,6 +34,7 @@ from common.utils import (
     retrieve_max_cluster_size,
     sleep_remaining_loop_time,
 )
+from retrying import retry
 
 LOOP_TIME = 30
 CLUSTER_PROPERTIES_REFRESH_INTERVAL = 180

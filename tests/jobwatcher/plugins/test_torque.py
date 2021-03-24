@@ -11,7 +11,6 @@
 
 import pytest
 from assertpy import assert_that
-
 from common.schedulers.torque_commands import TorqueHost, TorqueJob, TorqueResourceList
 from jobwatcher.plugins.torque import get_busy_nodes, get_required_nodes
 

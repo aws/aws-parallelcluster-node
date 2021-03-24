@@ -10,7 +10,6 @@
 # limitations under the License.
 import pytest
 from assertpy import assert_that
-
 from common.schedulers.torque_commands import TorqueHost, TorqueJob, TorqueResourceList
 from nodewatcher.plugins.torque import has_jobs, has_pending_jobs, is_node_down
 

@@ -13,7 +13,6 @@ from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
-
 from common.schedulers.torque_commands import (
     TorqueHost,
     TorqueJob,
@@ -24,6 +23,7 @@ from common.schedulers.torque_commands import (
     get_jobs_info,
     get_pending_jobs_info,
 )
+
 from tests.common import read_text
 
 

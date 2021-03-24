@@ -12,13 +12,11 @@
 
 import collections
 import logging
+from configparser import ConfigParser
 from datetime import datetime
 
 import boto3
 from botocore.config import Config
-from configparser import ConfigParser
-from retrying import retry
-
 from common.time_utils import seconds
 from common.utils import (
     get_asg_name,
@@ -29,6 +27,7 @@ from common.utils import (
     load_module,
     sleep_remaining_loop_time,
 )
+from retrying import retry
 
 LOOP_TIME = 60
 UPDATE_INSTANCE_PROPERTIES_INTERVAL = 180

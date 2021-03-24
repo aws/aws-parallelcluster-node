@@ -13,9 +13,8 @@
 import os
 
 import pytest
-from assertpy import assert_that
-
 import slurm_plugin
+from assertpy import assert_that
 from common.schedulers.slurm_commands import SlurmNode
 from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down
 

@@ -10,13 +10,12 @@
 # limitations under the License.
 
 
+import argparse
 import logging
 import os
+from configparser import ConfigParser
 from datetime import datetime, timezone
 from logging.config import fileConfig
-
-import argparse
-from configparser import ConfigParser
 
 from slurm_plugin.common import CONFIG_FILE_DIR, is_clustermgtd_heartbeat_valid
 

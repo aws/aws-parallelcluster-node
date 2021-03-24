@@ -10,7 +10,6 @@
 # limitations under the License.
 import pytest
 from assertpy import assert_that
-
 from common.schedulers.sge_commands import SGE_HOLD_STATE, SgeHost, SgeJob
 from jobwatcher.plugins.sge import get_busy_nodes, get_required_nodes
 

@@ -14,6 +14,7 @@
 import logging
 import os
 import time
+from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
@@ -21,9 +22,6 @@ from logging.config import fileConfig
 import boto3
 from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
-from configparser import ConfigParser
-from retrying import retry
-
 from common.schedulers.slurm_commands import (
     PartitionStatus,
     get_nodes_info,
@@ -36,6 +34,7 @@ from common.schedulers.slurm_commands import (
 )
 from common.time_utils import seconds
 from common.utils import sleep_remaining_loop_time
+from retrying import retry
 from slurm_plugin.common import (
     CONFIG_FILE_DIR,
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
