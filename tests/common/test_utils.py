@@ -10,15 +10,15 @@
 # limitations under the License.
 import logging
 import os
+from configparser import ConfigParser
 from datetime import datetime, timedelta, timezone
 
+import common.utils as utils
 import pytest
 from assertpy import assert_that
 from botocore.exceptions import ClientError
-from configparser import ConfigParser
-
-import common.utils as utils
 from common.utils import load_additional_instance_types_data
+
 from tests.common import MockedBoto3Request
 
 

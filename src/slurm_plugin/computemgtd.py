@@ -13,17 +13,16 @@
 import logging
 import os
 import time
+from configparser import ConfigParser
 from datetime import datetime, timezone
 from logging.config import fileConfig
 from subprocess import CalledProcessError
 
 from botocore.config import Config
-from configparser import ConfigParser
-from retrying import retry
-
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
 from common.utils import check_command_output, sleep_remaining_loop_time
+from retrying import retry
 from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, is_clustermgtd_heartbeat_valid, log_exception
 
 LOOP_TIME = 60

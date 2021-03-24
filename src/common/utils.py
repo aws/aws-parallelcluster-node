@@ -24,9 +24,8 @@ from enum import Enum
 
 import boto3
 from botocore.exceptions import ClientError
-from retrying import retry
-
 from common.time_utils import seconds
+from retrying import retry
 
 log = logging.getLogger(__name__)
 

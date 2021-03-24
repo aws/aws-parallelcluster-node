@@ -18,7 +18,6 @@ from unittest.mock import call, mock_open
 import botocore
 import pytest
 from assertpy import assert_that
-
 from slurm_plugin.common import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -30,6 +29,7 @@ from slurm_plugin.common import (
     _get_clustermgtd_heartbeat,
     time_is_up,
 )
+
 from tests.common import MockedBoto3Request
 
 

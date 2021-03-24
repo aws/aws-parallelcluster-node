@@ -15,9 +15,8 @@ import logging
 import re
 from enum import Enum
 
-from retrying import retry
-
 from common.utils import check_command_output, grouper, run_command
+from retrying import retry
 
 PENDING_RESOURCES_REASONS = [
     "Resources",

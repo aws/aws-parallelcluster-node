@@ -10,7 +10,6 @@
 # limitations under the License.
 import pytest
 from assertpy import assert_that
-
 from common.schedulers.sge_commands import (
     QCONF_COMMANDS,
     SgeHost,
@@ -21,6 +20,7 @@ from common.schedulers.sge_commands import (
     get_pending_jobs_info,
 )
 from sqswatcher.sqswatcher import Host
+
 from tests.common import read_text
 
 

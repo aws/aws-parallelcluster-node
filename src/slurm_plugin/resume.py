@@ -10,15 +10,14 @@
 # limitations under the License.
 
 
+import argparse
 import logging
 import os
+from configparser import ConfigParser
 from datetime import datetime, timezone
 from logging.config import fileConfig
 
-import argparse
 from botocore.config import Config
-from configparser import ConfigParser
-
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
 from slurm_plugin.common import (
     CONFIG_FILE_DIR,

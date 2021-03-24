@@ -19,9 +19,8 @@ from unittest.mock import call
 import boto3
 import botocore
 import pytest
-from assertpy import assert_that
-
 import slurm_plugin
+from assertpy import assert_that
 from common.schedulers.slurm_commands import PartitionStatus, SlurmNode, SlurmPartition, update_all_partitions
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
 from slurm_plugin.common import (
@@ -31,6 +30,7 @@ from slurm_plugin.common import (
     EC2Instance,
     EC2InstanceHealthState,
 )
+
 from tests.common import MockedBoto3Request
 
 

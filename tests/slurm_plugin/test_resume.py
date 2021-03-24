@@ -17,11 +17,11 @@ from unittest.mock import call
 
 import botocore
 import pytest
-from assertpy import assert_that
-
 import slurm_plugin
+from assertpy import assert_that
 from slurm_plugin.common import EC2Instance
 from slurm_plugin.resume import SlurmResumeConfig, _resume
+
 from tests.common import MockedBoto3Request
 
 
