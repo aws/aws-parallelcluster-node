@@ -11,7 +11,7 @@
 import collections
 import logging
 import re
-from xml.etree import ElementTree  # nosec
+from xml.etree import ElementTree  # nosec nosemgrep
 
 from common import sge
 from common.remote_command_executor import RemoteCommandExecutor
