@@ -12,7 +12,7 @@
 import logging
 import re
 import subprocess
-from xml.etree import ElementTree  # nosec
+from xml.etree import ElementTree  # nosec nosemgrep
 
 from common.schedulers.converters import ComparableObject, from_xml_to_obj
 from common.utils import check_command_output, run_command

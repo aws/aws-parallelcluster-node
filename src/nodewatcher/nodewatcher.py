@@ -101,7 +101,7 @@ def _get_metadata(metadata_path):
     """
     try:
         metadata_url = "http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)
-        metadata_value = urlopen(metadata_url).read().decode()  # nosec
+        metadata_value = urlopen(metadata_url).read().decode()  # nosec nosemgrep
     except Exception as e:
         error_msg = "Unable to get {0} metadata. Failed with exception: {1}".format(metadata_path, e)
         log.critical(error_msg)
