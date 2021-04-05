@@ -21,7 +21,7 @@ from subprocess import CalledProcessError
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
-from common.utils import check_command_output, sleep_remaining_loop_time
+from common.utils import get_metadata, sleep_remaining_loop_time
 from retrying import retry
 from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, is_clustermgtd_heartbeat_valid, log_exception
 
@@ -114,9 +114,7 @@ def _self_terminate(computemgtd_config):
     instance_manager = InstanceManager(
         computemgtd_config.region, computemgtd_config.cluster_name, computemgtd_config.boto3_config
     )
-    self_instance_id = check_command_output(  # nosec
-        "curl -s http://169.254.169.254/latest/meta-data/instance-id", shell=True
-    )
+    self_instance_id = get_metadata("instance-id")
     # Sleep for 10 seconds so termination log entries are uploaded to CW logs
     log.info("Prepaing to self terminate the instance %s in 10 seconds!", self_instance_id)
     time.sleep(10)

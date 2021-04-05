@@ -8,6 +8,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **ENHANCEMENTS**
 - SGE: make `qstat` command in nodewatcher more robust in case a custom DHCP option set is configured.
+- Transition from IMDSv1 to IMDSv2.
 
 **BUG FIXES**
 - Fix a bug that caused `clustermgtd` to not immediately replace instances with failed status check that are in replacement process.
