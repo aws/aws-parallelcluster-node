@@ -172,12 +172,12 @@ def test_fetch_instance_info(mocker, boto3_stubber, generate_boto3_error, respon
 @pytest.mark.parametrize(
     "region, instance_type, cfn_param, expected_slots",
     [
-        ("us-east-1", "c5.2xlarge", {"cfn_scheduler_slots": "vcpus"}, 8),
-        ("us-west-1", "c5.2xlarge", {"cfn_scheduler_slots": "cores"}, 4),
-        # cfn_scheduler_slots is passed by extra json as integer
-        ("us-east-2", "c5.2xlarge", {"cfn_scheduler_slots": "1"}, 1),
-        ("us-west-1", "c5.2xlarge", {"cfn_scheduler_slots": "-1"}, 8),
-        # cfn_scheduler_slots is not in cfnconfig
+        ("us-east-1", "c5.2xlarge", {"scheduler_slots": "vcpus"}, 8),
+        ("us-west-1", "c5.2xlarge", {"scheduler_slots": "cores"}, 4),
+        # scheduler_slots is passed by extra json as integer
+        ("us-east-2", "c5.2xlarge", {"scheduler_slots": "1"}, 1),
+        ("us-west-1", "c5.2xlarge", {"scheduler_slots": "-1"}, 8),
+        # scheduler_slots is not in cfnconfig
         ("us-west-1", "c5.2xlarge", {}, 8),
     ],
 )
