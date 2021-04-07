@@ -165,8 +165,8 @@ class ClustermgtdConfig:
         self.region = config.get("clustermgtd", "region")
         self.cluster_name = config.get("clustermgtd", "cluster_name")
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
-        self.head_node_private_ip = config.get("clustermgtd", "master_private_ip")
-        self.head_node_hostname = config.get("clustermgtd", "master_hostname")
+        self.head_node_private_ip = config.get("clustermgtd", "head_node_private_ip")
+        self.head_node_hostname = config.get("clustermgtd", "head_node_hostname")
         instance_name_type_mapping_file = config.get(
             "clustermgtd", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
         )

@@ -71,8 +71,8 @@ class SlurmResumeConfig:
         self.use_private_hostname = config.getboolean(
             "slurm_resume", "use_private_hostname", fallback=self.DEFAULTS.get("use_private_hostname")
         )
-        self.head_node_private_ip = config.get("slurm_resume", "master_private_ip")
-        self.head_node_hostname = config.get("slurm_resume", "master_hostname")
+        self.head_node_private_ip = config.get("slurm_resume", "head_node_private_ip")
+        self.head_node_hostname = config.get("slurm_resume", "head_node_hostname")
         self.max_batch_size = config.getint(
             "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
         )
