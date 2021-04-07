@@ -57,8 +57,8 @@ class TestInstanceManager:
             cluster_name="hit",
             boto3_config=botocore.config.Config(),
             table_name="table_name",
-            head_node_private_ip="master.ip",
-            head_node_hostname="master-hostname",
+            head_node_private_ip="head.node.ip",
+            head_node_hostname="head-node-hostname",
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
             use_private_hostname=False,
@@ -742,8 +742,8 @@ class TestInstanceManager:
                         Item={
                             "Id": "queue1-st-c5xlarge-1",
                             "InstanceId": "id-1",
-                            "MasterPrivateIp": "master.ip",
-                            "MasterHostname": "master-hostname",
+                            "HeadNodePrivateIp": "head.node.ip",
+                            "HeadNodeHostname": "head-node-hostname",
                         }
                     )
                 ],
@@ -761,16 +761,16 @@ class TestInstanceManager:
                         Item={
                             "Id": "queue1-st-c5xlarge-1",
                             "InstanceId": "id-1",
-                            "MasterPrivateIp": "master.ip",
-                            "MasterHostname": "master-hostname",
+                            "HeadNodePrivateIp": "head.node.ip",
+                            "HeadNodeHostname": "head-node-hostname",
                         }
                     ),
                     call(
                         Item={
                             "Id": "queue1-st-c5xlarge-2",
                             "InstanceId": "id-2",
-                            "MasterPrivateIp": "master.ip",
-                            "MasterHostname": "master-hostname",
+                            "HeadNodePrivateIp": "head.node.ip",
+                            "HeadNodeHostname": "head-node-hostname",
                         }
                     ),
                 ],
