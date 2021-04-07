@@ -24,9 +24,6 @@ def read(fname):
 
 
 console_scripts = [
-    "sqswatcher = sqswatcher.sqswatcher:main",
-    "nodewatcher = nodewatcher.nodewatcher:main",
-    "jobwatcher = jobwatcher.jobwatcher:main",
     "slurm_resume = slurm_plugin.resume:main",
     "slurm_suspend = slurm_plugin.suspend:main",
     "clustermgtd = slurm_plugin.clustermgtd:main",

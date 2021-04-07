@@ -3,6 +3,13 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.0.0
+------
+
+**CHANGES**
+
+- Drop support for SGE and Torque schedulers.
+
 2.x.x
 -----
 
