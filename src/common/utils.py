@@ -261,7 +261,7 @@ def _get_instance_info(region, proxy_config, instance_type, additional_instance_
 
 def get_instance_properties(region, proxy_config, instance_type, additional_instance_types_data=None):
     """
-    Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
+    Get instance properties for the given instance type, according to the scheduler_slots configuration parameter.
 
     :return: a dictionary containing the instance properties. E.g. {'slots': slots, 'gpus': gpus}
     """
@@ -275,35 +275,35 @@ def get_instance_properties(region, proxy_config, instance_type, additional_inst
 
         try:
             cfnconfig_params = _read_cfnconfig()
-            # cfn_scheduler_slots could be vcpus/cores based on disable_hyperthreading = false/true
-            # cfn_scheduler_slots could be vcpus/cores/integer based on extra json
-            # {'cfn_scheduler_slots' = 'vcpus'/'cores'/integer}
-            cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
+            # scheduler_slots could be vcpus/cores based on disable_hyperthreading = false/true
+            # scheduler_slots could be vcpus/cores/integer based on extra json
+            # {'scheduler_slots' = 'vcpus'/'cores'/integer}
+            scheduler_slots = cfnconfig_params["scheduler_slots"]
         except KeyError:
-            log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
-            cfn_scheduler_slots = "vcpus"
+            log.error("Required config parameter 'scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
+            scheduler_slots = "vcpus"
 
-        if cfn_scheduler_slots == "cores":
+        if scheduler_slots == "cores":
             log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
             slots = -(-vcpus // 2)
 
-        elif cfn_scheduler_slots == "vcpus":
+        elif scheduler_slots == "vcpus":
             log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
             slots = vcpus
 
-        elif cfn_scheduler_slots.isdigit():
-            slots = int(cfn_scheduler_slots)
+        elif scheduler_slots.isdigit():
+            slots = int(scheduler_slots)
             log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
 
             if slots <= 0:
                 log.error(
-                    "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
-                        cfn_scheduler_slots
+                    "scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
+                        scheduler_slots
                     )
                 )
                 slots = vcpus
         else:
-            log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
+            log.error("scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % scheduler_slots)
             slots = vcpus
 
         log.info("Added instance type: {0} to get_instance_properties cache".format(instance_type))
