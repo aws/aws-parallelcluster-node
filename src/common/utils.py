@@ -24,7 +24,6 @@ from enum import Enum
 
 import boto3
 from botocore.exceptions import ClientError
-from common.time_utils import seconds
 from retrying import retry
 
 log = logging.getLogger(__name__)
@@ -57,51 +56,6 @@ def load_module(module):
     # get module from the loaded maps
     scheduler_module = sys.modules[module]
     return scheduler_module
-
-
-@retry(
-    stop_max_attempt_number=5,
-    wait_exponential_multiplier=10000,
-    wait_exponential_max=80000,
-    retry_on_exception=lambda exception: isinstance(exception, IndexError),
-)
-def get_asg_name(stack_name, region, proxy_config):
-    """
-    Get autoscaling group name associated to the given stack.
-
-    :param stack_name: stack name to search for
-    :param region: AWS region
-    :param proxy_config: Proxy configuration
-    :raise ASGNotFoundError if the ASG is not found (after the timeout) or if an unexpected error occurs
-    :return: the ASG name
-    """
-    asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
-    try:
-        response = asg_client.describe_tags(Filters=[{"Name": "Value", "Values": [stack_name]}])
-        asg_name = response.get("Tags")[0].get("ResourceId")
-        log.info("ASG %s found for the stack %s", asg_name, stack_name)
-        return asg_name
-    except IndexError:
-        log.warning("Unable to get ASG for stack %s", stack_name)
-        raise
-    except Exception as e:
-        raise CriticalError("Unable to get ASG for stack {0}. Failed with exception: {1}".format(stack_name, e))
-
-
-@retry(stop_max_attempt_number=5, wait_exponential_multiplier=seconds(0.5), wait_exponential_max=seconds(10))
-def get_asg_settings(region, proxy_config, asg_name):
-    try:
-        asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
-        asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get("AutoScalingGroups")[0]
-        min_size = asg.get("MinSize")
-        desired_capacity = asg.get("DesiredCapacity")
-        max_size = asg.get("MaxSize")
-
-        log.info("ASG min/desired/max: %d/%d/%d" % (min_size, desired_capacity, max_size))
-        return min_size, desired_capacity, max_size
-    except Exception as e:
-        log.error("Failed when retrieving data for ASG %s with exception %s", asg_name, e)
-        raise
 
 
 def check_command_output(
@@ -413,21 +367,6 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     time_delta = (end_time - loop_start_time).total_seconds()
     if 0 <= time_delta < total_loop_time:
         time.sleep(total_loop_time - time_delta)
-
-
-def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
-    try:
-        _, _, max_size = get_asg_settings(region, proxy_config, asg_name)
-        return max_size
-    except Exception as e:
-        if fallback:
-            logging.warning("Failed when retrieving max cluster size with error %s. Returning fallback value", e)
-            return fallback
-        error_msg = "Unable to retrieve max size from ASG. Failed with error {0}. No fallback value available.".format(
-            e
-        )
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
 
 
 def grouper(iterable, n):
