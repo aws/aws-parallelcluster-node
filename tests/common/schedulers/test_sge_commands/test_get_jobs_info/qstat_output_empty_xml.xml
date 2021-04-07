@@ -1,7 +1,0 @@
-<?xml version='1.0'?>
-<job_info  xmlns:xsd="http://arc.liv.ac.uk/repos/darcs/sge/source/dist/util/resources/schemas/qstat/qstat.xsd">
-  <queue_info>
-  </queue_info>
-  <job_info>
-  </job_info>
-</job_info>
