@@ -28,17 +28,27 @@ jobs:
           - Python 3.6 Tests
           - Python 3.7 Tests
           - Python 3.8 Tests
+          - Python 3.9 Tests
+          - Python 3.9 Tests Coverage
           - Code Checks
         include:
           - name: Python 3.6 Tests
             python: 3.6
-            toxenv: py36
+            toxenv: py36-nocov
           - name: Python 3.7 Tests
             python: 3.7
-            toxenv: py37
+            toxenv: py37-nocov
           - name: Python 3.8 Tests
             python: 3.8
-            toxenv: py38
+            toxenv: py38-nocov
+          - name: Python 3.9 Tests
+            python: 3.9
+            toxdir: cli
+            toxenv: py39-nocov
+          - name: Python 3.9 Tests Coverage
+            python: 3.9
+            toxdir: cli
+            toxenv: py39-cov
           - name: Code Checks
             python: 3.6
             toxdir: cli

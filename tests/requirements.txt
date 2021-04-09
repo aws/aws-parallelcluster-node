@@ -5,4 +5,3 @@ pytest-html
 pytest-mock
 pytest-xdist
 assertpy
-codecov
