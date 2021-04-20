@@ -9,6 +9,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 
 - Drop support for SGE and Torque schedulers.
+- Change tags prefix from `aws-parallelcluster-` to `parallelcluster:`.
 
 2.x.x
 -----
