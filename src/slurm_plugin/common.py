@@ -378,7 +378,7 @@ class InstanceManager:
         if alive_states_only:
             args["Filters"].append({"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)})
         if not include_head_node:
-            args["Filters"].append({"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]})
+            args["Filters"].append({"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]})
         response_iterator = paginator.paginate(PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE}, **args)
         filtered_iterator = response_iterator.search("Reservations[].Instances[]")
         return [

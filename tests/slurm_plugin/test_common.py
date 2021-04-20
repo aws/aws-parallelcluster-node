@@ -1246,7 +1246,7 @@ class TestInstanceManager:
                         "Filters": [
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
-                            {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
+                            {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],
                         "MaxResults": 1000,
                     },
@@ -1266,7 +1266,7 @@ class TestInstanceManager:
                         "Filters": [
                             {"Name": "tag:ClusterName", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
-                            {"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]},
+                            {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],
                         "MaxResults": 1000,
                     },
