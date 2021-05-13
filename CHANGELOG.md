@@ -13,6 +13,18 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **BUG FIXES**
 - Fix a bug that caused `clustermgtd` to not immediately replace instances with failed status check that are in replacement process.
 
+2.10.4
+-----
+
+**CHANGES**
+- There were no notable changes for this version.
+
+2.10.3
+-----
+
+**CHANGES**
+- There were no notable changes for this version.
+
 2.10.2
 -----
 
