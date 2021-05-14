@@ -81,7 +81,7 @@ main() {
         _error_exit "Unable to detect node version, are you in the right directory?"
     fi
     _info "Detected version ${_version}"
-    
+
     # Create archive
     _cwd=$(pwd)
     pushd "${_srcdir}" > /dev/null
@@ -93,10 +93,10 @@ main() {
 
     # upload package
     _key_path="parallelcluster/${_version}/node"
-    aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.tgz s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.tgz || _error_exit 'Failed to push node to S3'
-    aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.md5 s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.md5 || _error_exit 'Failed to push node md5 to S3'
+    aws ${_profile} --region "${_region}" s3 cp aws-parallelcluster-node-${_version}.tgz s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.tgz || _error_exit 'Failed to push node to S3'
+    aws ${_profile} --region "${_region}" s3 cp aws-parallelcluster-node-${_version}.md5 s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.md5 || _error_exit 'Failed to push node md5 to S3'
     aws ${_profile} --region "${_region}" s3api head-object --bucket ${_bucket} --key ${_key_path}/aws-parallelcluster-node-${_version}.tgz --output text --query LastModified > aws-parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to fetch LastModified date'
-    aws ${_profile} --region "${_region}" s3 cp --acl public-read aws-parallelcluster-node-${_version}.tgz.date s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to push node date'
+    aws ${_profile} --region "${_region}" s3 cp aws-parallelcluster-node-${_version}.tgz.date s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.tgz.date || _error_exit 'Failed to push node date'
 
     _bucket_region=$(aws ${_profile} s3api get-bucket-location --bucket ${_bucket} --output text)
     if [ ${_bucket_region} = "None" ]; then
