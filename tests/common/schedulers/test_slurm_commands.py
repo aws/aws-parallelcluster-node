@@ -379,13 +379,13 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             False,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-1",
+                    "sudo /opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-1",
                     raise_on_error=False,
                     timeout=60,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
+                    "sudo /opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
                     raise_on_error=False,
                     timeout=60,
                     shell=True,
@@ -402,14 +402,14 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             True,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update state=power_down "
+                    "sudo /opt/slurm/bin/scontrol update state=power_down "
                     "nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1",
                     raise_on_error=True,
                     timeout=60,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update state=power_down "
+                    "sudo /opt/slurm/bin/scontrol update state=power_down "
                     "nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3 nodeaddr=addr-2,addr-3",
                     raise_on_error=True,
                     timeout=60,
@@ -428,7 +428,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             [
                 call(
                     (
-                        '/opt/slurm/bin/scontrol update state=down reason="debugging"'
+                        'sudo /opt/slurm/bin/scontrol update state=down reason="debugging"'
                         + " nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1"
                     ),
                     raise_on_error=True,
@@ -437,7 +437,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 ),
                 call(
                     (
-                        '/opt/slurm/bin/scontrol update state=down reason="debugging"'
+                        'sudo /opt/slurm/bin/scontrol update state=down reason="debugging"'
                         + " nodename=queue1-st-c5xlarge-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
                     ),
                     raise_on_error=True,
@@ -551,12 +551,12 @@ def test_slurm_node_is_up(node, expected_output):
             PartitionStatus.INACTIVE,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update partitionname=part-1 state=INACTIVE",
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-1 state=INACTIVE",
                     raise_on_error=True,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update partitionname=part-2 state=INACTIVE",
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-2 state=INACTIVE",
                     raise_on_error=True,
                     shell=True,
                 ),
@@ -568,8 +568,12 @@ def test_slurm_node_is_up(node, expected_output):
             ["part-1", "part-2"],
             "UP",
             [
-                call("/opt/slurm/bin/scontrol update partitionname=part-1 state=UP", raise_on_error=True, shell=True),
-                call("/opt/slurm/bin/scontrol update partitionname=part-2 state=UP", raise_on_error=True, shell=True),
+                call(
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-1 state=UP", raise_on_error=True, shell=True
+                ),
+                call(
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-2 state=UP", raise_on_error=True, shell=True
+                ),
             ],
             [Exception, None],
             ["part-2"],
