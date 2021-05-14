@@ -43,7 +43,7 @@ _SQUEUE_FIELDS = [
     "cpus-per-tres",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
-SCONTROL = "/opt/slurm/bin/scontrol"
+SCONTROL = "sudo /opt/slurm/bin/scontrol"
 SINFO = "/opt/slurm/bin/sinfo"
 
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])

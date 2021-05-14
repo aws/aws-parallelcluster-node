@@ -10,6 +10,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 - Drop support for SGE and Torque schedulers.
 - Change tags prefix from `aws-parallelcluster-` to `parallelcluster:`.
+- Run Slurm command `scontrol` with sudo because clustermgtd is run as cluster admin user (not root).
 
 2.x.x
 -----
@@ -34,7 +35,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Improve error handling in slurm plugin processes when clustermgtd is down.
 
 **CHANGES**
-- Increase max attempts when retrying on Route53 API call failures. 
+- Increase max attempts when retrying on Route53 API call failures.
 
 2.10.0
 -----
