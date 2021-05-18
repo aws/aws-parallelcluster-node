@@ -1244,7 +1244,7 @@ class TestInstanceManager:
                     },
                     expected_params={
                         "Filters": [
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
+                            {"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],
@@ -1264,7 +1264,7 @@ class TestInstanceManager:
                     response={"Reservations": []},
                     expected_params={
                         "Filters": [
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
+                            {"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],
@@ -1292,7 +1292,10 @@ class TestInstanceManager:
                             }
                         ]
                     },
-                    expected_params={"Filters": [{"Name": "tag:ClusterName", "Values": ["hit"]}], "MaxResults": 1000},
+                    expected_params={
+                        "Filters": [{"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]}],
+                        "MaxResults": 1000,
+                    },
                     generate_error=False,
                 ),
                 [EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc))],

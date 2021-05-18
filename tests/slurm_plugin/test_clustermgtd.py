@@ -1527,7 +1527,7 @@ def test_manage_cluster(
                     },
                     expected_params={
                         "Filters": [
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
+                            {"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],
@@ -1685,7 +1685,7 @@ def test_manage_cluster(
                     },
                     expected_params={
                         "Filters": [
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
+                            {"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],
@@ -1828,7 +1828,7 @@ def test_manage_cluster(
                     response={},
                     expected_params={
                         "Filters": [
-                            {"Name": "tag:ClusterName", "Values": ["hit"]},
+                            {"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]},
                             {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
                             {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
                         ],

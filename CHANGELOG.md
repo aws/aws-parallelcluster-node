@@ -9,7 +9,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 
 - Drop support for SGE and Torque schedulers.
-- Change tags prefix from `aws-parallelcluster-` to `parallelcluster:`.
+- Use tags prefix `parallelcluster:`.
 - Run Slurm command `scontrol` with sudo because clustermgtd is run as cluster admin user (not root).
 
 2.x.x
