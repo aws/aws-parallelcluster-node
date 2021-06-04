@@ -15,7 +15,7 @@ import logging
 import re
 from enum import Enum
 
-from common.utils import check_command_output, convert_range_to_list, grouper, run_command
+from common.utils import check_command_output, grouper, run_command
 from retrying import retry
 
 PENDING_RESOURCES_REASONS = [
@@ -47,7 +47,6 @@ SCONTROL = "/opt/slurm/bin/scontrol"
 SINFO = "/opt/slurm/bin/sinfo"
 
 SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
-NodeType = collections.namedtuple("NodeType", ["instance_type", "partition"])
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
@@ -72,10 +71,6 @@ class SlurmNode:
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
     SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
     SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWER"
-    SLURM_SCONTROL_POWER_UP_STATE = "#"
-    SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
-    SLURM_SCONTROL_POWER_WITH_JOB_STATE = "MIXED+CLOUD+POWER"
-    SLURM_SCONTROL_RESUME_FAILED_STATE = "DOWN*+CLOUD+POWER"
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
         """Initialize slurm node with attributes."""
@@ -123,30 +118,6 @@ class SlurmNode:
     def is_up(self):
         """Check if slurm node is in a healthy state."""
         return not self._is_drain() and not self.is_down() and not self.is_powering_down()
-
-    def is_powering_up(self):
-        """Check if slurm node is in powering up state."""
-        return self.SLURM_SCONTROL_POWER_UP_STATE in self.state
-
-    def is_online(self):
-        """Check if slurm node is online with backing instance."""
-        return self.state in self.SLURM_SCONTROL_ONLINE_STATES
-
-    def is_configuring_job(self):
-        """Check if slurm node is configuring with job and haven't begun to run a job."""
-        return self.is_powering_up() and self.has_job()
-
-    def is_power_with_job(self):
-        """Dynamic nodes allocated a job but power up process has not started yet."""
-        return self.state == self.SLURM_SCONTROL_POWER_WITH_JOB_STATE
-
-    def is_running_job(self):
-        """Check if slurm node is running a job but not in configuring job state."""
-        return not self.is_powering_up() and self.has_job() and not self.is_power_with_job()
-
-    def is_resume_failed(self):
-        """Check if node resume timeout expires."""
-        return self.state == self.SLURM_SCONTROL_RESUME_FAILED_STATE
 
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
@@ -469,51 +440,3 @@ def _parse_nodes_info(slurm_node_info):
         if lines:
             slurm_nodes.append(SlurmNode(*lines))
     return slurm_nodes
-
-
-def get_nodes_type(nodes):
-    """Get node type given nodename. Node type format: NodeType(instancetype, queue_name)."""
-    nodes_types = set()
-    for node in nodes:
-        queue_name, _, instance_name = parse_nodename(node.name)
-        nodes_types.add(NodeType(instance_name, queue_name))
-    return nodes_types
-
-
-def get_inactive_partition_names(partitions):
-    """Get the name of all inactive partitions from partitions and name mapping."""
-    inactive_partitions_name = []
-    for partition_name, partition in partitions.items():
-        if partition.state == "INACTIVE":
-            inactive_partitions_name.append(partition_name)
-    return inactive_partitions_name
-
-
-def retrieve_partitions_from_node_types(node_types):
-    """Retrieve partitions for node types."""
-    return {node_type.partition for node_type in node_types}
-
-
-def get_partition_node_names(nodenames):
-    """
-    Convert partition nodenames read from partition to a list of nodes.
-
-    Example input nodenames: "queue1-st-c5xlarge-[1,3,4-5],queue1-st-c5large-20"
-    Example output [queue1-st-c5xlarge-1, queue1-st-c5xlarge-3, queue1-st-c5xlarge-4, queue1-st-c5xlarge-5,
-    queue1-st-c5large-20]
-    """
-    if type(nodenames) is str:
-        matches = re.findall(r"((([a-z0-9\-]+)-(st|dy)-([a-z0-9]+)-)(\[[\d+,-]+\]|\d+))", nodenames)
-        # [('queue1-st-c5xlarge-[1,3,4-5]', 'queue1-st-c5xlarge-', 'queue1', 'st', 'c5xlarge', '[1,3,4-5]'),
-        # ('queue1-st-c5large-20', 'queue1-st-c5large-', 'queue1', 'st', 'c5large', '20')]
-    partition_node_names = []
-    for match in matches:
-        nodename, prefix, _, _, _, nodes = match
-        if "[" not in nodes:
-            # Single nodename
-            partition_node_names.append(nodename)
-        else:
-            # Multiple nodenames
-            node_list = convert_range_to_list(nodes.strip("[]"))
-            partition_node_names += [prefix + str(n) for n in node_list]
-    return partition_node_names
