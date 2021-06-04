@@ -24,18 +24,13 @@ from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
 from common.schedulers.slurm_commands import (
     PartitionStatus,
-    get_inactive_partition_names,
     get_nodes_info,
-    get_nodes_type,
     get_partition_info,
-    get_partition_node_names,
     reset_nodes,
-    retrieve_partitions_from_node_types,
     set_nodes_down,
     set_nodes_down_and_power_save,
     set_nodes_drain,
     update_all_partitions,
-    update_partitions,
 )
 from common.time_utils import seconds
 from common.utils import sleep_remaining_loop_time
@@ -64,8 +59,6 @@ class ComputeFleetStatus(Enum):
     STARTING = "STARTING"  # clustermgtd is handling the start request.
     STOP_REQUESTED = "STOP_REQUESTED"  # A request to stop the fleet has been submitted.
     START_REQUESTED = "START_REQUESTED"  # A request to start the fleet has been submitted.
-    # PROTECTED indicates that some partitions have consistent bootstrap failures. Affected partitions are inactive.
-    PROTECTED = "PROTECTED"
 
     def __str__(self):
         return str(self.value)
@@ -81,10 +74,6 @@ class ComputeFleetStatus(Enum):
     @staticmethod
     def is_stop_in_progress(status):
         return status in {ComputeFleetStatus.STOP_REQUESTED, ComputeFleetStatus.STOPPING}
-
-    @staticmethod
-    def is_protected_status(status):
-        return status == ComputeFleetStatus.PROTECTED
 
 
 class ComputeFleetStatusManager:
@@ -141,7 +130,7 @@ class ClustermgtdConfig:
         # Terminate configs
         "terminate_max_batch_size": 1000,
         # Timeout to wait for node initialization, should be the same as ResumeTimeout
-        "node_replacement_timeout": 1800,
+        "node_replacement_timeout": 3600,
         "terminate_drain_nodes": True,
         "terminate_down_nodes": True,
         "orphaned_instance_timeout": 120,
@@ -154,7 +143,6 @@ class ClustermgtdConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
-        "protected_failure_count": 10,
     }
 
     def __init__(self, config_file_path):
@@ -245,9 +233,6 @@ class ClustermgtdConfig:
         self.orphaned_instance_timeout = config.getint(
             "clustermgtd", "orphaned_instance_timeout", fallback=self.DEFAULTS.get("orphaned_instance_timeout")
         )
-        self.protected_failure_count = config.getint(
-            "clustermgtd", "protected_failure_count", fallback=self.DEFAULTS.get("protected_failure_count")
-        )
 
     def _get_dns_config(self, config):
         """Get config option related to Route53 DNS domain."""
@@ -302,10 +287,6 @@ class ClusterManager:
         This state is required because we need to ignore static nodes that might have long bootstrap time
         """
         self._static_nodes_in_replacement = set()
-        self._bootstrap_failure_nodes_types = set()
-        self._instance_ips_in_cluster = set()
-        self._partitions_protected_failure_count_map = {}
-        self._inactive_partitions = []
         self._compute_fleet_status = ComputeFleetStatus.RUNNING
         self._current_time = None
         self._config = None
@@ -390,41 +371,12 @@ class ClusterManager:
                 )
                 if partitions_activated_successfully:
                     self._update_compute_fleet_status(ComputeFleetStatus.RUNNING)
-                    # Reset protected failure
-                    self._partitions_protected_failure_count_map = {}
-                    self._bootstrap_failure_nodes_types = set()
         except ComputeFleetStatusManager.ConditionalStatusUpdateFailed:
             log.warning(
                 "Cluster status was updated while handling a transition from %s. "
                 "Status transition will be retried at the next iteration",
                 self._compute_fleet_status,
             )
-
-    def _handle_successfully_launched_nodes(self, healthy_nodes):
-        """
-        Handle nodes have been failed in bootstrap are launched successfully during this iteration.
-
-        Includes resetting partition bootstrap failure count for these nodes type and updating the
-        bootstrap_failure_nodes_types.
-        If a node has been failed successfully launched, the partition count of this node will be reset.
-        So the successfully launched nodes type will be remove from bootstrap_failure_nodes_types. If there's node types
-        failed in this partition later, it will keep count again.
-        """
-        online_nodes_types = self._get_online_nodes_types(healthy_nodes)
-        bootstrap_failure_nodes_types_successfully_launched = online_nodes_types.intersection(
-            self._bootstrap_failure_nodes_types
-        )
-
-        if bootstrap_failure_nodes_types_successfully_launched:
-            # Reset bootstrap failure count of successfully launched partitions
-            successful_launched_partitions = retrieve_partitions_from_node_types(
-                bootstrap_failure_nodes_types_successfully_launched
-            )
-            for partition in successful_launched_partitions:
-                self._reset_partition_failure_count(partition)
-
-            # Remove successfully launched node types from the set of bootstrap failure nodes.
-            self._bootstrap_failure_nodes_types -= bootstrap_failure_nodes_types_successfully_launched
 
     def manage_cluster(self):
         """Manage cluster by syncing scheduler states with EC2 states and performing node maintenance actions."""
@@ -437,19 +389,13 @@ class ClusterManager:
         if not self._config.disable_all_cluster_management and self._compute_fleet_status in {
             None,
             ComputeFleetStatus.RUNNING,
-            ComputeFleetStatus.PROTECTED,
         }:
             # Get node states for nodes in inactive and active partitions
             try:
                 log.info("Retrieving nodes info from the scheduler")
-                partitions = {
-                    partition.name: partition for partition in ClusterManager._get_partition_info_with_retry()
-                }
-                log.debug("Partitions: %s", partitions)
-                active_nodes, inactive_nodes = self._get_node_info_from_partition(partitions)
+                active_nodes, inactive_nodes = self._get_node_info_from_partition()
                 log.debug("Current active slurm nodes in scheduler: %s", active_nodes)
                 log.debug("Current inactive slurm nodes in scheduler: %s", inactive_nodes)
-                self._inactive_partitions = get_inactive_partition_names(partitions)
             except ClusterManager.SchedulerUnavailable:
                 log.error("Unable to get partition/node info from slurm, no other action can be performed. Sleeping...")
                 return
@@ -470,7 +416,6 @@ class ClusterManager:
                 cluster_instances = self._clean_up_inactive_partition(inactive_nodes, cluster_instances)
             log.debug("Current cluster instances in EC2: %s", cluster_instances)
             private_ip_to_instance_map = {instance.private_ip: instance for instance in cluster_instances}
-            self._instance_ips_in_cluster = set(private_ip_to_instance_map.keys())
             log.debug("private_ip_to_instance_map %s", private_ip_to_instance_map)
             # Clean up orphaned instances and skip all other operations if no active node
             if active_nodes:
@@ -478,7 +423,7 @@ class ClusterManager:
                 if not self._config.disable_all_health_checks:
                     self._perform_health_check_actions(cluster_instances, ip_to_slurm_node_map)
                 # Maintain slurm nodes
-                self._maintain_nodes(private_ip_to_instance_map, active_nodes, partitions)
+                self._maintain_nodes(private_ip_to_instance_map, active_nodes)
             # Clean up orphaned instances
             self._terminate_orphaned_instances(cluster_instances, ips_used_by_slurm=list(ip_to_slurm_node_map.keys()))
         # Write clustermgtd heartbeat to file
@@ -503,7 +448,7 @@ class ClusterManager:
         return get_partition_info(get_all_nodes=True)
 
     @staticmethod
-    def _get_node_info_from_partition(partitions):
+    def _get_node_info_from_partition():
         """
         Retrieve node belonging in UP/INACTIVE partitions.
 
@@ -513,6 +458,8 @@ class ClusterManager:
             inactive_nodes = []
             active_nodes = []
             ignored_nodes = []
+            partitions = {partition.name: partition for partition in ClusterManager._get_partition_info_with_retry()}
+            log.debug("Partitions: %s", partitions)
             nodes = ClusterManager._get_node_info_with_retry()
             log.debug("Nodes: %s", nodes)
             for node in nodes:
@@ -713,23 +660,6 @@ class ClusterManager:
                             unhealthy_node.nodeaddr,
                         )
                         self._static_nodes_in_replacement.remove(unhealthy_node.name)
-                        if self._is_protected_mode_enabled():
-                            self._handle_bootstrap_failure_nodes([unhealthy_node])
-                            log.warning(
-                                "Node bootstrap error: Node %s failed health check during replacement, "
-                                f"increase partition failure count: {self._partitions_protected_failure_count_map}, "
-                                "Cluster will be set into protected mode if protected failure count reach threshold.",
-                                unhealthy_node,
-                            )
-                    if self._is_protected_mode_enabled() and unhealthy_node.is_powering_up():
-                        self._handle_bootstrap_failure_nodes([unhealthy_node])
-                        log.warning(
-                            "Node bootstrap error: Node %s fails during bootstrap when performing health check, "
-                            "increase partition failure count: %s, "
-                            "Cluster will be set into protected mode if protected failure count reach threshold.",
-                            unhealthy_node,
-                            self._partitions_protected_failure_count_map,
-                        )
                     nodes_failing_health_check.append(unhealthy_node.name)
         if nodes_failing_health_check:
             # Place unhealthy node into drain, this operation is idempotent
@@ -749,31 +679,18 @@ class ClusterManager:
                 nodes_still_in_replacement.add(nodename)
         self._static_nodes_in_replacement = nodes_still_in_replacement
 
-    def _group_slurm_nodes(self, slurm_nodes, private_ip_to_instance_map):
-        """
-        Group slurm nodes into different types.
-
-        Check and return slurm nodes with unhealthy and healthy scheduler state, grouping unhealthy nodes
-        by node type (static/dynamic).
-        """
+    def _find_unhealthy_slurm_nodes(self, slurm_nodes, private_ip_to_instance_map):
+        """Check and return slurm nodes with unhealthy scheduler state, grouping by node type (static/dynamic)."""
         unhealthy_static_nodes = []
         unhealthy_dynamic_nodes = []
-        bootstrap_failure_nodes = []
-        healthy_nodes = []
         for node in slurm_nodes:
             if not self._is_node_healthy(node, private_ip_to_instance_map):
                 if node.is_static:
                     unhealthy_static_nodes.append(node)
                 else:
                     unhealthy_dynamic_nodes.append(node)
-                if self._is_protected_mode_enabled() and self._is_node_bootstrap_failure(
-                    node, private_ip_to_instance_map
-                ):
-                    bootstrap_failure_nodes.append(node)
-            else:
-                healthy_nodes.append(node)
 
-        return unhealthy_dynamic_nodes, unhealthy_static_nodes, bootstrap_failure_nodes, healthy_nodes
+        return unhealthy_dynamic_nodes, unhealthy_static_nodes
 
     def _is_node_being_replaced(self, node, private_ip_to_instance_map):
         """Check if a node is currently being replaced and within node_replacement_timeout."""
@@ -835,7 +752,7 @@ class ClusterManager:
             return (
                 ClusterManager._is_static_node_configuration_valid(node)
                 and ClusterManager._is_backing_instance_valid(
-                    node, instance_ips_in_cluster=self._instance_ips_in_cluster
+                    node, instance_ips_in_cluster=list(private_ip_to_instance_map.keys())
                 )
                 and self._is_node_state_healthy(node, private_ip_to_instance_map)
             )
@@ -845,54 +762,9 @@ class ClusterManager:
             return (
                 node.is_powering_down()
                 or ClusterManager._is_backing_instance_valid(
-                    node, instance_ips_in_cluster=self._instance_ips_in_cluster
+                    node, instance_ips_in_cluster=list(private_ip_to_instance_map.keys())
                 )
             ) and self._is_node_state_healthy(node, private_ip_to_instance_map)
-
-    def _is_node_bootstrap_failure(self, node, private_ip_to_instance_map):
-        """
-        Check if a slurm node has boostrap failure.
-
-        Here's the cases of bootstrap error we are checking:
-        Bootstrap error that causes instance to self terminate.
-        Bootstrap error that prevents instance from joining cluster but does not cause self termination.
-        """
-        if node.is_static and node.name in self._static_nodes_in_replacement:
-            # Node is currently in replacement and no backing instance
-            if not ClusterManager._is_backing_instance_valid(
-                node, instance_ips_in_cluster=self._instance_ips_in_cluster
-            ):
-                log.warning("Node bootstrap error: Node %s is currently in replacement and no backing instance", node)
-                return True
-            # Replacement timeout expires for node in replacement
-            elif time_is_up(
-                private_ip_to_instance_map.get(node.nodeaddr).launch_time,
-                self._current_time,
-                grace_time=self._config.node_replacement_timeout,
-            ):
-                log.warning("Node bootstrap error: Replacement timeout expires for node %s in replacement", node)
-                return True
-
-        elif not node.is_static:
-            # no backing instance + [working state]# in node state
-            if node.is_configuring_job() and not ClusterManager._is_backing_instance_valid(
-                node, instance_ips_in_cluster=self._instance_ips_in_cluster
-            ):
-                log.warning("Node bootstrap error: Node %s is in power up state without valid backing instance", node)
-                return True
-            # Dynamic node in DOWN*+CLOUD+POWER state
-            elif node.is_resume_failed():
-                log.warning("Node bootstrap error: Resume timeout expires for node %s", node)
-                return True
-        return False
-
-    def _increase_partitions_protected_failure_count(self, bootstrap_failure_nodes):
-        """Keep count of boostrap failures."""
-        for node in bootstrap_failure_nodes:
-            for p in node.partitions:
-                self._partitions_protected_failure_count_map[p] = (
-                    self._partitions_protected_failure_count_map.get(p, 0) + 1
-                )
 
     @log_exception(log, "maintaining unhealthy dynamic nodes", raise_on_error=False)
     def _handle_unhealthy_dynamic_nodes(self, unhealthy_dynamic_nodes, private_ip_to_instance_map):
@@ -991,7 +863,7 @@ class ClusterManager:
         )
 
     @log_exception(log, "maintaining slurm nodes", catch_exception=Exception, raise_on_error=False)
-    def _maintain_nodes(self, private_ip_to_instance_map, slurm_nodes, partitions):
+    def _maintain_nodes(self, private_ip_to_instance_map, slurm_nodes):
         """
         Call functions to maintain unhealthy nodes.
 
@@ -1006,21 +878,15 @@ class ClusterManager:
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
-        (
-            unhealthy_dynamic_nodes,
-            unhealthy_static_nodes,
-            bootstrap_failure_nodes,
-            healthy_nodes,
-        ) = self._group_slurm_nodes(slurm_nodes, private_ip_to_instance_map)
+        unhealthy_dynamic_nodes, unhealthy_static_nodes = self._find_unhealthy_slurm_nodes(
+            slurm_nodes, private_ip_to_instance_map
+        )
         if unhealthy_dynamic_nodes:
             log.info("Found the following unhealthy dynamic nodes: %s", print_with_count(unhealthy_dynamic_nodes))
             self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, private_ip_to_instance_map)
         if unhealthy_static_nodes:
             log.info("Found the following unhealthy static nodes: %s", print_with_count(unhealthy_static_nodes))
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
-
-        if self._is_protected_mode_enabled():
-            self._handle_protected_mode_process(slurm_nodes, partitions, bootstrap_failure_nodes, healthy_nodes)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
     def _terminate_orphaned_instances(self, cluster_instances, ips_used_by_slurm):
@@ -1037,125 +903,6 @@ class ClusterManager:
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
-
-    def _enter_protected_mode(self, partitions_to_disable):
-        """Entering protected mode if no active running job in queue."""
-        if partitions_to_disable:
-            # Change compute fleet status to protected
-            if ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
-                log.warning(
-                    "Cluster is in protected mode due to failures detected in node provisioning. "
-                    "Please investigate the issue and then use pcluster start command to re-enable the fleet."
-                )
-            else:
-                log.warning(
-                    "Setting cluster into protected mode due to failures detected in node provisioning. "
-                    "Please investigate the issue and then use pcluster start command to re-enable the fleet."
-                )
-                self._update_compute_fleet_status(ComputeFleetStatus.PROTECTED)
-
-            # Place partitions into inactive
-            log.info("Placing bootstrap failure partitions to INACTIVE: %s", print_with_count(partitions_to_disable))
-            update_partitions(partitions_to_disable, PartitionStatus.INACTIVE)
-        else:
-            log.info("Not entering protected mode since active are jobs running in bootstrap failure partitions")
-
-    def _find_online_slurm_nodes(self, healthy_nodes):
-        """Find slurm nodes online."""
-        online_nodes = []
-        for node in healthy_nodes:
-            if node.is_online():
-                online_nodes.append(node)
-        return online_nodes
-
-    def _reset_partition_failure_count(self, partition):
-        """Reset bootstrap failure count for partition which has bootstrap failure nodes successfully launched."""
-        log.info("Find successfully launched node in partition %s, reset partition protected failure count", partition)
-        self._partitions_protected_failure_count_map.pop(partition, None)
-
-    def _handle_bootstrap_failure_nodes(self, bootstrap_failure_nodes):
-        """Increase the partition failure count and add failed nodes to the set of bootstrap failure nodes."""
-        self._increase_partitions_protected_failure_count(bootstrap_failure_nodes)
-        # Update bootstrap_failure_nodes to include all nodes types have been failed during bootstrap
-        self._bootstrap_failure_nodes_types |= get_nodes_type(bootstrap_failure_nodes)
-
-    def _get_online_nodes_types(self, healthy_nodes):
-        """Find nodes types which have been failed during bootstrap now become online."""
-        online_nodes = self._find_online_slurm_nodes(healthy_nodes)
-        online_nodes_types = get_nodes_type(online_nodes)
-
-        return online_nodes_types
-
-    @staticmethod
-    def _get_partitions_to_disable(nodename_to_slurm_nodes_map, bootstrap_failure_partitions, partitions):
-        """Get partitions not running jobs to disable."""
-        # Get partitions have jobs running
-        partitions_have_active_jobs = ClusterManager._filter_partitions_with_active_jobs(
-            nodename_to_slurm_nodes_map, partitions
-        )
-        # Only disable bootstrap failure partitions that not having active jobs running
-        partitions_to_disable = set(bootstrap_failure_partitions) - partitions_have_active_jobs
-        bootstrap_failure_partitions_have_jobs = set(bootstrap_failure_partitions) - partitions_to_disable
-        if bootstrap_failure_partitions_have_jobs:
-            log.info(
-                "Bootstrap failure partitions %s currently have jobs running, not disabling them.",
-                print_with_count(bootstrap_failure_partitions_have_jobs),
-            )
-        return partitions_to_disable
-
-    def _is_protected_mode_enabled(self):
-        """When protected_failure_count is set to -1, disable protected mode."""
-        if self._config.protected_failure_count <= 0:
-            return False
-        return True
-
-    def _handle_protected_mode_process(self, slurm_nodes, partitions, bootstrap_failure_nodes, healthy_nodes):
-        """Handle the process of entering protected mode."""
-        # Handle successfully launched nodes
-        self._handle_successfully_launched_nodes(healthy_nodes)
-
-        # Handle bootstrap failures nodes
-        if bootstrap_failure_nodes:
-            log.warning("Found the following bootstrap failure nodes: %s", print_with_count(bootstrap_failure_nodes))
-            self._handle_bootstrap_failure_nodes(bootstrap_failure_nodes)
-
-        # Enter protected mode
-        # We will put a partition into inactive state only if the partition satisfies the following:
-        # Partition is not INACTIVE
-        # Partition bootstrap failure count above threshold
-        # Partition does not have job running
-        log.info(
-            "Partitions bootstrap failure count: %s, cluster will be set into protected mode if "
-            "protected failure count reach threshold",
-            self._partitions_protected_failure_count_map,
-        )
-        partitions_above_threshold = [
-            part
-            for part, failures in self._partitions_protected_failure_count_map.items()
-            if part not in self._inactive_partitions and failures >= self._config.protected_failure_count
-        ]
-        if partitions_above_threshold:
-            log.info("Bootstrap failure partitions: %s", print_with_count(partitions_above_threshold))
-            nodename_to_slurm_nodes_map = {node.name: node for node in slurm_nodes}
-            partitions_to_disable = ClusterManager._get_partitions_to_disable(
-                nodename_to_slurm_nodes_map, partitions_above_threshold, partitions
-            )
-            self._enter_protected_mode(partitions_to_disable)
-
-    @staticmethod
-    def _filter_partitions_with_active_jobs(nodename_to_slurm_nodes_map, partitions):
-        """Retrieve partitions currently have active jobs running."""
-        partitions_have_active_jobs = set()
-        for partition_name, partition in partitions.items():
-            partiton_nodenames = get_partition_node_names(partition.nodes)
-            for nodename in partiton_nodenames:
-                if (
-                    nodename_to_slurm_nodes_map.get(nodename)
-                    and nodename_to_slurm_nodes_map.get(nodename).is_running_job()
-                ):
-                    partitions_have_active_jobs.add(partition_name)
-                    break
-        return partitions_have_active_jobs
 
 
 def _run_clustermgtd():
