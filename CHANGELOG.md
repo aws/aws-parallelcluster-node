@@ -3,11 +3,11 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-2.x.x
+2.11.0
 -----
 
 **ENHANCEMENTS**
-- SGE: make `qstat` command in nodewatcher more robust in case a custom DHCP option set is configured.
+- SGE: always use shortname as hostname filter with `qstat`. This will make nodewatcher more robust when using custom DHCP option, where the full hostname seen by `SGE` might differ from the hostname returned from EC2 metadata(local-hostname).
 - Transition from IMDSv1 to IMDSv2.
 
 **BUG FIXES**
