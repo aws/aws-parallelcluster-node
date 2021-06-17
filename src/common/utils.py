@@ -491,3 +491,19 @@ def get_metadata(metadata_path):
 
     log.debug("%s=%s", metadata_path, metadata_value)
     return metadata_value
+
+
+def convert_range_to_list(node_range):
+    """
+    Convert a number range to a list.
+
+    Example input: Input can be like one of the format: "1-3", "1-2,6", "2, 8"
+    Example output: [1, 2, 3]
+    """
+    return sum(
+        (
+            (list(range(*[int(j) + k for k, j in enumerate(i.split("-"))])) if "-" in i else [int(i)])
+            for i in node_range.split(",")
+        ),
+        [],
+    )

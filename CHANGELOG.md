@@ -9,6 +9,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **ENHANCEMENTS**
 - SGE: always use shortname as hostname filter with `qstat`. This will make nodewatcher more robust when using custom DHCP option, where the full hostname seen by `SGE` might differ from the hostname returned from EC2 metadata(local-hostname).
 - Transition from IMDSv1 to IMDSv2.
+- Implement scaling protection mechanism with Slurm scheduler: compute fleet is automatically set to 'PROTECTED' state 
+  in case recurrent failures are encountered when provisioning nodes.
 
 **BUG FIXES**
 - Fix a bug that caused `clustermgtd` to not immediately replace instances with failed status check that are in replacement process.
