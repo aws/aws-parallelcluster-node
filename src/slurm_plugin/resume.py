@@ -19,13 +19,9 @@ from logging.config import fileConfig
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
-from slurm_plugin.common import (
-    CONFIG_FILE_DIR,
-    InstanceManager,
-    is_clustermgtd_heartbeat_valid,
-    print_with_count,
-    retrieve_instance_type_mapping,
-)
+from slurm_plugin.common import is_clustermgtd_heartbeat_valid, print_with_count, retrieve_instance_type_mapping
+from slurm_plugin.instance_manager import InstanceManager
+from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
 

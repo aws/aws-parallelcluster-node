@@ -15,8 +15,8 @@ import os
 import pytest
 import slurm_plugin
 from assertpy import assert_that
-from common.schedulers.slurm_commands import SlurmNode
 from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down
+from slurm_plugin.slurm_resources import DynamicNode
 
 
 @pytest.mark.parametrize(
@@ -70,19 +70,19 @@ def test_computemgtd_config(config_file, expected_attributes, test_datadir, mock
     "mock_node_info, expected_result",
     [
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1")],
             True,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN", "queue1")],
             False,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN", "queue1")],
             True,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWER", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWER", "queue1")],
             True,
         ),
         (
