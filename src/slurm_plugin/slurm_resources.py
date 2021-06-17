@@ -374,12 +374,8 @@ class DynamicNode(SlurmNode):
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
-        return (
-            self.is_powering_down()
-            or self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
-            and self.is_state_healthy(
-                terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
-            )
+        return self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy) and self.is_state_healthy(
+            terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
         )
 
     def is_bootstrap_failure(self):
@@ -408,15 +404,7 @@ class DynamicNode(SlurmNode):
         return False
 
     def is_powering_down_with_nodeaddr(self):
-        """
-        Check if a slurm node is a powering down node with instance backing.
-
-        Nodes in powering_down(i.e. down%) state will still have the nodeaddr of the backing instance.
-        Nodeaddr is reset to nodename automatically by slurm after the power_down process,
-        when node goes back into power_saving(i.e. idle~).
-        If instance is not terminated during powering_down for some reason,
-        it becomes orphaned once the nodeaddr is reset, and will be handled as an orphaned node.
-        """
+        """Check if a slurm node is a powering down node with instance backing."""
         return self.is_nodeaddr_set() and (self.is_power() or self.is_powering_down())
 
     def needs_reset_when_inactive(self):
