@@ -346,7 +346,7 @@ def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
     ],
 )
 def test_set_nodes_power_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
-    update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    update_mock = mocker.patch("common.schedulers.slurm_commands.reset_nodes", autospec=True)
     set_nodes_power_down(nodes, reason)
     update_mock.assert_called_with(**update_call_kwargs)
 
