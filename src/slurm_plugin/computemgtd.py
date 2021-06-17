@@ -23,7 +23,8 @@ from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
 from common.utils import get_metadata, run_command, sleep_remaining_loop_time
 from retrying import retry
-from slurm_plugin.common import CONFIG_FILE_DIR, is_clustermgtd_heartbeat_valid, log_exception
+from slurm_plugin.common import is_clustermgtd_heartbeat_valid, log_exception
+from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 LOOP_TIME = 60
 RELOAD_CONFIG_ITERATIONS = 10
