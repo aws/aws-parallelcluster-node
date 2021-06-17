@@ -670,12 +670,12 @@ class ClusterManager:
         Handle nodes that are powering down.
 
         Terminate instances backing the powering down node if any.
-        Do not reset the nodeaddr/nodehostname manually.
-        Nodeaddr/nodehostname will be reset automatically after power_down with cloud_reg_addrs.
-        Node state is not changed.
+        Reset the nodeaddr for the powering down node. Node state is not changed.
         """
         powering_down_nodes = [node for node in slurm_nodes if node.is_powering_down_with_nodeaddr()]
         if powering_down_nodes:
+            log.info("Resetting powering down nodes: %s", print_with_count(powering_down_nodes))
+            reset_nodes(nodes=[node.name for node in powering_down_nodes])
             instances_to_terminate = [node.instance.id for node in powering_down_nodes if node.instance]
             log.info("Terminating instances that are backing powering down nodes")
             self._instance_manager.delete_instances(

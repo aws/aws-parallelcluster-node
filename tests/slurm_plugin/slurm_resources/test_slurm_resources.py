@@ -439,11 +439,17 @@ def test_slurm_node_is_bootstrap_failure(
             None,
             False,
         ),
-        # Powering_down nodes are handled separately, always considered healthy by this workflow
+        # Powering_down nodes with backing instance is considered as healthy
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
             EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             True,
+        ),
+        # Powering_down nodes without backing instance is considered as unhealthy
+        (
+            DynamicNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
+            None,
+            False,
         ),
         # Node in POWER_SAVE, but still has ip associated should be considered unhealthy
         (
@@ -471,7 +477,8 @@ def test_slurm_node_is_bootstrap_failure(
         "dynamic_nodeaddr_not_set",
         "dynamic_unhealthy",
         "static_unhealthy",
-        "powering_down",
+        "powering_down_healthy",
+        "powering_down_unhealthy",
         "power_unhealthy1",
         "power_unhealthy2",
         "power_healthy",
