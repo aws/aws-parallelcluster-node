@@ -21,14 +21,18 @@ import botocore
 import pytest
 import slurm_plugin
 from assertpy import assert_that
-from common.schedulers.slurm_commands import NodeType, PartitionStatus, SlurmNode, SlurmPartition, update_all_partitions
+from common.schedulers.slurm_commands import update_all_partitions
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
-from slurm_plugin.common import (
+from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
+    DynamicNode,
     EC2Instance,
     EC2InstanceHealthState,
+    PartitionStatus,
+    SlurmPartition,
+    StaticNode,
 )
 
 from tests.common import MockedBoto3Request
@@ -38,7 +42,7 @@ from tests.common import MockedBoto3Request
 def boto3_stubber_path():
     # we need to set the region in the environment because the Boto3ClientFactory requires it.
     os.environ["AWS_DEFAULT_REGION"] = "us-east-2"
-    return "slurm_plugin.common.boto3"
+    return "slurm_plugin.instance_manager.boto3"
 
 
 class TestClustermgtdConfig:
@@ -174,59 +178,10 @@ def test_set_config(initialize_instance_manager_mock, initialize_compute_fleet_s
     assert_that(initialize_compute_fleet_status_manager_mock.call_count).is_equal_to(2)
 
 
-@pytest.mark.parametrize(
-    "partitions, nodes, expected_inactive_nodes, expected_active_nodes",
-    [
-        (
-            {
-                "partition1": SlurmPartition("partition1", "placeholder_nodes", "UP"),
-                "partition2": SlurmPartition("partition2", "placeholder_nodes", "INACTIVE"),
-                "partition3": SlurmPartition("partition3", "placeholder_nodes", "DRAIN"),
-                "partition4": SlurmPartition("partition4", "placeholder_nodes", "INACTIVE"),
-            },
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "nodeaddr", "nodeaddr", "DOWN", "partition1"),
-                SlurmNode("queue1-st-c5xlarge-2", "nodeaddr", "nodeaddr", "IDLE", "partition1"),
-                SlurmNode("queue1-st-c5xlarge-3", "nodeaddr", "nodeaddr", "IDLE", "partition2"),
-                SlurmNode("queue1-st-c5xlarge-4", "nodeaddr", "nodeaddr", "IDLE", "partition2"),
-                SlurmNode("queue1-st-c5xlarge-5", "nodeaddr", "nodeaddr", "DRAIN", "partition3"),
-                SlurmNode("queue1-st-c5xlarge-6", "nodeaddr", "nodeaddr", "DRAIN", "partition1,partition2"),
-                SlurmNode("queue1-st-c5xlarge-7", "nodeaddr", "nodeaddr", "DRAIN", "partition2,partition3"),
-                SlurmNode("queue1-st-c5xlarge-8", "nodeaddr", "nodeaddr", "DRAIN", "partition2,partition4"),
-                SlurmNode("queue1-st-c5xlarge-8", "nodeaddr", "nodeaddr", "DRAIN", None),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-3", "nodeaddr", "nodeaddr", "IDLE", "partition2"),
-                SlurmNode("queue1-st-c5xlarge-4", "nodeaddr", "nodeaddr", "IDLE", "partition2"),
-                SlurmNode("queue1-st-c5xlarge-8", "nodeaddr", "nodeaddr", "DRAIN", "partition2,partition4"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "nodeaddr", "nodeaddr", "DOWN", "partition1"),
-                SlurmNode("queue1-st-c5xlarge-2", "nodeaddr", "nodeaddr", "IDLE", "partition1"),
-                SlurmNode("queue1-st-c5xlarge-5", "nodeaddr", "nodeaddr", "DRAIN", "partition3"),
-                SlurmNode("queue1-st-c5xlarge-6", "nodeaddr", "nodeaddr", "DRAIN", "partition1,partition2"),
-                SlurmNode("queue1-st-c5xlarge-7", "nodeaddr", "nodeaddr", "DRAIN", "partition2,partition3"),
-            ],
-        ),
-    ],
-    ids=["mixed"],
-)
-def test_get_node_info_from_partition(partitions, nodes, expected_inactive_nodes, expected_active_nodes, mocker):
-    get_node_info_with_retry_mock = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._get_node_info_with_retry", return_value=nodes
-    )
-    active_nodes, inactive_nodes = ClusterManager._get_node_info_from_partition(partitions)
-    assert_that(active_nodes).is_equal_to(expected_active_nodes)
-    assert_that(inactive_nodes).is_equal_to(expected_inactive_nodes)
-    get_node_info_with_retry_mock.assert_called_once_with()
-
-
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
 @pytest.mark.parametrize(
     (
-        "mock_cluster_instances",
-        "mock_backing_instances",
-        "expected_result",
+        "inactive_instances",
         "slurm_inactive_nodes",
         "expected_reset",
         "delete_instances_side_effect",
@@ -235,64 +190,44 @@ def test_get_node_info_from_partition(partitions, nodes, expected_inactive_nodes
     [
         (
             [
-                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
-                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
+                EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
+                None,
+                None,
+                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                None,
+                None,
+                None,
             ],
-            ["id-3"],
             [
-                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
-                SlurmNode(
+                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
+                StaticNode(
                     "queue1-st-c5xlarge-5", "queue1-st-c5xlarge-5", "queue1-st-c5xlarge-5", "some_state", "queue1"
                 ),
-                SlurmNode(
+                DynamicNode(
                     "queue1-dy-c5xlarge-4", "queue1-dy-c5xlarge-4", "queue1-dy-c5xlarge-4", "some_state", "queue1"
                 ),
-                SlurmNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE", "queue1"),
-                SlurmNode(
+                StaticNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE", "queue1"),
+                StaticNode(
                     "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN", "queue1"
                 ),
-                SlurmNode("queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "IDLE*", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "IDLE*", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "IDLE*", "queue1"),
+                StaticNode("queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "IDLE*", "queue1"),
             ],
-            ["queue1-st-c5xlarge-3", "queue1-dy-c5xlarge-4", "queue1-st-c5xlarge-6", "queue1-dy-c5xlarge-8"],
+            {"queue1-st-c5xlarge-3", "queue1-dy-c5xlarge-4", "queue1-st-c5xlarge-6", "queue1-dy-c5xlarge-8"},
             None,
             None,
         ),
         (
-            [
-                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
-                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
-            ],
-            ["id-3"],
-            [
-                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
-                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
-            ],
-            [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1")],
+            [EC2Instance("id-3", "ip-3", "hostname", "some_launch_time")],
+            [StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1")],
             None,
             Exception,
             None,
         ),
         (
-            [
-                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
-                EC2Instance("id-3", "ip-3", "hostname", "some_time"),
-            ],
-            ["id-3"],
-            [
-                EC2Instance("id-1", "ip-1", "hostname", "some_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_time"),
-            ],
-            [SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1")],
-            ["queue1-st-c5xlarge-3"],
+            [EC2Instance("id-3", "ip-3", "hostname", "some_launch_time")],
+            [StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1")],
+            {"queue1-st-c5xlarge-3"},
             None,
             Exception,
         ),
@@ -300,11 +235,9 @@ def test_get_node_info_from_partition(partitions, nodes, expected_inactive_nodes
     ids=["normal", "delete_exception", "reset_exception"],
 )
 def test_clean_up_inactive_parititon(
-    mock_cluster_instances,
-    mock_backing_instances,
+    inactive_instances,
     slurm_inactive_nodes,
     expected_reset,
-    expected_result,
     delete_instances_side_effect,
     reset_nodes_side_effect,
     mocker,
@@ -312,6 +245,10 @@ def test_clean_up_inactive_parititon(
     # Test setup
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
+    part = SlurmPartition("partition4", "placeholder_nodes", "INACTIVE")
+    for node, instance in zip(slurm_inactive_nodes, inactive_instances):
+        node.instance = instance
+    part.slurm_nodes = slurm_inactive_nodes
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
     if delete_instances_side_effect:
         mock_instance_manager.delete_instances = mocker.patch.object(
@@ -323,15 +260,15 @@ def test_clean_up_inactive_parititon(
         )
     else:
         mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
-    result = cluster_manager._clean_up_inactive_partition(slurm_inactive_nodes, mock_cluster_instances)
-    mock_instance_manager.delete_instances.assert_called_with(mock_backing_instances, terminate_batch_size=4)
+    cluster_manager._clean_up_inactive_partition([part])
+    inactive_instance_ids = {instance.id for instance in inactive_instances if instance}
+    mock_instance_manager.delete_instances.assert_called_with(inactive_instance_ids, terminate_batch_size=4)
     if expected_reset:
         mock_reset_node.assert_called_with(
             expected_reset, raise_on_error=False, reason="inactive partition", state="down"
         )
     else:
         mock_reset_node.assert_not_called()
-    assert_that(result).is_equal_to(expected_result)
 
 
 @pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
@@ -375,19 +312,53 @@ def test_get_ec2_instances(mocker):
                 call(
                     ["some_instance_health_states"],
                     {
-                        "id-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                        "id-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+                        "id-1": StaticNode(
+                            name="queue1-st-c5xlarge-3",
+                            nodeaddr="ip-1",
+                            nodehostname="hostname",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
+                        "id-2": StaticNode(
+                            name="queue1-st-c5xlarge-5",
+                            nodeaddr="ip-2",
+                            nodehostname="queue1-st-c5xlarge-5",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
                     },
-                    {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
                     health_check_type=ClusterManager.HealthCheckTypes.ec2_health,
                 ),
                 call(
                     ["some_instance_health_states"],
                     {
-                        "id-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                        "id-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+                        "id-1": StaticNode(
+                            name="queue1-st-c5xlarge-3",
+                            nodeaddr="ip-1",
+                            nodehostname="hostname",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
+                        "id-2": StaticNode(
+                            name="queue1-st-c5xlarge-5",
+                            nodeaddr="ip-2",
+                            nodehostname="queue1-st-c5xlarge-5",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
                     },
-                    {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
                     health_check_type=ClusterManager.HealthCheckTypes.scheduled_event,
                 ),
             ],
@@ -400,10 +371,27 @@ def test_get_ec2_instances(mocker):
                 call(
                     ["some_instance_health_states"],
                     {
-                        "id-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                        "id-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+                        "id-1": StaticNode(
+                            name="queue1-st-c5xlarge-3",
+                            nodeaddr="ip-1",
+                            nodehostname="hostname",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
+                        "id-2": StaticNode(
+                            name="queue1-st-c5xlarge-5",
+                            nodeaddr="ip-2",
+                            nodehostname="queue1-st-c5xlarge-5",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
                     },
-                    {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
                     health_check_type=ClusterManager.HealthCheckTypes.scheduled_event,
                 )
             ],
@@ -417,10 +405,27 @@ def test_get_ec2_instances(mocker):
                 call(
                     ["some_instance_health_states"],
                     {
-                        "id-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                        "id-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+                        "id-1": StaticNode(
+                            name="queue1-st-c5xlarge-3",
+                            nodeaddr="ip-1",
+                            nodehostname="hostname",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
+                        "id-2": StaticNode(
+                            name="queue1-st-c5xlarge-5",
+                            nodeaddr="ip-2",
+                            nodehostname="queue1-st-c5xlarge-5",
+                            state="some_state",
+                            partitions="queue1",
+                            instance=EC2Instance(
+                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                            ),
+                        ),
                     },
-                    {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
                     health_check_type=ClusterManager.HealthCheckTypes.ec2_health,
                 )
             ],
@@ -442,11 +447,18 @@ def test_perform_health_check_actions(
     expected_handle_health_check_calls,
     mocker,
 ):
-    mock_cluster_instances = [
-        EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-        EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+    part = SlurmPartition("partition4", "placeholder_nodes", "ACTIVE")
+    slurm_nodes = [
+        StaticNode("queue1-st-c5xlarge-3", "ip-1", "hostname", "some_state", "queue1"),
+        StaticNode("queue1-st-c5xlarge-5", "ip-2", "queue1-st-c5xlarge-5", "some_state", "queue1"),
     ]
-    ip_to_slurm_node_map = {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"}
+    instances = [
+        EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
+        EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+    ]
+    for node, instance in zip(slurm_nodes, instances):
+        node.instance = instance
+    part.slurm_nodes = slurm_nodes
     mock_sync_config = SimpleNamespace(
         disable_ec2_health_check=disable_ec2_health_check,
         disable_scheduled_event_health_check=disable_scheduled_event_health_check,
@@ -469,7 +481,7 @@ def test_perform_health_check_actions(
     cluster_manager._handle_health_check = mocker.MagicMock().patch()
 
     # Run test
-    cluster_manager._perform_health_check_actions(mock_cluster_instances, ip_to_slurm_node_map)
+    cluster_manager._perform_health_check_actions([part])
     # Check function calls
     if expected_handle_health_check_calls:
         cluster_manager._handle_health_check.assert_has_calls(expected_handle_health_check_calls)
@@ -478,150 +490,30 @@ def test_perform_health_check_actions(
 
 
 @pytest.mark.parametrize(
-    "instance_health_state, current_time, expected_result",
-    [
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "running",
-                {"Details": [{}], "Status": "ok"},
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "ok"},
-                None,
-            ),
-            datetime(2020, 1, 1, 0, 0, 30),
-            False,
-        ),
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "stopped",
-                {"Details": [{}], "Status": "initializing"},
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "initializing"},
-                None,
-            ),
-            datetime(2020, 1, 1, 0, 0, 30),
-            False,
-        ),
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "stopped",
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "not-applicable"},
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "not-applicable"},
-                None,
-            ),
-            datetime(2020, 1, 1, 0, 0, 30),
-            False,
-        ),
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "stopped",
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "insufficient-data"},
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "insufficient-data"},
-                None,
-            ),
-            datetime(2020, 1, 1, 0, 0, 30),
-            False,
-        ),
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "stopped",
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 15)}], "Status": "initializing"},
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "impaired"},
-                None,
-            ),
-            datetime(2020, 1, 1, 0, 0, 30),
-            True,
-        ),
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "stopped",
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 15)}], "Status": "initializing"},
-                {"Details": [{"ImpairedSince": datetime(2020, 1, 1, 0, 0, 0)}], "Status": "impaired"},
-                None,
-            ),
-            datetime(2020, 1, 1, 0, 0, 29),
-            False,
-        ),
-    ],
-    ids=["ok", "initializing", "not-applicable", "insufficient-data", "impaired", "timeout"],
-)
-def test_fail_ec2_health_check(instance_health_state, current_time, expected_result):
-    assert_that(
-        ClusterManager._fail_ec2_health_check(instance_health_state, current_time, health_check_timeout=30)
-    ).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
-    "instance_health_state, expected_result",
-    [
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "running",
-                {"Details": [{}], "Status": "ok"},
-                {"Details": [{}], "Status": "ok"},
-                [],
-            ),
-            False,
-        ),
-        (
-            EC2InstanceHealthState(
-                "id-12345",
-                "running",
-                {"Details": [{}], "Status": "ok"},
-                {"Details": [{}], "Status": "ok"},
-                [{"InstanceEventId": "someid"}],
-            ),
-            True,
-        ),
-    ],
-    ids=["no_event", "has_event"],
-)
-def test_fail_scheduled_events_health_check(instance_health_state, expected_result):
-    assert_that(ClusterManager._fail_scheduled_events_check(instance_health_state)).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
     (
         "health_check_type",
         "mock_fail_ec2_side_effect",
         "mock_fail_scheduled_events_side_effect",
         "expected_failed_nodes",
-        "current_node_in_replacement",
-        "expected_node_in_replacement",
-        "expected_bootstrap_failure_node",
     ),
     [
         (
             ClusterManager.HealthCheckTypes.scheduled_event,
             [True, False, True, False],
             [False, True, False, True],
-            ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-4"],
-            {"some_node_in_replacement1"},
-            {"some_node_in_replacement1"},
-            SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "host-2", "ALLOCATED#+CLOUD", "queue1"),
+            {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-4"},
         ),
         (
             ClusterManager.HealthCheckTypes.ec2_health,
             [True, False, True, False],
             [False, True, True, False],
-            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3"],
-            {"some_node_in_replacement1", "queue1-st-c5xlarge-1"},
-            {"some_node_in_replacement1"},
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1"),
+            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3"},
         ),
         (
             ClusterManager.HealthCheckTypes.ec2_health,
             [False, False, False, False],
             [False, True, False, True],
-            [],
             {},
-            {},
-            None,
         ),
     ],
     ids=["scheduled_event", "ec2_health", "all_healthy"],
@@ -632,9 +524,6 @@ def test_handle_health_check(
     mock_fail_ec2_side_effect,
     mock_fail_scheduled_events_side_effect,
     expected_failed_nodes,
-    current_node_in_replacement,
-    expected_node_in_replacement,
-    expected_bootstrap_failure_node,
     mocker,
 ):
     # Define variable that will be used for all tests
@@ -643,59 +532,42 @@ def test_handle_health_check(
     health_state_3 = EC2InstanceHealthState("id-3", "some_state", "some_status", "some_status", "some_event")
     health_state_4 = EC2InstanceHealthState("id-4", "some_state", "some_status", "some_status", "some_event")
     placeholder_states = [health_state_1, health_state_2, health_state_3, health_state_4]
-    id_to_instance_map = {
-        "id-1": EC2Instance("id-1", "ip-1", "host-1", "some_launch_time"),
-        "id-2": EC2Instance("id-2", "ip-2", "host-2", "some_launch_time"),
-        "id-3": EC2Instance("id-3", "ip-3", "host-3", "some_launch_time"),
-        "id-4": EC2Instance("id-4", "ip-4", "host-4", "some_launch_time"),
-    }
-    ip_to_slurm_node_map = {
-        "ip-1": SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1"),
-        "ip-2": SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "host-2", "ALLOCATED#+CLOUD", "queue1"),
-        "ip-3": SlurmNode("queue1-st-c5xlarge-3", "ip-3", "host-3", "ALLOCATED+CLOUD", "queue1"),
-        "ip-4": SlurmNode("queue1-st-c5xlarge-4", "ip-4", "host-4", "ALLOCATED+CLOUD", "queue1"),
+    instance_id_to_active_node_map = {
+        "id-1": StaticNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1"),
+        "id-2": DynamicNode("queue1-dy-c5xlarge-2", "ip-2", "host-2", "ALLOCATED#+CLOUD", "queue1"),
+        "id-3": StaticNode("queue1-st-c5xlarge-3", "ip-3", "host-3", "ALLOCATED+CLOUD", "queue1"),
+        "id-4": StaticNode("queue1-st-c5xlarge-4", "ip-4", "host-4", "ALLOCATED+CLOUD", "queue1"),
     }
     mock_ec2_health_check = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._fail_ec2_health_check",
+        "slurm_plugin.slurm_resources.EC2InstanceHealthState.fail_ec2_health_check",
         side_effect=mock_fail_ec2_side_effect,
     )
     mock_scheduled_health_check = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._fail_scheduled_events_check",
+        "slurm_plugin.slurm_resources.EC2InstanceHealthState.fail_scheduled_events_check",
         side_effect=mock_fail_scheduled_events_side_effect,
-    )
-    mock_handle_bootstrap_failure_nodes = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._handle_bootstrap_failure_nodes"
     )
     # Setup mocking
     mock_sync_config = SimpleNamespace(health_check_timeout=10, protected_failure_count=2)
 
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = "some_current_time"
-    cluster_manager._static_nodes_in_replacement = current_node_in_replacement
     drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", auto_spec=True)
     # Run tests
-    cluster_manager._handle_health_check(
-        placeholder_states, id_to_instance_map, ip_to_slurm_node_map, health_check_type
-    )
+    cluster_manager._handle_health_check(placeholder_states, instance_id_to_active_node_map, health_check_type)
     # Assert on calls
     if health_check_type == ClusterManager.HealthCheckTypes.scheduled_event:
-        mock_scheduled_health_check.assert_has_calls(
-            [call(instance_health_state=health_state_1), call(instance_health_state=health_state_2)]
-        )
+        mock_scheduled_health_check.assert_has_calls([call(health_state_1), call(health_state_2)])
     else:
         mock_ec2_health_check.assert_has_calls(
             [
-                call(instance_health_state=health_state_1, current_time="some_current_time", health_check_timeout=10),
-                call(instance_health_state=health_state_2, current_time="some_current_time", health_check_timeout=10),
+                call(health_state_1, current_time="some_current_time", health_check_timeout=10),
+                call(health_state_2, current_time="some_current_time", health_check_timeout=10),
             ]
         )
     if expected_failed_nodes:
         drain_node_mock.assert_called_with(expected_failed_nodes, reason=f"Node failing {health_check_type}")
-        mock_handle_bootstrap_failure_nodes.assert_called_with([expected_bootstrap_failure_node])
     else:
         drain_node_mock.assert_not_called()
-        mock_handle_bootstrap_failure_nodes.assert_not_called()
-    assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_node_in_replacement)
 
 
 @pytest.mark.parametrize(
@@ -704,9 +576,9 @@ def test_handle_health_check(
         (
             {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-4"},
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD", "queue1"),
             ],
             {"queue1-st-c5xlarge-2"},
         )
@@ -722,323 +594,73 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
 
 
 @pytest.mark.parametrize(
-    "current_replacing_nodes, node, private_ip_to_instance_map, current_time, expected_result",
-    [
-        (
-            set(),
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-            {"ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0))},
-            datetime(2020, 1, 1, 0, 0, 29),
-            False,
-        ),
-        (
-            {"queue1-st-c5xlarge-1"},
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-            {},
-            datetime(2020, 1, 1, 0, 0, 29),
-            False,
-        ),
-        (
-            {"queue1-st-c5xlarge-1"},
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
-            {"ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0))},
-            datetime(2020, 1, 1, 0, 0, 29),
-            True,
-        ),
-        (
-            {"queue1-st-c5xlarge-1"},
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-            {"ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0))},
-            datetime(2020, 1, 1, 0, 0, 30),
-            False,
-        ),
-    ],
-    ids=["not_in_replacement", "no-backing-instance", "in_replacement", "timeout"],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_is_node_being_replaced(
-    current_replacing_nodes, node, private_ip_to_instance_map, current_time, expected_result
-):
-    mock_sync_config = SimpleNamespace(node_replacement_timeout=30)
-    cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._current_time = current_time
-    cluster_manager._static_nodes_in_replacement = current_replacing_nodes
-    assert_that(cluster_manager._is_node_being_replaced(node, private_ip_to_instance_map)).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
-    "node, expected_result",
-    [
-        (SlurmNode("queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"), True),
-    ],
-    ids=["static_addr_not_set", "static_valid"],
-)
-def test_is_static_node_configuration_valid(node, expected_result):
-    assert_that(ClusterManager._is_static_node_configuration_valid(node)).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
-    "node, instances_ips_in_cluster, expected_result",
-    [
-        (
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-            ["ip-2"],
-            False,
-        ),
-        (
-            SlurmNode("node-dy-c5xlarge-1", "node-dy-c5xlarge-1", "hostname", "IDLE+CLOUD+POWER", "node"),
-            ["ip-2"],
-            True,
-        ),
-        (
-            SlurmNode("node-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "node"),
-            ["ip-2"],
-            False,
-        ),
-        (
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
-            ["ip-1"],
-            True,
-        ),
-    ],
-    ids=["static_no_backing", "dynamic_power_save", "dynamic_no_backing", "static_valid"],
-)
-def test_is_backing_instance_valid(node, instances_ips_in_cluster, expected_result):
-    assert_that(ClusterManager._is_backing_instance_valid(node, instances_ips_in_cluster)).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
-    "node, mock_sync_config, mock_is_node_being_replaced, expected_result",
-    [
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "MIXED+CLOUD", "queue"),
-            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
-            None,
-            True,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
-            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
-            False,
-            False,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
-            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
-            True,
-            True,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
-            SimpleNamespace(terminate_drain_nodes=False, terminate_down_nodes=True),
-            False,
-            True,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD", "queue"),
-            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
-            False,
-            False,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD", "queue"),
-            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
-            True,
-            True,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD", "queue"),
-            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=False),
-            False,
-            True,
-        ),
-    ],
-    ids=[
-        "healthy_node",
-        "drained_not_in_replacement",
-        "drained_in_replacement",
-        "drain_not_term",
-        "down_not_in_replacement",
-        "down_in_replacement",
-        "down_not_term",
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replaced, expected_result, mocker):
-    cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._is_node_being_replaced = mocker.MagicMock(return_value=mock_is_node_being_replaced)
-    assert_that(
-        cluster_manager._is_node_state_healthy(node, private_ip_to_instance_map={"placeholder phonebook"})
-    ).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
-    "node, private_ip_to_instance_map, expected_result",
-    [
-        (
-            SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            True,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "queue-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            False,
-        ),
-        (
-            SlurmNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            True,
-        ),
-        (
-            SlurmNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            False,
-        ),
-        (
-            SlurmNode("queue-st-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            False,
-        ),
-        # Powering_down nodes are handled separately, always considered healthy by this workflow
-        (
-            SlurmNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            True,
-        ),
-        # Node in POWER_SAVE, but still has ip associated should be considered unhealthy
-        (
-            SlurmNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "IDLE+CLOUD+POWER", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            False,
-        ),
-        # Node in POWER_SAVE, but also in DOWN should be considered unhealthy
-        (
-            SlurmNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWER", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            False,
-        ),
-        (
-            SlurmNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "IDLE+CLOUD+POWER", "queue"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            True,
-        ),
-    ],
-    ids=[
-        "basic",
-        "static_nodeaddr_not_set",
-        "dynamic_nodeaddr_not_set",
-        "dynamic_unhealthy",
-        "static_unhealthy",
-        "powering_down",
-        "power_unhealthy1",
-        "power_unhealthy2",
-        "power_healthy",
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_is_node_healthy(node, private_ip_to_instance_map, expected_result, mocker):
-    mock_sync_config = SimpleNamespace(terminate_down_nodes=True)
-    cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._instance_ips_in_cluster = set(private_ip_to_instance_map.keys())
-    assert_that(cluster_manager._is_node_healthy(node, private_ip_to_instance_map)).is_equal_to(expected_result)
-
-
-@pytest.mark.parametrize(
-    "unhealthy_dynamic_nodes, mock_backing_instances, expected_power_save_node_list",
+    "unhealthy_dynamic_nodes, instances, instances_to_terminate, expected_power_save_node_list",
     [
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-2", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
             ],
-            ["id-1", "id-2"],
-            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+            [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None],
+            ["id-1"],
+            ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2"],
         )
     ],
     ids=["basic"],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
 def test_handle_unhealthy_dynamic_nodes(
-    unhealthy_dynamic_nodes, mock_backing_instances, expected_power_save_node_list, mocker
+    unhealthy_dynamic_nodes, instances, instances_to_terminate, expected_power_save_node_list, mocker
 ):
+    for node, instance in zip(unhealthy_dynamic_nodes, instances):
+        node.instance = instance
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._get_backing_instance_ids",
-        return_value=mock_backing_instances,
-        auto_spec=True,
-    )
+
     power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down_and_power_save", auto_spec=True)
-    cluster_manager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes, {"placeholder": "map"})
-    mock_instance_manager.delete_instances.assert_called_with(["id-1", "id-2"], terminate_batch_size=4)
+    cluster_manager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
+    mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     power_save_mock.assert_called_with(expected_power_save_node_list, reason="Scheduler health check failed")
 
 
 @pytest.mark.parametrize(
-    "slurm_nodes, mock_backing_instances, expected_powering_down_nodes",
+    "slurm_nodes, instances, instances_to_terminate",
     [
         (
             [
-                SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_", "queue1"),
-                SlurmNode(
+                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_", "queue1"),
+                DynamicNode(
                     "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "POWERING_DOWN", "queue1"
                 ),
-                SlurmNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
             ],
-            ["id-1", "id-2"],
             [
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+                EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
+                None,
+                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                None,
+                None,
+                None,
             ],
+            ["id-3"],
         )
     ],
     ids=["basic"],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expected_powering_down_nodes, mocker):
+def test_handle_powering_down_nodes(slurm_nodes, instances, instances_to_terminate, mocker):
+    for node, instance in zip(slurm_nodes, instances):
+        node.instance = instance
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    get_backing_instance_mock = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._get_backing_instance_ids",
-        return_value=mock_backing_instances,
-        auto_spec=True,
-    )
     reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
-    cluster_manager._handle_powering_down_nodes(slurm_nodes, {"placeholder": "map"})
-    get_backing_instance_mock.assert_called_with(expected_powering_down_nodes, {"placeholder": "map"})
-    mock_instance_manager.delete_instances.assert_called_with(["id-1", "id-2"], terminate_batch_size=4)
+    cluster_manager._handle_powering_down_nodes(slurm_nodes)
+    mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     # We don't need to reset nodes manually because cloud_reg_addrs option is specified
     reset_nodes_mock.assert_not_called()
 
@@ -1047,7 +669,7 @@ def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expecte
     (
         "current_replacing_nodes",
         "unhealthy_static_nodes",
-        "private_ip_to_instance_map",
+        "instances",
         "launched_instances",
         "expected_replacing_nodes",
         "delete_instance_list",
@@ -1057,14 +679,15 @@ def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expecte
         (
             {"current-queue1-st-c5xlarge-6"},
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
             ],
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
-            },
+            [
+                EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+                None,
+            ],
             [
                 EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                 EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -1076,20 +699,17 @@ def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expecte
                 "queue1-st-c5xlarge-2",
                 "queue1-st-c5xlarge-3",
             },
-            list({"id-1", "id-2"}),
+            ["id-1", "id-2"],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
         ),
         (
             {"current-queue1-st-c5xlarge-6"},
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
             ],
-            {
-                "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
-                "ip-5": EC2Instance("id-2", "ip-5", "hostname", "some_launch_time"),
-            },
+            [None, None, None],
             [
                 EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                 EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -1107,14 +727,11 @@ def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expecte
         (
             {"current-queue1-st-c5xlarge-6"},
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
             ],
-            {
-                "ip-4": EC2Instance("id-1", "ip-4", "hostname", "some_launch_time"),
-                "ip-5": EC2Instance("id-2", "ip-5", "hostname", "some_launch_time"),
-            },
+            [None, None],
             [
                 EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
                 EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
@@ -1130,7 +747,7 @@ def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expecte
 def test_handle_unhealthy_static_nodes(
     current_replacing_nodes,
     unhealthy_static_nodes,
-    private_ip_to_instance_map,
+    instances,
     launched_instances,
     expected_replacing_nodes,
     delete_instance_list,
@@ -1156,6 +773,8 @@ def test_handle_unhealthy_static_nodes(
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
     )
+    for node, instance in zip(unhealthy_static_nodes, instances):
+        node.instance = instance
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
 
@@ -1169,7 +788,7 @@ def test_handle_unhealthy_static_nodes(
         }
     )
     cluster_manager._instance_manager._launch_ec2_instances = mocker.MagicMock(return_value=launched_instances)
-    mocker.patch("slurm_plugin.common.update_nodes")
+    mocker.patch("slurm_plugin.instance_manager.update_nodes")
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
     # Mock add_instances_for_nodes but still try to execute original code
@@ -1177,7 +796,7 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
     update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", return_value=None, auto_spec=True)
     # Run test
-    cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes, private_ip_to_instance_map)
+    cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes)
     # Assert calls
     update_mock.assert_called_with(add_node_list, reason="Static node maintenance: unhealthy node is being replaced")
     if delete_instance_list:
@@ -1193,74 +812,61 @@ def test_handle_unhealthy_static_nodes(
 
 
 @pytest.mark.parametrize(
-    "slurm_nodes, private_ip_to_instance_map, expected_result",
+    "active_nodes, instances, _is_protected_mode_enabled",
     [
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-999", "ip-1", "hostname", "some_state", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
+                ),  # unhealthy static
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"
+                ),  # bootstrap failure static
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"
+                ),  # bootstrap failure dynamic
+                StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
+                DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
             ],
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            list({"id-1", "id-2"}),
-        )
+            [
+                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+            ],
+            True,
+        ),
     ],
     ids=["basic"],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map, expected_result):
-    assert_that(ClusterManager._get_backing_instance_ids(slurm_nodes, private_ip_to_instance_map)).is_equal_to(
-        expected_result
-    )
-
-
-@pytest.mark.parametrize(
-    "private_ip_to_instance_map, active_nodes, group_slurm_nodes, _is_protected_mode_enabled, partitions",
-    [
-        (
-            {"ip-1", EC2Instance("id-1", "ip-1", "hostname", "launch_time")},
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state", "queue1"),
-            ],
-            (["queue1-st-c5xlarge-1"], ["queue1-st-c5xlarge-2"], ["queue1-st-c5xlarge-2"], ["queue1-st-c5xlarge-2"]),
-            True,
-            {"partition_name": SlurmPartition("name", "node", "states")},
-        ),
-        (
-            {"ip-1", EC2Instance("id-1", "ip-1", "hostname", "launch_time")},
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state", "queue1"),
-            ],
-            (
-                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1"],
-                ["queue1-st-c5xlarge-2"],
-                ["queue1-st-c5xlarge-2"],
-                ["queue1-st-c5xlarge-2"],
-            ),
-            False,
-            {"partition_name": SlurmPartition("name", "node", "states")},
-        ),
-    ],
-    ids=["basic", "repetitive_ip"],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
 def test_maintain_nodes(
-    private_ip_to_instance_map, active_nodes, group_slurm_nodes, _is_protected_mode_enabled, partitions, mocker
+    active_nodes,
+    instances,
+    _is_protected_mode_enabled,
+    mocker,
 ):
+    static_nodes_in_replacement = {"queue1-st-c5xlarge-1", "queue2-st-c5xlarge-1"}
     # Mock functions
-    cluster_manager = ClusterManager(mocker.MagicMock())
+    for node, instance in zip(active_nodes, instances):
+        node.instance = instance
+
+    expected_unhealthy_static_nodes = [active_nodes[1], active_nodes[3]]
+    expected_unhealthy_dynamic_nodes = [active_nodes[2], active_nodes[4]]
+    mock_sync_config = SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True)
+    cluster_manager = ClusterManager(mock_sync_config)
+    cluster_manager._static_nodes_in_replacement = static_nodes_in_replacement
+    cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
+    cluster_manager._config.node_replacement_timeout = 30
     mock_update_replacement = mocker.patch.object(
         cluster_manager, "_update_static_nodes_in_replacement", auto_spec=True
-    )
-    mock_group_slurm_nodes = mocker.patch.object(
-        cluster_manager, "_group_slurm_nodes", return_value=group_slurm_nodes, auto_spec=True
     )
     mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", auto_spec=True)
     mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", auto_spec=True)
@@ -1270,35 +876,40 @@ def test_maintain_nodes(
     mock_handle_protected_mode_process = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._handle_protected_mode_process"
     )
-    mock_is_protected_mode_enabled = mocker.patch.object(
-        cluster_manager, "_is_protected_mode_enabled", return_value=_is_protected_mode_enabled
+    mock_handle_failed_health_check_nodes_in_replacement = mocker.patch.object(
+        cluster_manager, "_handle_failed_health_check_nodes_in_replacement", auto_spec=True
     )
+    mocker.patch.object(cluster_manager, "_is_protected_mode_enabled", return_value=_is_protected_mode_enabled)
+    part1 = SlurmPartition("queue1", "placeholder_nodes", "ACTIVE")
+    part2 = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
+    part1.slurm_nodes = active_nodes
+    partitions = {part1.name: part1, part2.name: part2}
     # Run test
-    cluster_manager._maintain_nodes(private_ip_to_instance_map, active_nodes, partitions)
+    cluster_manager._maintain_nodes(partitions)
     # Check function calls
     mock_update_replacement.assert_called_with(active_nodes)
-    mock_group_slurm_nodes.assert_called_with(active_nodes, private_ip_to_instance_map)
-    mock_handle_dynamic.assert_called_with(group_slurm_nodes[0], private_ip_to_instance_map)
-    mock_handle_static.assert_called_with(group_slurm_nodes[1], private_ip_to_instance_map)
-    mock_handle_powering_down_nodes.assert_called_with(active_nodes, private_ip_to_instance_map)
-    mock_is_protected_mode_enabled.assert_called_once()
+    mock_handle_dynamic.assert_called_with(expected_unhealthy_dynamic_nodes)
+    mock_handle_static.assert_called_with(expected_unhealthy_static_nodes)
+    mock_handle_powering_down_nodes.assert_called_with(active_nodes)
+    mock_handle_failed_health_check_nodes_in_replacement.assert_called_with(active_nodes)
     if _is_protected_mode_enabled:
-        mock_handle_protected_mode_process.assert_called_with(
-            active_nodes, partitions, group_slurm_nodes[2], group_slurm_nodes[3]
-        )
+        mock_handle_protected_mode_process.assert_called_with(active_nodes, partitions)
     else:
         mock_handle_protected_mode_process.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "cluster_instances, private_ip_to_instance_map, current_time, expected_instance_to_terminate",
+    "cluster_instances, slurm_nodes, current_time, expected_instance_to_terminate",
     [
         (
             [
                 EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             ],
-            {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
+            [
+                DynamicNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
+            ],
             datetime(2020, 1, 1, 0, 0, 30),
             [],
         ),
@@ -1307,16 +918,16 @@ def test_maintain_nodes(
                 EC2Instance("id-3", "ip-3", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             ],
-            {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
+            [None, None],
             datetime(2020, 1, 1, 0, 0, 30),
-            ["id-3"],
+            ["id-3", "id-2"],
         ),
         (
             [
                 EC2Instance("id-3", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             ],
-            {"ip-1": "some_slurm_node1", "ip-2": "some_slurm_node2"},
+            [None, None],
             datetime(2020, 1, 1, 0, 0, 29),
             [],
         ),
@@ -1325,7 +936,7 @@ def test_maintain_nodes(
 )
 @pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
 def test_terminate_orphaned_instances(
-    cluster_instances, private_ip_to_instance_map, current_time, expected_instance_to_terminate, mocker
+    cluster_instances, slurm_nodes, current_time, expected_instance_to_terminate, mocker
 ):
     # Mock functions
     mock_sync_config = SimpleNamespace(
@@ -1342,12 +953,15 @@ def test_terminate_orphaned_instances(
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
+        node_replacement_timeout=1800,
     )
+    for instance, node in zip(cluster_instances, slurm_nodes):
+        instance.slurm_node = node
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
     # Run test
-    cluster_manager._terminate_orphaned_instances(cluster_instances, private_ip_to_instance_map)
+    cluster_manager._terminate_orphaned_instances(cluster_instances)
     # Check function calls
     if expected_instance_to_terminate:
         cluster_manager._instance_manager.delete_instances.assert_called_with(
@@ -1356,8 +970,7 @@ def test_terminate_orphaned_instances(
 
 
 @pytest.mark.parametrize(
-    "disable_cluster_management, disable_health_check, mock_cluster_instances, mock_active_nodes, mock_inactive_nodes, "
-    "partitions",
+    "disable_cluster_management, disable_health_check, mock_cluster_instances, nodes, partitions",
     [
         (
             False,
@@ -1367,77 +980,72 @@ def test_terminate_orphaned_instances(
                 EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
             ],
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "some_state", "queue1"),
             ],
-            [],
-            [
-                SlurmPartition("partition1", "placeholder_nodes", "UP"),
-                SlurmPartition("partition2", "placeholder_nodes", "INACTIVE"),
-                SlurmPartition("partition3", "placeholder_nodes", "DRAIN"),
-                SlurmPartition("partition4", "placeholder_nodes", "INACTIVE"),
-            ],
+            {
+                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
+                "queue2": SlurmPartition("queue2", "placeholder_nodes", "INACTIVE"),
+                "queue3": SlurmPartition("queue3", "placeholder_nodes", "DRAIN"),
+                "queue4": SlurmPartition("queue4", "placeholder_nodes", "INACTIVE"),
+            },
         ),
         (
             True,
             False,
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
             ],
-            [],
-            [
-                SlurmPartition("partition1", "placeholder_nodes", "UP"),
-                SlurmPartition("partition2", "placeholder_nodes", "INACTIVE"),
-                SlurmPartition("partition3", "placeholder_nodes", "DRAIN"),
-                SlurmPartition("partition4", "placeholder_nodes", "INACTIVE"),
-            ],
+            {
+                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
+                "queue2": SlurmPartition("queue2", "placeholder_nodes", "INACTIVE"),
+                "queue3": SlurmPartition("queue3", "placeholder_nodes", "DRAIN"),
+                "queue4": SlurmPartition("queue4", "placeholder_nodes", "INACTIVE"),
+            },
         ),
         (
             False,
             True,
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
             ],
-            [],
+            {
+                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
+                "queue2": SlurmPartition("queue2", "placeholder_nodes", "INACTIVE"),
+                "queue3": SlurmPartition("queue3", "placeholder_nodes", "DRAIN"),
+                "queue4": SlurmPartition("queue4", "placeholder_nodes", "INACTIVE"),
+            },
+        ),
+        (
+            False,
+            True,
+            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [
-                SlurmPartition("partition1", "placeholder_nodes", "UP"),
-                SlurmPartition("partition2", "placeholder_nodes", "INACTIVE"),
-                SlurmPartition("partition3", "placeholder_nodes", "DRAIN"),
-                SlurmPartition("partition4", "placeholder_nodes", "INACTIVE"),
+                StaticNode("inactive-queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "inactive-queue1"),
+                DynamicNode("inactive-queue1-dyt-c5xlarge-2", "ip", "hostname", "some_state", "inactive-queue1"),
             ],
+            {
+                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
+                "queue2": SlurmPartition("queue2", "placeholder_nodes", "INACTIVE"),
+                "queue3": SlurmPartition("queue3", "placeholder_nodes", "DRAIN"),
+                "queue4": SlurmPartition("queue4", "placeholder_nodes", "INACTIVE"),
+            },
         ),
         (
             False,
             True,
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [],
-            [
-                SlurmNode("inactive-queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "inactive-queue1"),
-                SlurmNode("inactive-queue1-st-c5xlarge-2", "ip", "hostname", "some_state", "inactive-queue1"),
-            ],
-            [
-                SlurmPartition("partition1", "placeholder_nodes", "UP"),
-                SlurmPartition("partition2", "placeholder_nodes", "INACTIVE"),
-                SlurmPartition("partition3", "placeholder_nodes", "DRAIN"),
-                SlurmPartition("partition4", "placeholder_nodes", "INACTIVE"),
-            ],
-        ),
-        (
-            False,
-            True,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
-            [],
-            [],
-            [
-                SlurmPartition("partition1", "placeholder_nodes", "UP"),
-                SlurmPartition("partition2", "placeholder_nodes", "INACTIVE"),
-                SlurmPartition("partition3", "placeholder_nodes", "DRAIN"),
-                SlurmPartition("partition4", "placeholder_nodes", "INACTIVE"),
-            ],
+            {
+                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
+                "queue2": SlurmPartition("queue2", "placeholder_nodes", "INACTIVE"),
+                "queue3": SlurmPartition("queue3", "placeholder_nodes", "DRAIN"),
+                "queue4": SlurmPartition("queue4", "placeholder_nodes", "INACTIVE"),
+            },
         ),
     ],
     ids=["all_enabled", "disable_all", "disable_health_check", "no_active", "no_node"],
@@ -1446,8 +1054,7 @@ def test_manage_cluster(
     disable_cluster_management,
     disable_health_check,
     mock_cluster_instances,
-    mock_active_nodes,
-    mock_inactive_nodes,
+    nodes,
     mocker,
     initialize_instance_manager_mock,
     initialize_compute_fleet_status_manager_mock,
@@ -1468,10 +1075,12 @@ def test_manage_cluster(
         dns_domain="dns.domain",
         use_private_hostname=False,
         protected_failure_count=10,
+        node_replacement_timeout=1800,
     )
     mocker.patch("time.sleep")
-    ip_to_slurm_node_map = {node.nodeaddr: node for node in mock_active_nodes}
     cluster_manager = ClusterManager(mock_sync_config)
+    cluster_manager._current_time = "current_time"
+    cluster_manager._static_nodes_in_replacement = {}
     # Set up function mocks
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 1, 0, 0, 0)
     compute_fleet_status_manager_mock = mocker.patch.object(
@@ -1481,7 +1090,7 @@ def test_manage_cluster(
     get_partition_info_with_retry_mock = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._get_partition_info_with_retry", return_value=partitions
     )
-    partitions_map = {partition.name: partition for partition in partitions}
+
     write_timestamp_to_file_mock = mocker.patch.object(ClusterManager, "_write_timestamp_to_file", auto_spec=True)
     perform_health_check_actions_mock = mocker.patch.object(
         ClusterManager, "_perform_health_check_actions", auto_spec=True
@@ -1496,11 +1105,11 @@ def test_manage_cluster(
     get_ec2_instances_mock = mocker.patch.object(
         ClusterManager, "_get_ec2_instances", auto_spec=True, return_value=mock_cluster_instances
     )
-    get_node_info_from_partition_mock = mocker.patch.object(
+    get_node_info_with_retry_mock = mocker.patch.object(
         ClusterManager,
-        "_get_node_info_from_partition",
+        "_get_node_info_with_retry",
         auto_spec=True,
-        return_value=(mock_active_nodes, mock_inactive_nodes),
+        return_value=nodes,
     )
 
     # Run test
@@ -1515,27 +1124,19 @@ def test_manage_cluster(
         clean_up_inactive_partition_mock.assert_not_called()
         terminate_orphaned_instances_mock.assert_not_called()
         maintain_nodes_mock.assert_not_called()
-        get_node_info_from_partition_mock.assert_not_called()
+        get_node_info_with_retry_mock.assert_not_called()
         get_ec2_instances_mock.assert_not_called()
         return
-    if mock_inactive_nodes:
-        clean_up_inactive_partition_mock.assert_called_with(mock_inactive_nodes, mock_cluster_instances)
+    clean_up_inactive_partition_mock.assert_called_with(list(partitions.values()))
     get_ec2_instances_mock.assert_called_once()
-    if not mock_active_nodes:
-        terminate_orphaned_instances_mock.assert_called_with(mock_cluster_instances, ips_used_by_slurm=[])
-        perform_health_check_actions_mock.assert_not_called()
-        maintain_nodes_mock.assert_not_called()
-        return
+
     if disable_health_check:
         perform_health_check_actions_mock.assert_not_called()
+        maintain_nodes_mock.assert_called_with(partitions)
     else:
-        perform_health_check_actions_mock.assert_called_with(mock_cluster_instances, ip_to_slurm_node_map)
-    maintain_nodes_mock.assert_called_with(
-        {instance.private_ip: instance for instance in mock_cluster_instances}, mock_active_nodes, partitions_map
-    )
-    terminate_orphaned_instances_mock.assert_called_with(
-        mock_cluster_instances, ips_used_by_slurm=list(ip_to_slurm_node_map.keys())
-    )
+        perform_health_check_actions_mock.assert_called_with(list(partitions.values()))
+        maintain_nodes_mock.assert_called_with(partitions)
+    terminate_orphaned_instances_mock.assert_called_with(mock_cluster_instances)
 
     assert_that(caplog.text).is_empty()
     get_partition_info_with_retry_mock.assert_called_once()
@@ -1549,19 +1150,19 @@ def test_manage_cluster(
             "default.conf",
             [
                 # This node fail scheduler state check and corresponding instance will be terminated and replaced
-                SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
+                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN", "queue1"),
                 # This node fail scheduler state check and node will be power_down
-                SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue"),
+                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1"),
                 # This node is good and should not be touched by clustermgtd
-                SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
                 # This node is in power_saving state but still has running backing instance, it should be terminated
-                SlurmNode("queue-dy-c5xlarge-6", "ip-6", "hostname", "IDLE+CLOUD+POWER", "queue"),
+                DynamicNode("queue-dy-c5xlarge-6", "ip-6", "hostname", "IDLE+CLOUD+POWER", "queue1"),
                 # This node is in powering_down but still has no valid backing instance, no boto3 call
-                SlurmNode("queue-dy-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue"),
+                DynamicNode("queue-dy-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             [
-                SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue"),
+                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
+                DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1718,13 +1319,13 @@ def test_manage_cluster(
             # failures: All failure tolerant module will have an exception, but the program should not crash
             "default.conf",
             [
-                SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
             ],
             [
-                SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue"),
+                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
+                DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1899,13 +1500,13 @@ def test_manage_cluster(
             # critical_failure_1: _get_ec2_instances will have an exception, but the program should not crash
             "default.conf",
             [
-                SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
             ],
             [
-                SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue"),
-                SlurmNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue"),
+                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
+                DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1965,18 +1566,25 @@ def test_manage_cluster_boto3(
     dynamodb_table_mock = mocker.patch.object(cluster_manager._compute_fleet_status_manager, "_table")
     dynamodb_table_mock.get_item.return_value = {"Item": {"Id": "COMPUTE_FLEET", "Status": "RUNNING"}}
     mocker.patch.object(cluster_manager, "_write_timestamp_to_file", auto_spec=True)
-    if mocked_active_nodes is Exception or mocked_active_nodes is Exception:
+    part_active = SlurmPartition("queue1", "placeholder_nodes", "UP")
+    part_active.slurm_nodes = mocked_active_nodes
+    part_inactive = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
+    part_inactive.slurm_nodes = mocked_inactive_nodes
+    partitions = {"queue1": part_active, "queue2": part_inactive}
+    if mocked_active_nodes is Exception or mocked_inactive_nodes is Exception:
         mocker.patch.object(
             cluster_manager,
-            "_get_node_info_from_partition",
-            side_effect=ClusterManager.SchedulerUnavailable,
+            "_get_node_info_with_retry",
+            side_effect=Exception,
         )
+
     else:
         mocker.patch.object(
             cluster_manager,
-            "_get_node_info_from_partition",
-            return_value=(mocked_active_nodes, mocked_inactive_nodes),
+            "_get_node_info_with_retry",
+            return_value=mocked_active_nodes + mocked_inactive_nodes,
         )
+        mocker.patch("slurm_plugin.clustermgtd.ClusterManager._retrieve_scheduler_partitions", return_value=partitions)
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
     cluster_manager.manage_cluster()
@@ -2201,44 +1809,27 @@ class TestComputeFleetStatusManager:
 
 
 @pytest.mark.parametrize(
-    "healthy_nodes, bootstrap_failure_nodes_types, expected_bootstrap_failure_nodes_types, "
-    "expected_partitions_protected_failure_count_map",
+    "healthy_nodes, expected_partitions_protected_failure_count_map",
     [
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue2-st-c5xlarge-2", "ip-2", "hostname", "MIXED#+CLOUD", "queue2"),
+                DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue2-st-c5xlarge-2", "ip-2", "hostname", "MIXED#+CLOUD", "queue2"),
             ],
-            {NodeType("c5xlarge", "queue1"), NodeType("c5large", "queue1")},
-            {NodeType("c5large", "queue1")},
-            {"queue2": 8},
+            {"queue2": {"c5xlarge": 8}},
         ),
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5large-2", "ip-2", "hostname", "MIXED+CLOUD", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE#+CLOUD", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "MIXED*+CLOUD", "queue1"),
             ],
-            {NodeType("c5xlarge", "queue1"), NodeType("c5large", "queue1")},
-            set(),
-            {"queue2": 8},
-        ),
-        (
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE#+CLOUD", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "MIXED*+CLOUD", "queue1"),
-            ],
-            {NodeType("c5xlarge", "queue1"), NodeType("c5large", "queue1")},
-            {NodeType("c5xlarge", "queue1"), NodeType("c5large", "queue1")},
-            {"queue1": 5, "queue2": 8},
+            {"queue1": {"c5xlarge": 5, "c5large": 3}, "queue2": {"c5xlarge": 8}},
         ),
     ],
 )
 def test_handle_successfully_launched_nodes(
     healthy_nodes,
-    bootstrap_failure_nodes_types,
-    expected_bootstrap_failure_nodes_types,
     expected_partitions_protected_failure_count_map,
-    mocker,
 ):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -2256,224 +1847,28 @@ def test_handle_successfully_launched_nodes(
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
+        terminate_drain_nodes=True,
+        terminate_down_nodes=True,
     )
     # Mock associated function
     cluster_manager = ClusterManager(mock_sync_config)
-
-    cluster_manager._bootstrap_failure_nodes_types = bootstrap_failure_nodes_types
-    cluster_manager._partitions_protected_failure_count_map = {"queue1": 5, "queue2": 8}
+    partition1 = SlurmPartition("queue1", "queue1-st-c5xlarge-1", "ACTIVE")
+    for node in healthy_nodes:
+        node.instance = "instance"
+    partition1.slurm_nodes = healthy_nodes
+    partition2 = SlurmPartition("queue2", "queue2-st-c5xlarge-1", "ACTIVE")
+    partitions_name_map = {"queue1": partition1, "queue2": partition2}
+    cluster_manager._partitions_protected_failure_count_map = {
+        "queue1": {"c5xlarge": 5, "c5large": 3},
+        "queue2": {"c5xlarge": 8},
+    }
 
     # Run test
-    cluster_manager._handle_successfully_launched_nodes(healthy_nodes)
+    cluster_manager._handle_successfully_launched_nodes(partitions_name_map)
     # Assert calls
-    assert_that(cluster_manager._bootstrap_failure_nodes_types).is_equal_to(expected_bootstrap_failure_nodes_types)
     assert_that(cluster_manager._partitions_protected_failure_count_map).is_equal_to(
         expected_partitions_protected_failure_count_map
     )
-
-
-@pytest.mark.parametrize(
-    "bootstrap_failure_nodes, initial_bootstrap_failure_nodes_types, expected_bootstrap_failure_nodes_types, "
-    "expected_partitions_protected_failure_count_map",
-    [
-        (
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-999", "ip-1", "hostname", "some_state", "queue1"),
-            ],
-            set(),
-            {NodeType("c5xlarge", "queue1")},
-            {"queue1": 5},
-        ),
-        (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1")],
-            {NodeType("c5xlarge", "queue1")},
-            {NodeType("c5xlarge", "queue1")},
-            {"queue1": 2},
-        ),
-        (
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue2-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2"),
-            ],
-            {NodeType("c5xlarge", "queue1")},
-            {NodeType("c5xlarge", "queue1"), NodeType("c5xlarge", "queue2")},
-            {"queue1": 2, "queue2": 1},
-        ),
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_handle_bootstrap_failure_nodes(
-    bootstrap_failure_nodes,
-    expected_bootstrap_failure_nodes_types,
-    initial_bootstrap_failure_nodes_types,
-    expected_partitions_protected_failure_count_map,
-    mocker,
-):
-    cluster_manager = ClusterManager(mocker.MagicMock())
-
-    cluster_manager._bootstrap_failure_nodes_types = initial_bootstrap_failure_nodes_types
-    cluster_manager._partitions_protected_failure_count_map = {"queue1": 1}
-    cluster_manager._handle_bootstrap_failure_nodes(bootstrap_failure_nodes)
-    assert_that(cluster_manager._bootstrap_failure_nodes_types).is_equal_to(expected_bootstrap_failure_nodes_types)
-    assert_that(cluster_manager._partitions_protected_failure_count_map).is_equal_to(
-        expected_partitions_protected_failure_count_map
-    )
-
-
-@pytest.mark.parametrize(
-    "node, private_ip_to_instance_map, is_backing_instance_valid, current_node_in_replacement, "
-    "bootstrap_failure_messages, is_node_bootstrap_failure",
-    [
-        (
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "DOWN*+CLOUD", "some_state", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            False,
-            {"queue1-st-c5xlarge-1"},
-            "Node bootstrap error: Node queue1-st-c5xlarge-1(ip-1) is currently in replacement and no backing instance",
-            True,
-        ),
-        (
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "DOWN*+CLOUD", "some_state", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-            },
-            True,
-            {"queue1-st-c5xlarge-1"},
-            "Node bootstrap error: Replacement timeout expires for node queue1-st-c5xlarge-1(ip-1) in replacement",
-            True,
-        ),
-        (
-            SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            False,
-            {"some_node_in_replacement"},
-            "Node bootstrap error: Node queue1-dy-c5xlarge-1(ip-1) is in power up state without valid backing instance",
-            True,
-        ),
-        (
-            SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD+POWER", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            True,
-            {"some_node_in_replacement"},
-            "Node bootstrap error: Resume timeout expires",
-            True,
-        ),
-        (
-            SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN#+CLOUD", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            False,
-            {"some_node_in_replacement"},
-            None,
-            False,
-        ),
-        (
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
-            {
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            False,
-            {"some_node_in_replacement"},
-            None,
-            False,
-        ),
-        (
-            SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            False,
-            {"some_node_in_replacement"},
-            None,
-            False,
-        ),
-        (
-            SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWER", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            False,
-            {"queue1-st-c5xlarge-1"},
-            None,
-            False,
-        ),
-        (
-            SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DRAIN+CLOUD", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            True,
-            {"queue1-st-c5xlarge-1"},
-            None,
-            False,
-        ),
-        (
-            SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue1"),
-            {
-                "ip-1": EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                "ip-2": EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
-            },
-            True,
-            {"queue1-st-c5xlarge-1"},
-            None,
-            False,
-        ),
-    ],
-    ids=[
-        "static_self_terminate",
-        "static_timeout",
-        "dynamic_self_terminate",
-        "dynamic_timeout",
-        "dynamic_runinstance",
-        "static_runinstance",
-        "static_joined_cluster",
-        "dynamic_reset_incorrect",
-        "normal_down_1",
-        "normal_down_2",
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_is_node_bootstrap_failure(
-    node,
-    private_ip_to_instance_map,
-    is_backing_instance_valid,
-    current_node_in_replacement,
-    bootstrap_failure_messages,
-    is_node_bootstrap_failure,
-    mocker,
-    caplog,
-):
-    mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._is_backing_instance_valid", return_value=is_backing_instance_valid
-    )
-    mock_sync_config = SimpleNamespace(node_replacement_timeout=30)
-    caplog.set_level(logging.WARNING)
-    cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
-    cluster_manager._static_nodes_in_replacement = current_node_in_replacement
-    # Run tests and assert calls
-    assert_that(cluster_manager._is_node_bootstrap_failure(node, private_ip_to_instance_map)).is_equal_to(
-        is_node_bootstrap_failure
-    )
-    if bootstrap_failure_messages:
-        assert_that(caplog.text).contains(bootstrap_failure_messages)
 
 
 @pytest.mark.parametrize(
@@ -2481,29 +1876,29 @@ def test_is_node_bootstrap_failure(
     [
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue2-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2"),
+                DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
+                DynamicNode("queue2-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2"),
             ],
-            {"queue1": 1, "queue2": 1},
-            {"queue1": 2, "queue2": 2},
+            {"queue1": {"c5xlarge": 1}, "queue2": {"c5xlarge": 1}},
+            {"queue1": {"c5xlarge": 2}, "queue2": {"c5xlarge": 2}},
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2")],
-            {"queue1": 1},
-            {"queue1": 1, "queue2": 1},
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2")],
+            {"queue1": {"c5xlarge": 1}},
+            {"queue1": {"c5xlarge": 1}, "queue2": {"c5xlarge": 1}},
         ),
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
-                SlurmNode("queue1-st-c5large-1", "ip-1", "hostname", "some_state", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
+                DynamicNode("queue1-st-c5large-1", "ip-1", "hostname", "some_state", "queue1"),
             ],
             {},
-            {"queue1": 2},
+            {"queue1": {"c5large": 1, "c5xlarge": 1}},
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1,queue2")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1,queue2")],
             {},
-            {"queue1": 1, "queue2": 1},
+            {"queue1": {"c5xlarge": 1}, "queue2": {"c5xlarge": 1}},
         ),
     ],
 )
@@ -2516,31 +1911,6 @@ def test_increase_partitions_protected_failure_count(nodes, initial_map, expecte
     cluster_manager._increase_partitions_protected_failure_count(nodes)
     # Assert calls
     assert_that(cluster_manager._partitions_protected_failure_count_map).is_equal_to(expected_map)
-
-
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-@pytest.mark.parametrize(
-    "slurm_nodes, online_nodes",
-    [
-        (
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-2", "hostname", "MIXED+CLOUD", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-4", "ip-3", "hostname", "MIXED#", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-4", "ip-3", "hostname", "MIXED+CLOUD+POWER", "queue1"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-2", "hostname", "MIXED+CLOUD", "queue1"),
-            ],
-        ),
-    ],
-)
-def test_find_online_slurm_nodes(mocker, slurm_nodes, online_nodes):
-    # Mock associated function
-    cluster_manager = ClusterManager(mocker.MagicMock())
-    assert_that(cluster_manager._find_online_slurm_nodes(slurm_nodes)).is_equal_to(online_nodes)
 
 
 @pytest.mark.parametrize(
@@ -2560,232 +1930,58 @@ def test_reset_partition_failure_count(mocker, partition, expected_map):
 
 
 @pytest.mark.parametrize(
-    "slurm_nodes, online_nodes, expected_return",
+    "partitions, slurm_nodes_list, active_nodes, expected_partitions_to_disable, "
+    "partitions_protected_failure_count_map",
     [
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "MIXED", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "MIXED#", "queue1"),
+                SlurmPartition("queue1", "queue1-st-c5xlarge-1", "ACTIVE"),
+                SlurmPartition("queue2", "queue2-st-c5xlarge-1", "ACTIVE"),
+                SlurmPartition("queue2", "queue2-st-c5xlarge-1", "ACTIVE"),
             ],
+            [[StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1")], [], []],
             [
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5large-2", "ip-2", "hostname", "MIXED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
             ],
+            ["queue1", "queue2"],
             {
-                NodeType(instance_type="c5xlarge", partition="queue1"),
-                NodeType(instance_type="c5large", partition="queue1"),
+                "queue1": {"c5xlarge": 6, "c5large": 5},
+                "queue2": {"c5xlarge": 6, "c5large": 6},
+                "queue3": {"c5xlarge": 6},
             },
         ),
         (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "MIXED", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "MIXED#", "queue1"),
+                SlurmPartition("queue1", "queue1-st-c5xlarge-1", "ACTIVE"),
+                SlurmPartition("queue2", "queue2-st-c5xlarge-1", "ACTIVE"),
+                SlurmPartition("queue2", "queue2-st-c5xlarge-1", "INACTIVE"),
             ],
             [
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "MIXED", "queue1"),
+                [
+                    StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
+                    StaticNode("queue1-dy-c5large-2", "ip-2", "hostname", "MIXED", "queue1"),
+                ],
+                [DynamicNode("queue2-dy-c5large-2", "ip-2", "hostname", "MIXED", "queue2")],
+                [],
             ],
-            {NodeType(instance_type="c5xlarge", partition="queue1")},
-        ),
-        (
             [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "MIXED", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "MIXED#", "queue1"),
+                DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
             ],
             [],
-            set(),
-        ),
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_get_online_nodes_types(slurm_nodes, online_nodes, expected_return, mocker):
-    # Mock associated function
-    cluster_manager = ClusterManager(mocker.MagicMock())
-    mock_find_online_slurm_nodes = mocker.patch.object(
-        cluster_manager, "_find_online_slurm_nodes", return_value=online_nodes
-    )
-    # Run test and assert calls
-    assert_that(cluster_manager._get_online_nodes_types(slurm_nodes)).is_equal_to(expected_return)
-    mock_find_online_slurm_nodes.assert_called_with(slurm_nodes)
-
-
-@pytest.mark.parametrize(
-    "nodename_to_slurm_nodes_map, bootstrap_failure_partitions, expected_partitions_to_disable, "
-    "partitions, partitions_with_active_jobs",
-    [
-        (
             {
-                "queue1-st-c5xlarge-1": SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                "queue1-st-c5xlarge-2": SlurmNode(
-                    "queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"
-                ),
+                "queue1": {"c5xlarge": 6, "c5large": 5},
+                "queue2": {"c5xlarge": 6, "c5large": 6},
+                "queue3": {"c5xlarge": 6},
             },
-            [],
-            set(),
-            {"queue1": SlurmPartition("queue1", "queue1-st-c5xlarge-1", "states")},
-            set(),
-        ),
-        (
-            {
-                "queue2-st-c5xlarge-1": SlurmNode(
-                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "ALLOCATED+CLOUD", "queue1"
-                ),
-                "queue1-st-c5xlarge-2": SlurmNode(
-                    "queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"
-                ),
-            },
-            ["queue1", "queue2"],
-            {"queue1"},
-            {"queue2": SlurmPartition("queue2", "queue2-st-c5xlarge-1", "states")},
-            {"queue2"},
-        ),
-        (
-            {
-                "queue1-st-c5xlarge-1": SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                "queue1-st-c5xlarge-2": SlurmNode(
-                    "queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"
-                ),
-            },
-            ["queue1", "queue2"],
-            {"queue1", "queue2"},
-            {"partition_name": SlurmPartition("name", "node", "states")},
-            set(),
-        ),
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_get_partitions_to_disable(
-    nodename_to_slurm_nodes_map,
-    bootstrap_failure_partitions,
-    expected_partitions_to_disable,
-    partitions,
-    partitions_with_active_jobs,
-    mocker,
-):
-    # Mock associated function
-    cluster_manager = ClusterManager(mocker.MagicMock())
-    mock_filter_partitions_with_active_jobs = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._filter_partitions_with_active_jobs",
-        return_value=partitions_with_active_jobs,
-    )
-    # Run test and assert calls
-    partitions_to_disable = cluster_manager._get_partitions_to_disable(
-        nodename_to_slurm_nodes_map, bootstrap_failure_partitions, partitions
-    )
-    assert_that(partitions_to_disable).is_equal_to(expected_partitions_to_disable)
-    mock_filter_partitions_with_active_jobs.assert_called_with(nodename_to_slurm_nodes_map, partitions)
-
-
-@pytest.mark.parametrize(
-    "nodename_to_slurm_nodes_map, partitions, partitions_with_active_jobs",
-    [
-        (
-            {
-                "queue1-st-c5xlarge-1": SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-                "queue1-st-c5xlarge-2": SlurmNode(
-                    "queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"
-                ),
-            },
-            {"queue1": SlurmPartition("queue1", "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2", "states")},
-            set(),
-        ),
-        (
-            {
-                "queue2-st-c5xlarge-1": SlurmNode(
-                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "ALLOCATED+CLOUD", "queue2"
-                ),
-                "queue1-st-c5xlarge-2": SlurmNode(
-                    "queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"
-                ),
-                "queue2-dy-c5xlarge-2": SlurmNode(
-                    "queue2-dy-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue2"
-                ),
-            },
-            {
-                "queue2": SlurmPartition("queue2", "queue2-st-c5xlarge-1,queue2-dy-c5xlarge-1", "states"),
-                "queue1": SlurmPartition("queue1", "queue1-st-c5xlarge-1", "states"),
-            },
-            {"queue2"},
-        ),
-        (
-            {
-                "queue2-st-c5xlarge-1": SlurmNode(
-                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "ALLOCATED+CLOUD", "queue2"
-                ),
-                "queue1-st-c5xlarge-2": SlurmNode(
-                    "queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"
-                ),
-                "queue1-dy-c5xlarge-2": SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "MIXED+CLOUD", "queue1"),
-            },
-            {
-                "queue2": SlurmPartition("queue2", "queue2-st-c5xlarge-1", "states"),
-                "queue1": SlurmPartition("queue1", "queue1-st-c5xlarge-1,queue1-dy-c5xlarge-2", "states"),
-            },
-            {"queue1", "queue2"},
-        ),
-    ],
-)
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_filter_partitions_with_active_jobs(
-    nodename_to_slurm_nodes_map, partitions, partitions_with_active_jobs, mocker
-):
-    cluster_manager = ClusterManager(mocker.MagicMock())
-    result = cluster_manager._filter_partitions_with_active_jobs(nodename_to_slurm_nodes_map, partitions)
-    assert_that(result).is_equal_to(partitions_with_active_jobs)
-
-
-@pytest.mark.parametrize(
-    "slurm_nodes, healthy_nodes, bootstrap_failure_nodes, expected_partitions_above_threshold, partitions_to_disable, "
-    "partitions, partitions_protected_failure_count_map",
-    [
-        (
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5large-2", "ip-2", "hostname", "MIXED", "queue1"),
-            ],
-            ["queue2"],
-            ["queue1", "queue2"],
-            {"queue1": SlurmPartition("queue1", "queue1-st-c5xlarge-1, queue1-st-c5xlarge-[2,3-4]", "states")},
-            {"queue1": 11, "queue2": 12, "queue3": 3},
-        ),
-        (
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
-            ],
-            [
-                SlurmNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "MIXED", "queue1"),
-            ],
-            [],
-            ["queue1"],
-            {"queue1": SlurmPartition("queue1", "queue1-st-c5xlarge-[1,3-5], queue1-st-c5xlarge-2", "states")},
-            {"queue2": 6, "queue3": 3},
         ),
     ],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
 def test_handle_protected_mode_process(
-    slurm_nodes,
     partitions,
-    bootstrap_failure_nodes,
-    healthy_nodes,
-    expected_partitions_above_threshold,
-    partitions_to_disable,
+    slurm_nodes_list,
+    active_nodes,
+    expected_partitions_to_disable,
     partitions_protected_failure_count_map,
     mocker,
     caplog,
@@ -2801,32 +1997,25 @@ def test_handle_protected_mode_process(
     mock_handle_bootstrap_failure_nodes = mocker.patch.object(cluster_manager, "_handle_bootstrap_failure_nodes")
 
     mock_enter_protected_mode = mocker.patch.object(cluster_manager, "_enter_protected_mode")
-    mock_get_partitions_to_disable = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._get_partitions_to_disable", return_value=partitions_to_disable
-    )
     cluster_manager._partitions_protected_failure_count_map = partitions_protected_failure_count_map
-    cluster_manager._inactive_partitions = {"queue1"}
-    nodename_to_slurm_nodes_map = {node.name: node for node in slurm_nodes}
+    for partition, slurm_nodes in zip(partitions, slurm_nodes_list):
+        partition.slurm_nodes = slurm_nodes
+    partitions_name_map = {partition.name: partition for partition in partitions}
     # Run test
-    cluster_manager._handle_protected_mode_process(slurm_nodes, partitions, bootstrap_failure_nodes, healthy_nodes)
+    cluster_manager._handle_protected_mode_process(active_nodes, partitions_name_map)
     # Assert calls
-    if bootstrap_failure_nodes:
-        assert_that(caplog.text).contains("Found the following bootstrap failure nodes")
-        mock_handle_bootstrap_failure_nodes.assert_called_with(bootstrap_failure_nodes)
+    mock_handle_bootstrap_failure_nodes.assert_called_with(active_nodes)
 
-    mock_handle_successfully_launched_nodes.assert_called_with(healthy_nodes)
-    if expected_partitions_above_threshold:
-        mock_get_partitions_to_disable.assert_called_with(
-            nodename_to_slurm_nodes_map, expected_partitions_above_threshold, partitions
-        )
-        mock_enter_protected_mode.assert_called_with(partitions_to_disable)
+    mock_handle_successfully_launched_nodes.assert_called_with(partitions_name_map)
+    if expected_partitions_to_disable:
+        mock_enter_protected_mode.assert_called_with(expected_partitions_to_disable)
 
 
 @pytest.mark.parametrize(
     "partitions_to_disable, compute_fleet_status",
     [
         (
-            set(),
+            {"queue1", "queue2"},
             ComputeFleetStatus.PROTECTED,
         ),
         (
@@ -2851,16 +2040,12 @@ def test_enter_protected_mode(
     mock_update_compute_fleet_status = mocker.patch.object(cluster_manager, "_update_compute_fleet_status")
     cluster_manager._compute_fleet_status = compute_fleet_status
     cluster_manager._enter_protected_mode(partitions_to_disable)
-    if partitions_to_disable:
-        assert_that(caplog.text).contains("Placing bootstrap failure partitions to INACTIVE")
-        if not compute_fleet_status == ComputeFleetStatus.PROTECTED:
-            assert_that(caplog.text).contains("Setting cluster into protected mode due to failures")
-            mock_update_compute_fleet_status.assert_called_with(ComputeFleetStatus.PROTECTED)
-
-    else:
+    if compute_fleet_status != ComputeFleetStatus.PROTECTED:
         assert_that(caplog.text).contains(
-            "Not entering protected mode since active are jobs running in bootstrap failure partitions"
+            "Setting cluster into protected mode due to failures detected in node provisioning"
         )
+        mock_update_compute_fleet_status.assert_called_with(ComputeFleetStatus.PROTECTED)
+    assert_that(caplog.text).contains("Placing bootstrap failure partitions to INACTIVE")
 
 
 @pytest.fixture()
@@ -2879,4 +2064,261 @@ def initialize_compute_fleet_status_manager_mock(mocker):
         "_initialize_compute_fleet_status_manager",
         spec=ClusterManager._initialize_compute_fleet_status_manager,
         return_value=compute_fleet_status_manager_mock,
+    )
+
+
+@pytest.mark.parametrize(
+    "current_replacing_nodes, node, instance, current_time, expected_result",
+    [
+        (
+            set(),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            datetime(2020, 1, 1, 0, 0, 29),
+            False,
+        ),
+        (
+            {"queue1-st-c5xlarge-1"},
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+            None,
+            datetime(2020, 1, 1, 0, 0, 29),
+            False,
+        ),
+        (
+            {"queue1-st-c5xlarge-1"},
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
+            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            datetime(2020, 1, 1, 0, 0, 29),
+            True,
+        ),
+        (
+            {"queue1-st-c5xlarge-1"},
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            datetime(2020, 1, 1, 0, 0, 30),
+            False,
+        ),
+    ],
+    ids=["not_in_replacement", "no-backing-instance", "in_replacement", "timeout"],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_is_node_being_replaced(current_replacing_nodes, node, instance, current_time, expected_result):
+    mock_sync_config = SimpleNamespace(node_replacement_timeout=30)
+    cluster_manager = ClusterManager(mock_sync_config)
+    cluster_manager._current_time = current_time
+    cluster_manager._static_nodes_in_replacement = current_replacing_nodes
+    node.instance = instance
+    assert_that(cluster_manager._is_node_being_replaced(node)).is_equal_to(expected_result)
+
+
+@pytest.mark.parametrize(
+    "node, instance, current_node_in_replacement, is_replacement_timeout",
+    [
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            None,
+            {"queue1-st-c5xlarge-1"},
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            {"queue1-st-c5xlarge-1"},
+            True,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+            None,
+            {"some_node_in_replacement"},
+            False,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN#+CLOUD", "queue1"),
+            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            {"some_node_in_replacement"},
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            {"some_node_in_replacement"},
+            False,
+        ),
+    ],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_is_node_replacement_timeout(node, current_node_in_replacement, is_replacement_timeout, instance):
+    node.instance = instance
+    mock_sync_config = SimpleNamespace(node_replacement_timeout=30)
+    cluster_manager = ClusterManager(mock_sync_config)
+    cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
+    cluster_manager._static_nodes_in_replacement = current_node_in_replacement
+    assert_that(cluster_manager._is_node_replacement_timeout(node)).is_equal_to(is_replacement_timeout)
+
+
+@pytest.mark.parametrize(
+    "active_nodes, is_static_nodes_in_replacement, is_failing_health_check, current_nodes_in_replacement, "
+    "expected_nodes_in_replacement",
+    [
+        (
+            [
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+            ],
+            [True, False],
+            [True, True],
+            {"queue1-st-c5xlarge-1", "queue1-st-c5large-1"},
+            {"queue1-st-c5large-1"},
+        ),
+        (
+            [
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+            ],
+            [False, False],
+            [True, True],
+            {"some_node_in_replacement"},
+            {"some_node_in_replacement"},
+        ),
+        (
+            [DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1")],
+            [True],
+            [False],
+            {"some_node_in_replacement"},
+            {"some_node_in_replacement"},
+        ),
+    ],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_handle_failed_health_check_nodes_in_replacement(
+    active_nodes,
+    is_static_nodes_in_replacement,
+    is_failing_health_check,
+    current_nodes_in_replacement,
+    expected_nodes_in_replacement,
+    mocker,
+):
+    for node, is_static_nodes_in_replacement, is_failing_health_check in zip(
+        active_nodes, is_static_nodes_in_replacement, is_failing_health_check
+    ):
+        node.is_static_nodes_in_replacement = is_static_nodes_in_replacement
+        node.is_failing_health_check = is_failing_health_check
+
+    cluster_manager = ClusterManager(mocker.MagicMock())
+    cluster_manager._static_nodes_in_replacement = current_nodes_in_replacement
+    # Run tests
+    cluster_manager._handle_failed_health_check_nodes_in_replacement(active_nodes)
+    # Assertions
+    assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_nodes_in_replacement)
+
+
+@pytest.mark.parametrize(
+    "active_nodes, instances",
+    [
+        (
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
+                ),  # unhealthy static
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"
+                ),  # bootstrap failure static
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"
+                ),  # bootstrap failure dynamic
+                StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
+                DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
+                StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # fail health check
+                DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "MIX#+CLOUD", "queue1"),  # fail health check
+            ],
+            [
+                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+            ],
+        ),
+    ],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_handle_bootstrap_failure_nodes(
+    active_nodes,
+    instances,
+    mocker,
+):
+    # Mock functions
+    mock_sync_config = SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True)
+    cluster_manager = ClusterManager(mock_sync_config)
+    for node, instance in zip(active_nodes, instances):
+        node.instance = instance
+    active_nodes[1].is_static_nodes_in_replacement = True
+    active_nodes[3].is_static_nodes_in_replacement = True
+    active_nodes[3]._is_replacement_timeout = True
+    active_nodes[7].is_static_nodes_in_replacement = True
+    active_nodes[7].is_failing_health_check = True
+    active_nodes[8].is_failing_health_check = True
+
+    expected_bootstrap_failure_nodes = [active_nodes[3], active_nodes[4], active_nodes[7], active_nodes[8]]
+    mock_increase_partitions_protected_failure_count = mocker.patch.object(
+        cluster_manager, "_increase_partitions_protected_failure_count"
+    )
+    cluster_manager._handle_bootstrap_failure_nodes(active_nodes)
+    mock_increase_partitions_protected_failure_count.assert_called_with(expected_bootstrap_failure_nodes)
+
+
+@pytest.mark.parametrize(
+    "active_nodes, instances",
+    [
+        (
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
+                ),  # unhealthy static
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"
+                ),  # bootstrap failure static
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"
+                ),  # bootstrap failure dynamic
+                StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
+                DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
+            ],
+            [
+                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+            ],
+        ),
+    ],
+    ids=["basic"],
+)
+@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+def test_find_bootstrap_failure_nodes(active_nodes, instances):
+    # Mock functions
+    mock_sync_config = SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True)
+    cluster_manager = ClusterManager(mock_sync_config)
+    for node, instance in zip(active_nodes, instances):
+        node.instance = instance
+    active_nodes[1].is_static_nodes_in_replacement = True
+    active_nodes[3].is_static_nodes_in_replacement = True
+    active_nodes[3]._is_replacement_timeout = True
+
+    expected_bootstrap_failure_nodes = [active_nodes[3], active_nodes[4]]
+    assert_that(cluster_manager._find_bootstrap_failure_nodes(active_nodes)).is_equal_to(
+        expected_bootstrap_failure_nodes
     )
