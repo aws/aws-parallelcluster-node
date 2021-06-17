@@ -17,7 +17,8 @@ from configparser import ConfigParser
 from datetime import datetime, timezone
 from logging.config import fileConfig
 
-from slurm_plugin.common import CONFIG_FILE_DIR, is_clustermgtd_heartbeat_valid
+from slurm_plugin.common import is_clustermgtd_heartbeat_valid
+from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
 
