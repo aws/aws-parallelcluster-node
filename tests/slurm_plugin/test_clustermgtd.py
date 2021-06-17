@@ -852,7 +852,7 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
 
 
 @pytest.mark.parametrize(
-    "node, private_ip_to_instance_map, instance_ips_in_cluster, expected_result",
+    "node, private_ip_to_instance_map, expected_result",
     [
         (
             SlurmNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue"),
@@ -860,7 +860,6 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             },
-            ["ip-1", "ip-2"],
             True,
         ),
         (
@@ -869,7 +868,6 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             },
-            ["ip-1", "ip-2"],
             False,
         ),
         (
@@ -878,7 +876,6 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             },
-            ["ip-1", "ip-2"],
             True,
         ),
         (
@@ -887,7 +884,6 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             },
-            ["ip-1", "ip-2"],
             False,
         ),
         (
@@ -896,14 +892,56 @@ def test_is_node_state_healthy(node, mock_sync_config, mock_is_node_being_replac
                 "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             },
-            ["ip-1", "ip-2"],
             False,
         ),
+        # Powering_down nodes are handled separately, always considered healthy by this workflow
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
+            {
+                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            },
+            True,
+        ),
+        # Node in POWER_SAVE, but still has ip associated should be considered unhealthy
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "IDLE+CLOUD+POWER", "queue"),
+            {
+                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            },
+            False,
+        ),
+        # Node in POWER_SAVE, but also in DOWN should be considered unhealthy
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWER", "queue"),
+            {
+                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                "ip-2": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            },
+            False,
+        ),
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "IDLE+CLOUD+POWER", "queue"),
+            {
+                "ip-1": EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            },
+            True,
+        ),
     ],
-    ids=["basic", "static_nodeaddr_not_set", "dynamic_nodeaddr_not_set", "dynamic_unhealthy", "static_unhealthy"],
+    ids=[
+        "basic",
+        "static_nodeaddr_not_set",
+        "dynamic_nodeaddr_not_set",
+        "dynamic_unhealthy",
+        "static_unhealthy",
+        "powering_down",
+        "power_unhealthy1",
+        "power_unhealthy2",
+        "power_healthy",
+    ],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_is_node_healthy(node, private_ip_to_instance_map, instance_ips_in_cluster, expected_result, mocker):
+def test_is_node_healthy(node, private_ip_to_instance_map, expected_result, mocker):
     mock_sync_config = SimpleNamespace(terminate_down_nodes=True)
     cluster_manager = ClusterManager(mock_sync_config)
     assert_that(cluster_manager._is_node_healthy(node, private_ip_to_instance_map)).is_equal_to(expected_result)
@@ -947,7 +985,7 @@ def test_handle_unhealthy_dynamic_nodes(
         (
             [
                 SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
+                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
                 SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
                 SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_", "queue1"),
                 SlurmNode(
@@ -956,7 +994,10 @@ def test_handle_unhealthy_dynamic_nodes(
                 SlurmNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
             ],
             ["id-1", "id-2"],
-            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3"],
+            [
+                SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
+                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+            ],
         )
     ],
     ids=["basic"],
@@ -966,15 +1007,17 @@ def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expecte
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    mocker.patch(
+    get_backing_instance_mock = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._get_backing_instance_ids",
         return_value=mock_backing_instances,
         auto_spec=True,
     )
     reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
     cluster_manager._handle_powering_down_nodes(slurm_nodes, {"placeholder": "map"})
+    get_backing_instance_mock.assert_called_with(expected_powering_down_nodes, {"placeholder": "map"})
     mock_instance_manager.delete_instances.assert_called_with(["id-1", "id-2"], terminate_batch_size=4)
-    reset_nodes_mock.assert_called_with(nodes=expected_powering_down_nodes)
+    # We don't need to reset nodes manually because cloud_reg_addrs option is specified
+    reset_nodes_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1424,6 +1467,10 @@ def test_manage_cluster(
                 SlurmNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue"),
                 # This node is good and should not be touched by clustermgtd
                 SlurmNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                # This node is in power_saving state but still has running backing instance, it should be terminated
+                SlurmNode("queue-dy-c5xlarge-6", "ip-6", "hostname", "IDLE+CLOUD+POWER", "queue"),
+                # This node is in powering_down but still has no valid backing instance, no boto3 call
+                SlurmNode("queue-dy-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue"),
             ],
             [
                 SlurmNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue"),
@@ -1458,6 +1505,12 @@ def test_manage_cluster(
                                     {
                                         "InstanceId": "i-4",
                                         "PrivateIpAddress": "ip-4",
+                                        "PrivateDnsName": "hostname",
+                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                    },
+                                    {
+                                        "InstanceId": "i-6",
+                                        "PrivateIpAddress": "ip-6",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                                     },
@@ -1523,8 +1576,14 @@ def test_manage_cluster(
                     },
                     generate_error=False,
                 ),
+                # _maintain_nodes: _handle_powering_down_nodes
+                MockedBoto3Request(
+                    method="terminate_instances",
+                    response={},
+                    expected_params={"InstanceIds": ["i-6"]},
+                    generate_error=False,
+                ),
                 # _maintain_nodes/delete_instances: terminate dynamic down nodes
-                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 MockedBoto3Request(
                     method="terminate_instances",
                     response={},
@@ -1532,7 +1591,6 @@ def test_manage_cluster(
                     generate_error=False,
                 ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
-                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 MockedBoto3Request(
                     method="terminate_instances",
                     response={},
