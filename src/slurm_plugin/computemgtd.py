@@ -21,9 +21,9 @@ from subprocess import CalledProcessError
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
-from common.utils import get_metadata, sleep_remaining_loop_time
+from common.utils import get_metadata, run_command, sleep_remaining_loop_time
 from retrying import retry
-from slurm_plugin.common import CONFIG_FILE_DIR, InstanceManager, is_clustermgtd_heartbeat_valid, log_exception
+from slurm_plugin.common import CONFIG_FILE_DIR, is_clustermgtd_heartbeat_valid, log_exception
 
 LOOP_TIME = 60
 RELOAD_CONFIG_ITERATIONS = 10
@@ -109,17 +109,14 @@ class ComputemgtdConfig:
 
 
 @log_exception(log, "self terminating compute instance", catch_exception=CalledProcessError, raise_on_error=False)
-def _self_terminate(computemgtd_config):
+def _self_terminate():
     """Self terminate the instance."""
-    instance_manager = InstanceManager(
-        computemgtd_config.region, computemgtd_config.cluster_name, computemgtd_config.boto3_config
-    )
     self_instance_id = get_metadata("instance-id")
     # Sleep for 10 seconds so termination log entries are uploaded to CW logs
-    log.info("Prepaing to self terminate the instance %s in 10 seconds!", self_instance_id)
+    log.info("Preparing to self terminate the instance %s in 10 seconds!", self_instance_id)
     time.sleep(10)
     log.info("Self terminating instance %s now!", self_instance_id)
-    instance_manager.delete_instances([self_instance_id], terminate_batch_size=1)
+    run_command("sudo shutdown")
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1500)
@@ -190,7 +187,7 @@ def _run_computemgtd():
             if computemgtd_config.disable_computemgtd_actions:
                 log.info("All computemgtd actions currently disabled")
             elif _is_self_node_down(computemgtd_config.nodename):
-                _self_terminate(computemgtd_config)
+                _self_terminate()
 
         sleep_remaining_loop_time(computemgtd_config.loop_time, current_time)
 

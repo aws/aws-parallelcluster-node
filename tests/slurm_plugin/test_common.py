@@ -105,6 +105,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
@@ -124,6 +125,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
@@ -150,6 +152,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 2,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -206,6 +209,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
@@ -215,6 +219,7 @@ class TestInstanceManager:
                         method="run_instances",
                         response={},
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
@@ -242,6 +247,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 2,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -288,6 +294,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
@@ -330,6 +337,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
@@ -339,6 +347,7 @@ class TestInstanceManager:
                         method="run_instances",
                         response={},
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
@@ -349,6 +358,7 @@ class TestInstanceManager:
                         method="run_instances",
                         response={},
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 3,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -402,6 +412,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
@@ -411,6 +422,7 @@ class TestInstanceManager:
                         method="run_instances",
                         response={},
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
@@ -431,6 +443,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -440,6 +453,7 @@ class TestInstanceManager:
                         method="run_instances",
                         response={},
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -460,6 +474,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 1,
                             "MaxCount": 1,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -511,6 +526,7 @@ class TestInstanceManager:
                         ]
                     },
                     expected_params={
+                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 1,
                         "MaxCount": 3,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -569,6 +585,7 @@ class TestInstanceManager:
                             ]
                         },
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 3,
                             "MaxCount": 3,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
@@ -578,6 +595,7 @@ class TestInstanceManager:
                         method="run_instances",
                         response={},
                         expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
                             "MinCount": 2,
                             "MaxCount": 2,
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
