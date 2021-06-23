@@ -11,6 +11,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Drop support for SGE and Torque schedulers.
 - Use tags prefix `parallelcluster:`.
 - Run Slurm command `scontrol` with sudo because clustermgtd is run as cluster admin user (not root).
+- Implement `computemgtd` self-termination via `shutdown` command instead of calling TerminateInstances.
 
 2.x.x
 -----

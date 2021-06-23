@@ -1611,6 +1611,7 @@ def test_manage_cluster(
                         ]
                     },
                     expected_params={
+                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 1,
                         "MaxCount": 1,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge", "Version": "$Latest"},
@@ -1775,6 +1776,7 @@ def test_manage_cluster(
                     method="run_instances",
                     response={"some run_instances error"},
                     expected_params={
+                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge", "Version": "$Latest"},
                         "MaxCount": 1,
                         "MinCount": 1,
