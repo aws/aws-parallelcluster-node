@@ -171,15 +171,18 @@ def _run_computemgtd():
     # Initial default heartbeat time as computemgtd startup time
     last_heartbeat = datetime.now(tz=timezone.utc)
     log.info("Initializing clustermgtd heartbeat to be computemgtd startup time: %s", last_heartbeat)
-    computemgtd_config = None
-    reload_config_counter = 0
+    computemgtd_config = _load_daemon_config()
+    reload_config_counter = RELOAD_CONFIG_ITERATIONS
     while True:
         # Get current time
         current_time = datetime.now(tz=timezone.utc)
 
-        if not computemgtd_config or reload_config_counter <= 0:
-            computemgtd_config = _load_daemon_config()
-            reload_config_counter = RELOAD_CONFIG_ITERATIONS
+        if reload_config_counter <= 0:
+            try:
+                computemgtd_config = _load_daemon_config()
+                reload_config_counter = RELOAD_CONFIG_ITERATIONS
+            except Exception as e:
+                log.warning("Unable to reload daemon config, using previous one.\nException: %s", e)
         else:
             reload_config_counter -= 1
 
