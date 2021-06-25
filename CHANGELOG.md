@@ -10,6 +10,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - SGE: always use shortname as hostname filter with `qstat`. This will make nodewatcher more robust when using custom DHCP option, where the full hostname seen by `SGE` might differ from the hostname returned from EC2 metadata(local-hostname).
 - Transition from IMDSv1 to IMDSv2.
 - Have `computemgtd` reuse last available daemon configuration when the new one cannot be loaded.
+- Use methods with timeouts to read NFS shared files, which will prevent `computemgtd` from hanging when NFS filesystems are not available.
 
 **BUG FIXES**
 - Fix a bug that caused `clustermgtd` to not immediately replace instances with failed status check that are in replacement process.

@@ -13,7 +13,7 @@
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from unittest.mock import call, mock_open
+from unittest.mock import call
 
 import botocore
 import pytest
@@ -26,7 +26,7 @@ from slurm_plugin.common import (
     EC2Instance,
     EC2InstanceHealthState,
     InstanceManager,
-    _get_clustermgtd_heartbeat,
+    get_clustermgtd_heartbeat,
     time_is_up,
 )
 
@@ -1363,5 +1363,8 @@ def test_time_is_up(initial_time, current_time, grace_time, expected_result):
     ],
 )
 def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
-    mocker.patch("slurm_plugin.common.open", mock_open(read_data=time.strftime(TIMESTAMP_FORMAT)))
-    assert_that(_get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
+    mocker.patch(
+        "slurm_plugin.common.check_command_output",
+        return_value=f"some_random_stdout\n{time.strftime(TIMESTAMP_FORMAT)}",
+    )
+    assert_that(get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
