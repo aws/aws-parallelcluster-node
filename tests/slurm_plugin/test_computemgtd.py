@@ -61,7 +61,9 @@ from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down
 )
 def test_computemgtd_config(config_file, expected_attributes, test_datadir, mocker):
     mocker.patch("slurm_plugin.computemgtd.ComputemgtdConfig._read_nodename_from_file", return_value="some_nodename")
-    compute_config = ComputemgtdConfig(test_datadir / config_file)
+    mocker.patch("slurm_plugin.computemgtd.run_command")
+    mocker.patch("slurm_plugin.computemgtd.open", return_value=open(test_datadir / config_file, "r"))
+    compute_config = ComputemgtdConfig("mocked_config_path")
     for key in expected_attributes:
         assert_that(compute_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
 
