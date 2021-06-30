@@ -320,12 +320,12 @@ class InstanceManager:
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
         args = {
-            "Filters": [{"Name": "tag:ClusterName", "Values": [self._cluster_name]}],
+            "Filters": [{"Name": "tag:parallelcluster:cluster-name", "Values": [self._cluster_name]}],
         }
         if alive_states_only:
             args["Filters"].append({"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)})
         if not include_head_node:
-            args["Filters"].append({"Name": "tag:aws-parallelcluster-node-type", "Values": ["Compute"]})
+            args["Filters"].append({"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]})
         response_iterator = paginator.paginate(PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE}, **args)
         filtered_iterator = response_iterator.search("Reservations[].Instances[]")
         return [
