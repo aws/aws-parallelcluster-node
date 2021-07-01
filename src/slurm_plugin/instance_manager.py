@@ -159,8 +159,8 @@ class InstanceManager:
                         Item={
                             "Id": nodename,
                             "InstanceId": instance.id,
-                            "MasterPrivateIp": self._head_node_private_ip,
-                            "MasterHostname": self._head_node_hostname,
+                            "HeadNodePrivateIp": self._head_node_private_ip,
+                            "HeadNodeHostname": self._head_node_hostname,
                         }
                     )
 
