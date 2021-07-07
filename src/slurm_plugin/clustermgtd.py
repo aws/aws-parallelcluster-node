@@ -78,6 +78,7 @@ class ComputeFleetStatus(Enum):
 class ComputeFleetStatusManager:
     COMPUTE_FLEET_STATUS_KEY = "COMPUTE_FLEET"
     COMPUTE_FLEET_STATUS_ATTRIBUTE = "Status"
+    LAST_UPDATED_TIME_ATTRIBUTE = "LastUpdatedTime"
 
     class ConditionalStatusUpdateFailed(Exception):
         """Raised when there is a failure in updating the status due to a change occurred after retrieving its value."""
@@ -106,7 +107,11 @@ class ComputeFleetStatusManager:
     def update_status(self, current_status, next_status):
         try:
             self._table.put_item(
-                Item={"Id": self.COMPUTE_FLEET_STATUS_KEY, self.COMPUTE_FLEET_STATUS_ATTRIBUTE: str(next_status)},
+                Item={
+                    "Id": self.COMPUTE_FLEET_STATUS_KEY,
+                    self.COMPUTE_FLEET_STATUS_ATTRIBUTE: str(next_status),
+                    self.LAST_UPDATED_TIME_ATTRIBUTE: str(datetime.now(tz=timezone.utc)),
+                },
                 ConditionExpression=Attr(self.COMPUTE_FLEET_STATUS_ATTRIBUTE).eq(str(current_status)),
             )
         except self._ddb_resource.meta.client.exceptions.ConditionalCheckFailedException as e:
