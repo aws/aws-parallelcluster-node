@@ -114,6 +114,6 @@ def test_self_terminate(mocker, caplog):
         _self_terminate()
     assert_that(caplog.text).contains(f"Preparing to self terminate the instance {fake_instance_id} in 10 seconds!")
     assert_that(caplog.text).contains(f"Self terminating instance {fake_instance_id} now!")
-    run_command_patch.assert_called_with("sudo shutdown")
+    run_command_patch.assert_called_with("sudo shutdown -h now")
     get_metadata_patch.assert_called_with("instance-id")
     sleep_patch.assert_called_with(10)
