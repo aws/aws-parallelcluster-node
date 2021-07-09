@@ -8,6 +8,7 @@ ignore =
     D104, # Missing docstring in public package
     D107, # Missing docstring in __init__
     W503, # line break before binary operator => Conflicts with black style.
+    N818, # exception name should be named with an Error suffix
 exclude =
     .tox,
     .git,
