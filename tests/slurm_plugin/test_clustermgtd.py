@@ -1183,12 +1183,6 @@ def test_manage_cluster(
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                                     },
-                                    {
-                                        "InstanceId": "i-6",
-                                        "PrivateIpAddress": "ip-6",
-                                        "PrivateDnsName": "hostname",
-                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                    },
                                     # Return an orphaned instance
                                     {
                                         "InstanceId": "i-999",
@@ -1251,14 +1245,8 @@ def test_manage_cluster(
                     },
                     generate_error=False,
                 ),
-                # _maintain_nodes: _handle_powering_down_nodes
-                MockedBoto3Request(
-                    method="terminate_instances",
-                    response={},
-                    expected_params={"InstanceIds": ["i-6"]},
-                    generate_error=False,
-                ),
                 # _maintain_nodes/delete_instances: terminate dynamic down nodes
+                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 MockedBoto3Request(
                     method="terminate_instances",
                     response={},
@@ -1266,6 +1254,7 @@ def test_manage_cluster(
                     generate_error=False,
                 ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
+                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 MockedBoto3Request(
                     method="terminate_instances",
                     response={},

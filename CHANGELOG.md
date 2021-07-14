@@ -12,18 +12,32 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Use tags prefix `parallelcluster:`.
 - Run Slurm command `scontrol` with sudo because clustermgtd is run as cluster admin user (not root).
 - Implement `computemgtd` self-termination via `shutdown` command instead of calling TerminateInstances.
+- Implement scaling protection mechanism with Slurm scheduler: compute fleet is automatically set to 'PROTECTED' state
+  in case recurrent failures are encountered when provisioning nodes.
 
-2.x.x
+2.11.0
 -----
 
 **ENHANCEMENTS**
-- SGE: make `qstat` command in nodewatcher more robust in case a custom DHCP option set is configured.
+- SGE: always use shortname as hostname filter with `qstat`. This will make nodewatcher more robust when using custom DHCP option, where the full hostname seen by `SGE` might differ from the hostname returned from EC2 metadata(local-hostname).
 - Transition from IMDSv1 to IMDSv2.
-- Implement scaling protection mechanism with Slurm scheduler: compute fleet is automatically set to 'PROTECTED' state 
-  in case recurrent failures are encountered when provisioning nodes.
+- Have `computemgtd` reuse last available daemon configuration when the new one cannot be loaded.
+- Use methods with timeouts to read NFS shared files, which will prevent `computemgtd` from hanging when NFS filesystems are not available.
 
 **BUG FIXES**
 - Fix a bug that caused `clustermgtd` to not immediately replace instances with failed status check that are in replacement process.
+
+2.10.4
+-----
+
+**CHANGES**
+- There were no notable changes for this version.
+
+2.10.3
+-----
+
+**CHANGES**
+- There were no notable changes for this version.
 
 2.10.2
 -----
