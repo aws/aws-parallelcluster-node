@@ -23,7 +23,12 @@ from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
 from common.utils import get_metadata, run_command, sleep_remaining_loop_time
 from retrying import retry
-from slurm_plugin.common import is_clustermgtd_heartbeat_valid, log_exception
+from slurm_plugin.common import (
+    DEFAULT_COMMAND_TIMEOUT,
+    expired_clustermgtd_heartbeat,
+    get_clustermgtd_heartbeat,
+    log_exception,
+)
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 LOOP_TIME = 60
@@ -54,14 +59,20 @@ class ComputemgtdConfig:
         attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
         return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
 
-    @log_exception(log, "reading computemgtd config", catch_exception=IOError, raise_on_error=True)
+    @log_exception(log, "reading computemgtd config", catch_exception=Exception, raise_on_error=True)
     def _get_config(self, config_file_path):
         """Get computemgtd configuration."""
         log.info("Reading %s", config_file_path)
         config = ConfigParser()
         try:
-            config.read_file(open(config_file_path, "r"))
-        except IOError:
+            # Use subprocess based method to copy shared file to local to prevent hanging when NFS is down
+            run_command(
+                f"cat {config_file_path} > {CONFIG_FILE_DIR}/.computemgtd_config.local",
+                timeout=DEFAULT_COMMAND_TIMEOUT,
+                shell=True,  # nosec
+            )
+            config.read_file(open(f"{CONFIG_FILE_DIR}/.computemgtd_config.local", "r"))
+        except Exception:
             log.error(f"Cannot read computemgtd configuration file: {config_file_path}")
             raise
 
@@ -100,11 +111,10 @@ class ComputemgtdConfig:
     def _read_nodename_from_file(nodename_file_path):
         """Read self nodename from a file."""
         try:
-            log.info("Reading self nodename from %s", nodename_file_path)
             with open(nodename_file_path, "r") as nodename_file:
                 nodename = nodename_file.read()
             return nodename
-        except IOError as e:
+        except Exception as e:
             log.error("Unable to read self nodename from %s with exception: %s\n", nodename_file_path, e)
             raise
 
@@ -169,22 +179,32 @@ def _run_computemgtd():
     # Initial default heartbeat time as computemgtd startup time
     last_heartbeat = datetime.now(tz=timezone.utc)
     log.info("Initializing clustermgtd heartbeat to be computemgtd startup time: %s", last_heartbeat)
-    computemgtd_config = None
-    reload_config_counter = 0
+    computemgtd_config = _load_daemon_config()
+    reload_config_counter = RELOAD_CONFIG_ITERATIONS
     while True:
         # Get current time
         current_time = datetime.now(tz=timezone.utc)
 
-        if not computemgtd_config or reload_config_counter <= 0:
-            computemgtd_config = _load_daemon_config()
-            reload_config_counter = RELOAD_CONFIG_ITERATIONS
+        if reload_config_counter <= 0:
+            try:
+                computemgtd_config = _load_daemon_config()
+                reload_config_counter = RELOAD_CONFIG_ITERATIONS
+            except Exception as e:
+                log.warning("Unable to reload daemon config, using previous one.\nException: %s", e)
         else:
             reload_config_counter -= 1
 
         # Check heartbeat
-        if not is_clustermgtd_heartbeat_valid(
-            current_time, computemgtd_config.clustermgtd_timeout, computemgtd_config.clustermgtd_heartbeat_file_path
-        ):
+        try:
+            last_heartbeat = get_clustermgtd_heartbeat(computemgtd_config.clustermgtd_heartbeat_file_path)
+            log.info("Latest heartbeat from clustermgtd: %s", last_heartbeat)
+        except Exception as e:
+            log.warning(
+                "Unable to retrieve clustermgtd heartbeat. Using last known heartbeat: %s with exception: %s",
+                last_heartbeat,
+                e,
+            )
+        if expired_clustermgtd_heartbeat(last_heartbeat, current_time, computemgtd_config.clustermgtd_timeout):
             if computemgtd_config.disable_computemgtd_actions:
                 log.info("All computemgtd actions currently disabled")
             elif _is_self_node_down(computemgtd_config.nodename):

@@ -626,7 +626,7 @@ def test_handle_unhealthy_dynamic_nodes(
 
 
 @pytest.mark.parametrize(
-    "slurm_nodes, instances, instances_to_terminate",
+    "slurm_nodes, instances, instances_to_terminate, expected_powering_down_nodes",
     [
         (
             [
@@ -637,7 +637,7 @@ def test_handle_unhealthy_dynamic_nodes(
                 DynamicNode(
                     "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "POWERING_DOWN", "queue1"
                 ),
-                DynamicNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
+                StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
             ],
             [
                 EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
@@ -648,12 +648,15 @@ def test_handle_unhealthy_dynamic_nodes(
                 None,
             ],
             ["id-3"],
+            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3"],
         )
     ],
     ids=["basic"],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_handle_powering_down_nodes(slurm_nodes, instances, instances_to_terminate, mocker):
+def test_handle_powering_down_nodes(
+    slurm_nodes, instances, instances_to_terminate, expected_powering_down_nodes, mocker
+):
     for node, instance in zip(slurm_nodes, instances):
         node.instance = instance
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
@@ -662,8 +665,7 @@ def test_handle_powering_down_nodes(slurm_nodes, instances, instances_to_termina
     reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
     cluster_manager._handle_powering_down_nodes(slurm_nodes)
     mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
-    # We don't need to reset nodes manually because cloud_reg_addrs option is specified
-    reset_nodes_mock.assert_not_called()
+    reset_nodes_mock.assert_called_with(nodes=expected_powering_down_nodes)
 
 
 @pytest.mark.parametrize(
@@ -1181,12 +1183,6 @@ def test_manage_cluster(
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                                     },
-                                    {
-                                        "InstanceId": "i-6",
-                                        "PrivateIpAddress": "ip-6",
-                                        "PrivateDnsName": "hostname",
-                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                    },
                                     # Return an orphaned instance
                                     {
                                         "InstanceId": "i-999",
@@ -1249,14 +1245,8 @@ def test_manage_cluster(
                     },
                     generate_error=False,
                 ),
-                # _maintain_nodes: _handle_powering_down_nodes
-                MockedBoto3Request(
-                    method="terminate_instances",
-                    response={},
-                    expected_params={"InstanceIds": ["i-6"]},
-                    generate_error=False,
-                ),
                 # _maintain_nodes/delete_instances: terminate dynamic down nodes
+                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 MockedBoto3Request(
                     method="terminate_instances",
                     response={},
@@ -1264,6 +1254,7 @@ def test_manage_cluster(
                     generate_error=False,
                 ),
                 # _maintain_nodes/delete_instances: terminate static down nodes
+                # dynamic down nodes are handled with suspend script, and its boto3 call should not be reflected here
                 MockedBoto3Request(
                     method="terminate_instances",
                     response={},
