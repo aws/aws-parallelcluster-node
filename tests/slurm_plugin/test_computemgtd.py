@@ -10,13 +10,14 @@
 # limitations under the License.
 
 
+import logging
 import os
 
 import pytest
 import slurm_plugin
 from assertpy import assert_that
-from common.schedulers.slurm_commands import SlurmNode
-from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down
+from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down, _self_terminate
+from slurm_plugin.slurm_resources import DynamicNode
 
 
 @pytest.mark.parametrize(
@@ -72,19 +73,19 @@ def test_computemgtd_config(config_file, expected_attributes, test_datadir, mock
     "mock_node_info, expected_result",
     [
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1")],
             True,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+DRAIN", "queue1")],
             False,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+DRAIN", "queue1")],
             True,
         ),
         (
-            [SlurmNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWER", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWER", "queue1")],
             True,
         ),
         (
@@ -101,3 +102,18 @@ def test_is_self_node_down(mock_node_info, expected_result, mocker):
         mocker.patch("slurm_plugin.computemgtd._get_nodes_info_with_retry", return_value=mock_node_info)
 
     assert_that(_is_self_node_down("queue1-st-c5xlarge-1")).is_equal_to(expected_result)
+
+
+def test_self_terminate(mocker, caplog):
+    """Verify self-termination is implemented via a shutdown command rather than calling TerminateInstances."""
+    fake_instance_id = "i-1"
+    run_command_patch = mocker.patch("slurm_plugin.computemgtd.run_command")
+    get_metadata_patch = mocker.patch("slurm_plugin.computemgtd.get_metadata", return_value=fake_instance_id)
+    sleep_patch = mocker.patch("slurm_plugin.computemgtd.time.sleep")
+    with caplog.at_level(logging.INFO):
+        _self_terminate()
+    assert_that(caplog.text).contains(f"Preparing to self terminate the instance {fake_instance_id} in 10 seconds!")
+    assert_that(caplog.text).contains(f"Self terminating instance {fake_instance_id} now!")
+    run_command_patch.assert_called_with("sudo shutdown")
+    get_metadata_patch.assert_called_with("instance-id")
+    sleep_patch.assert_called_with(10)

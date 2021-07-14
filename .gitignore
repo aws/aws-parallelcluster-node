@@ -7,7 +7,12 @@ dist/
 build/
 *.egg-info/
 .idea/
+*.iml
 .DS_Store
 .tox/
 .coverage
 coverage.xml
+
+aws-parallelcluster-node-*.tgz
+aws-parallelcluster-node-*.md5
+aws-parallelcluster-node-*.date

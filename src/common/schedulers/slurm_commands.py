@@ -9,14 +9,21 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import collections
 import logging
 import re
-from enum import Enum
 
 from common.utils import check_command_output, grouper, run_command
 from retrying import retry
+from slurm_plugin.slurm_resources import (
+    DynamicNode,
+    InvalidNodenameError,
+    PartitionStatus,
+    SlurmPartition,
+    StaticNode,
+    parse_nodename,
+)
+
+log = logging.getLogger(__name__)
 
 PENDING_RESOURCES_REASONS = [
     "Resources",
@@ -43,116 +50,13 @@ _SQUEUE_FIELDS = [
     "cpus-per-tres",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
-SCONTROL = "/opt/slurm/bin/scontrol"
+SCONTROL = "sudo /opt/slurm/bin/scontrol"
 SINFO = "/opt/slurm/bin/sinfo"
-
-SlurmPartition = collections.namedtuple("SlurmPartition", ["name", "nodes", "state"])
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
 DEFAULT_GET_INFO_COMMAND_TIMEOUT = 30
 DEFAULT_UPDATE_COMMAND_TIMEOUT = 60
-
-
-class PartitionStatus(Enum):
-    UP = "UP"
-    DOWN = "DOWN"
-    INACTIVE = "INACTIVE"
-    DRAIN = "DRAIN"
-
-    def __str__(self):
-        return str(self.value)
-
-
-class SlurmNode:
-    SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", "COMPLETING"}
-    SLURM_SCONTROL_IDLE_STATE = "IDLE"
-    SLURM_SCONTROL_DOWN_STATE = "DOWN"
-    SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
-    SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
-    SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWER"
-
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
-        """Initialize slurm node with attributes."""
-        self.name = name
-        self.is_static = is_static_node(name)
-        self.nodeaddr = nodeaddr
-        self.nodehostname = nodehostname
-        self.state = state
-        self.partitions = partitions.strip().split(",") if partitions else None
-
-    def is_nodeaddr_set(self):
-        """Check if nodeaddr(private ip) for the node is set."""
-        return self.nodeaddr != self.name
-
-    def has_job(self):
-        """Check if slurm node is in a working state."""
-        return any(working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
-
-    def _is_drain(self):
-        """Check if slurm node is in any drain(draining, drained) states."""
-        return self.SLURM_SCONTROL_DRAIN_STATE in self.state
-
-    def is_drained(self):
-        """
-        Check if slurm node is in drained state.
-
-        drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
-        """
-        return self._is_drain() and (
-            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.SLURM_SCONTROL_DOWN_STATE in self.state
-        )
-
-    def is_powering_down(self):
-        """Check if slurm node is in powering down state."""
-        return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.state
-
-    def is_power(self):
-        """Check if slurm node is in power state."""
-        return self.SLURM_SCONTROL_POWER_STATE == self.state
-
-    def is_down(self):
-        """Check if slurm node is in a down state."""
-        return self.SLURM_SCONTROL_DOWN_STATE in self.state and not self.is_powering_down()
-
-    def is_up(self):
-        """Check if slurm node is in a healthy state."""
-        return not self._is_drain() and not self.is_down() and not self.is_powering_down()
-
-    def __eq__(self, other):
-        """Compare 2 SlurmNode objects."""
-        if isinstance(other, SlurmNode):
-            return self.__dict__ == other.__dict__
-        return False
-
-    def __repr__(self):
-        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
-        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
-
-    def __str__(self):
-        return f"{self.name}({self.nodeaddr})"
-
-
-class InvalidNodenameError(ValueError):
-    r"""
-    Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
-
-    Valid NodeName format: {queue-name}-{st/dy}-{instancetype}-{number}
-    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+)-\d+$
-    Sample NodeName: queue-1-st-c5xlarge-2
-    """
-
-    pass
-
-
-def parse_nodename(nodename):
-    """Parse queue_name, node_type (st vs dy) and instance_type from nodename."""
-    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9]+)-\d+$", nodename)
-    if not nodename_capture:
-        raise InvalidNodenameError
-
-    queue_name, node_type, instance_name = nodename_capture.groups()
-    return queue_name, node_type, instance_name
 
 
 def is_static_node(nodename):
@@ -198,7 +102,6 @@ def update_nodes(
         update_cmd += f" state={state}"
     if reason:
         update_cmd += f' reason="{reason}"'
-
     for nodenames, addrs, hostnames in batched_node_info:
         node_info = f"nodename={nodenames}"
         if addrs:
@@ -219,7 +122,7 @@ def update_partitions(partitions, state):
             )
             succeeded_partitions.append(partition)
         except Exception as e:
-            logging.error("Failed when setting partition %s to %s with error %s", partition, state, e)
+            log.error("Failed when setting partition %s to %s with error %s", partition, state, e)
 
     return succeeded_partitions
 
@@ -232,15 +135,15 @@ def update_all_partitions(state, reset_node_addrs_hostname):
         partition_to_update = []
         for part in partitions:
             if PartitionStatus(part.state) != PartitionStatus(state):
-                logging.info(f"Setting partition {part.name} state from {part.state} to {state}")
+                log.info(f"Setting partition {part.name} state from {part.state} to {state}")
                 if reset_node_addrs_hostname:
-                    logging.info(f"Resetting partition nodes {part.nodes}")
-                    reset_nodes(part.nodes, state="power_down", reason="stopping cluster")
+                    log.info(f"Resetting partition nodes {part.nodenames}")
+                    reset_nodes(part.nodenames, state="power_down", reason="stopping cluster")
                 partition_to_update.append(part.name)
         succeeded_partitions = update_partitions(partition_to_update, state)
         return succeeded_partitions == partition_to_update
     except Exception as e:
-        logging.error("Failed when updating partitions with error %s", e)
+        log.error("Failed when updating partitions with error %s", e)
         return False
 
 
@@ -267,15 +170,13 @@ def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):
         try:
             nodeaddrs_batch = _batch_attribute(nodeaddrs, batch_size, expected_length=len(nodenames))
         except ValueError:
-            logging.error("Nodename %s and NodeAddr %s contain different number of entries", nodenames, nodeaddrs)
+            log.error("Nodename %s and NodeAddr %s contain different number of entries", nodenames, nodeaddrs)
             raise
     if nodehostnames:
         try:
             nodehostnames_batch = _batch_attribute(nodehostnames, batch_size, expected_length=len(nodenames))
         except ValueError:
-            logging.error(
-                "Nodename %s and NodeHostname %s contain different number of entries", nodenames, nodehostnames
-            )
+            log.error("Nodename %s and NodeHostname %s contain different number of entries", nodenames, nodehostnames)
             raise
 
     return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch)
@@ -433,5 +334,14 @@ def _parse_nodes_info(slurm_node_info):
     for node in node_info:
         lines = node.strip().splitlines()
         if lines:
-            slurm_nodes.append(SlurmNode(*lines))
+            try:
+                if is_static_node(lines[0]):
+                    node = StaticNode(*lines)
+                    slurm_nodes.append(node)
+                else:
+                    node = DynamicNode(*lines)
+                    slurm_nodes.append(node)
+            except InvalidNodenameError:
+                log.warning("Ignoring node %s because it has an invalid name", lines[0])
+
     return slurm_nodes

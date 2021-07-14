@@ -8,18 +8,12 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
 import os
-from configparser import ConfigParser
 from datetime import datetime, timedelta, timezone
 
 import common.utils as utils
 import pytest
 from assertpy import assert_that
-from botocore.exceptions import ClientError
-from common.utils import load_additional_instance_types_data
-
-from tests.common import MockedBoto3Request
 
 
 @pytest.fixture()
@@ -41,153 +35,6 @@ def boto3_stubber_path():
 )
 def test_grouper(source_object, chunk_size, expected_grouped_output):
     assert_that(list(utils.grouper(source_object, chunk_size))).is_equal_to(expected_grouped_output)
-
-
-@pytest.mark.parametrize(
-    "additional_instance_types_data", [None, {"dummy-instance-type": {"InstanceType": "dummy-instance-type"}}]
-)
-def test_get_instance_info(caplog, mocker, additional_instance_types_data):
-    """Verify function that returns instance vCPU and GPU info is calling the expected functions."""
-    caplog.set_level(logging.DEBUG)
-    dummy_instance_type = "dummy-instance-type"
-    dummy_args = ("dummy-region", "dummy-proxy-config", dummy_instance_type)
-    dummy_instance_info = {"InstanceType": dummy_instance_type}
-    dummy_vcpus, dummy_gpus = 3, 1
-    fetch_instance_info_patch = mocker.patch("common.utils._fetch_instance_info", return_value=dummy_instance_info)
-    get_vcpus_patch = mocker.patch("common.utils._get_vcpus_from_instance_info", return_value=dummy_vcpus)
-    get_gpus_patch = mocker.patch("common.utils._get_gpus_from_instance_info", return_value=dummy_gpus)
-
-    returned_vcpus, returned_gpus = utils._get_instance_info(
-        *dummy_args, additional_instance_types_data=additional_instance_types_data
-    )
-
-    if not additional_instance_types_data:
-        # If no instance types data has been provided, fetch_instance_info must have been called
-        fetch_instance_info_patch.assert_called_with(*dummy_args)
-        for log_message in [
-            "Fetching info for instance_type {0}".format(dummy_instance_type),
-            "Received the following information for instance type {0}: {1}".format(
-                dummy_instance_type, dummy_instance_info
-            ),
-        ]:
-            assert_that(caplog.text).contains(log_message)
-    else:
-        # If instance types data has been provided, fetch_instance_info must not have been called
-        fetch_instance_info_patch.assert_not_called()
-
-    for instance_info_func_patch in (get_vcpus_patch, get_gpus_patch):
-        instance_info_func_patch.assert_called_with(dummy_instance_info)
-    assert_that(returned_vcpus).is_equal_to(dummy_vcpus)
-    assert_that(returned_gpus).is_equal_to(dummy_gpus)
-
-
-@pytest.mark.parametrize(
-    "instance_info, expected_value, error_expected",
-    [
-        ({}, 0, False),
-        ({"GpuInfo": {}}, 0, False),
-        ({"GpuInfo": {"Gpus": []}}, 0, False),
-        ({"GpuInfo": {"Gpus": [{}]}}, 0, False),
-        ({"GpuInfo": {"Gpus": [{"Count": 1}]}}, 1, False),
-        ({"GpuInfo": {"Gpus": [{"Count": 1}, {"Count": 5}]}}, 6, False),
-        (None, None, True),
-        ({"GpuInfo": [{"Count": 1}, {"Count": 5}]}, None, True),
-        ({"GpuInfo": {"Gpus": {"Count": 1}}}, None, True),
-    ],
-)
-def test_get_gpus_from_instance_info(caplog, instance_info, expected_value, error_expected):
-    """Verify function used to extract number of GPUs from dict returned by DescribeInstanceTypes works as expected."""
-    if error_expected:
-        error_message = "Unable to get gpus for the instance type"
-        with pytest.raises(utils.CriticalError, match=error_message):
-            utils._get_gpus_from_instance_info(instance_info)
-        assert_that(caplog.text).contains(error_message)
-    else:
-        assert_that(utils._get_gpus_from_instance_info(instance_info)).is_equal_to(expected_value)
-
-
-@pytest.mark.parametrize(
-    "instance_info, expected_value, error_expected",
-    [
-        ({"VCpuInfo": {"DefaultVCpus": 10}}, 10, False),
-        ({"VCpuInfo": {"DefaultVCpus": []}}, None, True),
-        ({}, None, True),
-        (None, None, True),
-    ],
-)
-def test_get_vcpus_from_instance_info(caplog, instance_info, expected_value, error_expected):
-    """Verify function used to extract number of vCPUs from dict returned by DescribeInstanceTypes works as expected."""
-    if error_expected:
-        error_message = "Unable to get vcpus for the instance type"
-        with pytest.raises(utils.CriticalError, match=error_message):
-            utils._get_vcpus_from_instance_info(instance_info)
-        assert_that(caplog.text).contains(error_message)
-    else:
-        assert_that(utils._get_vcpus_from_instance_info(instance_info)).is_equal_to(expected_value)
-
-
-@pytest.mark.parametrize(
-    "generate_boto3_error, response, error_expected",
-    [
-        (True, None, True),
-        (False, {"InstanceTypes": [{"InstanceType": "dummy-instance-type"}]}, False),
-        (False, {"InstanceTypes": []}, True),
-    ],
-)
-def test_fetch_instance_info(mocker, boto3_stubber, generate_boto3_error, response, error_expected):
-    """Verify function that calls DescribeInstanceTypes behaves as expected."""
-    dummy_region = "us-east-2"
-    dummy_proxy_config = None
-    dummy_instance_type = "dummy-instance-type"
-    log_patch = mocker.patch.object(utils.log, "critical")
-    mocked_requests = [
-        MockedBoto3Request(
-            method="describe_instance_types",
-            response=response,
-            expected_params={
-                "InstanceTypes": [dummy_instance_type],
-            },
-            generate_error=generate_boto3_error,
-        ),
-    ]
-    boto3_stubber("ec2", mocked_requests)
-    if error_expected:
-        expected_log_msg = "Error when calling DescribeInstanceTypes for instance type {0}".format(dummy_instance_type)
-        if generate_boto3_error:
-            expected_exception_type = ClientError
-            expected_exception_msg = r"An error occurred \(.*\) when calling the DescribeInstanceTypes operation"
-        else:
-            expected_exception_type = utils.CriticalError
-            expected_exception_msg = expected_log_msg
-        with pytest.raises(expected_exception_type, match=expected_exception_msg):
-            utils._fetch_instance_info(dummy_region, dummy_proxy_config, dummy_instance_type)
-        assert_that(log_patch.call_count).is_equal_to(1)
-        assert_that(log_patch.call_args[0][0]).matches(expected_log_msg)
-    else:
-        assert_that(utils._fetch_instance_info(dummy_region, dummy_proxy_config, dummy_instance_type)).is_equal_to(
-            response.get("InstanceTypes")[0]
-        )
-
-
-@pytest.mark.parametrize(
-    "region, instance_type, cfn_param, expected_slots",
-    [
-        ("us-east-1", "c5.2xlarge", {"cfn_scheduler_slots": "vcpus"}, 8),
-        ("us-west-1", "c5.2xlarge", {"cfn_scheduler_slots": "cores"}, 4),
-        # cfn_scheduler_slots is passed by extra json as integer
-        ("us-east-2", "c5.2xlarge", {"cfn_scheduler_slots": "1"}, 1),
-        ("us-west-1", "c5.2xlarge", {"cfn_scheduler_slots": "-1"}, 8),
-        # cfn_scheduler_slots is not in cfnconfig
-        ("us-west-1", "c5.2xlarge", {}, 8),
-    ],
-)
-def test_get_instance_properties(mocker, region, instance_type, cfn_param, expected_slots):
-    mocker.patch("common.utils.hasattr").return_value = False
-    mocker.patch("common.utils._get_instance_info").return_value = 8, 0
-    mocker.patch("common.utils._read_cfnconfig").return_value = cfn_param
-    assert_that(utils.get_instance_properties(region, "dummy_proxy", instance_type, None).get("slots")).is_equal_to(
-        expected_slots
-    )
 
 
 @pytest.mark.parametrize(
@@ -244,37 +91,3 @@ def test_sleep_remaining_loop_time(mocker, loop_start_time, loop_end_time, loop_
     elif expected_sleep_time == 0:
         sleep_mock.assert_not_called()
     datetime_now_mock.now.assert_called_with(tz=timezone.utc)
-
-
-@pytest.mark.parametrize(
-    "instance_types_data, expected_output, expected_error_msg",
-    [
-        # No instance types data in config file
-        (None, {}, None),
-        # Valid instance types data
-        ('{"key": "value"}', {"key": "value"}, None),
-        # Empty instance types data, must fallback to {}
-        ("null", {}, None),
-        ("", {}, None),
-        ("   ", {}, None),
-        # Invalid instance types data
-        ("abc", None, "Error loading instance types data from configuration"),
-        ("{a:", None, "Error loading instance types data from configuration"),
-    ],
-)
-def test_load_additional_instance_types_data(caplog, instance_types_data, expected_output, expected_error_msg):
-    caplog.set_level(logging.DEBUG)
-    config_dict = {"section": {}}
-    if instance_types_data:
-        config_dict["section"]["instance_types_data"] = instance_types_data
-
-    config = ConfigParser()
-    config.read_dict(config_dict)
-
-    if expected_error_msg:
-        with pytest.raises(Exception, match=expected_error_msg):
-            load_additional_instance_types_data(config, "section")
-    else:
-        assert_that(load_additional_instance_types_data(config, "section")).is_equal_to(expected_output)
-        if expected_output != {}:
-            assert_that(caplog.text).contains("Additional instance types data loaded for instance types")

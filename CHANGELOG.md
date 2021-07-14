@@ -3,6 +3,18 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.0.0
+------
+
+**CHANGES**
+
+- Drop support for SGE and Torque schedulers.
+- Use tags prefix `parallelcluster:`.
+- Run Slurm command `scontrol` with sudo because clustermgtd is run as cluster admin user (not root).
+- Implement `computemgtd` self-termination via `shutdown` command instead of calling TerminateInstances.
+- Implement scaling protection mechanism with Slurm scheduler: compute fleet is automatically set to 'PROTECTED' state
+  in case recurrent failures are encountered when provisioning nodes.
+
 2.11.0
 -----
 
@@ -40,7 +52,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Improve error handling in slurm plugin processes when clustermgtd is down.
 
 **CHANGES**
-- Increase max attempts when retrying on Route53 API call failures. 
+- Increase max attempts when retrying on Route53 API call failures.
 
 2.10.0
 -----

@@ -22,11 +22,7 @@ import time
 from datetime import datetime, timezone
 from enum import Enum
 
-import boto3
 import requests
-from botocore.exceptions import ClientError
-from common.time_utils import seconds
-from retrying import retry
 
 log = logging.getLogger(__name__)
 
@@ -58,51 +54,6 @@ def load_module(module):
     # get module from the loaded maps
     scheduler_module = sys.modules[module]
     return scheduler_module
-
-
-@retry(
-    stop_max_attempt_number=5,
-    wait_exponential_multiplier=10000,
-    wait_exponential_max=80000,
-    retry_on_exception=lambda exception: isinstance(exception, IndexError),
-)
-def get_asg_name(stack_name, region, proxy_config):
-    """
-    Get autoscaling group name associated to the given stack.
-
-    :param stack_name: stack name to search for
-    :param region: AWS region
-    :param proxy_config: Proxy configuration
-    :raise ASGNotFoundError if the ASG is not found (after the timeout) or if an unexpected error occurs
-    :return: the ASG name
-    """
-    asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
-    try:
-        response = asg_client.describe_tags(Filters=[{"Name": "Value", "Values": [stack_name]}])
-        asg_name = response.get("Tags")[0].get("ResourceId")
-        log.info("ASG %s found for the stack %s", asg_name, stack_name)
-        return asg_name
-    except IndexError:
-        log.warning("Unable to get ASG for stack %s", stack_name)
-        raise
-    except Exception as e:
-        raise CriticalError("Unable to get ASG for stack {0}. Failed with exception: {1}".format(stack_name, e))
-
-
-@retry(stop_max_attempt_number=5, wait_exponential_multiplier=seconds(0.5), wait_exponential_max=seconds(10))
-def get_asg_settings(region, proxy_config, asg_name):
-    try:
-        asg_client = boto3.client("autoscaling", region_name=region, config=proxy_config)
-        asg = asg_client.describe_auto_scaling_groups(AutoScalingGroupNames=[asg_name]).get("AutoScalingGroups")[0]
-        min_size = asg.get("MinSize")
-        desired_capacity = asg.get("DesiredCapacity")
-        max_size = asg.get("MaxSize")
-
-        log.info("ASG min/desired/max: %d/%d/%d" % (min_size, desired_capacity, max_size))
-        return min_size, desired_capacity, max_size
-    except Exception as e:
-        log.error("Failed when retrieving data for ASG %s with exception %s", asg_name, e)
-        raise
 
 
 def check_command_output(
@@ -220,190 +171,6 @@ def _run_command(command_function, command, env=None, raise_on_error=True, execu
         raise
 
 
-def get_cloudformation_stack_parameters(region, proxy_config, stack_name):
-    try:
-        cfn_client = boto3.client("cloudformation", region_name=region, config=proxy_config)
-        response = cfn_client.describe_stacks(StackName=stack_name)
-        parameters = {}
-        for parameter in response["Stacks"][0]["Parameters"]:
-            parameters[parameter["ParameterKey"]] = parameter["ParameterValue"]
-
-        return parameters
-    except Exception as e:
-        log.error("Failed when retrieving stack parameters for stack %s with exception %s", stack_name, e)
-        raise
-
-
-def _read_cfnconfig():
-    """
-    Read configuration file.
-
-    :return: a dictionary containing the configuration parameters
-    """
-    cfnconfig_params = {}
-    cfnconfig_file = "/opt/parallelcluster/cfnconfig"
-    log.info("Reading %s", cfnconfig_file)
-    with open(cfnconfig_file) as f:
-        for kvp in f:
-            key, value = kvp.partition("=")[::2]
-            cfnconfig_params[key.strip()] = value.strip()
-    return cfnconfig_params
-
-
-@retry(
-    stop_max_attempt_number=5,
-    wait_exponential_multiplier=5000,
-    retry_on_exception=lambda exception: isinstance(exception, ClientError)
-    and exception.response.get("Error").get("Code") == "RequestLimitExceeded",
-)
-def _fetch_instance_info(region, proxy_config, instance_type):
-    """
-    Fetch instance type information from EC2's DescribeInstanceTypes API.
-
-    :param region: AWS region
-    :param proxy_config: proxy configuration
-    :param instance_type: instance type to get info for
-    :return: dict with the same format as those returned in the "InstanceTypes" array of the
-             object returned by DescribeInstanceTypes
-    """
-    emsg_format = "Error when calling DescribeInstanceTypes for instance type {instance_type}: {exception_message}"
-    ec2_client = boto3.client("ec2", region_name=region, config=proxy_config)
-    try:
-        return ec2_client.describe_instance_types(InstanceTypes=[instance_type]).get("InstanceTypes")[0]
-    except ClientError as client_error:
-        log.critical(
-            emsg_format.format(
-                instance_type=instance_type, exception_message=client_error.response.get("Error").get("Message")
-            )
-        )
-        raise  # NOTE: raising ClientError is necessary to trigger retries
-    except Exception as exception:
-        emsg = emsg_format.format(instance_type=instance_type, exception_message=exception)
-        log.critical(emsg)
-        raise CriticalError(emsg)
-
-
-def _get_instance_info(region, proxy_config, instance_type, additional_instance_types_data=None):
-    """
-    Call the DescribeInstanceTypes to get number of vcpus and gpus for the given instance type.
-
-    :return: (the number of vcpus or -1 if the instance type cannot be found,
-                number of gpus or None if the instance does not have gpu)
-    """
-    instance_info = None
-
-    # First attempt to describe the instance is from configuration data, if present
-    if additional_instance_types_data:
-        instance_info = additional_instance_types_data.get(instance_type, None)
-
-    # If no data is provided from configuration we retrieve it from ec2
-    if not instance_info:
-        log.debug("Fetching info for instance_type {0}".format(instance_type))
-        instance_info = _fetch_instance_info(region, proxy_config, instance_type)
-        log.debug("Received the following information for instance type {0}: {1}".format(instance_type, instance_info))
-
-    return _get_vcpus_from_instance_info(instance_info), _get_gpus_from_instance_info(instance_info)
-
-
-def get_instance_properties(region, proxy_config, instance_type, additional_instance_types_data=None):
-    """
-    Get instance properties for the given instance type, according to the cfn_scheduler_slots configuration parameter.
-
-    :return: a dictionary containing the instance properties. E.g. {'slots': slots, 'gpus': gpus}
-    """
-    # Caching mechanism to avoid repetitively retrieving info from pricing file
-    if not hasattr(get_instance_properties, "cache"):
-        get_instance_properties.cache = {}
-
-    if instance_type not in get_instance_properties.cache:
-        # get vcpus and gpus from the pricing file, gpus = 0 if instance does not have GPU
-        vcpus, gpus = _get_instance_info(region, proxy_config, instance_type, additional_instance_types_data)
-
-        try:
-            cfnconfig_params = _read_cfnconfig()
-            # cfn_scheduler_slots could be vcpus/cores based on disable_hyperthreading = false/true
-            # cfn_scheduler_slots could be vcpus/cores/integer based on extra json
-            # {'cfn_scheduler_slots' = 'vcpus'/'cores'/integer}
-            cfn_scheduler_slots = cfnconfig_params["cfn_scheduler_slots"]
-        except KeyError:
-            log.error("Required config parameter 'cfn_scheduler_slots' not found in cfnconfig file. Assuming 'vcpus'")
-            cfn_scheduler_slots = "vcpus"
-
-        if cfn_scheduler_slots == "cores":
-            log.info("Instance %s will use number of cores as slots based on configuration." % instance_type)
-            slots = -(-vcpus // 2)
-
-        elif cfn_scheduler_slots == "vcpus":
-            log.info("Instance %s will use number of vcpus as slots based on configuration." % instance_type)
-            slots = vcpus
-
-        elif cfn_scheduler_slots.isdigit():
-            slots = int(cfn_scheduler_slots)
-            log.info("Instance %s will use %s slots based on configuration." % (instance_type, slots))
-
-            if slots <= 0:
-                log.error(
-                    "cfn_scheduler_slots config parameter '{0}' must be greater than 0. Assuming 'vcpus'".format(
-                        cfn_scheduler_slots
-                    )
-                )
-                slots = vcpus
-        else:
-            log.error("cfn_scheduler_slots config parameter '%s' is invalid. Assuming 'vcpus'" % cfn_scheduler_slots)
-            slots = vcpus
-
-        log.info("Added instance type: {0} to get_instance_properties cache".format(instance_type))
-        get_instance_properties.cache[instance_type] = {"slots": slots, "gpus": int(gpus)}
-
-    log.info("Retrieved instance properties: {0}".format(get_instance_properties.cache[instance_type]))
-    return get_instance_properties.cache[instance_type]
-
-
-def _get_vcpus_from_instance_info(instance_info):
-    """
-    Return the number of vCPUs the instance described by instance_info has.
-
-    :param instance_info: dict as returned _fetch_instance_info
-    :return: number of vCPUs for the instance type
-    """
-    try:
-        return int(instance_info.get("VCpuInfo", {}).get("DefaultVCpus"))
-    except Exception as exception:
-        error_msg = "Unable to get vcpus for the instance type {0}. Failed with exception {1}".format(
-            instance_info.get("InstanceType") if hasattr(instance_info, "get") else None, exception
-        )
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-
-
-def _get_gpus_from_instance_info(instance_info):
-    """
-    Return the number of GPUs the instance described by instance_info has.
-
-    :param instance_info: dict as returned _fetch_instance_info
-    :return: number of GPUs for the instance type
-    """
-    try:
-        return sum([gpu_entry.get("Count", 0) for gpu_entry in instance_info.get("GpuInfo", {}).get("Gpus", [])])
-    except Exception as exception:
-        error_msg = "Unable to get gpus for the instance type {0}. Failed with exception {1}".format(
-            instance_info.get("InstanceType") if hasattr(instance_info, "get") else None, exception
-        )
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-
-
-@retry(stop_max_attempt_number=3, wait_fixed=5000)
-def get_compute_instance_type(region, proxy_config, stack_name, fallback):
-    try:
-        parameters = get_cloudformation_stack_parameters(region, proxy_config, stack_name)
-        return parameters["ComputeInstanceType"]
-    except Exception:
-        if fallback:
-            return fallback
-        raise
-
-
 def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     end_time = datetime.now(tz=timezone.utc)
     if not loop_start_time:
@@ -414,21 +181,6 @@ def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
     time_delta = (end_time - loop_start_time).total_seconds()
     if 0 <= time_delta < total_loop_time:
         time.sleep(total_loop_time - time_delta)
-
-
-def retrieve_max_cluster_size(region, proxy_config, asg_name, fallback):
-    try:
-        _, _, max_size = get_asg_settings(region, proxy_config, asg_name)
-        return max_size
-    except Exception as e:
-        if fallback:
-            logging.warning("Failed when retrieving max cluster size with error %s. Returning fallback value", e)
-            return fallback
-        error_msg = "Unable to retrieve max size from ASG. Failed with error {0}. No fallback value available.".format(
-            e
-        )
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
 
 
 def grouper(iterable, n):
@@ -491,3 +243,38 @@ def get_metadata(metadata_path):
 
     log.debug("%s=%s", metadata_path, metadata_value)
     return metadata_value
+
+
+def convert_range_to_list(node_range):
+    """
+    Convert a number range to a list.
+
+    Example input: Input can be like one of the format: "1-3", "1-2,6", "2, 8"
+    Example output: [1, 2, 3]
+    """
+    return sum(
+        (
+            (list(range(*[int(j) + k for k, j in enumerate(i.split("-"))])) if "-" in i else [int(i)])
+            for i in node_range.split(",")
+        ),
+        [],
+    )
+
+
+def time_is_up(initial_time, current_time, grace_time):
+    """Check if timeout is exceeded."""
+    # Localize datetime objects to UTC if not previously localized
+    # All timestamps used in this function should be already localized
+    # Assume timestamp was taken from system local time if there is no localization info
+    if not initial_time.tzinfo:
+        logging.warning(
+            "Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.", initial_time
+        )
+        initial_time = initial_time.astimezone(tz=timezone.utc)
+    if not current_time.tzinfo:
+        logging.warning(
+            "Timestamp %s is not localized. Please double check that this is expected, localizing to UTC", current_time
+        )
+        current_time = current_time.astimezone(tz=timezone.utc)
+    time_diff = (current_time - initial_time).total_seconds()
+    return time_diff >= grace_time

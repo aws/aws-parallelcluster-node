@@ -13,9 +13,6 @@ from unittest.mock import call
 import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import (
-    PartitionStatus,
-    SlurmNode,
-    SlurmPartition,
     _batch_node_info,
     _parse_nodes_info,
     is_static_node,
@@ -28,6 +25,7 @@ from common.schedulers.slurm_commands import (
     update_nodes,
     update_partitions,
 )
+from slurm_plugin.slurm_resources import DynamicNode, PartitionStatus, SlurmPartition, StaticNode
 
 
 @pytest.mark.parametrize(
@@ -82,7 +80,7 @@ def test_is_static_node(nodename, expected_is_static):
     [
         (
             (
-                "multiple-dy-c5xlarge-1\n"
+                "multiple-st-c5xlarge-1\n"
                 "172.31.10.155\n"
                 "172-31-10-155\n"
                 "MIXED+CLOUD\n"
@@ -112,25 +110,31 @@ def test_is_static_node(nodename, expected_is_static):
                 "IDLE+CLOUD+POWER\n"
                 # missing partitions
                 "---"
+                "test-no-partition\n"
+                "test-no-partition\n"
+                "test-no-partition\n"
+                "IDLE+CLOUD+POWER\n"
+                # missing partitions
+                "---"
             ),
             [
-                SlurmNode("multiple-dy-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
-                SlurmNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER", "multiple"),
-                SlurmNode(
+                StaticNode("multiple-st-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
+                DynamicNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER", "multiple"),
+                DynamicNode(
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
                     "multiple",
                 ),
-                SlurmNode(
+                DynamicNode(
                     "multiple-dy-c5xlarge-4",
                     "multiple-dy-c5xlarge-4",
                     "multiple-dy-c5xlarge-4",
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
                 ),
-                SlurmNode(
+                DynamicNode(
                     "multiple-dy-c5xlarge-5",
                     "multiple-dy-c5xlarge-5",
                     "multiple-dy-c5xlarge-5",
@@ -141,8 +145,9 @@ def test_is_static_node(nodename, expected_is_static):
         )
     ],
 )
-def test_parse_nodes_info(node_info, expected_parsed_nodes_output):
+def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
     assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
+    assert_that(caplog.text).contains("Ignoring node test-no-partition because it has an invalid name")
 
 
 @pytest.mark.parametrize(
@@ -379,13 +384,13 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             False,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-1",
+                    "sudo /opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-1",
                     raise_on_error=False,
                     timeout=60,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
+                    "sudo /opt/slurm/bin/scontrol update nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
                     raise_on_error=False,
                     timeout=60,
                     shell=True,
@@ -402,14 +407,14 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             True,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update state=power_down "
+                    "sudo /opt/slurm/bin/scontrol update state=power_down "
                     "nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1",
                     raise_on_error=True,
                     timeout=60,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update state=power_down "
+                    "sudo /opt/slurm/bin/scontrol update state=power_down "
                     "nodename=queue1-st-c5xlarge-2,queue1-st-c5xlarge-3 nodeaddr=addr-2,addr-3",
                     raise_on_error=True,
                     timeout=60,
@@ -428,7 +433,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             [
                 call(
                     (
-                        '/opt/slurm/bin/scontrol update state=down reason="debugging"'
+                        'sudo /opt/slurm/bin/scontrol update state=down reason="debugging"'
                         + " nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1"
                     ),
                     raise_on_error=True,
@@ -437,7 +442,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 ),
                 call(
                     (
-                        '/opt/slurm/bin/scontrol update state=down reason="debugging"'
+                        'sudo /opt/slurm/bin/scontrol update state=down reason="debugging"'
                         + " nodename=queue1-st-c5xlarge-[3-6] nodeaddr=addr-[3-6] nodehostname=hostname-[3-6]"
                     ),
                     raise_on_error=True,
@@ -456,94 +461,6 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
 
 
 @pytest.mark.parametrize(
-    "node, expected_output",
-    [
-        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate", "queue-name"), True),
-        (SlurmNode("queue-name-st-dy-t2micro-1", "nodeip", "nodehostname", "somestate", "queue-name-st"), False),
-        (SlurmNode("queuename-dy-t2micro-1", "nodeip", "nodehostname", "somestate", "queuename"), False),
-        (
-            SlurmNode("queuename-dy-dy-dy-st-t2micro-1", "nodeip", "nodehostname", "somestate", "queuename-dy-dy-dy"),
-            True,
-        ),
-    ],
-)
-def test_slurm_node_is_static(node, expected_output):
-    assert_that(node.is_static).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
-    "node, expected_output",
-    [
-        (SlurmNode("queue-name-st-t2micro-1", "nodeip", "nodehostname", "somestate", "queue-name"), True),
-        (
-            SlurmNode("queuename-dy-t2micro-1", "queuename-dy-t2micro-1", "nodehostname", "somestate", "queuename"),
-            False,
-        ),
-    ],
-)
-def test_slurm_node_is_nodeaddr_set(node, expected_output):
-    assert_that(node.is_nodeaddr_set()).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
-    "node, expected_output",
-    [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN", "queue1"), True),
-    ],
-)
-def test_slurm_node_has_job(node, expected_output):
-    assert_that(node.has_job()).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
-    "node, expected_output",
-    [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
-    ],
-)
-def test_slurm_node_is_drained(node, expected_output):
-    assert_that(node.is_drained()).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
-    "node, expected_output",
-    [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN", "queue1"), False),
-    ],
-)
-def test_slurm_node_is_down(node, expected_output):
-    assert_that(node.is_down()).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
-    "node, expected_output",
-    [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD", "queue1"), True),
-    ],
-)
-def test_slurm_node_is_up(node, expected_output):
-    assert_that(node.is_up()).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
     "partitions, state, run_command_calls, run_command_side_effects, expected_succeeded_partitions",
     [
         (
@@ -551,12 +468,12 @@ def test_slurm_node_is_up(node, expected_output):
             PartitionStatus.INACTIVE,
             [
                 call(
-                    "/opt/slurm/bin/scontrol update partitionname=part-1 state=INACTIVE",
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-1 state=INACTIVE",
                     raise_on_error=True,
                     shell=True,
                 ),
                 call(
-                    "/opt/slurm/bin/scontrol update partitionname=part-2 state=INACTIVE",
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-2 state=INACTIVE",
                     raise_on_error=True,
                     shell=True,
                 ),
@@ -568,8 +485,12 @@ def test_slurm_node_is_up(node, expected_output):
             ["part-1", "part-2"],
             "UP",
             [
-                call("/opt/slurm/bin/scontrol update partitionname=part-1 state=UP", raise_on_error=True, shell=True),
-                call("/opt/slurm/bin/scontrol update partitionname=part-2 state=UP", raise_on_error=True, shell=True),
+                call(
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-1 state=UP", raise_on_error=True, shell=True
+                ),
+                call(
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-2 state=UP", raise_on_error=True, shell=True
+                ),
             ],
             [Exception, None],
             ["part-2"],
