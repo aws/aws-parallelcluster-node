@@ -127,7 +127,7 @@ def _self_terminate():
     log.info("Preparing to self terminate the instance %s in 10 seconds!", self_instance_id)
     time.sleep(10)
     log.info("Self terminating instance %s now!", self_instance_id)
-    run_command("sudo shutdown")
+    run_command("sudo shutdown -h now")
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1500)
