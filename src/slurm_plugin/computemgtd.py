@@ -17,6 +17,7 @@ from configparser import ConfigParser
 from datetime import datetime, timezone
 from logging.config import fileConfig
 from subprocess import CalledProcessError
+from tempfile import mkstemp
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
@@ -34,7 +35,8 @@ from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 LOOP_TIME = 60
 RELOAD_CONFIG_ITERATIONS = 10
 # Computemgtd config is under /opt/slurm/etc/pcluster/.slurm_plugin/; all compute nodes share a config
-COMPUTEMGTD_CONFIG_PATH = "/opt/slurm/etc/pcluster/.slurm_plugin/parallelcluster_computemgtd.conf"
+SLURM_PLUGIN_DIR = "/opt/slurm/etc/pcluster/.slurm_plugin"
+COMPUTEMGTD_CONFIG_PATH = f"{SLURM_PLUGIN_DIR}/parallelcluster_computemgtd.conf"
 log = logging.getLogger(__name__)
 
 
@@ -53,6 +55,7 @@ class ComputemgtdConfig:
     }
 
     def __init__(self, config_file_path):
+        _, self._local_config_file = mkstemp()
         self._get_config(config_file_path)
 
     def __repr__(self):
@@ -67,11 +70,11 @@ class ComputemgtdConfig:
         try:
             # Use subprocess based method to copy shared file to local to prevent hanging when NFS is down
             run_command(
-                f"cat {config_file_path} > {CONFIG_FILE_DIR}/.computemgtd_config.local",
+                f"cat {config_file_path} > {self._local_config_file}",
                 timeout=DEFAULT_COMMAND_TIMEOUT,
                 shell=True,  # nosec
             )
-            config.read_file(open(f"{CONFIG_FILE_DIR}/.computemgtd_config.local", "r"))
+            config.read_file(open(self._local_config_file, "r"))
         except Exception:
             log.error(f"Cannot read computemgtd configuration file: {config_file_path}")
             raise
