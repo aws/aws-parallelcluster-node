@@ -22,7 +22,7 @@ from tempfile import mkstemp
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
-from common.utils import get_metadata, run_command, sleep_remaining_loop_time
+from common.utils import run_command, sleep_remaining_loop_time
 from retrying import retry
 from slurm_plugin.common import (
     DEFAULT_COMMAND_TIMEOUT,
@@ -125,11 +125,10 @@ class ComputemgtdConfig:
 @log_exception(log, "self terminating compute instance", catch_exception=CalledProcessError, raise_on_error=False)
 def _self_terminate():
     """Self terminate the instance."""
-    self_instance_id = get_metadata("instance-id")
     # Sleep for 10 seconds so termination log entries are uploaded to CW logs
-    log.info("Preparing to self terminate the instance %s in 10 seconds!", self_instance_id)
+    log.info("Preparing to self terminate the instance in 10 seconds!")
     time.sleep(10)
-    log.info("Self terminating instance %s now!", self_instance_id)
+    log.info("Self terminating instance now!")
     run_command("sudo shutdown -h now")
 
 

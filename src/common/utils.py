@@ -22,8 +22,6 @@ import time
 from datetime import datetime, timezone
 from enum import Enum
 
-import requests
-
 log = logging.getLogger(__name__)
 
 
@@ -218,31 +216,6 @@ def load_additional_instance_types_data(config, section):
             except Exception as e:
                 raise CriticalError("Error loading instance types data from configuration: {0}".format(e))
     return instance_types_data
-
-
-def get_metadata(metadata_path):
-    """
-    Get EC2 instance metadata.
-
-    :param metadata_path: the metadata relative path
-    :return the metadata value.
-    """
-    try:
-        token = requests.put(
-            "http://169.254.169.254/latest/api/token", headers={"X-aws-ec2-metadata-token-ttl-seconds": "300"}
-        )
-        headers = {}
-        if token.status_code == requests.codes.ok:
-            headers["X-aws-ec2-metadata-token"] = token.content
-        metadata_url = "http://169.254.169.254/latest/meta-data/{0}".format(metadata_path)
-        metadata_value = requests.get(metadata_url, headers=headers).text
-    except Exception as e:
-        error_msg = "Unable to get {0} metadata. Failed with exception: {1}".format(metadata_path, e)
-        log.critical(error_msg)
-        raise CriticalError(error_msg)
-
-    log.debug("%s=%s", metadata_path, metadata_value)
-    return metadata_value
 
 
 def convert_range_to_list(node_range):
