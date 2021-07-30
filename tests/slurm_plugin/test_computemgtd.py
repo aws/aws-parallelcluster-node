@@ -106,14 +106,11 @@ def test_is_self_node_down(mock_node_info, expected_result, mocker):
 
 def test_self_terminate(mocker, caplog):
     """Verify self-termination is implemented via a shutdown command rather than calling TerminateInstances."""
-    fake_instance_id = "i-1"
     run_command_patch = mocker.patch("slurm_plugin.computemgtd.run_command")
-    get_metadata_patch = mocker.patch("slurm_plugin.computemgtd.get_metadata", return_value=fake_instance_id)
     sleep_patch = mocker.patch("slurm_plugin.computemgtd.time.sleep")
     with caplog.at_level(logging.INFO):
         _self_terminate()
-    assert_that(caplog.text).contains(f"Preparing to self terminate the instance {fake_instance_id} in 10 seconds!")
-    assert_that(caplog.text).contains(f"Self terminating instance {fake_instance_id} now!")
+    assert_that(caplog.text).contains("Preparing to self terminate the instance in 10 seconds!")
+    assert_that(caplog.text).contains("Self terminating instance now!")
     run_command_patch.assert_called_with("sudo shutdown -h now")
-    get_metadata_patch.assert_called_with("instance-id")
     sleep_patch.assert_called_with(10)
