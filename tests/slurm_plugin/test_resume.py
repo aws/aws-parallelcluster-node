@@ -256,7 +256,7 @@ def test_resume_launch(
         cluster_name="hit",
         head_node_private_ip="some_ip",
         head_node_hostname="some_hostname",
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge", "c52xlarge": "c5.2xlarge"},
+        instance_name_type_mapping={"queue1": {"c5xlarge": "c5.xlarge"}, "queue2": {"c52xlarge": "c5.2xlarge"}},
         clustermgtd_heartbeat_file_path="some_path",
         clustermgtd_timeout=600,
         boto3_config=botocore.config.Config(),

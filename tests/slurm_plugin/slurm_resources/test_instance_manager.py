@@ -1050,11 +1050,11 @@ class TestInstanceManager:
     ):
         # Mock instance name/type mapping
         instance_name_type_mapping = {
-            "c5xlarge": "c5.xlarge",
-            "g34xlarge": "g3.4xlarge",
-            "g38xlarge": "g3.8xlarge",
-            "u6tb1metal": "u-6tb1.metal",
-            "i3enmetal2tb": "i3en.metal-2tb",
+            "queue1": {"c5xlarge": "c5.xlarge"},
+            "queue2": {"g34xlarge": "g3.4xlarge", "g38xlarge": "g3.8xlarge", "u6tb1metal": "u-6tb1.metal"},
+            "queuename-with-dash-and_underscore": {
+                "i3enmetal2tb": "i3en.metal-2tb",
+            },
         }
         instance_manager._instance_name_type_mapping = instance_name_type_mapping
 
