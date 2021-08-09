@@ -1538,7 +1538,9 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
-    mocker.patch("slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
+    mocker.patch(
+        "slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"queue": {"c5xlarge": "c5.xlarge"}}
+    )
     sync_config = ClustermgtdConfig(test_datadir / config_file)
     cluster_manager = ClusterManager(sync_config)
     dynamodb_table_mock = mocker.patch.object(cluster_manager._compute_fleet_status_manager, "_table")

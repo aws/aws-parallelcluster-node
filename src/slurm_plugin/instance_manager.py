@@ -216,7 +216,7 @@ class InstanceManager:
         for node in node_list:
             try:
                 queue_name, node_type, instance_name = parse_nodename(node)
-                instance_type = self._instance_name_type_mapping[instance_name]
+                instance_type = self._instance_name_type_mapping[queue_name][instance_name]
                 instances_to_launch[queue_name][instance_type].append(node)
             except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
