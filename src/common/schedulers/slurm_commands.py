@@ -138,7 +138,7 @@ def update_all_partitions(state, reset_node_addrs_hostname):
                 log.info(f"Setting partition {part.name} state from {part.state} to {state}")
                 if reset_node_addrs_hostname:
                     log.info(f"Resetting partition nodes {part.nodenames}")
-                    reset_nodes(part.nodenames, state="power_down", reason="stopping cluster")
+                    set_nodes_down_and_power_save(part.nodenames, reason="stopping cluster")
                 partition_to_update.append(part.name)
         succeeded_partitions = update_partitions(partition_to_update, state)
         return succeeded_partitions == partition_to_update
