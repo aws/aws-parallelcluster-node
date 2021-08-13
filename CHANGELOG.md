@@ -7,7 +7,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 -----
 
 **BUG FIXES**
-- Slurm: fix issue that was causing powering up nodes to not be correctly reset after a stop and start of the cluster. 
+- Slurm: fix issue that prevented powering-up nodes to be correctly reset after a stop and start of the cluster.
 
 2.11.1
 -----
