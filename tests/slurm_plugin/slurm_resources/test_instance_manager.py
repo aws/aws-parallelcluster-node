@@ -1024,16 +1024,16 @@ class TestInstanceManager:
                 ],
                 {
                     "queue1": {
-                        "c5.xlarge": [
+                        "c5xlarge": [
                             "queue1-st-c5xlarge-1",
                             "queue1-st-c5xlarge-2",
                             "queue1-dy-c5xlarge-201",
                         ]
                     },
                     "queue2": {
-                        "g3.4xlarge": ["queue2-st-g34xlarge-1"],
-                        "g3.8xlarge": ["queue2-dy-g38xlarge-1"],
-                        "u-6tb1.metal": ["queue2-st-u6tb1metal-1"],
+                        "g34xlarge": ["queue2-st-g34xlarge-1"],
+                        "g38xlarge": ["queue2-dy-g38xlarge-1"],
+                        "u6tb1metal": ["queue2-st-u6tb1metal-1"],
                     },
                 },
                 [

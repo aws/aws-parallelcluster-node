@@ -39,6 +39,7 @@ from slurm_plugin.slurm_resources import DynamicNode, PartitionStatus, SlurmPart
     [
         ("queue1-st-c5xlarge-1", "queue1", "st", "c5xlarge", False),
         ("queue-1-st-c5xlarge-1", "queue-1", "st", "c5xlarge", False),
+        ("queue-1-st-c5-xl-ar-g-e---1", "queue-1", "st", "c5-xl-ar-g-e--", False),
         ("queue1-st-dy-c5xlarge-1", "queue1-st", "dy", "c5xlarge", False),
         ("queue1-dy-st-c5xlarge-1", "queue1-dy", "st", "c5xlarge", False),
         ("queue1-dy-dy-dy-dy-c5xlarge-1", "queue1-dy-dy-dy", "dy", "c5xlarge", False),

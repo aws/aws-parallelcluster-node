@@ -95,7 +95,7 @@ class SlurmPartition:
                     and node.is_online()
                 ):
                     logger.debug("Currently online node: %s, node state: %s", node.name, node.state)
-                    online_compute_resources.add(node.get_instance_name())
+                    online_compute_resources.add(node.get_compute_resource_name())
         return online_compute_resources
 
     def __eq__(self, other):
@@ -236,10 +236,10 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if the node need to be reset if node is inactive."""
         pass
 
-    def get_instance_name(self):
+    def get_compute_resource_name(self):
         """Get instance name of given node."""
-        _, _, instance_name = parse_nodename(self.name)
-        return instance_name
+        _, _, compute_resource_name = parse_nodename(self.name)
+        return compute_resource_name
 
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
@@ -459,9 +459,9 @@ class InvalidNodenameError(ValueError):
     r"""
     Exception raised when encountering a NodeName that is invalid/incorrectly formatted.
 
-    Valid NodeName format: {queue-name}-{st/dy}-{instancetype}-{number}
-    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9-]+)-\d+$
-    Sample NodeName: queue-1-st-c5xlarge-2
+    Valid NodeName format: {queue-name}-{st/dy}-{compute-resource}-{number}
+    And match: ^([a-z0-9\-]+)-(st|dy)-([a-z0-9\-]+)-\d+$
+    Sample NodeName: queue-1-st-computeresource-2
     """
 
     pass
@@ -469,9 +469,9 @@ class InvalidNodenameError(ValueError):
 
 def parse_nodename(nodename):
     """Parse queue_name, node_type (st vs dy) and instance_type from nodename."""
-    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9]+)-\d+$", nodename)
+    nodename_capture = re.match(r"^([a-z0-9\-]+)-(st|dy)-([a-z0-9\-]+)-\d+$", nodename)
     if not nodename_capture:
         raise InvalidNodenameError
 
-    queue_name, node_type, instance_name = nodename_capture.groups()
-    return queue_name, node_type, instance_name
+    queue_name, node_type, compute_resource_name = nodename_capture.groups()
+    return queue_name, node_type, compute_resource_name

@@ -81,13 +81,13 @@ class InstanceManager:
         # Reset failed_nodes
         self._clear_failed_nodes()
         instances_to_launch = self._parse_requested_instances(node_list)
-        for queue, queue_instances in instances_to_launch.items():
-            for instance_type, slurm_node_list in queue_instances.items():
+        for queue, compute_resources in instances_to_launch.items():
+            for compute_resource, slurm_node_list in compute_resources.items():
                 logger.info("Launching instances for slurm nodes %s", print_with_count(slurm_node_list))
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
                         launched_instances = self._launch_ec2_instances(
-                            queue, instance_type, len(batch_nodes), all_or_nothing_batch=all_or_nothing_batch
+                            queue, compute_resource, len(batch_nodes), all_or_nothing_batch=all_or_nothing_batch
                         )
                         if update_node_address:
                             assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
@@ -207,17 +207,18 @@ class InstanceManager:
 
     def _parse_requested_instances(self, node_list):
         """
-        Parse out which launch configurations (queue/instance type) are requested by slurm nodes from NodeName.
+        Parse out which launch configurations (queue/compute resource) are requested by slurm nodes from NodeName.
 
-        Valid NodeName format: {queue_name}-{st/dy}-{instance_type}-{number}
-        Sample NodeName: queue1-st-c5_xlarge-2
+        Valid NodeName format: {queue_name}-{st/dy}-{compute_resource_name}-{number}
+        Sample NodeName: queue1-st-computeres1-2
         """
         instances_to_launch = collections.defaultdict(lambda: collections.defaultdict(list))
         for node in node_list:
             try:
-                queue_name, node_type, instance_name = parse_nodename(node)
-                instance_type = self._instance_name_type_mapping[queue_name][instance_name]
-                instances_to_launch[queue_name][instance_type].append(node)
+                queue_name, node_type, compute_resource_name = parse_nodename(node)
+                # In case we need to map the compute resource to the instance type
+                # instance_type = self._instance_name_type_mapping[queue_name][compute_resource_name]
+                instances_to_launch[queue_name][compute_resource_name].append(node)
             except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
                 self.failed_nodes.append(node)
@@ -225,7 +226,7 @@ class InstanceManager:
 
         return instances_to_launch
 
-    def _launch_ec2_instances(self, queue, instance_type, current_batch_size, all_or_nothing_batch=False):
+    def _launch_ec2_instances(self, queue, compute_resource, current_batch_size, all_or_nothing_batch=False):
         """Launch a batch of ec2 instances."""
         try:
             ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
@@ -241,10 +242,10 @@ class InstanceManager:
                 MinCount=1 if not all_or_nothing_batch else current_batch_size,
                 MaxCount=current_batch_size,
                 # LaunchTemplate is different for every instance type in every queue
-                # LaunchTemplate name format: {cluster_name}-{queue_name}-{instance_type}
-                # Sample LT name: hit-queue1-c5.xlarge
+                # LaunchTemplate name format: {cluster_name}-{queue_name}-{compute_resource_name}
+                # Sample LT name: hit-queue1-computeres1
                 LaunchTemplate={
-                    "LaunchTemplateName": f"{self._cluster_name}-{queue}-{instance_type}",
+                    "LaunchTemplateName": f"{self._cluster_name}-{queue}-{compute_resource}",
                     "Version": "$Latest",
                 },
             )
