@@ -786,7 +786,7 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._instance_manager._parse_requested_instances = mocker.MagicMock(
         return_value={
             "some_queue": {
-                "some_instance_type": ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"]
+                "some_compute_resource_name": ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"]
             }
         }
     )
@@ -1278,7 +1278,7 @@ def test_manage_cluster(
                         "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 1,
                         "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge", "Version": "$Latest"},
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5xlarge", "Version": "$Latest"},
                     },
                     generate_error=False,
                 ),
@@ -1441,7 +1441,7 @@ def test_manage_cluster(
                     response={"some run_instances error"},
                     expected_params={
                         "InstanceInitiatedShutdownBehavior": "terminate",
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5.xlarge", "Version": "$Latest"},
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5xlarge", "Version": "$Latest"},
                         "MaxCount": 1,
                         "MinCount": 1,
                     },
@@ -2018,6 +2018,7 @@ def test_enter_protected_mode(
     caplog.set_level(logging.INFO)
     cluster_manager = ClusterManager(mocker.MagicMock())
     mock_update_compute_fleet_status = mocker.patch.object(cluster_manager, "_update_compute_fleet_status")
+    mocker.patch("common.schedulers.slurm_commands.run_command", auto_spec=True)
     cluster_manager._compute_fleet_status = compute_fleet_status
     cluster_manager._enter_protected_mode(partitions_to_disable)
     if compute_fleet_status != ComputeFleetStatus.PROTECTED:

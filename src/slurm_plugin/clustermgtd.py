@@ -639,15 +639,15 @@ class ClusterManager:
     def _increase_partitions_protected_failure_count(self, bootstrap_failure_nodes):
         """Keep count of boostrap failures."""
         for node in bootstrap_failure_nodes:
-            instance_type = node.get_instance_name()
+            compute_resource = node.get_compute_resource_name()
             for p in node.partitions:
                 if p in self._partitions_protected_failure_count_map:
-                    self._partitions_protected_failure_count_map[p][instance_type] = (
-                        self._partitions_protected_failure_count_map[p].get(instance_type, 0) + 1
+                    self._partitions_protected_failure_count_map[p][compute_resource] = (
+                        self._partitions_protected_failure_count_map[p].get(compute_resource, 0) + 1
                     )
                 else:
                     self._partitions_protected_failure_count_map[p] = {}
-                    self._partitions_protected_failure_count_map[p][instance_type] = 1
+                    self._partitions_protected_failure_count_map[p][compute_resource] = 1
 
     @log_exception(log, "maintaining unhealthy dynamic nodes", raise_on_error=False)
     def _handle_unhealthy_dynamic_nodes(self, unhealthy_dynamic_nodes):
