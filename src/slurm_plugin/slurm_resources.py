@@ -108,14 +108,14 @@ class SlurmPartition:
 class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", "COMPLETING"}
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
-    SLURM_SCONTROL_DOWN_STATE = "DOWN"
+    SLURM_SCONTROL_DOWN_STATES = {"DOWN"}
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
-    SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
-    SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWER"
-    SLURM_SCONTROL_POWER_UP_STATE = "#"
+    SLURM_SCONTROL_POWERING_DOWN_STATES = {"POWERING_DOWN", "POWER_DOWN"}
+    SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWERED_DOWN"
+    SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
-    SLURM_SCONTROL_POWER_WITH_JOB_STATE = "MIXED+CLOUD+POWER"
-    SLURM_SCONTROL_RESUME_FAILED_STATE = "DOWN*+CLOUD+POWER"
+    SLURM_SCONTROL_POWER_WITH_JOB_STATE = "MIXED+CLOUD+POWERED_DOWN"
+    SLURM_SCONTROL_RESUME_FAILED_STATE = "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP"
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, instance=None):
         """Initialize slurm node with attributes."""
@@ -149,20 +149,22 @@ class SlurmNode(metaclass=ABCMeta):
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
         return self._is_drain() and (
-            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.SLURM_SCONTROL_DOWN_STATE in self.state
+            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.is_down()
         )
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
-        return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.state
+        return any(powering_down_state in self.state for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES)
 
     def is_power(self):
         """Check if slurm node is in power state."""
-        return self.SLURM_SCONTROL_POWER_STATE == self.state
+        states = self.state.split("+")
+        return all(power_state in states for power_state in self.SLURM_SCONTROL_POWER_STATE.split("+"))
 
     def is_down(self):
         """Check if slurm node is in a down state."""
-        return self.SLURM_SCONTROL_DOWN_STATE in self.state and not self.is_powering_down()
+        states = self.state.split("+")
+        return any(down_state in states for down_state in self.SLURM_SCONTROL_DOWN_STATES) and not self.is_powering_down()
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""
