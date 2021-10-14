@@ -24,7 +24,7 @@ from slurm_plugin.common import (
     InstanceManager,
     is_clustermgtd_heartbeat_valid,
     print_with_count,
-    retrieve_instance_type_mapping,
+    read_json,
 )
 
 log = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ class SlurmResumeConfig:
         "dns_domain": None,
         "use_private_hostname": False,
         "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
+        "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",  # TODO: in PC3 we might use /etc/parallelcluster/slurm_plugin/run_instances_overrides.json
         "all_or_nothing_batch": False,
     }
 
@@ -85,7 +86,21 @@ class SlurmResumeConfig:
         instance_name_type_mapping_file = config.get(
             "slurm_resume", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
         )
-        self.instance_name_type_mapping = retrieve_instance_type_mapping(instance_name_type_mapping_file)
+        self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
+        # run_instances_overrides_file contains a json with the following format:
+        # {
+        #     "queue_name": {
+        #         "instance_type": {   # TODO: in PC3 this is the compute_resource_name
+        #             "RunInstancesCallParam": "Value"
+        #         },
+        #         ...
+        #     },
+        #     ...
+        # }
+        run_instances_overrides_file = config.get(
+            "slurm_resume", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
+        )
+        self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
         self.clustermgtd_timeout = config.getint(
             "slurm_resume",
             "clustermgtd_timeout",
@@ -156,6 +171,7 @@ def _resume(arg_nodes, resume_config):
         head_node_private_ip=resume_config.head_node_private_ip,
         head_node_hostname=resume_config.head_node_hostname,
         instance_name_type_mapping=resume_config.instance_name_type_mapping,
+        run_instances_overrides=resume_config.run_instances_overrides,
     )
     instance_manager.add_instances_for_nodes(
         node_list=node_list,
