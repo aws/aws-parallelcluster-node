@@ -124,7 +124,7 @@ class ClustermgtdConfig:
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
         "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
-        "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",  # TODO: in PC3 we might use /etc/parallelcluster/slurm_plugin/run_instances_overrides.json
+        "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         # Launch configs
         "launch_max_batch_size": 500,
         "update_node_address": True,
@@ -180,7 +180,7 @@ class ClustermgtdConfig:
         # run_instances_overrides_file contains a json with the following format:
         # {
         #     "queue_name": {
-        #         "instance_type": {   # TODO: in PC3 this is the compute_resource_name
+        #         "instance_type": {
         #             "RunInstancesCallParam": "Value"
         #         },
         #         ...
