@@ -3,6 +3,11 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.x.x
+------
+**ENHANCEMENTS**
+- Add possibility to override EC2 RunInstances parameters for instances launched in a Slurm cluster.
+
 3.0.0
 ------
 

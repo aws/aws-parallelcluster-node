@@ -35,7 +35,7 @@ from common.schedulers.slurm_commands import (
 from common.time_utils import seconds
 from common.utils import sleep_remaining_loop_time, time_is_up
 from retrying import retry
-from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count, retrieve_instance_type_mapping
+from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count, read_json
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR, EC2InstanceHealthState, PartitionStatus, StaticNode
 
@@ -128,6 +128,7 @@ class ClustermgtdConfig:
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
         "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
+        "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         # Launch configs
         "launch_max_batch_size": 500,
         "update_node_address": True,
@@ -159,7 +160,11 @@ class ClustermgtdConfig:
 
     def __eq__(self, other):
         if type(other) is type(self):
-            return self._config == other._config and self.instance_name_type_mapping == other.instance_name_type_mapping
+            return (
+                self._config == other._config
+                and self.instance_name_type_mapping == other.instance_name_type_mapping
+                and self.run_instances_overrides == other.run_instances_overrides
+            )
         return False
 
     def __ne__(self, other):
@@ -175,7 +180,22 @@ class ClustermgtdConfig:
         instance_name_type_mapping_file = config.get(
             "clustermgtd", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
         )
-        self.instance_name_type_mapping = retrieve_instance_type_mapping(instance_name_type_mapping_file)
+        self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
+
+        # run_instances_overrides_file contains a json with the following format:
+        # {
+        #     "queue_name": {
+        #         "compute_resource_name": {
+        #             "RunInstancesCallParam": "Value"
+        #         },
+        #         ...
+        #     },
+        #     ...
+        # }
+        run_instances_overrides_file = config.get(
+            "clustermgtd", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
+        )
+        self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -319,6 +339,7 @@ class ClusterManager:
             head_node_private_ip=config.head_node_private_ip,
             head_node_hostname=config.head_node_hostname,
             instance_name_type_mapping=config.instance_name_type_mapping,
+            run_instances_overrides=config.run_instances_overrides,
         )
 
     @staticmethod
