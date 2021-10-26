@@ -58,6 +58,20 @@ class TestInstanceManager:
             dns_domain="dns.domain",
             use_private_hostname=False,
             instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+            run_instances_overrides={
+                "queue3": {
+                    "p4d.24xlarge": {
+                        "CapacityReservationSpecification": {
+                            "CapacityReservationTarget": {"CapacityReservationId": "cr-123"}
+                        }
+                    },
+                    "c5.xlarge": {
+                        "CapacityReservationSpecification": {
+                            "CapacityReservationTarget": {"CapacityReservationId": "cr-456"}
+                        }
+                    },
+                },
+            },
         )
         mocker.patch.object(instance_manager, "_table")
         return instance_manager
@@ -616,8 +630,152 @@ class TestInstanceManager:
                     )
                 ],
             ),
+            # override_runinstances
+            (
+                {
+                    "queue3": {
+                        "c5.xlarge": ["queue3-st-c5xlarge-2"],
+                        "c5.2xlarge": ["queue3-st-c52xlarge-1"],
+                        "p4d.24xlarge": ["queue3-st-p4d24xlarge-1"],
+                    },
+                    "queue2": {"c5.xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                },
+                10,
+                True,
+                False,
+                [
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-12345",
+                                    "InstanceType": "c5.xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                    "PrivateDnsName": "ip-1-0-0-1",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                }
+                            ]
+                        },
+                        expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "MinCount": 1,
+                            "MaxCount": 1,
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue3-c5.xlarge", "Version": "$Latest"},
+                            "CapacityReservationSpecification": {
+                                "CapacityReservationTarget": {"CapacityReservationId": "cr-456"}
+                            },
+                        },
+                    ),
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-23456",
+                                    "InstanceType": "c5.2xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.2",
+                                    "PrivateDnsName": "ip-1-0-0-2",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                }
+                            ]
+                        },
+                        expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "MinCount": 1,
+                            "MaxCount": 1,
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue3-c5.2xlarge", "Version": "$Latest"},
+                        },
+                    ),
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-12346",
+                                    "InstanceType": "p4d.24xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.5",
+                                    "PrivateDnsName": "ip-1-0-0-5",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                }
+                            ]
+                        },
+                        expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "MinCount": 1,
+                            "MaxCount": 1,
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue3-p4d.24xlarge", "Version": "$Latest"},
+                            "CapacityReservationSpecification": {
+                                "CapacityReservationTarget": {"CapacityReservationId": "cr-123"}
+                            },
+                        },
+                    ),
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-34567",
+                                    "InstanceType": "c5.xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.3",
+                                    "PrivateDnsName": "ip-1-0-0-3",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                },
+                                {
+                                    "InstanceId": "i-45678",
+                                    "InstanceType": "c5.xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.4",
+                                    "PrivateDnsName": "ip-1-0-0-4",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                },
+                            ]
+                        },
+                        expected_params={
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "MinCount": 1,
+                            "MaxCount": 2,
+                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
+                        },
+                    ),
+                ],
+                None,
+                [
+                    call(
+                        ["queue3-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue3-st-c52xlarge-1"],
+                        [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue3-st-p4d24xlarge-1"],
+                        [EC2Instance("i-12346", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
+                        [
+                            EC2Instance(
+                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    ),
+                ],
+            ),
         ],
-        ids=["normal", "client_error", "no_update", "batch_size1", "batch_size2", "partial_launch", "all_or_nothing"],
+        ids=[
+            "normal",
+            "client_error",
+            "no_update",
+            "batch_size1",
+            "batch_size2",
+            "partial_launch",
+            "all_or_nothing",
+            "override_runinstances",
+        ],
     )
     def test_add_instances(
         self,
@@ -660,6 +818,143 @@ class TestInstanceManager:
             assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
         else:
             assert_that(instance_manager.failed_nodes).is_empty()
+
+    @pytest.mark.parametrize(
+        (
+            "current_batch_size",
+            "instance_type",
+            "all_or_nothing_batch",
+            "run_instances_overrides",
+            "mocked_boto3_request",
+        ),
+        [
+            (
+                5,
+                "p4d.24xlarge",
+                False,
+                {},
+                [
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-12345",
+                                    "InstanceType": "p4d.24xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                    "PrivateDnsName": "ip-1-0-0-1",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                }
+                            ]
+                        },
+                        expected_params={
+                            "MinCount": 1,
+                            "MaxCount": 5,
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "LaunchTemplate": {
+                                "LaunchTemplateName": "hit-queue-p4d.24xlarge",
+                                "Version": "$Latest",
+                            },
+                        },
+                    ),
+                ],
+            ),
+            (
+                5,
+                "c5.xlarge",
+                True,
+                {},
+                [
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-12345",
+                                    "InstanceType": "c5.xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                    "PrivateDnsName": "ip-1-0-0-1",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                }
+                            ]
+                        },
+                        expected_params={
+                            "MinCount": 5,
+                            "MaxCount": 5,
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "LaunchTemplate": {
+                                "LaunchTemplateName": "hit-queue-c5.xlarge",
+                                "Version": "$Latest",
+                            },
+                        },
+                    ),
+                ],
+            ),
+            (
+                5,
+                "p4d.24xlarge",
+                False,
+                {
+                    "CapacityReservationSpecification": {
+                        "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
+                    }
+                },
+                [
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-12345",
+                                    "InstanceType": "p4d.24xlarge",
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                    "PrivateDnsName": "ip-1-0-0-1",
+                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                }
+                            ]
+                        },
+                        expected_params={
+                            "MinCount": 1,
+                            "MaxCount": 5,
+                            "InstanceInitiatedShutdownBehavior": "terminate",
+                            "LaunchTemplate": {
+                                "LaunchTemplateName": "hit-queue-p4d.24xlarge",
+                                "Version": "$Latest",
+                            },
+                            "CapacityReservationSpecification": {
+                                "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
+                            },
+                        },
+                    ),
+                ],
+            ),
+        ],
+        ids=["normal", "all_or_nothing_batch", "run_instances_overrides"],
+    )
+    def test_launch_ec2_instances(
+        self,
+        boto3_stubber,
+        current_batch_size,
+        instance_type,
+        all_or_nothing_batch,
+        run_instances_overrides,
+        mocked_boto3_request,
+        instance_manager,
+        caplog,
+    ):
+        caplog.set_level(logging.INFO)
+        # patch boto3 call
+        boto3_stubber("ec2", mocked_boto3_request)
+        # run test
+        instance_manager._launch_ec2_instances(
+            "queue",
+            instance_type,
+            current_batch_size,
+            all_or_nothing_batch=all_or_nothing_batch,
+            run_instances_overrides=run_instances_overrides,
+        )
+        if run_instances_overrides:
+            assert_that(caplog.text).contains("Found RunInstances parameters override")
 
     @pytest.mark.parametrize(
         (

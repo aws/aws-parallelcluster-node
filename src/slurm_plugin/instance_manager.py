@@ -55,6 +55,7 @@ class InstanceManager:
         head_node_private_ip=None,
         head_node_hostname=None,
         instance_name_type_mapping=None,
+        run_instances_overrides=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -69,6 +70,7 @@ class InstanceManager:
         self._head_node_private_ip = head_node_private_ip
         self._head_node_hostname = head_node_hostname
         self._instance_name_type_mapping = instance_name_type_mapping or {}
+        self._run_instances_overrides = run_instances_overrides or {}
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -86,8 +88,13 @@ class InstanceManager:
                 logger.info("Launching instances for slurm nodes %s", print_with_count(slurm_node_list))
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
+                        run_instances_overrides = self._run_instances_overrides.get(queue, {}).get(compute_resource, {})
                         launched_instances = self._launch_ec2_instances(
-                            queue, compute_resource, len(batch_nodes), all_or_nothing_batch=all_or_nothing_batch
+                            queue,
+                            compute_resource,
+                            len(batch_nodes),
+                            all_or_nothing_batch=all_or_nothing_batch,
+                            run_instances_overrides=run_instances_overrides,
                         )
                         if update_node_address:
                             assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
@@ -226,29 +233,37 @@ class InstanceManager:
 
         return instances_to_launch
 
-    def _launch_ec2_instances(self, queue, compute_resource, current_batch_size, all_or_nothing_batch=False):
+    def _launch_ec2_instances(
+        self, queue, compute_resource, current_batch_size, all_or_nothing_batch=False, run_instances_overrides=None
+    ):
         """Launch a batch of ec2 instances."""
         try:
             ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-            result = ec2_client.run_instances(
+            run_instances_params = {
                 # Configure instances to be terminated (as opposed to stopped) when they are
                 # shutdown via a command run on the instance. This enables compute nodes to
                 # self-terminate without requiring the inclusion of TerminateInstances permissions
                 # in their instance profiles.
-                InstanceInitiatedShutdownBehavior="terminate",
+                "InstanceInitiatedShutdownBehavior": "terminate",
                 # If not all_or_nothing_batch scaling, set MinCount=1
                 # so run_instances call will succeed even if entire count cannot be satisfied
                 # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
-                MinCount=1 if not all_or_nothing_batch else current_batch_size,
-                MaxCount=current_batch_size,
+                "MinCount": 1 if not all_or_nothing_batch else current_batch_size,
+                "MaxCount": current_batch_size,
                 # LaunchTemplate is different for every instance type in every queue
                 # LaunchTemplate name format: {cluster_name}-{queue_name}-{compute_resource_name}
                 # Sample LT name: hit-queue1-computeres1
-                LaunchTemplate={
+                "LaunchTemplate": {
                     "LaunchTemplateName": f"{self._cluster_name}-{queue}-{compute_resource}",
                     "Version": "$Latest",
                 },
-            )
+            }
+            run_instances_params.update(run_instances_overrides)
+            if run_instances_overrides:
+                logger.info(
+                    "Found RunInstances parameters override. Launching instances with: %s", run_instances_params
+                )
+            result = ec2_client.run_instances(**run_instances_params)
 
             return [
                 EC2Instance(

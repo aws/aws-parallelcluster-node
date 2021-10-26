@@ -149,13 +149,13 @@ class TestClustermgtdConfig:
         ids=["default", "all_options", "health_check"],
     )
     def test_config_parsing(self, config_file, expected_attributes, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
+        mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"c5xlarge": "c5.xlarge"})
         sync_config = ClustermgtdConfig(test_datadir / config_file)
         for key in expected_attributes:
             assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
 
     def test_config_comparison(self, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"c5xlarge": "c5.xlarge"})
+        mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"c5xlarge": "c5.xlarge"})
         config = test_datadir / "config.conf"
         config_modified = test_datadir / "config_modified.conf"
 
@@ -285,6 +285,7 @@ def test_get_ec2_instances(mocker):
         dns_domain="dns.domain",
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
@@ -472,6 +473,7 @@ def test_perform_health_check_actions(
         dns_domain="dns.domain",
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
     )
     # Mock functions
     cluster_manager = ClusterManager(mock_sync_config)
@@ -775,6 +777,7 @@ def test_handle_unhealthy_static_nodes(
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
+        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
@@ -958,6 +961,7 @@ def test_terminate_orphaned_instances(
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
         node_replacement_timeout=1800,
+        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
     )
     for instance, node in zip(cluster_instances, slurm_nodes):
         instance.slurm_node = node
@@ -1538,10 +1542,9 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
-    mocker.patch(
-        "slurm_plugin.clustermgtd.retrieve_instance_type_mapping", return_value={"queue": {"c5xlarge": "c5.xlarge"}}
-    )
+    mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"queue": {"c5xlarge": "c5.xlarge"}})
     sync_config = ClustermgtdConfig(test_datadir / config_file)
+    sync_config.run_instances_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
     cluster_manager = ClusterManager(sync_config)
     dynamodb_table_mock = mocker.patch.object(cluster_manager._compute_fleet_status_manager, "_table")
     dynamodb_table_mock.get_item.return_value = {"Item": {"Id": "COMPUTE_FLEET", "Status": "RUNNING"}}
@@ -1652,6 +1655,7 @@ def test_manage_compute_fleet_status_transitions(
         dns_domain="dns.domain",
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
     )
     cluster_manager = ClusterManager(config)
     mocker.patch("subprocess.run", side_effect=None if partitions_updated_successfully else Exception)
@@ -1708,6 +1712,7 @@ def test_manage_compute_fleet_status_transitions_concurrency(mocker, caplog):
         use_private_hostname=False,
         instance_name_type_mapping={},
         protected_failure_count=10,
+        run_instances_overrides={},
     )
     cluster_manager = ClusterManager(config)
     mocker.patch("slurm_plugin.clustermgtd.update_all_partitions")
@@ -1829,6 +1834,7 @@ def test_handle_successfully_launched_nodes(
         protected_failure_count=10,
         terminate_drain_nodes=True,
         terminate_down_nodes=True,
+        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
     )
     # Mock associated function
     cluster_manager = ClusterManager(mock_sync_config)
