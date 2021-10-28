@@ -6,9 +6,6 @@ This file is used to list changes made in each version of the aws-parallelcluste
 2.11.3
 -----
 
-**ENHANCEMENTS**
-- Add possibility to override EC2 RunInstances parameters for instances launched in a Slurm cluster.
-
 **CHANGES**
 - There were no notable changes for this version.
 
