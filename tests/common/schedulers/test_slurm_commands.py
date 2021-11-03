@@ -325,13 +325,13 @@ def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
             "nodes-1,nodes[2-6]",
             None,
             False,
-            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": None, "raise_on_error": True},
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down_force", "reason": None, "raise_on_error": True},
         ),
         (
             "nodes-1,nodes[2-6]",
             "debugging",
             True,
-            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": "debugging", "raise_on_error": True},
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down_force", "reason": "debugging", "raise_on_error": True},
         ),
         (
             ["nodes-1", "nodes[2-4]", "nodes-5"],
@@ -339,7 +339,7 @@ def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
             True,
             {
                 "nodes": ["nodes-1", "nodes[2-4]", "nodes-5"],
-                "state": "power_down",
+                "state": "power_down_force",
                 "reason": "debugging",
                 "raise_on_error": True,
             },

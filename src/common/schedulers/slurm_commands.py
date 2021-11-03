@@ -231,8 +231,6 @@ def set_nodes_down_and_power_save(node_list, reason):
 
     This is the standard failure recovery procedure to reset a CLOUD node.
     """
-    # TODO: check if still required especially when partitions are INACTIVE (stop)
-    # set_nodes_down(node_list, reason=reason)
     set_nodes_power_down(node_list, reason=reason)
 
 

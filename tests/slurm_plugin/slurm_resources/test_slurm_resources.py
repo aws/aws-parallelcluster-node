@@ -34,8 +34,13 @@ def test_slurm_node_is_nodeaddr_set(node, expected_output):
     "node, expected_output",
     [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), True),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), True),
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+POWERING_UP", "queue1"), True),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD+DRAIN+NOT_RESPONDING", "queue1"
+            ),
+            True,
+        ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN", "queue1"), True),
@@ -49,9 +54,20 @@ def test_slurm_node_has_job(node, expected_output):
     "node, expected_output",
     [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN", "queue1"), True),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+POWERING_UP", "queue1"),
+            False,
+        ),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD+DRAIN+NOT_RESPONDING", "queue1"
+            ),
+            False,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+NOT_RESPONDING", "queue1"),
+            True,
+        ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
     ],
 )
@@ -63,11 +79,16 @@ def test_slurm_node_is_drained(node, expected_output):
     "node, expected_output",
     [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN", "queue1"), True),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD", "queue1"), True),
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DOWN+POWERING_UP", "queue1"), True),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD+DRAIN+NOT_RESPONDING", "queue1"
+            ),
+            False,
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN", "queue1"), False),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
     ],
 )
 def test_slurm_node_is_down(node, expected_output):
@@ -78,10 +99,23 @@ def test_slurm_node_is_down(node, expected_output):
     "node, expected_output",
     [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN", "queue1"), False),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+POWERING_UP", "queue1"),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD+DOWN+NOT_RESPONDING", "queue1"
+            ),
+            False,
+        ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD", "queue1"), True),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            True,
+        ),
     ],
 )
 def test_slurm_node_is_up(node, expected_output):
@@ -92,7 +126,12 @@ def test_slurm_node_is_up(node, expected_output):
     "node, expected_output",
     [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"), True),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            True,
+        ),
     ],
 )
 def test_slurm_node_is_powering_up(node, expected_output):
@@ -106,8 +145,16 @@ def test_slurm_node_is_powering_up(node, expected_output):
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD", "queue1"), True),
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+CLOUD", "queue1"), True),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN", "queue1"), False),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            False,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+NOT_RESPONDING", "queue1"),
+            False,
+        ),
     ],
 )
 def test_slurm_node_is_online(node, expected_output):
@@ -117,8 +164,13 @@ def test_slurm_node_is_online(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"), True),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD", "queue1"), False),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            True,
+        ),
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_UP", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+CLOUD", "queue1"), False),
@@ -131,14 +183,19 @@ def test_slurm_node_is_configuring_job(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"), False),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN", "queue1"), False),
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDEL#+CLOUD", "queue1"), False),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            False,
+        ),
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DOWN+POWERING_UP", "queue1"), False),
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDEL+CLOUD+POWERING_UP", "queue1"), False),
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+CLOUD", "queue1"), True),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWER", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED*+CLOUD", "queue1"), True),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"), False),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"), True),
     ],
 )
 def test_slurm_node_is_running_job(node, expected_output):
@@ -148,7 +205,7 @@ def test_slurm_node_is_running_job(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWER", "queue1"), True),
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"), True),
         (DynamicNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD", "queue1"), False),
     ],
 )
@@ -161,19 +218,21 @@ def test_slurm_node_is_power_with_job(node, expected_output):
     [
         (
             [
-                StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"),
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),
                 StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD", "queue1"),
             ],
             True,
         ),
         (
             [
-                DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWER", "queue1"),
-                StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DOWN+POWERING_UP", "queue1"),
             ],
             False,
         ),
-        ([DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED*+CLOUD", "queue1")], True),
+        ([DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1")], True),
     ],
 )
 def test_partition_is_inactive(nodes, expected_output):
@@ -257,7 +316,7 @@ def test_slurm_node_is_state_healthy(
     "is_failing_health_check, is_node_bootstrap_failure",
     [
         (
-            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             None,
             True,
             False,
@@ -266,7 +325,7 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             True,
             True,
@@ -275,7 +334,7 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             None,
             False,
             False,
@@ -284,7 +343,7 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD+POWER", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
             False,
             False,
@@ -293,7 +352,7 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN#+CLOUD", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWERING_UP", "queue1"),
             None,
             False,
             False,
@@ -302,7 +361,9 @@ def test_slurm_node_is_state_healthy(
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode(
+                "queue1-st-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
+            ),
             None,
             False,
             False,
@@ -311,7 +372,7 @@ def test_slurm_node_is_state_healthy(
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             False,
             False,
@@ -320,7 +381,9 @@ def test_slurm_node_is_state_healthy(
             False,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWER", "queue1"),
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWERED_DOWN", "queue1"
+            ),
             EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
             False,
             False,
@@ -356,7 +419,7 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
             False,
             False,
@@ -365,7 +428,13 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN*+CLOUD+POWER", "queue1"),
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "hostname",
+                "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
+                "queue1",
+            ),
             EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
             False,
             False,
@@ -492,12 +561,22 @@ def test_slurm_node_is_healthy(node, instance, expected_result):
 @pytest.mark.parametrize(
     "node, expected_result",
     [
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWER", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            False,
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"), False),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "POWERING_DOWN", "queue1"), True),
-        (DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED*+CLOUD", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED*+CLOUD", "queue1"), False),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"
+            ),
+            False,
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"), False),
     ],
 )
 def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
@@ -538,16 +617,28 @@ def test_slurm_node_is_backing_instance_valid(node, instance, expected_result):
 @pytest.mark.parametrize(
     "node, expected_result",
     [
-        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD", "queue1"), True),
         (
-            StaticNode("queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "nodehostname", "MIXED+CLOUD+POWER", "queue1"),
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            True,
+        ),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"
+            ),
             False,
         ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "POWERING_DOWN", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "DOWN+CLOUD", "queue1"), False),
-        (DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED*+CLOUD", "queue1"), True),
-        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED*+CLOUD", "queue1"), True),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"
+            ),
+            True,
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"), True),
     ],
 )
 def test_slurm_node_needs_reset_when_inactive(node, expected_result):
