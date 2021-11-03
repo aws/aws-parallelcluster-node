@@ -210,8 +210,20 @@ def test_set_config(initialize_instance_manager_mock, initialize_compute_fleet_s
                 StaticNode(
                     "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN", "queue1"
                 ),
-                DynamicNode("queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "queue1-dy-c5xlarge-8", "IDLE*", "queue1"),
-                StaticNode("queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "queue1-st-c5xlarge-9", "IDLE*", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-8",
+                    "queue1-dy-c5xlarge-8",
+                    "queue1-dy-c5xlarge-8",
+                    "IDLE+NOT_RESPONDING",
+                    "queue1",
+                ),
+                StaticNode(
+                    "queue1-st-c5xlarge-9",
+                    "queue1-st-c5xlarge-9",
+                    "queue1-st-c5xlarge-9",
+                    "IDLE+NOT_RESPONDING",
+                    "queue1",
+                ),
             ],
             {"queue1-st-c5xlarge-3", "queue1-dy-c5xlarge-4", "queue1-st-c5xlarge-6", "queue1-dy-c5xlarge-8"},
             None,
@@ -535,8 +547,10 @@ def test_handle_health_check(
     health_state_4 = EC2InstanceHealthState("id-4", "some_state", "some_status", "some_status", "some_event")
     placeholder_states = [health_state_1, health_state_2, health_state_3, health_state_4]
     instance_id_to_active_node_map = {
-        "id-1": StaticNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1"),
-        "id-2": DynamicNode("queue1-dy-c5xlarge-2", "ip-2", "host-2", "ALLOCATED#+CLOUD", "queue1"),
+        "id-1": StaticNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
+        "id-2": DynamicNode(
+            "queue1-dy-c5xlarge-2", "ip-2", "host-2", "ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+        ),
         "id-3": StaticNode("queue1-st-c5xlarge-3", "ip-3", "host-3", "ALLOCATED+CLOUD", "queue1"),
         "id-4": StaticNode("queue1-st-c5xlarge-4", "ip-4", "host-4", "ALLOCATED+CLOUD", "queue1"),
     }
@@ -634,11 +648,12 @@ def test_handle_unhealthy_dynamic_nodes(
             [
                 DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
                 DynamicNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
-                DynamicNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
-                DynamicNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"),
+                DynamicNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWERED_", "queue1"),
                 DynamicNode(
                     "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "POWERING_DOWN", "queue1"
                 ),
+                DynamicNode("queue1-dy-c5xlarge-7", "ip-7", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
                 StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
             ],
             [
@@ -647,10 +662,11 @@ def test_handle_unhealthy_dynamic_nodes(
                 EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
                 None,
                 None,
+                EC2Instance("id-7", "ip-7", "hostname", "some_launch_time"),
                 None,
             ],
-            ["id-3"],
-            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3"],
+            ["id-3", "id-7"],
+            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-7"],
         )
     ],
     ids=["basic"],
@@ -830,10 +846,10 @@ def test_handle_unhealthy_static_nodes(
                 ),  # unhealthy static
                 DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
                 StaticNode(
-                    "queue2-st-c5xlarge-1", "ip-4", "hostname", "DOWN*+CLOUD", "queue1"
+                    "queue2-st-c5xlarge-1", "ip-4", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
                 ),  # bootstrap failure static
                 DynamicNode(
-                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
                 ),  # bootstrap failure dynamic
                 StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
                 DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
@@ -1797,14 +1813,18 @@ class TestComputeFleetStatusManager:
         (
             [
                 DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                DynamicNode("queue2-st-c5xlarge-2", "ip-2", "hostname", "MIXED#+CLOUD", "queue2"),
+                DynamicNode(
+                    "queue2-st-c5xlarge-2", "ip-2", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue2"
+                ),
             ],
             {"queue2": {"c5xlarge": 8}},
         ),
         (
             [
-                DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE#+CLOUD", "queue1"),
-                DynamicNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "MIXED*+CLOUD", "queue1"),
+                DynamicNode(
+                    "queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),
+                DynamicNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"),
             ],
             {"queue1": {"c5xlarge": 5, "c5large": 3}, "queue2": {"c5xlarge": 8}},
         ),
@@ -2100,31 +2120,37 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
     "node, instance, current_node_in_replacement, is_replacement_timeout",
     [
         (
-            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             None,
             {"queue1-st-c5xlarge-1"},
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             {"queue1-st-c5xlarge-1"},
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             None,
             {"some_node_in_replacement"},
             False,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN#+CLOUD", "queue1"),
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "hostname",
+                "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
+                "queue1",
+            ),
             EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             {"some_node_in_replacement"},
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
             {"some_node_in_replacement"},
             False,
@@ -2147,8 +2173,10 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
     [
         (
             [
-                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
-                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),
             ],
             [True, False],
             [True, True],
@@ -2157,8 +2185,10 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
         ),
         (
             [
-                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"),
-                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),
             ],
             [False, False],
             [True, True],
@@ -2166,7 +2196,11 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
             {"some_node_in_replacement"},
         ),
         (
-            [DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1")],
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                )
+            ],
             [True],
             [False],
             {"some_node_in_replacement"},
@@ -2210,15 +2244,17 @@ def test_handle_failed_health_check_nodes_in_replacement(
                 ),  # unhealthy static
                 DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
                 StaticNode(
-                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
                 ),  # bootstrap failure static
                 DynamicNode(
-                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
                 ),  # bootstrap failure dynamic
                 StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
                 DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
                 StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # fail health check
-                DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "MIX#+CLOUD", "queue1"),  # fail health check
+                DynamicNode(
+                    "queue3-dy-c5xlarge-1", "ip-6", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),  # fail health check
             ],
             [
                 EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
@@ -2271,10 +2307,10 @@ def test_handle_bootstrap_failure_nodes(
                 ),  # unhealthy static
                 DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
                 StaticNode(
-                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN*+CLOUD", "queue1"
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
                 ),  # bootstrap failure static
                 DynamicNode(
-                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED#+CLOUD", "queue1"
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
                 ),  # bootstrap failure dynamic
                 StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
                 DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic

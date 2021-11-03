@@ -115,7 +115,7 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = "MIXED+CLOUD+POWERED_DOWN"
-    SLURM_SCONTROL_RESUME_FAILED_STATE = "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP"
+    SLURM_SCONTROL_RESUME_FAILED_STATE = "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING"
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, instance=None):
         """Initialize slurm node with attributes."""
@@ -148,13 +148,13 @@ class SlurmNode(metaclass=ABCMeta):
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self._is_drain() and (
-            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.is_down()
-        )
+        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.state or self.is_down())
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
-        return any(powering_down_state in self.state for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES)
+        return any(
+            powering_down_state in self.state for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES
+        )
 
     def is_power(self):
         """Check if slurm node is in power state."""
@@ -164,7 +164,9 @@ class SlurmNode(metaclass=ABCMeta):
     def is_down(self):
         """Check if slurm node is in a down state."""
         states = self.state.split("+")
-        return any(down_state in states for down_state in self.SLURM_SCONTROL_DOWN_STATES) and not self.is_powering_down()
+        return (
+            any(down_state in states for down_state in self.SLURM_SCONTROL_DOWN_STATES) and not self.is_powering_down()
+        )
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""
@@ -390,7 +392,7 @@ class DynamicNode(SlurmNode):
                 self.state,
             )
             return True
-        # Dynamic node in DOWN*+CLOUD+POWER state
+        # Dynamic node in DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING state
         elif self.is_resume_failed() and self.is_nodeaddr_set():
             # We need to check if nodeaddr is set to avoid counting powering up nodes as bootstrap failure nodes during
             # cluster start/stop.

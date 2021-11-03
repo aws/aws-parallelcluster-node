@@ -73,7 +73,7 @@ def test_computemgtd_config(config_file, expected_attributes, test_datadir, mock
     "mock_node_info, expected_result",
     [
         (
-            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN*+CLOUD", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+NOT_RESPONDING", "queue1")],
             True,
         ),
         (
@@ -85,7 +85,7 @@ def test_computemgtd_config(config_file, expected_attributes, test_datadir, mock
             True,
         ),
         (
-            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWER", "queue1")],
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "IDLE+CLOUD+POWERED_DOWN", "queue1")],
             True,
         ),
         (
