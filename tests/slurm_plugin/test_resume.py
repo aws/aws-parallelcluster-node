@@ -128,7 +128,6 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                         ]
                     },
                     expected_params={
-                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 3,
                         "MaxCount": 3,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
@@ -138,7 +137,6 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                     method="run_instances",
                     response={},
                     expected_params={
-                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 1,
                         "MaxCount": 1,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
@@ -191,7 +189,6 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                         ]
                     },
                     expected_params={
-                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 1,
                         "MaxCount": 3,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
@@ -201,7 +198,6 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                     method="run_instances",
                     response={},
                     expected_params={
-                        "InstanceInitiatedShutdownBehavior": "terminate",
                         "MinCount": 1,
                         "MaxCount": 1,
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},

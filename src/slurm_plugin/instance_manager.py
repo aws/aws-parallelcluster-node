@@ -240,11 +240,6 @@ class InstanceManager:
         try:
             ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
             run_instances_params = {
-                # Configure instances to be terminated (as opposed to stopped) when they are
-                # shutdown via a command run on the instance. This enables compute nodes to
-                # self-terminate without requiring the inclusion of TerminateInstances permissions
-                # in their instance profiles.
-                "InstanceInitiatedShutdownBehavior": "terminate",
                 # If not all_or_nothing_batch scaling, set MinCount=1
                 # so run_instances call will succeed even if entire count cannot be satisfied
                 # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
