@@ -33,6 +33,12 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Use tags prefix `parallelcluster:` when describing EC2 instances.
 - Run Slurm command `scontrol` with sudo because clustermgtd is executed as cluster admin user (not root).
 
+2.11.3
+-----
+
+**CHANGES**
+- There were no notable changes for this version.
+
 2.11.2
 -----
 
