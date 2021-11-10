@@ -320,7 +320,7 @@ class ClusterManager:
 
     def set_config(self, config):
         if self._config != config:
-            logging.info("Applying new clustermgtd config: %s", config)
+            log.info("Applying new clustermgtd config: %s", config)
             self._config = config
             self._compute_fleet_status_manager = self._initialize_compute_fleet_status_manager(config)
             self._instance_manager = self._initialize_instance_manager(config)
