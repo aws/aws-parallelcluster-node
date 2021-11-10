@@ -1005,22 +1005,21 @@ class ClusterManager:
         return False
 
 
-def _run_clustermgtd():
+def _run_clustermgtd(config_file):
     """Run clustermgtd actions."""
-    clustermgtd_config_file = os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
-    config = ClustermgtdConfig(clustermgtd_config_file)
+    config = ClustermgtdConfig(config_file)
     cluster_manager = ClusterManager(config=config)
     while True:
         # Get loop start time
         start_time = datetime.now(tz=timezone.utc)
         # Get program config
         try:
-            config = ClustermgtdConfig(clustermgtd_config_file)
+            config = ClustermgtdConfig(config_file)
             cluster_manager.set_config(config)
         except Exception as e:
             log.warning(
                 "Unable to reload daemon config from %s, using previous one.\nException: %s",
-                clustermgtd_config_file,
+                config_file,
                 e,
             )
         # Configure root logger
@@ -1042,7 +1041,10 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("ClusterManager Startup")
     try:
-        _run_clustermgtd()
+        clustermgtd_config_file = os.environ.get(
+            "CONFIG_FILE", os.path.join(CONFIG_FILE_DIR, "parallelcluster_clustermgtd.conf")
+        )
+        _run_clustermgtd(clustermgtd_config_file)
     except Exception as e:
         log.exception("An unexpected error occurred: %s", e)
         raise

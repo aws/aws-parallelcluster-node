@@ -197,7 +197,8 @@ def main():
     parser.add_argument("nodes", help="Nodes to burst")
     args = parser.parse_args()
     try:
-        resume_config = SlurmResumeConfig(os.path.join(CONFIG_FILE_DIR, "parallelcluster_slurm_resume.conf"))
+        config_file = os.environ.get("CONFIG_FILE", os.path.join(CONFIG_FILE_DIR, "parallelcluster_slurm_resume.conf"))
+        resume_config = SlurmResumeConfig(config_file)
         try:
             # Configure root logger
             fileConfig(resume_config.logging_config, disable_existing_loggers=False)
