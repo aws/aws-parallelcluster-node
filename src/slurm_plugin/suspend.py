@@ -60,7 +60,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("nodes", help="Nodes to release")
     args = parser.parse_args()
-    suspend_config = SlurmSuspendConfig(os.path.join(CONFIG_FILE_DIR, "parallelcluster_slurm_suspend.conf"))
+    config_file = os.environ.get("CONFIG_FILE", os.path.join(CONFIG_FILE_DIR, "parallelcluster_slurm_suspend.conf"))
+    suspend_config = SlurmSuspendConfig(config_file)
     try:
         # Configure root logger
         fileConfig(suspend_config.logging_config, disable_existing_loggers=False)

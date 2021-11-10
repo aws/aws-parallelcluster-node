@@ -109,7 +109,7 @@ main() {
     echo "Done. Add the following configuration to the pcluster create config file:"
     echo ""
     echo "DevSettings:"
-    echo "  NodePackage: s3://${_bucket}/${_key_path}/node/aws-parallelcluster-node-${_version}.tgz"
+    echo "  NodePackage: s3://${_bucket}/${_key_path}/aws-parallelcluster-node-${_version}.tgz"
 }
 
 main "$@"

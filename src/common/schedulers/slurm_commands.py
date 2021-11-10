@@ -10,6 +10,7 @@
 # limitations under the License.
 
 import logging
+import os
 import re
 
 from common.utils import check_command_output, grouper, run_command
@@ -50,8 +51,9 @@ _SQUEUE_FIELDS = [
     "cpus-per-tres",
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
-SCONTROL = "sudo /opt/slurm/bin/scontrol"
-SINFO = "/opt/slurm/bin/sinfo"
+SLURM_BINARIES_DIR = os.environ.get("SLURM_BINARIES_DIR", "/opt/slurm/bin")
+SCONTROL = f"sudo {SLURM_BINARIES_DIR}/scontrol"
+SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale

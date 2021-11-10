@@ -161,9 +161,9 @@ def _is_self_node_down(self_nodename):
     return True
 
 
-def _load_daemon_config():
+def _load_daemon_config(config_file):
     # Get program config
-    computemgtd_config = ComputemgtdConfig(os.path.join(COMPUTEMGTD_CONFIG_PATH))
+    computemgtd_config = ComputemgtdConfig(config_file)
     # Configure root logger
     try:
         fileConfig(computemgtd_config.logging_config, disable_existing_loggers=False)
@@ -176,12 +176,12 @@ def _load_daemon_config():
     return computemgtd_config
 
 
-def _run_computemgtd():
+def _run_computemgtd(config_file):
     """Run computemgtd actions."""
     # Initial default heartbeat time as computemgtd startup time
     last_heartbeat = datetime.now(tz=timezone.utc)
     log.info("Initializing clustermgtd heartbeat to be computemgtd startup time: %s", last_heartbeat)
-    computemgtd_config = _load_daemon_config()
+    computemgtd_config = _load_daemon_config(config_file)
     reload_config_counter = RELOAD_CONFIG_ITERATIONS
     while True:
         # Get current time
@@ -189,7 +189,7 @@ def _run_computemgtd():
 
         if reload_config_counter <= 0:
             try:
-                computemgtd_config = _load_daemon_config()
+                computemgtd_config = _load_daemon_config(config_file)
                 reload_config_counter = RELOAD_CONFIG_ITERATIONS
             except Exception as e:
                 log.warning("Unable to reload daemon config, using previous one.\nException: %s", e)
@@ -220,7 +220,8 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
     log.info("Computemgtd Startup")
     try:
-        _run_computemgtd()
+        clustermgtd_config_file = os.environ.get("CONFIG_FILE", COMPUTEMGTD_CONFIG_PATH)
+        _run_computemgtd(clustermgtd_config_file)
     except Exception as e:
         log.exception("An unexpected error occurred: %s", e)
         raise
