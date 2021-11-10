@@ -442,6 +442,15 @@ def test_slurm_node_is_state_healthy(
             False,
             False,
         ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
+            None,
+            False,
+            False,
+            "Node bootstrap error: Node queue1-dy-c5xlarge-1(ip-1) is in power up state without valid backing instance",
+            False,
+            True,
+        ),
     ],
     ids=[
         "static_self_terminate",
@@ -457,6 +466,7 @@ def test_slurm_node_is_state_healthy(
         "static_fail_health_check",
         "dynamic_fail_health_check",
         "dynamic_pcluster_stop",
+        "idle_powering_up",
     ],
 )
 def test_slurm_node_is_bootstrap_failure(
