@@ -94,7 +94,7 @@ class SlurmPartition:
                     node.is_healthy(terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=False)
                     and node.is_online()
                 ):
-                    logger.debug("Currently online node: %s, node state: %s", node.name, node.state)
+                    logger.debug("Currently online node: %s, node state: %s", node.name, node.state_string)
                     online_compute_resources.add(node.get_compute_resource_name())
         return online_compute_resources
 
@@ -108,21 +108,22 @@ class SlurmPartition:
 class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", "COMPLETING"}
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
-    SLURM_SCONTROL_DOWN_STATES = {"DOWN"}
+    SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
     SLURM_SCONTROL_POWERING_DOWN_STATES = {"POWERING_DOWN", "POWER_DOWN"}
-    SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWERED_DOWN"
+    SLURM_SCONTROL_POWER_STATE = {"IDLE", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
-    SLURM_SCONTROL_POWER_WITH_JOB_STATE = "MIXED+CLOUD+POWERED_DOWN"
-    SLURM_SCONTROL_RESUME_FAILED_STATE = "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING"
+    SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
+    SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, instance=None):
         """Initialize slurm node with attributes."""
         self.name = name
         self.nodeaddr = nodeaddr
         self.nodehostname = nodehostname
-        self.state = state
+        self.state_string = state
+        self.states = set(state.split("+"))
         self.partitions = partitions.strip().split(",") if partitions else None
         self.instance = instance
         self.is_static_nodes_in_replacement = False
@@ -136,11 +137,11 @@ class SlurmNode(metaclass=ABCMeta):
 
     def has_job(self):
         """Check if slurm node is in a working state."""
-        return any(working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
+        return any(working_state in self.states for working_state in self.SLURM_SCONTROL_BUSY_STATES)
 
     def _is_drain(self):
         """Check if slurm node is in any drain(draining, drained) states."""
-        return self.SLURM_SCONTROL_DRAIN_STATE in self.state
+        return self.SLURM_SCONTROL_DRAIN_STATE in self.states
 
     def is_drained(self):
         """
@@ -148,25 +149,21 @@ class SlurmNode(metaclass=ABCMeta):
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.state or self.is_down())
+        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
         return any(
-            powering_down_state in self.state for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES
+            powering_down_state in self.states for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES
         )
 
     def is_power(self):
         """Check if slurm node is in power state."""
-        states = self.state.split("+")
-        return all(power_state in states for power_state in self.SLURM_SCONTROL_POWER_STATE.split("+"))
+        return self.SLURM_SCONTROL_POWER_STATE == self.states
 
     def is_down(self):
         """Check if slurm node is in a down state."""
-        states = self.state.split("+")
-        return (
-            any(down_state in states for down_state in self.SLURM_SCONTROL_DOWN_STATES) and not self.is_powering_down()
-        )
+        return self.SLURM_SCONTROL_DOWN_STATE in self.states and not self.is_powering_down()
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""
@@ -174,11 +171,11 @@ class SlurmNode(metaclass=ABCMeta):
 
     def is_powering_up(self):
         """Check if slurm node is in powering up state."""
-        return self.SLURM_SCONTROL_POWER_UP_STATE in self.state
+        return self.SLURM_SCONTROL_POWER_UP_STATE in self.states
 
     def is_online(self):
         """Check if slurm node is online with backing instance."""
-        return self.state in self.SLURM_SCONTROL_ONLINE_STATES
+        return self.state_string in self.SLURM_SCONTROL_ONLINE_STATES
 
     def is_configuring_job(self):
         """Check if slurm node is configuring with job and haven't begun to run a job."""
@@ -186,7 +183,7 @@ class SlurmNode(metaclass=ABCMeta):
 
     def is_power_with_job(self):
         """Dynamic nodes allocated a job but power up process has not started yet."""
-        return self.state == self.SLURM_SCONTROL_POWER_WITH_JOB_STATE
+        return self.states == self.SLURM_SCONTROL_POWER_WITH_JOB_STATE
 
     def is_running_job(self):
         """Check if slurm node is running a job but not in configuring job state."""
@@ -194,11 +191,11 @@ class SlurmNode(metaclass=ABCMeta):
 
     def is_resume_failed(self):
         """Check if node resume timeout expires."""
-        return self.state == self.SLURM_SCONTROL_RESUME_FAILED_STATE
+        return self.states == self.SLURM_SCONTROL_RESUME_FAILED_STATE
 
     def is_poweing_up_idle(self):
-        """Check if node is in IDEL# state."""
-        return self.SLURM_SCONTROL_IDLE_STATE in self.state and self.is_powering_up()
+        """Check if node is in IDLE# state."""
+        return self.SLURM_SCONTROL_IDLE_STATE in self.states and self.is_powering_up()
 
     @abstractmethod
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
@@ -234,7 +231,7 @@ class SlurmNode(metaclass=ABCMeta):
                     logger.warning(
                         "Node state check: no corresponding instance in EC2 for node %s, node state: %s",
                         self,
-                        self.state,
+                        self.state_string,
                     )
                 return False
         return True
@@ -289,12 +286,12 @@ class StaticNode(SlurmNode):
                 logger.debug(
                     "Node state check: node %s in DRAINED but is currently being replaced, ignoring, node state: %s",
                     self,
-                    self.state,
+                    self.state_string,
                 )
                 return True
             else:
                 if log_warn_if_unhealthy:
-                    logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state)
+                    logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
                 return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         elif self.is_down() and terminate_down_nodes:
@@ -302,12 +299,12 @@ class StaticNode(SlurmNode):
                 logger.debug(
                     "Node state check: node %s in DOWN but is currently being replaced, ignoring. Node state: ",
                     self,
-                    self.state,
+                    self.state_string,
                 )
                 return True
             else:
                 if log_warn_if_unhealthy:
-                    logger.warning("Node state check: node %s in DOWN, node state: %s", self, self.state)
+                    logger.warning("Node state check: node %s in DOWN, node state: %s", self, self.state_string)
                 return False
         return True
 
@@ -316,7 +313,9 @@ class StaticNode(SlurmNode):
         if not self.is_nodeaddr_set():
             if log_warn_if_unhealthy:
                 logger.warning(
-                    "Node state check: static node without nodeaddr set, node %s, node state %s:", self, self.state
+                    "Node state check: static node without nodeaddr set, node %s, node state %s:",
+                    self,
+                    self.state_string,
                 )
             return False
         return True
@@ -328,7 +327,7 @@ class StaticNode(SlurmNode):
             logger.warning(
                 "Node bootstrap error: Node %s is currently in replacement and no backing instance, node state %s:",
                 self,
-                self.state,
+                self.state_string,
             )
             return True
             # Replacement timeout expires for node in replacement
@@ -336,14 +335,14 @@ class StaticNode(SlurmNode):
             logger.warning(
                 "Node bootstrap error: Replacement timeout expires for node %s in replacement, node state %s:",
                 self,
-                self.state,
+                self.state_string,
             )
             return True
         elif self.is_failing_health_check and self.is_static_nodes_in_replacement:
             logger.warning(
                 "Node bootstrap error: Node %s failed during bootstrap when performing health check, node state %s:",
                 self,
-                self.state,
+                self.state_string,
             )
             return True
         return False
@@ -367,16 +366,16 @@ class DynamicNode(SlurmNode):
         # Check to see if node is in DRAINED, ignoring any node currently being replaced
         if self.is_drained() and terminate_drain_nodes:
             if log_warn_if_unhealthy:
-                logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state)
+                logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
             return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         elif self.is_down() and terminate_down_nodes:
             if not self.is_nodeaddr_set():
                 # Silently handle failed to launch dynamic node to clean up normal logging
-                logger.debug("Node state check: node %s in DOWN, node state: %s", self, self.state)
+                logger.debug("Node state check: node %s in DOWN, node state: %s", self, self.state_string)
             else:
                 if log_warn_if_unhealthy:
-                    logger.warning("Node state check: node %s in DOWN, node state: %s", self, self.state)
+                    logger.warning("Node state check: node %s in DOWN, node state: %s", self, self.state_string)
             return False
         return True
 
@@ -395,20 +394,22 @@ class DynamicNode(SlurmNode):
             logger.warning(
                 "Node bootstrap error: Node %s is in power up state without valid backing instance, node state: %s",
                 self,
-                self.state,
+                self.state_string,
             )
             return True
         # Dynamic node in DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING state
         elif self.is_resume_failed() and self.is_nodeaddr_set():
             # We need to check if nodeaddr is set to avoid counting powering up nodes as bootstrap failure nodes during
             # cluster start/stop.
-            logger.warning("Node bootstrap error: Resume timeout expires for node %s, node state: %s", self, self.state)
+            logger.warning(
+                "Node bootstrap error: Resume timeout expires for node %s, node state: %s", self, self.state_string
+            )
             return True
         elif self.is_failing_health_check and self.is_powering_up():
             logger.warning(
                 "Node bootstrap error: Node %s failed during bootstrap when performing health check, node state: %s",
                 self,
-                self.state,
+                self.state_string,
             )
             return True
         return False

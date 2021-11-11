@@ -27,8 +27,8 @@ from common.schedulers.slurm_commands import (
     get_partition_info,
     reset_nodes,
     set_nodes_down,
-    set_nodes_down_and_power_save,
     set_nodes_drain,
+    set_nodes_power_down,
     update_all_partitions,
     update_partitions,
 )
@@ -686,9 +686,7 @@ class ClusterManager:
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
         log.info("Setting unhealthy dynamic nodes to down and power_down.")
-        set_nodes_down_and_power_save(
-            [node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed"
-        )
+        set_nodes_power_down([node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed")
 
     @log_exception(log, "maintaining powering down nodes", raise_on_error=False)
     def _handle_powering_down_nodes(self, slurm_nodes):
