@@ -140,7 +140,7 @@ def update_all_partitions(state, reset_node_addrs_hostname):
                 log.info(f"Setting partition {part.name} state from {part.state} to {state}")
                 if reset_node_addrs_hostname:
                     log.info(f"Resetting partition nodes {part.nodenames}")
-                    set_nodes_down_and_power_save(part.nodenames, reason="stopping cluster")
+                    set_nodes_power_down(part.nodenames, reason="stopping cluster")
                 partition_to_update.append(part.name)
         succeeded_partitions = update_partitions(partition_to_update, state)
         return succeeded_partitions == partition_to_update
@@ -194,6 +194,7 @@ def set_nodes_drain(nodes, reason):
     update_nodes(nodes, state="drain", reason=reason)
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1500)
 def set_nodes_power_down(nodes, reason=None):
     """Place slurm node into power_down state and reset nodeaddr/nodehostname."""
     reset_nodes(nodes=nodes, state="power_down_force", reason=reason, raise_on_error=True)
@@ -222,16 +223,6 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         reset_nodes(nodes, state="resume", reason=reason, raise_on_error=False)
     else:
         update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
-
-
-@retry(stop_max_attempt_number=3, wait_fixed=1500)
-def set_nodes_down_and_power_save(node_list, reason):
-    """
-    Set slurm nodes into down -> power_down.
-
-    This is the standard failure recovery procedure to reset a CLOUD node.
-    """
-    set_nodes_power_down(node_list, reason=reason)
 
 
 def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):

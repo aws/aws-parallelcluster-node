@@ -635,7 +635,7 @@ def test_handle_unhealthy_dynamic_nodes(
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
 
-    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down_and_power_save", auto_spec=True)
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", auto_spec=True)
     cluster_manager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
     mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     power_save_mock.assert_called_with(expected_power_save_node_list, reason="Scheduler health check failed")
