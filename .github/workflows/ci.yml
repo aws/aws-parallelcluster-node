@@ -13,11 +13,13 @@ jobs:
         with:
           path: '.'
           format: 'HTML'
+          project: 'aws-parallelcluster-node'
       - name: Upload Test results
         uses: actions/upload-artifact@master
         with:
           name: Depcheck report
           path: ${{github.workspace}}/reports
+          project: 'aws-parallelcluster-node'
   build:
     runs-on: ${{ matrix.os }}
     strategy:
