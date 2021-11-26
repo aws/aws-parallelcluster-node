@@ -1038,7 +1038,9 @@ def _run_clustermgtd(config_file):
 
 @retry(wait_fixed=seconds(LOOP_TIME))
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s"
+    )
     log.info("ClusterManager Startup")
     try:
         clustermgtd_config_file = os.environ.get(
