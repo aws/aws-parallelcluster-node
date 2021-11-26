@@ -1682,6 +1682,9 @@ def test_manage_compute_fleet_status_transitions(
     compute_fleet_status_manager_mock.get_status.return_value = fleet_initial_status
     instance_manager_mock = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
     instance_manager_mock.terminate_all_compute_nodes.return_value = nodes_terminated_successfully
+    resume_powering_down_nodes_mock = mocker.patch(
+        "slurm_plugin.clustermgtd.resume_powering_down_nodes", auto_spec=True
+    )
 
     cluster_manager._manage_compute_fleet_status_transitions()
 
@@ -1689,6 +1692,7 @@ def test_manage_compute_fleet_status_transitions(
     if update_partition_status:
         if update_partition_status == PartitionStatus.UP:
             update_all_partitions_spy.assert_called_with(update_partition_status, reset_node_addrs_hostname=False)
+            resume_powering_down_nodes_mock.assert_called_once()
         else:
             update_all_partitions_spy.assert_called_with(update_partition_status, reset_node_addrs_hostname=True)
     else:

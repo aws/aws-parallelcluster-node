@@ -26,6 +26,7 @@ from common.schedulers.slurm_commands import (
     get_nodes_info,
     get_partition_info,
     reset_nodes,
+    resume_powering_down_nodes,
     set_nodes_down,
     set_nodes_drain,
     set_nodes_power_down,
@@ -394,6 +395,7 @@ class ClusterManager:
                 partitions_activated_successfully = update_all_partitions(
                     PartitionStatus.UP, reset_node_addrs_hostname=False
                 )
+                resume_powering_down_nodes()
                 if partitions_activated_successfully:
                     self._update_compute_fleet_status(ComputeFleetStatus.RUNNING)
                     # Reset protected failure
