@@ -258,6 +258,13 @@ def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all
     ]
 
 
+def resume_powering_down_nodes():
+    """Resume nodes that are powering_down so that are set in power state right away."""
+    log.info("Resuming powering down nodes.")
+    powering_down_nodes = _get_slurm_nodes(states="powering_down")
+    update_nodes(nodes=powering_down_nodes, state="resume", raise_on_error=False)
+
+
 def _parse_partition_name_and_state(partition_info):
     """Parse partition name and state from scontrol output."""
     return grouper(partition_info.splitlines(), 2)
@@ -269,19 +276,21 @@ def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_CO
     return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec
 
 
+def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
+    sinfo_command = f"{SINFO} -h -N -o %N"
+    if partition_name:
+        sinfo_command += f" -p {partition_name}"
+    if states:
+        sinfo_command += f" -t {states}"
+    # Every node is print on a separate line
+    return check_command_output(sinfo_command, timeout=command_timeout, shell=True).splitlines()  # nosec
+
+
 def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get up nodes in a parition by querying sinfo, and filtering out power_down nodes."""
-    show_all_nodes_command = f"{SINFO} -h -p {partition_name} -N -o %N"
-    show_power_down_nodes_command = f"{SINFO} -h -p {partition_name} -t power_down,powering_down -N -o %N"
-    show_down_nodes_command = f"{SINFO} -h -p {partition_name} -t down -N -o %N"
-    # Every node is print on a separate line
-    all_nodes = check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).splitlines()  # nosec
-    power_down_nodes = check_command_output(  # nosec
-        show_power_down_nodes_command, timeout=command_timeout, shell=True
-    ).splitlines()
-    down_nodes = check_command_output(  # nosec
-        show_down_nodes_command, timeout=command_timeout, shell=True
-    ).splitlines()
+    all_nodes = _get_slurm_nodes(partition_name=partition_name)
+    power_down_nodes = _get_slurm_nodes(partition_name=partition_name, states="power_down,powering_down")
+    down_nodes = _get_slurm_nodes(partition_name=partition_name, states="down")
     nodes = []
     for nodename in all_nodes:
         # Always try to maintain the following nodes:
