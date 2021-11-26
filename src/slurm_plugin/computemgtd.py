@@ -217,7 +217,9 @@ def _run_computemgtd(config_file):
 
 @retry(wait_fixed=seconds(LOOP_TIME))
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s"
+    )
     log.info("Computemgtd Startup")
     try:
         clustermgtd_config_file = os.environ.get("CONFIG_FILE", COMPUTEMGTD_CONFIG_PATH)
