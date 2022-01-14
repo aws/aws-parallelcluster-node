@@ -795,7 +795,8 @@ class ClusterManager:
         if not ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
             log.warning(
                 "Setting cluster into protected mode due to failures detected in node provisioning. "
-                "Please investigate the issue and then use pcluster start command to re-enable the fleet."
+                "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
+                "command to re-enable the fleet."
             )
             self._update_compute_fleet_status(ComputeFleetStatus.PROTECTED)
 
@@ -869,7 +870,8 @@ class ClusterManager:
         if ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
             log.warning(
                 "Cluster is in protected mode due to failures detected in node provisioning. "
-                "Please investigate the issue and then use pcluster start command to re-enable the fleet."
+                "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
+                "command to re-enable the fleet."
             )
 
     @staticmethod
