@@ -11,6 +11,12 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Update Slurm plugin to support version 21.08.
 
+3.0.3
+------
+
+**CHANGES**
+- There were no changes for this version.
+
 3.0.2
 ------
 
