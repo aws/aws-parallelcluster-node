@@ -26,6 +26,7 @@ from common.schedulers.slurm_commands import (
     get_nodes_info,
     get_partition_info,
     reset_nodes,
+    resume_powering_down_nodes,
     set_nodes_down,
     set_nodes_drain,
     set_nodes_power_down,
@@ -394,6 +395,7 @@ class ClusterManager:
                 partitions_activated_successfully = update_all_partitions(
                     PartitionStatus.UP, reset_node_addrs_hostname=False
                 )
+                resume_powering_down_nodes()
                 if partitions_activated_successfully:
                     self._update_compute_fleet_status(ComputeFleetStatus.RUNNING)
                     # Reset protected failure
@@ -793,7 +795,8 @@ class ClusterManager:
         if not ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
             log.warning(
                 "Setting cluster into protected mode due to failures detected in node provisioning. "
-                "Please investigate the issue and then use pcluster start command to re-enable the fleet."
+                "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
+                "command to re-enable the fleet."
             )
             self._update_compute_fleet_status(ComputeFleetStatus.PROTECTED)
 
@@ -867,7 +870,8 @@ class ClusterManager:
         if ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
             log.warning(
                 "Cluster is in protected mode due to failures detected in node provisioning. "
-                "Please investigate the issue and then use pcluster start command to re-enable the fleet."
+                "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
+                "command to re-enable the fleet."
             )
 
     @staticmethod
@@ -1036,7 +1040,9 @@ def _run_clustermgtd(config_file):
 
 @retry(wait_fixed=seconds(LOOP_TIME))
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s"
+    )
     log.info("ClusterManager Startup")
     try:
         clustermgtd_config_file = os.environ.get(
