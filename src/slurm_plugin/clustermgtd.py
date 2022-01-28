@@ -18,6 +18,7 @@ from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
+from subprocess import CalledProcessError
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import (
@@ -31,7 +32,7 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import check_command_output, run_command, sleep_remaining_loop_time, time_is_up
+from common.utils import check_command_output, sleep_remaining_loop_time, time_is_up
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count, read_json
 from slurm_plugin.instance_manager import InstanceManager
@@ -82,15 +83,24 @@ class ComputeFleetStatusManager:
                 json.loads(compute_fleet_raw_data).get(ComputeFleetStatusManager.COMPUTE_FLEET_STATUS_ATTRIBUTE)
             )
         except Exception as e:
-            log.error("Failed when retrieving fleet status with error %s, using fallback value %s", e, fallback)
+            if isinstance(e, CalledProcessError):
+                error = e.stdout.rstrip()
+            else:
+                error = e
+            log.error(
+                "Failed when retrieving fleet status with error: %s, using fallback value %s",
+                error,
+                fallback,
+            )
+
             return fallback
 
     @staticmethod
     def update_status(status):
         try:
-            run_command(f"update-compute-fleet-status.sh --status {status}")
+            check_command_output(f"update-compute-fleet-status.sh --status {status}")
         except Exception as e:
-            log.error("Failed when updating fleet status with status %s and with error %s", status, e)
+            log.error("Failed when updating fleet status to status %s, with error: %s", status, e.stdout.rstrip())
             raise
 
 
@@ -353,53 +363,53 @@ class ClusterManager:
         self._compute_fleet_status = self._compute_fleet_status_manager.get_status(fallback=self._compute_fleet_status)
         log.info("Current compute fleet status: %s", self._compute_fleet_status)
 
-        if not self._config.disable_all_cluster_management and self._compute_fleet_status in {
-            None,
-            ComputeFleetStatus.RUNNING,
-            ComputeFleetStatus.PROTECTED,
-        }:
-            # Get node states for nodes in inactive and active partitions
-            # Initialize nodes
-            try:
-                log.info("Retrieving nodes info from the scheduler")
-                nodes = self._get_node_info_with_retry()
-                log.debug("Nodes: %s", nodes)
-                partitions_name_map = self._retrieve_scheduler_partitions(nodes)
-            except Exception as e:
-                log.error(
-                    "Unable to get partition/node info from slurm, no other action can be performed. Sleeping... "
-                    "Exception: %s",
-                    e,
-                )
-                return
+        if not self._config.disable_all_cluster_management:
+            if self._compute_fleet_status in {
+                None,
+                ComputeFleetStatus.RUNNING,
+                ComputeFleetStatus.PROTECTED,
+            }:
+                # Get node states for nodes in inactive and active partitions
+                # Initialize nodes
+                try:
+                    log.info("Retrieving nodes info from the scheduler")
+                    nodes = self._get_node_info_with_retry()
+                    log.debug("Nodes: %s", nodes)
+                    partitions_name_map = self._retrieve_scheduler_partitions(nodes)
+                except Exception as e:
+                    log.error(
+                        "Unable to get partition/node info from slurm, no other action can be performed. Sleeping... "
+                        "Exception: %s",
+                        e,
+                    )
+                    return
 
-            # Get all non-terminating instances in EC2
-            try:
-                cluster_instances = self._get_ec2_instances()
-            except ClusterManager.EC2InstancesInfoUnavailable:
-                log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
-                return
-            log.debug("Current cluster instances in EC2: %s", cluster_instances)
-            partitions = list(partitions_name_map.values())
-            self._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
-            # Handle inactive partition and terminate backing instances
-            self._clean_up_inactive_partition(partitions)
-            # Perform health check actions
-            if not self._config.disable_all_health_checks:
-                self._perform_health_check_actions(partitions)
-            # Maintain slurm nodes
-            self._maintain_nodes(partitions_name_map)
-            # Clean up orphaned instances
-            self._terminate_orphaned_instances(cluster_instances)
-        elif not self._config.disable_all_cluster_management and self._compute_fleet_status in {
-            ComputeFleetStatus.STOPPED,
-        }:
-            # Since Slurm partition status might have been manually modified, when STOPPED we want to keep checking
-            # partitions and EC2 instances to take into account changes that can be manually
-            # applied by the user by re-activating Slurm partitions.
-            # When partition are INACTIVE, always try to reset nodeaddr/nodehostname to avoid issue.
-            update_all_partitions(PartitionStatus.INACTIVE, reset_node_addrs_hostname=True)
-            self._instance_manager.terminate_all_compute_nodes(self._config.terminate_max_batch_size)
+                # Get all non-terminating instances in EC2
+                try:
+                    cluster_instances = self._get_ec2_instances()
+                except ClusterManager.EC2InstancesInfoUnavailable:
+                    log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
+                    return
+                log.debug("Current cluster instances in EC2: %s", cluster_instances)
+                partitions = list(partitions_name_map.values())
+                self._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
+                # Handle inactive partition and terminate backing instances
+                self._clean_up_inactive_partition(partitions)
+                # Perform health check actions
+                if not self._config.disable_all_health_checks:
+                    self._perform_health_check_actions(partitions)
+                # Maintain slurm nodes
+                self._maintain_nodes(partitions_name_map)
+                # Clean up orphaned instances
+                self._terminate_orphaned_instances(cluster_instances)
+            elif self._compute_fleet_status in {
+                ComputeFleetStatus.STOPPED,
+            }:
+                # Since Slurm partition status might have been manually modified, when STOPPED we want to keep checking
+                # partitions and EC2 instances to take into account changes that can be manually
+                # applied by the user by re-activating Slurm partitions.
+                # When partition are INACTIVE, always try to reset nodeaddr/nodehostname to avoid issue.
+                self._maintain_nodes_down()
 
         # Write clustermgtd heartbeat to file
         self._write_timestamp_to_file()
@@ -483,6 +493,11 @@ class ClusterManager:
         except Exception as e:
             log.error("Failed when getting instance info from EC2 with exception %s", e)
             raise ClusterManager.EC2InstancesInfoUnavailable
+
+    @log_exception(log, "maintaining slurm nodes down", catch_exception=Exception, raise_on_error=False)
+    def _maintain_nodes_down(self):
+        update_all_partitions(PartitionStatus.INACTIVE, reset_node_addrs_hostname=True)
+        self._instance_manager.terminate_all_compute_nodes(self._config.terminate_max_batch_size)
 
     @log_exception(log, "performing health check action", catch_exception=Exception, raise_on_error=False)
     def _perform_health_check_actions(self, partitions):
