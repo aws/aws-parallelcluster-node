@@ -10,7 +10,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import json
 import logging
 import os
 import time
@@ -19,14 +19,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
 
-import boto3
-from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
 from common.schedulers.slurm_commands import (
     get_nodes_info,
     get_partition_info,
     reset_nodes,
-    resume_powering_down_nodes,
     set_nodes_down,
     set_nodes_drain,
     set_nodes_power_down,
@@ -34,7 +31,7 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import sleep_remaining_loop_time, time_is_up
+from common.utils import check_command_output, run_command, sleep_remaining_loop_time, time_is_up
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count, read_json
 from slurm_plugin.instance_manager import InstanceManager
@@ -60,63 +57,41 @@ class ComputeFleetStatus(Enum):
         return str(self.value)
 
     @staticmethod
-    def is_stop_status(status):
-        return status in {ComputeFleetStatus.STOP_REQUESTED, ComputeFleetStatus.STOPPING, ComputeFleetStatus.STOPPED}
+    def is_start_requested(status):
+        return status == ComputeFleetStatus.START_REQUESTED
 
     @staticmethod
-    def is_start_in_progress(status):
-        return status in {ComputeFleetStatus.START_REQUESTED, ComputeFleetStatus.STARTING}
+    def is_stop_requested(status):
+        return status == ComputeFleetStatus.STOP_REQUESTED
 
     @staticmethod
-    def is_stop_in_progress(status):
-        return status in {ComputeFleetStatus.STOP_REQUESTED, ComputeFleetStatus.STOPPING}
-
-    @staticmethod
-    def is_protected_status(status):
+    def is_protected(status):
         return status == ComputeFleetStatus.PROTECTED
 
 
 class ComputeFleetStatusManager:
-    COMPUTE_FLEET_STATUS_KEY = "COMPUTE_FLEET"
-    COMPUTE_FLEET_STATUS_ATTRIBUTE = "Status"
-    LAST_UPDATED_TIME_ATTRIBUTE = "LastUpdatedTime"
+    COMPUTE_FLEET_STATUS_ATTRIBUTE = "status"
+    COMPUTE_FLEET_LAST_UPDATED_TIME_ATTRIBUTE = "lastStatusUpdatedTime"
 
-    class ConditionalStatusUpdateFailed(Exception):
-        """Raised when there is a failure in updating the status due to a change occurred after retrieving its value."""
-
-        pass
-
-    def __init__(self, table_name, boto3_config, region):
-        self._table_name = table_name
-        self._boto3_config = boto3_config
-        self.__region = region
-        self._ddb_resource = boto3.resource("dynamodb", region_name=region, config=boto3_config)
-        self._table = self._ddb_resource.Table(table_name)
-
-    def get_status(self, fallback=None):
+    @staticmethod
+    def get_status(fallback=None):
         try:
-            compute_fleet_status = self._table.get_item(ConsistentRead=True, Key={"Id": self.COMPUTE_FLEET_STATUS_KEY})
-            if not compute_fleet_status or "Item" not in compute_fleet_status:
-                raise Exception("COMPUTE_FLEET status not found in db table")
-            return ComputeFleetStatus(compute_fleet_status["Item"][self.COMPUTE_FLEET_STATUS_ATTRIBUTE])
-        except Exception as e:
-            log.error(
-                "Failed when retrieving fleet status from DynamoDB with error %s, using fallback value %s", e, fallback
+            compute_fleet_raw_data = check_command_output("get-compute-fleet-status.sh")
+            log.debug("Retrieved compute fleet data: %s", compute_fleet_raw_data)
+            return ComputeFleetStatus(
+                json.loads(compute_fleet_raw_data).get(ComputeFleetStatusManager.COMPUTE_FLEET_STATUS_ATTRIBUTE)
             )
+        except Exception as e:
+            log.error("Failed when retrieving fleet status with error %s, using fallback value %s", e, fallback)
             return fallback
 
-    def update_status(self, current_status, next_status):
+    @staticmethod
+    def update_status(status):
         try:
-            self._table.put_item(
-                Item={
-                    "Id": self.COMPUTE_FLEET_STATUS_KEY,
-                    self.COMPUTE_FLEET_STATUS_ATTRIBUTE: str(next_status),
-                    self.LAST_UPDATED_TIME_ATTRIBUTE: str(datetime.now(tz=timezone.utc)),
-                },
-                ConditionExpression=Attr(self.COMPUTE_FLEET_STATUS_ATTRIBUTE).eq(str(current_status)),
-            )
-        except self._ddb_resource.meta.client.exceptions.ConditionalCheckFailedException as e:
-            raise ComputeFleetStatusManager.ConditionalStatusUpdateFailed(e)
+            run_command(f"update-compute-fleet-status.sh --status {status}")
+        except Exception as e:
+            log.error("Failed when updating fleet status with status %s and with error %s", status, e)
+            raise
 
 
 class ClustermgtdConfig:
@@ -323,7 +298,7 @@ class ClusterManager:
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
             self._config = config
-            self._compute_fleet_status_manager = self._initialize_compute_fleet_status_manager(config)
+            self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
 
     @staticmethod
@@ -343,69 +318,10 @@ class ClusterManager:
             run_instances_overrides=config.run_instances_overrides,
         )
 
-    @staticmethod
-    def _initialize_compute_fleet_status_manager(config):
-        return ComputeFleetStatusManager(
-            table_name=config.dynamodb_table, boto3_config=config.boto3_config, region=config.region
-        )
-
     def _update_compute_fleet_status(self, status):
         log.info("Updating compute fleet status from %s to %s", self._compute_fleet_status, status)
-        self._compute_fleet_status_manager.update_status(current_status=self._compute_fleet_status, next_status=status)
+        self._compute_fleet_status_manager.update_status(status)
         self._compute_fleet_status = status
-
-    @log_exception(log, "handling compute fleet status transitions", catch_exception=Exception, raise_on_error=False)
-    def _manage_compute_fleet_status_transitions(self):
-        """
-        Handle compute fleet status transitions.
-
-        When running pcluster start/stop command the fleet status is set to START_REQUESTED/STOP_REQUESTED.
-        The function fetches the current fleet status and performs the following transitions:
-          - START_REQUESTED -> STARTING -> RUNNING
-          - STOP_REQUESTED -> STOPPING -> STOPPED
-        STARTING/STOPPING states are only used to communicate that the request is being processed by clustermgtd.
-        The following actions are applied to the cluster based on the current status:
-          - START_REQUESTED|STARTING: all Slurm partitions are enabled
-          - STOP_REQUESTED|STOPPING|STOPPED: all Slurm partitions are disabled and EC2 instances terminated. These
-            actions are executed also when the status is stopped to take into account changes that can be manually
-            applied by the user by re-activating Slurm partitions.
-        """
-        self._compute_fleet_status = self._compute_fleet_status_manager.get_status(fallback=self._compute_fleet_status)
-        log.info("Current compute fleet status: %s", self._compute_fleet_status)
-        try:
-            if ComputeFleetStatus.is_stop_status(self._compute_fleet_status):
-                # Since Slurm partition status might have been manually modified, when STOPPED we want to keep checking
-                # partitions and EC2 instances
-                if self._compute_fleet_status == ComputeFleetStatus.STOP_REQUESTED:
-                    self._update_compute_fleet_status(ComputeFleetStatus.STOPPING)
-                # When setting partition to INACTIVE, always try to reset nodeaddr/nodehostname to avoid issue
-                partitions_deactivated_successfully = update_all_partitions(
-                    PartitionStatus.INACTIVE, reset_node_addrs_hostname=True
-                )
-                nodes_terminated = self._instance_manager.terminate_all_compute_nodes(
-                    self._config.terminate_max_batch_size
-                )
-                if partitions_deactivated_successfully and nodes_terminated:
-                    if self._compute_fleet_status == ComputeFleetStatus.STOPPING:
-                        self._update_compute_fleet_status(ComputeFleetStatus.STOPPED)
-            elif ComputeFleetStatus.is_start_in_progress(self._compute_fleet_status):
-                if self._compute_fleet_status == ComputeFleetStatus.START_REQUESTED:
-                    self._update_compute_fleet_status(ComputeFleetStatus.STARTING)
-                # When setting partition to UP, DO NOT reset nodeaddr/nodehostname to avoid breaking nodes already up
-                partitions_activated_successfully = update_all_partitions(
-                    PartitionStatus.UP, reset_node_addrs_hostname=False
-                )
-                resume_powering_down_nodes()
-                if partitions_activated_successfully:
-                    self._update_compute_fleet_status(ComputeFleetStatus.RUNNING)
-                    # Reset protected failure
-                    self._partitions_protected_failure_count_map = {}
-        except ComputeFleetStatusManager.ConditionalStatusUpdateFailed:
-            log.warning(
-                "Cluster status was updated while handling a transition from %s. "
-                "Status transition will be retried at the next iteration",
-                self._compute_fleet_status,
-            )
 
     def _handle_successfully_launched_nodes(self, partitions_name_map):
         """
@@ -434,7 +350,8 @@ class ClusterManager:
         log.info("Managing cluster...")
         self._current_time = datetime.now(tz=timezone.utc)
 
-        self._manage_compute_fleet_status_transitions()
+        self._compute_fleet_status = self._compute_fleet_status_manager.get_status(fallback=self._compute_fleet_status)
+        log.info("Current compute fleet status: %s", self._compute_fleet_status)
 
         if not self._config.disable_all_cluster_management and self._compute_fleet_status in {
             None,
@@ -474,6 +391,15 @@ class ClusterManager:
             self._maintain_nodes(partitions_name_map)
             # Clean up orphaned instances
             self._terminate_orphaned_instances(cluster_instances)
+        elif not self._config.disable_all_cluster_management and self._compute_fleet_status in {
+            ComputeFleetStatus.STOPPED,
+        }:
+            # Since Slurm partition status might have been manually modified, when STOPPED we want to keep checking
+            # partitions and EC2 instances to take into account changes that can be manually
+            # applied by the user by re-activating Slurm partitions.
+            # When partition are INACTIVE, always try to reset nodeaddr/nodehostname to avoid issue.
+            update_all_partitions(PartitionStatus.INACTIVE, reset_node_addrs_hostname=True)
+            self._instance_manager.terminate_all_compute_nodes(self._config.terminate_max_batch_size)
 
         # Write clustermgtd heartbeat to file
         self._write_timestamp_to_file()
@@ -792,7 +718,7 @@ class ClusterManager:
         log.info("Placing bootstrap failure partitions to INACTIVE: %s", partitions_to_disable)
         update_partitions(partitions_to_disable, PartitionStatus.INACTIVE)
         # Change compute fleet status to protected
-        if not ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
+        if not ComputeFleetStatus.is_protected(self._compute_fleet_status):
             log.warning(
                 "Setting cluster into protected mode due to failures detected in node provisioning. "
                 "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
@@ -867,7 +793,7 @@ class ClusterManager:
                 log.info("Not entering protected mode since active jobs are running in bootstrap failure partitions")
         elif partitions_to_disable:
             self._enter_protected_mode(partitions_to_disable)
-        if ComputeFleetStatus.is_protected_status(self._compute_fleet_status):
+        if ComputeFleetStatus.is_protected(self._compute_fleet_status):
             log.warning(
                 "Cluster is in protected mode due to failures detected in node provisioning. "
                 "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
