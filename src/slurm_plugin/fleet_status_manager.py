@@ -60,9 +60,13 @@ class SlurmFleetManagerConfig:
         self.region = config.get("slurm_fleet_status_manager", "region")
         self.cluster_name = config.get("slurm_fleet_status_manager", "cluster_name")
         self.terminate_max_batch_size = config.getint(
-            "slurm_fleet_status_manager", "terminate_max_batch_size", fallback=self.DEFAULTS.get("terminate_max_batch_size")
+            "slurm_fleet_status_manager",
+            "terminate_max_batch_size",
+            fallback=self.DEFAULTS.get("terminate_max_batch_size"),
         )
-        self._boto3_retry = config.getint("slurm_fleet_status_manager", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
+        self._boto3_retry = config.getint(
+            "slurm_fleet_status_manager", "boto3_retry", fallback=self.DEFAULTS.get("max_retry")
+        )
         self._boto3_config = {"retries": {"max_attempts": self._boto3_retry, "mode": "standard"}}
         proxy = config.get("slurm_fleet_status_manager", "proxy", fallback=self.DEFAULTS.get("proxy"))
         if proxy != "NONE":
