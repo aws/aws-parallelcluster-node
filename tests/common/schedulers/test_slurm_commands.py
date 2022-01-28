@@ -13,10 +13,13 @@ from unittest.mock import call
 import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import (
+    SINFO,
     _batch_node_info,
+    _get_slurm_nodes,
     _parse_nodes_info,
     is_static_node,
     parse_nodename,
+    resume_powering_down_nodes,
     set_nodes_down,
     set_nodes_drain,
     set_nodes_idle,
@@ -618,3 +621,26 @@ def test_update_all_partitions(
     else:
         set_nodes_power_down_spy.assert_not_called()
     update_partitions_spy.assert_called_with(partitions_to_update, state)
+
+
+def test_resume_powering_down_nodes(mocker):
+    get_slurm_nodes_mocked = mocker.patch("common.schedulers.slurm_commands._get_slurm_nodes", auto_spec=True)
+    update_nodes_mocked = mocker.patch("common.schedulers.slurm_commands.update_nodes", auto_spec=True)
+
+    resume_powering_down_nodes()
+    get_slurm_nodes_mocked.assert_called_with(states="powering_down")
+    update_nodes_mocked.assert_called_with(nodes=get_slurm_nodes_mocked(), state="resume", raise_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "states, partition_name, expected_command",
+    [
+        (None, None, f"{SINFO} -h -N -o %N"),
+        ("power_down,powering_down", "test", f"{SINFO} -h -N -o %N -p test -t power_down,powering_down"),
+    ],
+)
+def test_get_slurm_nodes(mocker, states, partition_name, expected_command):
+    check_command_output_mocked = mocker.patch("common.schedulers.slurm_commands.check_command_output", auto_spec=True)
+
+    _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
+    check_command_output_mocked.assert_called_with(expected_command, timeout=10, shell=True)
