@@ -26,10 +26,11 @@ def read(fname):
 console_scripts = [
     "slurm_resume = slurm_plugin.resume:main",
     "slurm_suspend = slurm_plugin.suspend:main",
+    "slurm_fleet_status_manager = slurm_plugin.fleet_status_manager:main",
     "clustermgtd = slurm_plugin.clustermgtd:main",
     "computemgtd = slurm_plugin.computemgtd:main",
 ]
-version = "3.1.1"
+version = "3.2.0b1"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3"]
 
 setup(
