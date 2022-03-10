@@ -116,7 +116,7 @@ class SlurmResumeConfig:
         log.info(self.__repr__())
 
 
-def _handle_failed_nodes(node_list):
+def _handle_failed_nodes(node_list, reason="Failure when resuming nodes"):
     """
     Fall back mechanism to handle failure when launching instances.
 
@@ -132,7 +132,7 @@ def _handle_failed_nodes(node_list):
     """
     try:
         log.info("Setting following failed nodes into DOWN state: %s", print_with_count(node_list))
-        set_nodes_down(node_list, reason="Failure when resuming nodes")
+        set_nodes_down(node_list, reason=reason)
     except Exception as e:
         log.error("Failed to place nodes %s into down with exception: %s", print_with_count(node_list), e)
 
@@ -175,14 +175,17 @@ def _resume(arg_nodes, resume_config):
         update_node_address=resume_config.update_node_address,
         all_or_nothing_batch=resume_config.all_or_nothing_batch,
     )
-    success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
+    failed_nodes = set().union(*instance_manager.failed_nodes.values())
+    success_nodes = [node for node in node_list if node not in failed_nodes]
     log.info("Successfully launched nodes %s", print_with_count(success_nodes))
-    if instance_manager.failed_nodes:
+
+    if failed_nodes:
         log.error(
             "Failed to launch following nodes, setting nodes to down: %s",
-            print_with_count(instance_manager.failed_nodes),
+            print_with_count(failed_nodes),
         )
-        _handle_failed_nodes(instance_manager.failed_nodes)
+        for error_code, node_list in instance_manager.failed_nodes.items():
+            _handle_failed_nodes(node_list, reason=f"(Code:{error_code})Failure when resuming nodes")
 
 
 def main():

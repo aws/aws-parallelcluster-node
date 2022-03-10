@@ -89,7 +89,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         "is_heartbeat_valid",
     ),
     [
-        # all_or_nothing_batch
+        # all_or_nothing_batch without ice error
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1"),
@@ -142,9 +142,10 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
                     },
                     generate_error=True,
+                    error_code="RequestLimitExceeded",
                 ),
             ],
-            ["queue1-st-c5xlarge-2"],
+            {"RequestLimitExceeded": {"queue1-st-c5xlarge-2"}},
             [
                 call(
                     ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
@@ -164,7 +165,83 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             ),
             True,
         ),
-        # best_effort
+        # all_or_nothing_batch with ice error
+        (
+            [
+                SimpleNamespace(name="queue1-dy-c5xlarge-1"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2"),
+            ],
+            3,
+            True,
+            [
+                MockedBoto3Request(
+                    method="run_instances",
+                    response={
+                        "Instances": [
+                            {
+                                "InstanceId": "i-11111",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                            {
+                                "InstanceId": "i-22222",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                            {
+                                "InstanceId": "i-33333",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                        ]
+                    },
+                    expected_params={
+                        "MinCount": 3,
+                        "MaxCount": 3,
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
+                    },
+                ),
+                MockedBoto3Request(
+                    method="run_instances",
+                    response={},
+                    expected_params={
+                        "MinCount": 1,
+                        "MaxCount": 1,
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
+                    },
+                    generate_error=True,
+                    error_code="InsufficientInstanceCapacity",
+                ),
+            ],
+            {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-2"}},
+            [
+                call(
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
+                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
+                    nodehostnames=None,
+                )
+            ],
+            dict(
+                zip(
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
+                    [
+                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
+                )
+            ),
+            True,
+        ),
+        # best_effort without ice error
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1"),
@@ -203,9 +280,67 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
                     },
                     generate_error=True,
+                    error_code="ServiceUnavailable",
                 ),
             ],
-            ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+            {
+                "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
+                "ServiceUnavailable": {"queue1-st-c5xlarge-2"},
+            },
+            [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
+            dict(
+                zip(
+                    ["queue1-dy-c5xlarge-1"],
+                    [
+                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
+                )
+            ),
+            True,
+        ),
+        # best_effort wit ice error
+        (
+            [
+                SimpleNamespace(name="queue1-dy-c5xlarge-1"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2"),
+            ],
+            3,
+            False,
+            [
+                MockedBoto3Request(
+                    method="run_instances",
+                    response={
+                        "Instances": [
+                            {
+                                "InstanceId": "i-11111",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                        ]
+                    },
+                    expected_params={
+                        "MinCount": 1,
+                        "MaxCount": 3,
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
+                    },
+                ),
+                MockedBoto3Request(
+                    method="run_instances",
+                    response={},
+                    expected_params={
+                        "MinCount": 1,
+                        "MaxCount": 1,
+                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
+                    },
+                    generate_error=True,
+                    error_code="InsufficientReservedInstanceCapacity",
+                ),
+            ],
+            {"InsufficientReservedInstanceCapacity": {"queue1-st-c5xlarge-2"}},
             [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
             dict(
                 zip(
@@ -222,13 +357,19 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             None,
             None,
             None,
-            None,
+            {},
             None,
             None,
             False,
         ),
     ],
-    ids=["all_or_nothing", "best_effort", "invalid_heartbeat"],
+    ids=[
+        "all_or_nothing without ICE error",
+        "all_or_nothing with ICE error",
+        "best_effort without ICE error",
+        "best_effort with ICE error",
+        "invalid_heartbeat",
+    ],
 )
 def test_resume_launch(
     mock_node_lists,
@@ -288,8 +429,13 @@ def test_resume_launch(
         mock_store_hostname.assert_not_called()
         mock_update_dns.assert_not_called()
     else:
+        mock_handle_failed_nodes_calls = []
         if expected_failed_nodes:
-            mock_handle_failed_nodes.assert_called_with(expected_failed_nodes)
+            for error_code, nodeset in expected_failed_nodes.items():
+                mock_handle_failed_nodes_calls.append(
+                    call(nodeset, reason=f"(Code:{error_code})Failure when resuming nodes")
+                )
+            mock_handle_failed_nodes.assert_has_calls(mock_handle_failed_nodes_calls)
         if expected_update_node_calls:
             mock_update_nodes.assert_has_calls(expected_update_node_calls)
         if expected_assigned_nodes:
