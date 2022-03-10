@@ -165,7 +165,7 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                None,
+                {},
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
@@ -229,6 +229,7 @@ class TestInstanceManager:
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
+                        error_code="some_error_code",
                     ),
                     MockedBoto3Request(
                         method="run_instances",
@@ -257,7 +258,7 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                ["queue1-st-c52xlarge-1"],
+                {"some_error_code": {"queue1-st-c52xlarge-1"}},
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
@@ -303,7 +304,7 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                None,
+                {},
                 None,
             ),
             # batch_size1
@@ -353,6 +354,7 @@ class TestInstanceManager:
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
+                        error_code="InsufficientHostCapacity",
                     ),
                     MockedBoto3Request(
                         method="run_instances",
@@ -363,14 +365,13 @@ class TestInstanceManager:
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
+                        error_code="ServiceUnavailable",
                     ),
                 ],
-                [
-                    "queue1-st-c52xlarge-1",
-                    "queue2-st-c5xlarge-1",
-                    "queue2-st-c5xlarge-2",
-                    "queue2-dy-c5xlarge-1",
-                ],
+                {
+                    "InsufficientHostCapacity": {"queue1-st-c52xlarge-1"},
+                    "ServiceUnavailable": {"queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1", "queue2-st-c5xlarge-2"},
+                },
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
@@ -425,6 +426,7 @@ class TestInstanceManager:
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
+                        error_code="InsufficientVolumeCapacity",
                     ),
                     MockedBoto3Request(
                         method="run_instances",
@@ -454,6 +456,7 @@ class TestInstanceManager:
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
+                        error_code="InternalError",
                     ),
                     MockedBoto3Request(
                         method="run_instances",
@@ -475,7 +478,7 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                ["queue1-st-c52xlarge-1", "queue2-st-c5xlarge-2"],
+                {"InsufficientVolumeCapacity": {"queue1-st-c52xlarge-1"}, "InternalError": {"queue2-st-c5xlarge-2"}},
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
@@ -525,7 +528,7 @@ class TestInstanceManager:
                         "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                     },
                 ),
-                ["queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
+                {"LimitedInstanceCapacity": {"queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"}},
                 [
                     call(
                         ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
@@ -592,9 +595,10 @@ class TestInstanceManager:
                             "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
                         },
                         generate_error=True,
+                        error_code="InsufficientInstanceCapacity",
                     ),
                 ],
-                ["queue2-dy-c5xlarge-2", "queue2-dy-c5xlarge-3"],
+                {"InsufficientInstanceCapacity": {"queue2-dy-c5xlarge-2", "queue2-dy-c5xlarge-3"}},
                 [
                     call(
                         ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
@@ -716,7 +720,7 @@ class TestInstanceManager:
                         },
                     ),
                 ],
-                None,
+                {},
                 [
                     call(
                         ["queue3-st-c5xlarge-2"],
@@ -941,11 +945,18 @@ class TestInstanceManager:
                 ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                [],
+                {},
                 False,
                 "dns.domain",
             ),
-            (["queue1-st-c5xlarge-1"], [], None, ["queue1-st-c5xlarge-1"], False, "dns.domain"),
+            (
+                ["queue1-st-c5xlarge-1"],
+                {},
+                None,
+                {"LimitedInstanceCapacity": {"queue1-st-c5xlarge-1"}},
+                False,
+                "dns.domain",
+            ),
             (
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4"],
                 [
@@ -953,7 +964,7 @@ class TestInstanceManager:
                     EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
                 ],
                 call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
-                ["queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4"],
+                {"LimitedInstanceCapacity": {"queue1-st-c5xlarge-4", "queue1-st-c5xlarge-3"}},
                 False,
                 "dns.domain",
             ),
@@ -961,7 +972,7 @@ class TestInstanceManager:
                 ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
-                [],
+                {},
                 True,
                 "dns.domain",
             ),
@@ -969,7 +980,7 @@ class TestInstanceManager:
                 ["queue1-st-c5xlarge-1"],
                 [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                [],
+                {},
                 False,
                 "",
             ),
@@ -1306,12 +1317,14 @@ class TestInstanceManager:
                         "u6tb1metal": ["queue2-st-u6tb1metal-1"],
                     },
                 },
-                [
-                    "in-valid/queue.name-st-c5xlarge-2",
-                    "noBrackets-st-c5xlarge-[1-2]",
-                    "queue2-invalidnodetype-c5xlarge-12",
-                    "queuename-with-dash-and_underscore-st-i3enmetal2tb-1",
-                ],
+                {
+                    "InvalidNodenameError": {
+                        "queue2-invalidnodetype-c5xlarge-12",
+                        "noBrackets-st-c5xlarge-[1-2]",
+                        "queuename-with-dash-and_underscore-st-i3enmetal2tb-1",
+                        "in-valid/queue.name-st-c5xlarge-2",
+                    }
+                },
             ),
         ],
     )

@@ -61,7 +61,7 @@ class InstanceManager:
         self._region = region
         self._cluster_name = cluster_name
         self._boto3_config = boto3_config
-        self.failed_nodes = []
+        self.failed_nodes = {}
         self._ddb_resource = boto3.resource("dynamodb", region_name=region, config=boto3_config)
         self._table = self._ddb_resource.Table(table_name) if table_name else None
         self._hosted_zone = hosted_zone
@@ -74,7 +74,7 @@ class InstanceManager:
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
-        self.failed_nodes = []
+        self.failed_nodes = {}
 
     def add_instances_for_nodes(
         self, node_list, launch_batch_size, update_node_address=True, all_or_nothing_batch=False
@@ -102,14 +102,22 @@ class InstanceManager:
                                 self._store_assigned_hostnames(assigned_nodes)
                                 self._update_dns_hostnames(assigned_nodes)
                             except Exception:
-                                self.failed_nodes.extend(list(assigned_nodes.keys()))
+                                self._update_failed_nodes(set(assigned_nodes.keys()))
+                    except ClientError as e:
+                        logger.error(
+                            "Encountered exception when launching instances for nodes %s: %s",
+                            print_with_count(batch_nodes),
+                            e,
+                        )
+                        error_code = e.response.get("Error", {}).get("Code")
+                        self._update_failed_nodes(set(batch_nodes), error_code)
                     except Exception as e:
                         logger.error(
                             "Encountered exception when launching instances for nodes %s: %s",
                             print_with_count(batch_nodes),
                             e,
                         )
-                        self.failed_nodes.extend(batch_nodes)
+                        self._update_failed_nodes(set(batch_nodes))
 
     def _update_slurm_node_addrs(self, slurm_nodes, launched_instances):
         """Update node information in slurm with info from launched EC2 instance."""
@@ -139,7 +147,7 @@ class InstanceManager:
                 )
             if fail_launch_nodes:
                 logger.info("Failed to launch instances for following nodes: %s", print_with_count(fail_launch_nodes))
-                self.failed_nodes.extend(fail_launch_nodes)
+                self._update_failed_nodes(set(fail_launch_nodes), "LimitedInstanceCapacity")
 
             return dict(zip(launched_nodes, launched_instances))
 
@@ -149,7 +157,7 @@ class InstanceManager:
                 print_with_count(slurm_nodes),
                 print_with_count(launched_instances),
             )
-            self.failed_nodes.extend(slurm_nodes)
+            self._update_failed_nodes(set(slurm_nodes))
 
     @log_exception(logger, "saving assigned hostnames in DynamoDB", raise_on_error=True)
     def _store_assigned_hostnames(self, nodes):
@@ -228,7 +236,7 @@ class InstanceManager:
                 instances_to_launch[queue_name][compute_resource_name].append(node)
             except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
-                self.failed_nodes.append(node)
+                self._update_failed_nodes({node}, "InvalidNodenameError")
         logger.debug("Launch configuration requested by nodes = %s", instances_to_launch)
 
         return instances_to_launch
@@ -362,3 +370,7 @@ class InstanceManager:
         except Exception as e:
             logger.error("Failed when terminating compute fleet with error %s", e)
             return False
+
+    def _update_failed_nodes(self, nodeset, error_code="Exception"):
+        """Update failed nodes dict with error code as key and nodeset value."""
+        self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
