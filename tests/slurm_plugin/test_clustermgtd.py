@@ -2115,11 +2115,11 @@ def test_handle_failed_health_check_nodes_in_replacement(
     expected_nodes_in_replacement,
     mocker,
 ):
-    for node, is_static_nodes_in_replacement, is_failing_health_check in zip(
+    for node, is_node_in_replacement, is_node_failing_health_check in zip(
         active_nodes, is_static_nodes_in_replacement, is_failing_health_check
     ):
-        node.is_static_nodes_in_replacement = is_static_nodes_in_replacement
-        node.is_failing_health_check = is_failing_health_check
+        node.is_static_nodes_in_replacement = is_node_in_replacement
+        node.is_failing_health_check = is_node_failing_health_check
 
     cluster_manager = ClusterManager(mocker.MagicMock())
     cluster_manager._static_nodes_in_replacement = current_nodes_in_replacement

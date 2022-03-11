@@ -231,12 +231,12 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 
     Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
     """
-    # awk is used to replace the \n\n record separator with '---\n'
+    # awk is used to replace the \n\n record separator with '######\n'
     # Note: In case the node does not belong to any partition the Partitions field is missing from Slurm output
     show_node_info_command = (
-        f'{SCONTROL} show nodes {nodes} | awk \'BEGIN{{RS="\\n\\n" ; ORS="---\\n";}} {{print}}\' | '
-        'grep -oP "^NodeName=\\K(\\S+)| NodeAddr=\\K(\\S+)| NodeHostName=\\K(\\S+)| State=\\K(\\S+)|'
-        ' Partitions=\\K(\\S+)|(---)"'
+        f'{SCONTROL} show nodes {nodes} | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+        'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
+        '(Partitions=\\S+)|(Reason=.+) |(######)"'
     )
     nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec
 
@@ -305,44 +305,60 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
 def _parse_nodes_info(slurm_node_info):
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
-    # | awk 'BEGIN{RS="\n\n" ; ORS="---\n";} {print}' | grep -oP "^NodeName=\K(\S+)| NodeAddr=\K(\S+)|\
-    # NodeHostName=\K(\S+)| State=\K(\S+)| Partitions=\K(\S+)|(---)"
-    # compute-dy-c5xlarge-1
-    # 1.2.3.4
-    # compute-dy-c5xlarge-1
-    # IDLE+CLOUD+POWER
-    # compute,compute2
-    # ---
-    # compute-dy-c5xlarge-2
-    # 1.2.3.4
-    # compute-dy-c5xlarge-2
-    # IDLE+CLOUD+POWER
-    # compute,compute2
-    # ---
-    # compute-dy-c5xlarge-3
-    # 1.2.3.4
-    # compute-dy-c5xlarge-3
-    # IDLE+CLOUD+POWER
-    # compute,compute2
-    # ---
-    # compute-dy-c5xlarge-50001
-    # 1.2.3.4
-    # compute-dy-c5xlarge-50001
-    # IDLE+CLOUD+POWER
-    # ---
-    node_info = slurm_node_info.split("---")
+    # awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
+    # |(NodeHostName=\S+)|(State=\S+)|(Partitions=\S+)|(Reason=.+) |(######)"
+    # NodeName=compute-dy-c5xlarge-1
+    # NodeAddr=1.2.3.4
+    # NodeHostName=compute-dy-c5xlarge-1
+    # State=IDLE+CLOUD+POWER
+    # Partitions=compute,compute2
+    # Reason=some reason
+    # ######
+    # NodeName=compute-dy-c5xlarge-2
+    # NodeAddr=1.2.3.4
+    # NodeHostName=compute-dy-c5xlarge-2
+    # State=IDLE+CLOUD+POWER
+    # Partitions=compute,compute2
+    # Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes
+    # ######
+    # NodeName=compute-dy-c5xlarge-3
+    # NodeAddr=1.2.3.4
+    # NodeHostName=compute-dy-c5xlarge-3
+    # State=IDLE+CLOUD+POWER
+    # Partitions=compute,compute2
+    # ######
+    # NodeName=compute-dy-c5xlarge-50001
+    # NodeAddr=1.2.3.4
+    # NodeHostName=compute-dy-c5xlarge-50001
+    # State=IDLE+CLOUD+POWER
+    # ######
+
+    map_slurm_key_to_arg = {
+        "NodeName": "name",
+        "NodeAddr": "nodeaddr",
+        "NodeHostName": "nodehostname",
+        "State": "state",
+        "Partitions": "partitions",
+        "Reason": "reason",
+    }
+
+    node_info = slurm_node_info.split("######")
     slurm_nodes = []
     for node in node_info:
         lines = node.strip().splitlines()
+        kwargs = {}
+        for line in lines:
+            key, value = line.split("=")
+            kwargs[map_slurm_key_to_arg[key]] = value
         if lines:
             try:
-                if is_static_node(lines[0]):
-                    node = StaticNode(*lines)
+                if is_static_node(kwargs["name"]):
+                    node = StaticNode(**kwargs)
                     slurm_nodes.append(node)
                 else:
-                    node = DynamicNode(*lines)
+                    node = DynamicNode(**kwargs)
                     slurm_nodes.append(node)
             except InvalidNodenameError:
-                log.warning("Ignoring node %s because it has an invalid name", lines[0])
+                log.warning("Ignoring node %s because it has an invalid name", kwargs["name"])
 
     return slurm_nodes
