@@ -214,6 +214,74 @@ def test_slurm_node_is_power_with_job(node, expected_output):
 
 
 @pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1", "Failed to resume"),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "MIXED+CLOUD+DRAIN+POWERING_UP",
+                "queue1",
+                "Some reason",
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "ALLOCATED+CLOUD+DRAIN+NOT_RESPONDING",
+                "queue1",
+                "(Code:RequestLimitExceeded)Failure when resuming nodes",
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "IDLE+CLOUD",
+                "queue1",
+                "(Code:InsufficientInstanceCapacity)Failure when resuming nodes",
+            ),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD",
+                "queue1",
+                "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+            ),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "COMPLETING+DRAIN",
+                "queue1",
+                "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+            ),
+            True,
+        ),
+    ],
+)
+def test_slurm_node_is_ice(node, expected_output):
+    assert_that(node.is_ice()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
     "nodes, expected_output",
     [
         (

@@ -117,7 +117,14 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
 
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, instance=None):
+    EC2_ICE_ERROR_CODES = {
+        "InsufficientInstanceCapacity",
+        "InsufficientHostCapacity",
+        "InsufficientReservedInstanceCapacity",
+        "MaxSpotInstanceCountExceeded",
+    }
+
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
         """Initialize slurm node with attributes."""
         self.name = name
         self.nodeaddr = nodeaddr
@@ -125,11 +132,13 @@ class SlurmNode(metaclass=ABCMeta):
         self.state_string = state
         self.states = set(state.split("+"))
         self.partitions = partitions.strip().split(",") if partitions else None
+        self.reason = reason
         self.instance = instance
         self.is_static_nodes_in_replacement = False
         self._is_being_replaced = False
         self._is_replacement_timeout = False
         self.is_failing_health_check = False
+        self.error_code = self._parse_error_code()
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -197,6 +206,9 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if node is in IDLE# state."""
         return self.SLURM_SCONTROL_IDLE_STATE in self.states and self.is_powering_up()
 
+    def is_ice(self):
+        return self.error_code in self.EC2_ICE_ERROR_CODES
+
     @abstractmethod
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
@@ -246,6 +258,14 @@ class SlurmNode(metaclass=ABCMeta):
         _, _, compute_resource_name = parse_nodename(self.name)
         return compute_resource_name
 
+    def _parse_error_code(self):
+        """Parse RunInstance error code from node reason."""
+        if self.reason and self.reason.startswith("(Code:"):
+            index_of_bracket = self.reason.find(")")
+            error_code = self.reason[len("(Code:") : index_of_bracket]  # noqa E203: whitespace before ':'
+            return error_code
+        return None
+
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
         if isinstance(other, SlurmNode):
@@ -264,9 +284,9 @@ class SlurmNode(metaclass=ABCMeta):
 
 
 class StaticNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, instance=None):
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, instance)
+        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance)
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
@@ -357,9 +377,9 @@ class StaticNode(SlurmNode):
 
 
 class DynamicNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, instance=None):
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, instance)
+        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance)
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""

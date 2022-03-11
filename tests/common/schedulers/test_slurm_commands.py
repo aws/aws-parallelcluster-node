@@ -84,42 +84,44 @@ def test_is_static_node(nodename, expected_is_static):
     [
         (
             (
-                "multiple-st-c5xlarge-1\n"
-                "172.31.10.155\n"
-                "172-31-10-155\n"
-                "MIXED+CLOUD\n"
-                "multiple\n"
-                "---\n"
-                "multiple-dy-c5xlarge-2\n"
-                "172.31.7.218\n"
-                "172-31-7-218\n"
-                "IDLE+CLOUD+POWER\n"
-                "multiple\n"
-                "---\n"
-                "multiple-dy-c5xlarge-3\n"
-                "multiple-dy-c5xlarge-3\n"
-                "multiple-dy-c5xlarge-3\n"
-                "IDLE+CLOUD+POWER\n"
-                "multiple\n"
-                "---\n"
-                "multiple-dy-c5xlarge-4\n"
-                "multiple-dy-c5xlarge-4\n"
-                "multiple-dy-c5xlarge-4\n"
-                "IDLE+CLOUD+POWER\n"
-                "multiple,multiple2\n"
-                "---\n"
-                "multiple-dy-c5xlarge-5\n"
-                "multiple-dy-c5xlarge-5\n"
-                "multiple-dy-c5xlarge-5\n"
-                "IDLE+CLOUD+POWER\n"
+                "NodeName=multiple-st-c5xlarge-1\n"
+                "NodeAddr=172.31.10.155\n"
+                "NodeHostName=172-31-10-155\n"
+                "State=MIXED+CLOUD\n"
+                "Partitions=multiple\n"
+                "######\n"
+                "NodeName=multiple-dy-c5xlarge-2\n"
+                "NodeAddr=172.31.7.218\n"
+                "NodeHostName=172-31-7-218\n"
+                "State=IDLE+CLOUD+POWER\n"
+                "Partitions=multiple\n"
+                "######\n"
+                "NodeName=multiple-dy-c5xlarge-3\n"
+                "NodeAddr=multiple-dy-c5xlarge-3\n"
+                "NodeHostName=multiple-dy-c5xlarge-3\n"
+                "State=IDLE+CLOUD+POWER\n"
+                "Partitions=multiple\n"
+                "Reason=some reason \n"
+                "######\n"
+                "NodeName=multiple-dy-c5xlarge-4\n"
+                "NodeAddr=multiple-dy-c5xlarge-4\n"
+                "NodeHostName=multiple-dy-c5xlarge-4\n"
+                "State=IDLE+CLOUD+POWER\n"
+                "Partitions=multiple,multiple2\n"
+                "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes \n"
+                "######\n"
+                "NodeName=multiple-dy-c5xlarge-5\n"
+                "NodeAddr=multiple-dy-c5xlarge-5\n"
+                "NodeHostName=multiple-dy-c5xlarge-5\n"
+                "State=IDLE+CLOUD+POWER\n"
                 # missing partitions
-                "---"
-                "test-no-partition\n"
-                "test-no-partition\n"
-                "test-no-partition\n"
-                "IDLE+CLOUD+POWER\n"
+                "######"
+                "NodeName=test-no-partition\n"
+                "NodeAddr=test-no-partition\n"
+                "NodeHostName=test-no-partition\n"
+                "State=IDLE+CLOUD+POWER\n"
                 # missing partitions
-                "---"
+                "######"
             ),
             [
                 StaticNode("multiple-st-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
@@ -130,6 +132,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
                     "multiple",
+                    "some reason",
                 ),
                 DynamicNode(
                     "multiple-dy-c5xlarge-4",
@@ -137,6 +140,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "multiple-dy-c5xlarge-4",
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
+                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes",
                 ),
                 DynamicNode(
                     "multiple-dy-c5xlarge-5",
