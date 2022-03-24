@@ -11,3 +11,4 @@ build/
 .tox/
 .coverage
 coverage.xml
+*.iml
