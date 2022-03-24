@@ -135,6 +135,7 @@ class ClustermgtdConfig:
         "dns_domain": None,
         "use_private_hostname": False,
         "protected_failure_count": 10,
+        "insufficient_capacity_timeout": 600,
     }
 
     def __init__(self, config_file_path):
@@ -247,6 +248,10 @@ class ClustermgtdConfig:
         self.protected_failure_count = config.getint(
             "clustermgtd", "protected_failure_count", fallback=self.DEFAULTS.get("protected_failure_count")
         )
+        self.insufficient_capacity_timeout = config.getfloat(
+            "clustermgtd", "insufficient_capacity_timeout", fallback=self.DEFAULTS.get("insufficient_capacity_timeout")
+        )
+        self.disable_nodes_on_insufficient_capacity = self.insufficient_capacity_timeout > 0
 
     def _get_dns_config(self, config):
         """Get config option related to Route53 DNS domain."""
@@ -628,8 +633,19 @@ class ClusterManager:
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
-        log.info("Setting unhealthy dynamic nodes to down and power_down.")
-        set_nodes_power_down([node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed")
+
+        nodes_to_power_down = (
+            [node for node in unhealthy_dynamic_nodes if not node.is_ice()]
+            if self._config.disable_nodes_on_insufficient_capacity
+            else unhealthy_dynamic_nodes
+        )
+
+        if nodes_to_power_down:
+            log.info(
+                "Setting the following unhealthy dynamic nodes to down and power_down: %s",
+                print_with_count(nodes_to_power_down),
+            )
+            set_nodes_power_down([node.name for node in nodes_to_power_down], reason="Scheduler health check failed")
 
     @log_exception(log, "maintaining powering down nodes", raise_on_error=False)
     def _handle_powering_down_nodes(self, slurm_nodes):
