@@ -7,13 +7,12 @@ This file is used to list changes made in each version of the aws-parallelcluste
 ------
 
 **CHANGES**
-- OS package updates and security fixes.
+- There were no notable changes for this version.
 
 2.11.5
 ------
 
 **CHANGES**
-
 - Drop support for SGE and Torque schedulers.
 
 2.11.4
