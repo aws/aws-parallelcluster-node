@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
 from subprocess import CalledProcessError
+from typing import Dict, List
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import (
@@ -36,7 +37,15 @@ from common.utils import check_command_output, sleep_remaining_loop_time, time_i
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count, read_json
 from slurm_plugin.instance_manager import InstanceManager
-from slurm_plugin.slurm_resources import CONFIG_FILE_DIR, EC2InstanceHealthState, PartitionStatus, StaticNode
+from slurm_plugin.slurm_resources import (
+    CONFIG_FILE_DIR,
+    ComputeResourceFailureEvent,
+    DynamicNode,
+    EC2InstanceHealthState,
+    PartitionStatus,
+    SlurmNode,
+    StaticNode,
+)
 
 LOOP_TIME = 60
 log = logging.getLogger(__name__)
@@ -300,6 +309,7 @@ class ClusterManager:
         self.static_nodes_in_replacement is persistent across multiple iteration of manage_cluster
         This state is required because we need to ignore static nodes that might have long bootstrap time
         """
+        self._insufficient_capacity_compute_resources = {}
         self._static_nodes_in_replacement = set()
         self._partitions_protected_failure_count_map = {}
         self._compute_fleet_status = ComputeFleetStatus.RUNNING
@@ -380,7 +390,7 @@ class ClusterManager:
                     log.info("Retrieving nodes info from the scheduler")
                     nodes = self._get_node_info_with_retry()
                     log.debug("Nodes: %s", nodes)
-                    partitions_name_map = self._retrieve_scheduler_partitions(nodes)
+                    partitions_name_map, compute_resource_nodes_map = self._retrieve_scheduler_partitions(nodes)
                 except Exception as e:
                     log.error(
                         "Unable to get partition/node info from slurm, no other action can be performed. Sleeping... "
@@ -404,7 +414,7 @@ class ClusterManager:
                 if not self._config.disable_all_health_checks:
                     self._perform_health_check_actions(partitions)
                 # Maintain slurm nodes
-                self._maintain_nodes(partitions_name_map)
+                self._maintain_nodes(partitions_name_map, compute_resource_nodes_map)
                 # Clean up orphaned instances
                 self._terminate_orphaned_instances(cluster_instances)
             elif self._compute_fleet_status in {
@@ -608,7 +618,7 @@ class ClusterManager:
     def _increase_partitions_protected_failure_count(self, bootstrap_failure_nodes):
         """Keep count of boostrap failures."""
         for node in bootstrap_failure_nodes:
-            compute_resource = node.get_compute_resource_name()
+            compute_resource = node.compute_resource_name
             for p in node.partitions:
                 if p in self._partitions_protected_failure_count_map:
                     self._partitions_protected_failure_count_map[p][compute_resource] = (
@@ -701,7 +711,7 @@ class ClusterManager:
         )
 
     @log_exception(log, "maintaining slurm nodes", catch_exception=Exception, raise_on_error=False)
-    def _maintain_nodes(self, partitions_name_map):
+    def _maintain_nodes(self, partitions_name_map, compute_resource_nodes_map):
         """
         Call functions to maintain unhealthy nodes.
 
@@ -725,6 +735,8 @@ class ClusterManager:
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes)
         if self._is_protected_mode_enabled():
             self._handle_protected_mode_process(active_nodes, partitions_name_map)
+        if self._config.disable_nodes_on_insufficient_capacity:
+            self._handle_ice_nodes(unhealthy_dynamic_nodes, compute_resource_nodes_map)
         self._handle_failed_health_check_nodes_in_replacement(active_nodes)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
@@ -877,6 +889,7 @@ class ClusterManager:
     def _retrieve_scheduler_partitions(nodes):
         try:
             ignored_nodes = []
+            compute_resource_nodes_map = {}
             partitions_name_map = ClusterManager._get_partition_info_with_retry()
             log.debug("Partitions: %s", partitions_name_map)
             for node in nodes:
@@ -886,9 +899,12 @@ class ClusterManager:
                 else:
                     for p in node.partitions:
                         partitions_name_map[p].slurm_nodes.append(node)
+                    compute_resource_nodes_map.setdefault(node.queue_name, {}).setdefault(
+                        node.compute_resource_name, []
+                    ).append(node)
             if ignored_nodes:
                 log.warning("Ignoring following nodes because they do not belong to any partition: %s", ignored_nodes)
-            return partitions_name_map
+            return partitions_name_map, compute_resource_nodes_map
         except Exception as e:
             log.error("Failed when getting partition/node states from scheduler with exception %s", e)
             raise
@@ -950,6 +966,17 @@ class ClusterManager:
                 active_nodes += partition.slurm_nodes
         return active_nodes
 
+    @staticmethod
+    def _get_unhealthy_ice_nodes(unhealthy_dynamic_nodes: List[DynamicNode]) -> Dict[str, Dict[str, List[DynamicNode]]]:
+        """Get insufficient capacity compute resource and nodes, error code mapping."""
+        ice_compute_resources_and_nodes_map = {}
+        for node in unhealthy_dynamic_nodes:
+            if node.is_ice():
+                ice_compute_resources_and_nodes_map.setdefault(node.queue_name, {}).setdefault(
+                    node.compute_resource_name, []
+                ).append(node)
+        return ice_compute_resources_and_nodes_map
+
     def _is_node_in_replacement_valid(self, node, check_node_is_valid):
         """
         Check node is replacement timeout or in replacement.
@@ -963,6 +990,116 @@ class ClusterManager:
             )
             return not time_is_expired if check_node_is_valid else time_is_expired
         return False
+
+    @log_exception(
+        log, "handling nodes failed due to insufficient capacity", catch_exception=Exception, raise_on_error=False
+    )
+    def _handle_ice_nodes(
+        self,
+        unhealthy_dynamic_nodes: List[DynamicNode],
+        compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
+    ):
+        """Handle nodes failed with insufficient capacity."""
+        # get insufficient capacity compute resource and nodes mapping
+        ice_compute_resources_and_nodes_map = self._get_unhealthy_ice_nodes(unhealthy_dynamic_nodes)
+        if ice_compute_resources_and_nodes_map:
+            self._update_insufficient_capacity_compute_resources(ice_compute_resources_and_nodes_map)
+            self._reset_timeout_expired_compute_resources(ice_compute_resources_and_nodes_map)
+        self._set_ice_compute_resources_to_down(compute_resource_nodes_map)
+
+    def _update_insufficient_capacity_compute_resources(
+        self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
+    ):
+        """Add compute resource to insufficient_capacity_compute_resources if node is ICE node."""
+        for queue_name, compute_resources in ice_compute_resources_and_nodes_map.items():
+            for compute_resource, nodes in compute_resources.items():
+                if not self._insufficient_capacity_compute_resources.get(queue_name, {}).get(compute_resource):
+                    self._insufficient_capacity_compute_resources.setdefault(queue_name, {})[
+                        compute_resource
+                    ] = ComputeResourceFailureEvent(self._current_time, nodes[0].error_code)
+
+    def _reset_timeout_expired_compute_resources(
+        self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
+    ):
+        """Reset compute resources which insufficient_capacity_timeout expired."""
+        # Find insufficient_capacity_timeout compute resources
+        if not self._insufficient_capacity_compute_resources:
+            return
+        log.info(
+            "The following compute resources are in down state due to insufficient capacity: %s, "
+            "compute resources will be reset after insufficient capacity timeout (%s seconds) expired",
+            self._insufficient_capacity_compute_resources,
+            self._config.insufficient_capacity_timeout,
+        )
+        timeout_expired_compute_resources = self._find_insufficient_capacity_timeout_expired_compute_resources()
+
+        # Reset nodes which insufficient capacity timeout expired
+        if timeout_expired_compute_resources:
+            self._reset_insufficient_capacity_timeout_expired_nodes(
+                timeout_expired_compute_resources, ice_compute_resources_and_nodes_map
+            )
+
+    def _set_ice_compute_resources_to_down(self, compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]):
+        """Set powered_down nodes which belong to insufficient capacity compute resources to down."""
+        if not self._insufficient_capacity_compute_resources:
+            return
+        nodes_to_down = {}
+        for queue_name, compute_resources in self._insufficient_capacity_compute_resources.items():
+            for compute_resource, event in compute_resources.items():
+                nodes = compute_resource_nodes_map.get(queue_name, {}).get(compute_resource, [])
+                for node in nodes:
+                    if not node.is_ice() and node.is_power() and not node.is_nodeaddr_set():
+                        error_code = event.error_code
+                        nodes_to_down.setdefault(error_code, []).append(node.name)
+        if nodes_to_down:
+            for error_code, node_list in nodes_to_down.items():
+                log.info(
+                    "Setting following nodes into DOWN state due to insufficient capacity: %s",
+                    print_with_count(node_list),
+                )
+                set_nodes_down(
+                    node_list, reason=f"(Code:{error_code})Temporarily disabling node due to insufficient capacity"
+                )
+
+    def _find_insufficient_capacity_timeout_expired_compute_resources(
+        self,
+    ) -> Dict[str, Dict[str, ComputeResourceFailureEvent]]:
+        """Find compute resources which insufficient_capacity_timeout expired."""
+        timeout_expired_cr = dict()
+        for queue_name, compute_resources in self._insufficient_capacity_compute_resources.copy().items():
+            for compute_resource, event in compute_resources.copy().items():
+                if time_is_up(event.timestamp, self._current_time, self._config.insufficient_capacity_timeout):
+                    self._insufficient_capacity_compute_resources[queue_name].pop(compute_resource)
+                    timeout_expired_cr.setdefault(queue_name, []).append(compute_resource)
+                    if not self._insufficient_capacity_compute_resources.get(queue_name):
+                        self._insufficient_capacity_compute_resources.pop(queue_name)
+        return timeout_expired_cr
+
+    def _reset_insufficient_capacity_timeout_expired_nodes(
+        self,
+        timeout_expired_cr: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+    ):
+        """Reset nodes in the compute resource which insufficient_capacity_timeout expired."""
+        logging.info(
+            f"Reset the following compute resources because insufficient capacity timeout expired: {timeout_expired_cr}"
+        )
+        nodes_to_power_down = []
+        for queue, compute_resources in timeout_expired_cr.items():
+            for compute_resource in compute_resources:
+                nodes = ice_compute_resources_and_nodes_map.get(queue, {}).get(compute_resource, [])
+                nodes_to_power_down += nodes
+
+        if nodes_to_power_down:
+            node_names = [node.name for node in nodes_to_power_down]
+            log.info(
+                "Enabling the following nodes because insufficient capacity timeout expired: %s",
+                print_with_count(node_names),
+            )
+            set_nodes_power_down(
+                node_names,
+                reason="Enabling node since insufficient capacity timeout expired",
+            )
 
 
 def _run_clustermgtd(config_file):

@@ -12,6 +12,8 @@
 import logging
 import re
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 from common.utils import time_is_up
@@ -95,7 +97,7 @@ class SlurmPartition:
                     and node.is_online()
                 ):
                     logger.debug("Currently online node: %s, node state: %s", node.name, node.state_string)
-                    online_compute_resources.add(node.get_compute_resource_name())
+                    online_compute_resources.add(node.compute_resource_name)
         return online_compute_resources
 
     def __eq__(self, other):
@@ -139,6 +141,7 @@ class SlurmNode(metaclass=ABCMeta):
         self._is_replacement_timeout = False
         self.is_failing_health_check = False
         self.error_code = self._parse_error_code()
+        self.queue_name, self._node_type, self.compute_resource_name = parse_nodename(name)
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -252,11 +255,6 @@ class SlurmNode(metaclass=ABCMeta):
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""
         pass
-
-    def get_compute_resource_name(self):
-        """Get instance name of given node."""
-        _, _, compute_resource_name = parse_nodename(self.name)
-        return compute_resource_name
 
     def _parse_error_code(self):
         """Parse RunInstance error code from node reason."""
@@ -496,6 +494,12 @@ class InvalidNodenameError(ValueError):
     """
 
     pass
+
+
+@dataclass
+class ComputeResourceFailureEvent:
+    timestamp: datetime
+    error_code: str
 
 
 def parse_nodename(nodename):
