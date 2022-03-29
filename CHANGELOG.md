@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+x.x.x
+------
+
+**ENHANCEMENTS**
+- Enable fast insufficient capacity fail-over with slurm scheduler.
+
 3.1.3
 ------
 
