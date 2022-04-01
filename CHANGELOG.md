@@ -7,7 +7,10 @@ x.x.x
 ------
 
 **ENHANCEMENTS**
-- Enable fast insufficient capacity fail-over with slurm scheduler.
+- Temporarily disable compute resource when a node launch fails due to insufficient capacity.
+
+**CHANGES**
+- Drop support for python 3.6.
 
 3.1.3
 ------
