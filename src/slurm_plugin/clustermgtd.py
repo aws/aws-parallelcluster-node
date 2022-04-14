@@ -390,7 +390,7 @@ class ClusterManager:
                     log.info("Retrieving nodes info from the scheduler")
                     nodes = self._get_node_info_with_retry()
                     log.debug("Nodes: %s", nodes)
-                    partitions_name_map, compute_resource_nodes_map = self._retrieve_scheduler_partitions(nodes)
+                    partitions_name_map, compute_resource_nodes_map = self._parse_scheduler_nodes_data(nodes)
                 except Exception as e:
                     log.error(
                         "Unable to get partition/node info from slurm, no other action can be performed. Sleeping... "
@@ -604,15 +604,21 @@ class ClusterManager:
         """
         unhealthy_static_nodes = []
         unhealthy_dynamic_nodes = []
+        ice_compute_resources_and_nodes_map = {}
         for node in slurm_nodes:
             if not node.is_healthy(self._config.terminate_drain_nodes, self._config.terminate_down_nodes):
                 if isinstance(node, StaticNode):
                     unhealthy_static_nodes.append(node)
+                elif self._config.disable_nodes_on_insufficient_capacity and node.is_ice():
+                    ice_compute_resources_and_nodes_map.setdefault(node.queue_name, {}).setdefault(
+                        node.compute_resource_name, []
+                    ).append(node)
                 else:
                     unhealthy_dynamic_nodes.append(node)
         return (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,
+            ice_compute_resources_and_nodes_map,
         )
 
     def _increase_partitions_protected_failure_count(self, bootstrap_failure_nodes):
@@ -726,7 +732,11 @@ class ClusterManager:
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
-        unhealthy_dynamic_nodes, unhealthy_static_nodes = self._find_unhealthy_slurm_nodes(active_nodes)
+        (
+            unhealthy_dynamic_nodes,
+            unhealthy_static_nodes,
+            ice_compute_resources_and_nodes_map,
+        ) = self._find_unhealthy_slurm_nodes(active_nodes)
         if unhealthy_dynamic_nodes:
             log.info("Found the following unhealthy dynamic nodes: %s", print_with_count(unhealthy_dynamic_nodes))
             self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
@@ -736,7 +746,7 @@ class ClusterManager:
         if self._is_protected_mode_enabled():
             self._handle_protected_mode_process(active_nodes, partitions_name_map)
         if self._config.disable_nodes_on_insufficient_capacity:
-            self._handle_ice_nodes(unhealthy_dynamic_nodes, compute_resource_nodes_map)
+            self._handle_ice_nodes(ice_compute_resources_and_nodes_map, compute_resource_nodes_map)
         self._handle_failed_health_check_nodes_in_replacement(active_nodes)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
@@ -886,7 +896,7 @@ class ClusterManager:
         self._handle_nodes_failing_health_check(nodes_failing_health_check, health_check_type)
 
     @staticmethod
-    def _retrieve_scheduler_partitions(nodes):
+    def _parse_scheduler_nodes_data(nodes):
         try:
             ignored_nodes = []
             compute_resource_nodes_map = {}
@@ -966,17 +976,6 @@ class ClusterManager:
                 active_nodes += partition.slurm_nodes
         return active_nodes
 
-    @staticmethod
-    def _get_unhealthy_ice_nodes(unhealthy_dynamic_nodes: List[DynamicNode]) -> Dict[str, Dict[str, List[DynamicNode]]]:
-        """Get insufficient capacity compute resource and nodes, error code mapping."""
-        ice_compute_resources_and_nodes_map = {}
-        for node in unhealthy_dynamic_nodes:
-            if node.is_ice():
-                ice_compute_resources_and_nodes_map.setdefault(node.queue_name, {}).setdefault(
-                    node.compute_resource_name, []
-                ).append(node)
-        return ice_compute_resources_and_nodes_map
-
     def _is_node_in_replacement_valid(self, node, check_node_is_valid):
         """
         Check node is replacement timeout or in replacement.
@@ -996,12 +995,10 @@ class ClusterManager:
     )
     def _handle_ice_nodes(
         self,
-        unhealthy_dynamic_nodes: List[DynamicNode],
+        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[DynamicNode]]],
         compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
     ):
         """Handle nodes failed with insufficient capacity."""
-        # get insufficient capacity compute resource and nodes mapping
-        ice_compute_resources_and_nodes_map = self._get_unhealthy_ice_nodes(unhealthy_dynamic_nodes)
         if ice_compute_resources_and_nodes_map:
             self._update_insufficient_capacity_compute_resources(ice_compute_resources_and_nodes_map)
             self._reset_timeout_expired_compute_resources(ice_compute_resources_and_nodes_map)
@@ -1053,10 +1050,6 @@ class ClusterManager:
                         nodes_to_down.setdefault(error_code, []).append(node.name)
         if nodes_to_down:
             for error_code, node_list in nodes_to_down.items():
-                log.info(
-                    "Setting following nodes into DOWN state due to insufficient capacity: %s",
-                    print_with_count(node_list),
-                )
                 set_nodes_down(
                     node_list, reason=f"(Code:{error_code})Temporarily disabling node due to insufficient capacity"
                 )
@@ -1092,10 +1085,6 @@ class ClusterManager:
 
         if nodes_to_power_down:
             node_names = [node.name for node in nodes_to_power_down]
-            log.info(
-                "Enabling the following nodes because insufficient capacity timeout expired: %s",
-                print_with_count(node_names),
-            )
             set_nodes_power_down(
                 node_names,
                 reason="Enabling node since insufficient capacity timeout expired",
