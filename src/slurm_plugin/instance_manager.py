@@ -246,7 +246,6 @@ class InstanceManager:
     ):
         """Launch a batch of ec2 instances."""
         try:
-            ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
             run_instances_params = {
                 # If not all_or_nothing_batch scaling, set MinCount=1
                 # so run_instances call will succeed even if entire count cannot be satisfied
@@ -266,7 +265,7 @@ class InstanceManager:
                 logger.info(
                     "Found RunInstances parameters override. Launching instances with: %s", run_instances_params
                 )
-            result = ec2_client.run_instances(**run_instances_params)
+            result = run_instances(self._region, self._boto3_config, run_instances_params)
 
             return [
                 EC2Instance(
@@ -374,3 +373,14 @@ class InstanceManager:
     def _update_failed_nodes(self, nodeset, error_code="Exception"):
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
+
+
+def run_instances(region, boto3_config, run_instances_kwargs):
+    """Check whether to override ec2 run_instance."""
+    try:
+        from slurm_plugin.overrides import run_instances
+
+        return run_instances(region=region, boto3_config=boto3_config, **run_instances_kwargs)
+    except ImportError:
+        ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
+        return ec2_client.run_instances(**run_instances_kwargs)

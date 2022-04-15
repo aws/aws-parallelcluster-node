@@ -3315,7 +3315,7 @@ def test_set_ice_compute_resources_to_down(
     ],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock")
-def test_find_unhealthy_slurm_nodesn(
+def test_find_unhealthy_slurm_nodes(
     active_nodes,
     expected_unhealthy_dynamic_nodes,
     expected_unhealthy_static_nodes,
