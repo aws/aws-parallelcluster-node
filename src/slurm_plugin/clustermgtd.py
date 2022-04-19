@@ -1045,7 +1045,7 @@ class ClusterManager:
             for compute_resource, event in compute_resources.items():
                 nodes = compute_resource_nodes_map.get(queue_name, {}).get(compute_resource, [])
                 for node in nodes:
-                    if not node.is_ice() and node.is_power() and not node.is_nodeaddr_set():
+                    if node.is_power() and not node.is_nodeaddr_set():
                         error_code = event.error_code
                         nodes_to_down.setdefault(error_code, []).append(node.name)
         if nodes_to_down:
