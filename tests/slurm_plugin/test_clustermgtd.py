@@ -3070,7 +3070,7 @@ def test_reset_timeout_expired_compute_resources(
                     "capacity",
                 ),
                 call(
-                    ["queue2-dy-c5large-2"],
+                    ["queue2-dy-c5large-1", "queue2-dy-c5large-2"],
                     reason="(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
                 ),
             ],
