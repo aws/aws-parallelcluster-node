@@ -77,7 +77,7 @@ class TestClustermgtdConfig:
                     "disable_all_health_checks": False,
                     "health_check_timeout": 180,
                     "protected_failure_count": 10,
-                    "insufficient_capacity_timeout": 600,
+                    "insufficient_capacity_timeout": 0,
                 },
             ),
             (

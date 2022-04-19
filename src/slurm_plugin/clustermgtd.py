@@ -144,7 +144,7 @@ class ClustermgtdConfig:
         "dns_domain": None,
         "use_private_hostname": False,
         "protected_failure_count": 10,
-        "insufficient_capacity_timeout": 600,
+        "insufficient_capacity_timeout": 0,
     }
 
     def __init__(self, config_file_path):
