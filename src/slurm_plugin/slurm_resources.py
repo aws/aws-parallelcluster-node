@@ -112,12 +112,15 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
-    SLURM_SCONTROL_POWERING_DOWN_STATES = {"POWERING_DOWN", "POWER_DOWN"}
-    SLURM_SCONTROL_POWER_STATE = {"IDLE", "CLOUD", "POWERED_DOWN"}
+    SLURM_SCONTROL_POWERED_STATE = "POWERED_DOWN"
+    SLURM_SCONTROL_POWERING_DOWN_STATES = "POWERING_DOWN"
+    SLURM_SCONTROL_POWER_DOWN_STATE = "POWER_DOWN"
     SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
+    # Due to a bug in Slurm a powered down node can enter IDLE+CLOUD+POWER_DOWN+POWERED_DOWN state
+    SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -165,13 +168,13 @@ class SlurmNode(metaclass=ABCMeta):
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
-        return any(
-            powering_down_state in self.states for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES
+        return self.SLURM_SCONTROL_POWERING_DOWN_STATES in self.states or (
+            self.SLURM_SCONTROL_POWERED_STATE not in self.states and self.SLURM_SCONTROL_POWER_DOWN_STATE in self.states
         )
 
     def is_power(self):
         """Check if slurm node is in power state."""
-        return self.SLURM_SCONTROL_POWER_STATE == self.states
+        return self.states in self.SLURM_SCONTROL_POWER_STATES
 
     def is_down(self):
         """Check if slurm node is in a down state."""

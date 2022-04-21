@@ -89,6 +89,26 @@ def test_slurm_node_is_drained(node, expected_output):
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+POWER_DOWN+POWERED_DOWN",
+                "queue1",
+            ),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+POWERING_DOWN+POWERED_DOWN",
+                "queue1",
+            ),
+            False,
+        ),
     ],
 )
 def test_slurm_node_is_down(node, expected_output):
@@ -647,6 +667,12 @@ def test_slurm_node_is_healthy(node, instance, expected_result):
         ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"), False),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"), True),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN", "queue1"
+            ),
+            True,
+        ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "POWERING_DOWN", "queue1"), True),
         (
             DynamicNode(

@@ -649,19 +649,8 @@ class ClusterManager:
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
-
-        nodes_to_power_down = (
-            [node for node in unhealthy_dynamic_nodes if not node.is_ice()]
-            if self._config.disable_nodes_on_insufficient_capacity
-            else unhealthy_dynamic_nodes
-        )
-
-        if nodes_to_power_down:
-            log.info(
-                "Setting the following unhealthy dynamic nodes to down and power_down: %s",
-                print_with_count(nodes_to_power_down),
-            )
-            set_nodes_power_down([node.name for node in nodes_to_power_down], reason="Scheduler health check failed")
+        log.info("Setting unhealthy dynamic nodes to down and power_down.")
+        set_nodes_power_down([node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed")
 
     @log_exception(log, "maintaining powering down nodes", raise_on_error=False)
     def _handle_powering_down_nodes(self, slurm_nodes):

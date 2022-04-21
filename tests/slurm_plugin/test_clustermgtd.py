@@ -691,56 +691,6 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
             ["id-1"],
             [
                 "queue1-dy-c5xlarge-1",
-            ],
-            True,
-        ),
-        (
-            [
-                DynamicNode(
-                    "queue1-dy-c5xlarge-1",
-                    "ip-1",
-                    "hostname",
-                    "IDLE+CLOUD",
-                    "queue1",
-                    "(Code:Exception)Failure when resuming nodes",
-                ),
-                DynamicNode(
-                    "queue1-dy-c5xlarge-2",
-                    "ip-1",
-                    "hostname",
-                    "IDLE+CLOUD",
-                    "queue1",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
-                ),
-                DynamicNode(
-                    "queue1-dy-c5xlarge-3",
-                    "ip-1",
-                    "hostname",
-                    "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
-                    "queue1",
-                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes",
-                ),
-                DynamicNode(
-                    "queue1-dy-c5xlarge-4",
-                    "ip-1",
-                    "hostname",
-                    "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
-                    "queue1",
-                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
-                ),
-                DynamicNode(
-                    "queue1-dy-c5xlarge-5",
-                    "ip-1",
-                    "hostname",
-                    "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
-                    "queue1",
-                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes",
-                ),
-            ],
-            [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None, None, None, None],
-            ["id-1"],
-            [
-                "queue1-dy-c5xlarge-1",
                 "queue1-dy-c5xlarge-2",
                 "queue1-dy-c5xlarge-3",
                 "queue1-dy-c5xlarge-4",
@@ -749,7 +699,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
             False,
         ),
     ],
-    ids=["basic", "unhealthy ice nodes", "disable smart instance capacity"],
+    ids=["basic", "disable smart instance capacity"],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock")
 def test_handle_unhealthy_dynamic_nodes(
