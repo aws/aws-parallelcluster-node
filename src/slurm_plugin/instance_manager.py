@@ -146,14 +146,17 @@ class InstanceManager:
                     print_with_count(zip(launched_nodes, launched_instances)),
                 )
             if fail_launch_nodes:
-                logger.info("Failed to launch instances for following nodes: %s", print_with_count(fail_launch_nodes))
+                logger.warning(
+                    "Failed to launch instances due to limited EC2 capacity for following nodes: %s",
+                    print_with_count(fail_launch_nodes),
+                )
                 self._update_failed_nodes(set(fail_launch_nodes), "LimitedInstanceCapacity")
 
             return dict(zip(launched_nodes, launched_instances))
 
         except subprocess.CalledProcessError:
-            logger.info(
-                "Encountered error when updating node %s with instance %s",
+            logger.error(
+                "Encountered error when updating nodes %s with instances %s",
                 print_with_count(slurm_nodes),
                 print_with_count(launched_instances),
             )
