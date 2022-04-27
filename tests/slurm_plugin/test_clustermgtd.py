@@ -747,8 +747,8 @@ def test_handle_unhealthy_dynamic_nodes(
                 EC2Instance("id-7", "ip-7", "hostname", "some_launch_time"),
                 None,
             ],
-            ["id-3", "id-7"],
-            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-7"],
+            ["id-3"],
+            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3"],
         )
     ],
     ids=["basic"],
