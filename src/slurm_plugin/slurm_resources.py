@@ -112,8 +112,7 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
-    SLURM_SCONTROL_POWERED_STATE = "POWERED_DOWN"
-    SLURM_SCONTROL_POWERING_DOWN_STATES = "POWERING_DOWN"
+    SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
     SLURM_SCONTROL_POWER_DOWN_STATE = "POWER_DOWN"
     SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
@@ -168,9 +167,7 @@ class SlurmNode(metaclass=ABCMeta):
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
-        return self.SLURM_SCONTROL_POWERING_DOWN_STATES in self.states or (
-            self.SLURM_SCONTROL_POWERED_STATE not in self.states and self.SLURM_SCONTROL_POWER_DOWN_STATE in self.states
-        )
+        return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.states
 
     def is_power(self):
         """Check if slurm node is in power state."""
@@ -437,6 +434,8 @@ class DynamicNode(SlurmNode):
 
     def is_powering_down_with_nodeaddr(self):
         """Check if a slurm node is a powering down node with instance backing."""
+        # Node in POWERED_DOWN with nodeaddr still set, may have not been seen during the POWERING_DOWN transition
+        # for example because of a short SuspendTimeout
         return self.is_nodeaddr_set() and (self.is_power() or self.is_powering_down())
 
     def needs_reset_when_inactive(self):

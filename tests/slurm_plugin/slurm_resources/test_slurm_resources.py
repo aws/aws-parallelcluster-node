@@ -669,11 +669,28 @@ def test_slurm_node_is_healthy(node, instance, expected_result):
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"), True),
         (
             DynamicNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
                 "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN", "queue1"
             ),
             True,
         ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "nodehostname",
+                "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN",
+                "queue1",
+            ),
+            False,
+        ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "POWERING_DOWN", "queue1"), True),
+        (DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "POWERING_DOWN", "queue1"), False),
         (
             DynamicNode(
                 "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"
@@ -681,6 +698,31 @@ def test_slurm_node_is_healthy(node, instance, expected_result):
             False,
         ),
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"), False),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            False,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+POWER_DOWN", "queue1"),
+            False,
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"), False),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "nodehostname",
+                "IDLE+CLOUD+DRAIN+POWERING_DOWN",
+                "queue1",
+            ),
+            False,
+        ),
     ],
 )
 def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
