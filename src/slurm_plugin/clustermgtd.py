@@ -592,7 +592,7 @@ class ClusterManager:
         self._static_nodes_in_replacement = nodes_still_in_replacement
         for node in slurm_nodes:
             node.is_static_nodes_in_replacement = node.name in self._static_nodes_in_replacement
-            node._is_being_replaced = self._is_node_being_replaced(node)
+            node.is_being_replaced = self._is_node_being_replaced(node)
             node._is_replacement_timeout = self._is_node_replacement_timeout(node)
 
     def _find_unhealthy_slurm_nodes(self, slurm_nodes):
@@ -655,12 +655,14 @@ class ClusterManager:
     @log_exception(log, "maintaining powering down nodes", raise_on_error=False)
     def _handle_powering_down_nodes(self, slurm_nodes):
         """
-        Handle nodes that are powering down.
+        Handle nodes that are powering down and not already being replaced.
 
         Terminate instances backing the powering down node if any.
         Reset the nodeaddr for the powering down node. Node state is not changed.
         """
-        powering_down_nodes = [node for node in slurm_nodes if node.is_powering_down_with_nodeaddr()]
+        powering_down_nodes = [
+            node for node in slurm_nodes if node.is_powering_down_with_nodeaddr() and not node.is_being_replaced
+        ]
         if powering_down_nodes:
             log.info("Resetting powering down nodes: %s", print_with_count(powering_down_nodes))
             reset_nodes(nodes=[node.name for node in powering_down_nodes])
@@ -715,12 +717,12 @@ class ClusterManager:
         """
         log.info("Performing node maintenance actions")
         active_nodes = self._find_active_nodes(partitions_name_map)
-        self._handle_powering_down_nodes(active_nodes)
         # Update self.static_nodes_in_replacement by removing any up nodes from the set
         self._update_static_nodes_in_replacement(active_nodes)
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
+        self._handle_powering_down_nodes(active_nodes)
         (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,

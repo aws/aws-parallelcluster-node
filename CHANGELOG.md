@@ -12,6 +12,7 @@ x.x.x
 **CHANGES**
 - Drop support for python 3.6.
 - Do not consider dynamic nodes in POWER_DOWN as in powering down.
+- Manage static nodes in POWERING_DOWN.
 
 3.1.3
 ------
