@@ -395,7 +395,7 @@ def test_partition_is_inactive(nodes, expected_output):
 def test_slurm_node_is_state_healthy(
     node, mock_is_node_being_replaced, terminate_drain_nodes, terminate_down_nodes, expected_result, mocker
 ):
-    node._is_being_replaced = mock_is_node_being_replaced
+    node.is_being_replaced = mock_is_node_being_replaced
     assert_that(node.is_state_healthy(terminate_drain_nodes, terminate_down_nodes)).is_equal_to(expected_result)
 
 

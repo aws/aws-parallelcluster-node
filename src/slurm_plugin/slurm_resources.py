@@ -139,7 +139,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.reason = reason
         self.instance = instance
         self.is_static_nodes_in_replacement = False
-        self._is_being_replaced = False
+        self.is_being_replaced = False
         self._is_replacement_timeout = False
         self.is_failing_health_check = False
         self.error_code = self._parse_error_code()
@@ -233,10 +233,11 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if a slurm node is considered healthy."""
         pass
 
-    @abstractmethod
     def is_powering_down_with_nodeaddr(self):
         """Check if a slurm node is a powering down node with instance backing."""
-        pass
+        # Node in POWERED_DOWN with nodeaddr still set, may have not been seen during the POWERING_DOWN transition
+        # for example because of a short SuspendTimeout
+        return self.is_nodeaddr_set() and (self.is_power() or self.is_powering_down())
 
     def is_backing_instance_valid(self, log_warn_if_unhealthy=True):
         """Check if a slurm node's addr is set, it points to a valid instance in EC2."""
@@ -300,7 +301,7 @@ class StaticNode(SlurmNode):
         """Check if a slurm node's scheduler state is considered healthy."""
         # Check to see if node is in DRAINED, ignoring any node currently being replaced
         if self.is_drained() and terminate_drain_nodes:
-            if self._is_being_replaced:
+            if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DRAINED but is currently being replaced, ignoring, node state: %s",
                     self,
@@ -313,7 +314,7 @@ class StaticNode(SlurmNode):
                 return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         elif self.is_down() and terminate_down_nodes:
-            if self._is_being_replaced:
+            if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DOWN but is currently being replaced, ignoring. Node state: ",
                     self,
@@ -363,10 +364,6 @@ class StaticNode(SlurmNode):
                 self.state_string,
             )
             return True
-        return False
-
-    def is_powering_down_with_nodeaddr(self):
-        """Check if a slurm node is a powering down node with instance backing. Static node will not powering down."""
         return False
 
     def needs_reset_when_inactive(self):
@@ -431,12 +428,6 @@ class DynamicNode(SlurmNode):
             )
             return True
         return False
-
-    def is_powering_down_with_nodeaddr(self):
-        """Check if a slurm node is a powering down node with instance backing."""
-        # Node in POWERED_DOWN with nodeaddr still set, may have not been seen during the POWERING_DOWN transition
-        # for example because of a short SuspendTimeout
-        return self.is_nodeaddr_set() and (self.is_power() or self.is_powering_down())
 
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""
