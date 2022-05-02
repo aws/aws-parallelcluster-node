@@ -114,6 +114,7 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
     SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
     SLURM_SCONTROL_POWER_DOWN_STATE = "POWER_DOWN"
+    SLURM_SCONTROL_POWERED_DOWN_STATE = "POWERED_DOWN"
     SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
@@ -177,13 +178,21 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if slurm node is in powering down state."""
         return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.states
 
+    def is_powered_down(self):
+        """Check if slurm node is in powered down state."""
+        return self.SLURM_SCONTROL_POWERED_DOWN_STATE in self.states
+
     def is_power(self):
         """Check if slurm node is in power state."""
         return self.states in self.SLURM_SCONTROL_POWER_STATES
 
     def is_down(self):
         """Check if slurm node is in a down state."""
-        return self.SLURM_SCONTROL_DOWN_STATE in self.states and not self.is_powering_down()
+        return (
+            self.SLURM_SCONTROL_DOWN_STATE in self.states
+            and not self.is_powering_down()
+            and (not self.is_power_down() or self.is_powered_down())
+        )
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""
