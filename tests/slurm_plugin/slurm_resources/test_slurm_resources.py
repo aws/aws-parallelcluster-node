@@ -120,6 +120,26 @@ def test_slurm_node_is_drained(node, expected_output):
                 "queue1-dy-c5xlarge-1",
                 "nodeip",
                 "nodehostname",
+                "DOWN+CLOUD+POWER_DOWN",
+                "queue1",
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+POWERING_DOWN",
+                "queue1",
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
                 "DOWN+CLOUD+POWERING_DOWN+POWERED_DOWN",
                 "queue1",
             ),
