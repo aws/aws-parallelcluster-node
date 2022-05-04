@@ -145,6 +145,16 @@ def test_slurm_node_is_drained(node, expected_output):
             ),
             False,
         ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+POWER_DOWN+POWERING_DOWN+POWERED_DOWN",
+                "queue1",
+            ),
+            False,
+        ),
     ],
 )
 def test_slurm_node_is_down(node, expected_output):
@@ -368,64 +378,106 @@ def test_partition_is_inactive(nodes, expected_output):
 @pytest.mark.parametrize(
     "node, terminate_drain_nodes, terminate_down_nodes, mock_is_node_being_replaced, expected_result",
     [
-        (
+        pytest.param(
             DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "MIXED+CLOUD", "queue"),
             True,
             True,
             False,
             True,
+            id="healthy_node",
         ),
-        (
+        pytest.param(
             StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
             True,
             True,
             False,
             False,
+            id="drained_not_in_replacement",
         ),
-        (
+        pytest.param(
             StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
             True,
             True,
             True,
             True,
+            id="drained_in_replacement",
         ),
-        (
+        pytest.param(
             DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
             False,
             True,
             False,
             True,
+            id="drain_not_term",
         ),
-        (
+        pytest.param(
             StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD", "queue"),
             True,
             True,
             False,
             False,
+            id="down_not_in_replacement",
         ),
-        (
+        pytest.param(
             StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD", "queue"),
             True,
             True,
             True,
             True,
+            id="down_in_replacement",
         ),
-        (
+        pytest.param(
             DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD", "queue"),
             True,
             False,
             False,
             True,
+            id="down_not_term",
         ),
-    ],
-    ids=[
-        "healthy_node",
-        "drained_not_in_replacement",
-        "drained_in_replacement",
-        "drain_not_term",
-        "down_not_in_replacement",
-        "down_in_replacement",
-        "down_not_term",
+        pytest.param(
+            StaticNode(
+                "queue-dy-c5xlarge-1",
+                "some_ip",
+                "hostname",
+                "DOWN+CLOUD+POWER_DOWN+POWERED_DOWN+NOT_RESPONDING",
+                "queue",
+            ),
+            True,
+            True,
+            False,
+            False,
+            id="unhealthy_static_node",
+        ),
+        pytest.param(
+            DynamicNode(
+                "queue-dy-c5xlarge-1",
+                "some_ip",
+                "hostname",
+                "DOWN+CLOUD+POWER_DOWN+POWERED_DOWN+NOT_RESPONDING",
+                "queue",
+            ),
+            True,
+            True,
+            False,
+            False,
+            id="unhealthy_dynamic_node",
+        ),
+        pytest.param(
+            StaticNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+POWER_DOWN+POWERED_DOWN", "queue"),
+            True,
+            True,
+            False,
+            True,
+            id="power_static_node",
+        ),
+        pytest.param(
+            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+POWER_DOWN+POWERED_DOWN", "queue"),
+            True,
+            True,
+            False,
+            True,
+            id="power_dynamic_node",
+        ),
     ],
 )
 def test_slurm_node_is_state_healthy(
