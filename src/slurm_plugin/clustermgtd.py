@@ -27,7 +27,6 @@ from common.schedulers.slurm_commands import (
     get_partition_info,
     reset_nodes,
     resume_powering_down_nodes,
-    set_nodes_down,
     set_nodes_drain,
     set_nodes_power_down,
     update_all_partitions,
@@ -719,7 +718,7 @@ class ClusterManager:
         # Set nodes into down state so jobs can be requeued immediately
         try:
             log.info("Setting unhealthy static nodes to DOWN")
-            set_nodes_down(node_list, reason="Static node maintenance: unhealthy node is being replaced")
+            reset_nodes(node_list, state="down", reason="Static node maintenance: unhealthy node is being replaced")
         except Exception as e:
             log.error("Encountered exception when setting unhealthy static nodes into down state: %s", e)
 

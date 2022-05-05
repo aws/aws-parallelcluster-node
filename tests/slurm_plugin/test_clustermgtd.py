@@ -816,11 +816,13 @@ def test_handle_unhealthy_static_nodes(
     # Mock add_instances_for_nodes but still try to execute original code
     original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
     cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
-    update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", return_value=None, auto_spec=True)
+    reset_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", return_value=None, auto_spec=True)
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes)
     # Assert calls
-    update_mock.assert_called_with(add_node_list, reason="Static node maintenance: unhealthy node is being replaced")
+    reset_mock.assert_called_with(
+        add_node_list, reason="Static node maintenance: unhealthy node is being replaced", state="down"
+    )
     if delete_instance_list:
         cluster_manager._instance_manager.delete_instances.assert_called_with(
             delete_instance_list, terminate_batch_size=1
@@ -2221,11 +2223,11 @@ def test_handle_failed_health_check_nodes_in_replacement(
     expected_nodes_in_replacement,
     mocker,
 ):
-    for node, is_static_nodes_in_replacement, is_failing_health_check in zip(
+    for node, is_node_in_replacement, is_node_failing_health_check in zip(
         active_nodes, is_static_nodes_in_replacement, is_failing_health_check
     ):
-        node.is_static_nodes_in_replacement = is_static_nodes_in_replacement
-        node.is_failing_health_check = is_failing_health_check
+        node.is_static_nodes_in_replacement = is_node_in_replacement
+        node.is_failing_health_check = is_node_failing_health_check
 
     cluster_manager = ClusterManager(mocker.MagicMock())
     cluster_manager._static_nodes_in_replacement = current_nodes_in_replacement
