@@ -683,7 +683,7 @@ class ClusterManager:
         # Set nodes into down state so jobs can be requeued immediately
         try:
             log.info("Setting unhealthy static nodes to DOWN")
-            set_nodes_down(node_list, reason="Static node maintenance: unhealthy node is being replaced")
+            reset_nodes(node_list, state="down", reason="Static node maintenance: unhealthy node is being replaced")
         except Exception as e:
             log.error("Encountered exception when setting unhealthy static nodes into down state: %s", e)
 

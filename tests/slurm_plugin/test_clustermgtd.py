@@ -924,11 +924,11 @@ def test_handle_unhealthy_static_nodes(
     # Mock add_instances_for_nodes but still try to execute original code
     original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
     cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
-    update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", auto_spec=True)
+    reset_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
     if set_nodes_down_exception is Exception:
-        update_mock.side_effect = set_nodes_down_exception
+        reset_mock.side_effect = set_nodes_down_exception
     else:
-        update_mock.return_value = None
+        reset_mock.return_value = None
 
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes)
@@ -936,7 +936,9 @@ def test_handle_unhealthy_static_nodes(
         assert_that(caplog.text).contains("Encountered exception when setting unhealthy static nodes into down state:")
         return
     # Assert calls
-    update_mock.assert_called_with(add_node_list, reason="Static node maintenance: unhealthy node is being replaced")
+    reset_mock.assert_called_with(
+        add_node_list, reason="Static node maintenance: unhealthy node is being replaced", state="down"
+    )
     if delete_instance_list:
         cluster_manager._instance_manager.delete_instances.assert_called_with(
             delete_instance_list, terminate_batch_size=1
