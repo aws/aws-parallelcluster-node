@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.1.4
+------
+
+**BUG FIXES**
+- Reset node address when setting slurm unhealthy static node to down to avoid treating static node failed with insufficient capacity as bootstrap failure node.
+
 3.1.3
 ------
 
