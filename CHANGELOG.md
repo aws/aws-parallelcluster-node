@@ -14,6 +14,12 @@ x.x.x
 - Do not consider dynamic nodes in POWER_DOWN as in powering down.
 - Manage static nodes in POWERING_DOWN.
 
+3.1.4
+------
+
+**BUG FIXES**
+- Reset node address when setting slurm unhealthy static node to down to avoid treating static node failed with insufficient capacity as bootstrap failure node.
+
 3.1.3
 ------
 
