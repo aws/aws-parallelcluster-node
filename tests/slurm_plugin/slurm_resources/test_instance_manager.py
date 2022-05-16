@@ -1514,7 +1514,7 @@ class TestInstanceManager:
     @pytest.mark.parametrize(
         "mock_kwargs, mocked_boto3_request, expected_parsed_result",
         [
-            (
+            pytest.param(
                 {"include_head_node": False, "alive_states_only": True},
                 MockedBoto3Request(
                     method="describe_instances",
@@ -1552,8 +1552,9 @@ class TestInstanceManager:
                     EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
                     EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
                 ],
+                id="default",
             ),
-            (
+            pytest.param(
                 {"include_head_node": False, "alive_states_only": True},
                 MockedBoto3Request(
                     method="describe_instances",
@@ -1569,8 +1570,9 @@ class TestInstanceManager:
                     generate_error=False,
                 ),
                 [],
+                id="empty_response",
             ),
-            (
+            pytest.param(
                 {"include_head_node": True, "alive_states_only": False},
                 MockedBoto3Request(
                     method="describe_instances",
@@ -1595,9 +1597,46 @@ class TestInstanceManager:
                     generate_error=False,
                 ),
                 [EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                id="custom_args",
+            ),
+            pytest.param(
+                {"include_head_node": False, "alive_states_only": True},
+                MockedBoto3Request(
+                    method="describe_instances",
+                    response={
+                        "Reservations": [
+                            {
+                                "Instances": [
+                                    {
+                                        "InstanceId": "i-1",
+                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                    },
+                                    {
+                                        "InstanceId": "i-2",
+                                        "PrivateIpAddress": "ip-2",
+                                        "PrivateDnsName": "hostname",
+                                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                    },
+                                ]
+                            }
+                        ]
+                    },
+                    expected_params={
+                        "Filters": [
+                            {"Name": "tag:parallelcluster:cluster-name", "Values": ["hit"]},
+                            {"Name": "instance-state-name", "Values": list(EC2_INSTANCE_ALIVE_STATES)},
+                            {"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]},
+                        ],
+                        "MaxResults": 1000,
+                    },
+                    generate_error=False,
+                ),
+                [
+                    EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                ],
+                id="no_ec2_info",
             ),
         ],
-        ids=["default", "empty_response", "custom_args"],
     )
     def test_get_cluster_instances(
         self, mock_kwargs, mocked_boto3_request, expected_parsed_result, instance_manager, boto3_stubber, mocker

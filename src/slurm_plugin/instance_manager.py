@@ -342,7 +342,11 @@ class InstanceManager:
 
     @log_exception(logger, "getting cluster instances from EC2", raise_on_error=True)
     def get_cluster_instances(self, include_head_node=False, alive_states_only=True):
-        """Get instances that are associated with the cluster."""
+        """
+        Get instances that are associated with the cluster.
+
+        Instances without all the info set are ignored and not returned
+        """
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
         args = {
@@ -354,15 +358,27 @@ class InstanceManager:
             args["Filters"].append({"Name": "tag:parallelcluster:node-type", "Values": ["Compute"]})
         response_iterator = paginator.paginate(PaginationConfig={"PageSize": BOTO3_PAGINATION_PAGE_SIZE}, **args)
         filtered_iterator = response_iterator.search("Reservations[].Instances[]")
-        return [
-            EC2Instance(
-                instance_info["InstanceId"],
-                instance_info["PrivateIpAddress"],
-                instance_info["PrivateDnsName"].split(".")[0],
-                instance_info["LaunchTime"],
-            )
-            for instance_info in filtered_iterator
-        ]
+
+        instances = []
+        for instance_info in filtered_iterator:
+            try:
+                instances.append(
+                    EC2Instance(
+                        instance_info["InstanceId"],
+                        instance_info["PrivateIpAddress"],
+                        instance_info["PrivateDnsName"].split(".")[0],
+                        instance_info["LaunchTime"],
+                    )
+                )
+            except Exception as e:
+                logger.warning(
+                    "Ignoring instance %s because not all EC2 info are available, exception: %s, message: %s",
+                    instance_info["InstanceId"],
+                    type(e).__name__,
+                    e,
+                )
+
+        return instances
 
     def terminate_all_compute_nodes(self, terminate_batch_size):
         try:
