@@ -39,7 +39,7 @@ def log_exception(
             try:
                 return function(*args, **kwargs)
             except catch_exception as e:
-                logger.log(log_level, "Failed when %s with exception %s", action_desc, e)
+                logger.log(log_level, "Failed when %s with exception %s, message: %s", action_desc, type(e).__name__, e)
                 if raise_on_error:
                     if exception_to_raise:
                         raise exception_to_raise
