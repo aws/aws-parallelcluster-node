@@ -341,6 +341,17 @@ def test_slurm_node_is_power_with_job(node, expected_output):
             ),
             True,
         ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD",
+                "queue1",
+                "(Code:Unsupported)Failure when resuming nodes",
+            ),
+            True,
+        ),
     ],
 )
 def test_slurm_node_is_ice(node, expected_output):
