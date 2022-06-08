@@ -128,6 +128,7 @@ class SlurmNode(metaclass=ABCMeta):
         "InsufficientReservedInstanceCapacity",
         "MaxSpotInstanceCountExceeded",
         "Unsupported",
+        "SpotMaxPriceTooLow",
     }
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
