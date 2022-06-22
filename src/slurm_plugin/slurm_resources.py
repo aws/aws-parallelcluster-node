@@ -235,6 +235,27 @@ class SlurmNode(metaclass=ABCMeta):
     def is_reboot_issued(self):
         return self.SLURM_SCONTROL_REBOOT_ISSUED_STATE in self.states
 
+    def is_node_rebooting(self):
+        """Check if the node is in a state consistent with the scontrol reboot request."""
+        cond = False
+        if self.is_drained():
+            if self.is_reboot_issued() or self.is_reboot_requested():
+                logger.debug(
+                    "Node state check: node %s in DRAINED but is currently rebooting, ignoring, node state: %s",
+                    self,
+                    self.state_string,
+                )
+                cond = True
+        elif self.is_down():
+            if self.is_reboot_issued():
+                logger.debug(
+                    "Node state check: node %s in DOWN but is currently rebooting, ignoring, node state: %s",
+                    self,
+                    self.state_string,
+                )
+                cond = True
+        return cond
+
     @abstractmethod
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
@@ -322,10 +343,11 @@ class StaticNode(SlurmNode):
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
-        # Check to see if node is in DRAINED, ignoring any node currently being replaced
-        if self.is_drained() and terminate_drain_nodes:
-            if self.is_reboot_issued() or self.is_reboot_requested() or self.is_power_down():
-                return True
+        # Check if node is rebooting: if so, the node is healthy
+        if self.is_node_rebooting():
+            return True
+        # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
+        if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
             if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DRAINED but is currently being replaced, ignoring, node state: %s",
@@ -339,8 +361,6 @@ class StaticNode(SlurmNode):
                 return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         elif self.is_down() and terminate_down_nodes:
-            if self.is_reboot_issued():
-                return True
             if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DOWN but is currently being replaced, ignoring. Node state: ",
@@ -405,17 +425,18 @@ class DynamicNode(SlurmNode):
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
-        # Check to see if node is in DRAINED, ignoring any node currently being replaced
-        if self.is_drained() and terminate_drain_nodes:
-            if self.is_reboot_issued() or self.is_reboot_requested() or self.is_power_down():
+        # Check if node is rebooting: if so, the node is healthy
+        if self.is_node_rebooting():
+            return True
+        # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
+        if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
+            if self.is_power_down():
                 return True
             if log_warn_if_unhealthy:
                 logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
             return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         elif self.is_down() and terminate_down_nodes:
-            if self.is_reboot_issued():
-                return True
             if not self.is_nodeaddr_set():
                 # Silently handle failed to launch dynamic node to clean up normal logging
                 logger.debug("Node state check: node %s in DOWN, node state: %s", self, self.state_string)

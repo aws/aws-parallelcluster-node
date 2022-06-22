@@ -86,15 +86,17 @@ def test_slurm_node_has_job(node, expected_output):
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+REBOOT_ISSUED", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue1"),
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+DRAIN+REBOOT_REQUESTED", "queue1"),
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+REBOOT_REQUESTED", "queue1"
+            ),
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue1"),
             True,
         ),
     ],
@@ -168,15 +170,17 @@ def test_slurm_node_is_drained(node, expected_output):
             False,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+REBOOT_ISSUED", "queue1"),
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue1"),
             True,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+DRAIN+REBOOT_REQUESTED", "queue1"),
+            StaticNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+REBOOT_REQUESTED", "queue1"
+            ),
             False,
         ),
         (
-            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue1"),
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue1"),
             True,
         ),
     ],
@@ -525,7 +529,7 @@ def test_partition_is_inactive(nodes, expected_output):
             id="power_dynamic_node",
         ),
         pytest.param(
-            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+REBOOT_ISSUED", "queue"),
+            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue"),
             True,
             True,
             False,
@@ -533,7 +537,7 @@ def test_partition_is_inactive(nodes, expected_output):
             id="scontrol_reboot_issued_static",
         ),
         pytest.param(
-            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+REBOOT_ISSUED", "queue"),
+            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue"),
             True,
             True,
             False,
@@ -541,7 +545,7 @@ def test_partition_is_inactive(nodes, expected_output):
             id="scontrol_reboot_issued_dynamic",
         ),
         pytest.param(
-            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DRAIN+REBOOT_REQUESTED", "queue"),
+            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DRAIN+CLOUD+REBOOT_REQUESTED", "queue"),
             True,
             True,
             False,
@@ -549,7 +553,7 @@ def test_partition_is_inactive(nodes, expected_output):
             id="scontrol_reboot_asap_requested_static",
         ),
         pytest.param(
-            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DRAIN+REBOOT_REQUESTED", "queue"),
+            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DRAIN+CLOUD+REBOOT_REQUESTED", "queue"),
             True,
             True,
             False,
@@ -557,7 +561,7 @@ def test_partition_is_inactive(nodes, expected_output):
             id="scontrol_reboot_asap_requested_dynamic",
         ),
         pytest.param(
-            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue"),
+            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue"),
             True,
             True,
             False,
@@ -565,7 +569,7 @@ def test_partition_is_inactive(nodes, expected_output):
             id="scontrol_reboot_asap_issued_static",
         ),
         pytest.param(
-            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue"),
+            DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue"),
             True,
             True,
             False,
