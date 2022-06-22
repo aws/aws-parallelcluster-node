@@ -538,7 +538,7 @@ def test_partition_is_inactive(nodes, expected_output):
             True,
             False,
             True,
-            id="scontrol_reboot_asap_issued_static"
+            id="scontrol_reboot_asap_issued_static",
         ),
         pytest.param(
             DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue"),
@@ -546,7 +546,7 @@ def test_partition_is_inactive(nodes, expected_output):
             True,
             False,
             True,
-            id="scontrol_reboot_asap_issued_dynamic"
+            id="scontrol_reboot_asap_issued_dynamic",
         ),
     ],
 )

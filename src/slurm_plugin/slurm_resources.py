@@ -124,7 +124,6 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
 
-
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
         "InsufficientHostCapacity",
