@@ -235,10 +235,15 @@ class SlurmNode(metaclass=ABCMeta):
     def is_reboot_issued(self):
         return self.SLURM_SCONTROL_REBOOT_ISSUED_STATE in self.states
 
-    def is_node_rebooting(self):
-        """Check if the node is in a state consistent with the scontrol reboot request."""
+    def is_rebooting(self):
+        """
+        Check if the node is rebooting via scontrol reboot.
+
+        Check that the node is in a state consistent with the scontrol reboot request, which could trigger
+        the health checks.
+        """
         cond = False
-        if self.is_drained():
+        if self._is_drain():
             if self.is_reboot_issued() or self.is_reboot_requested():
                 logger.debug(
                     "Node state check: node %s in DRAINED but is currently rebooting, ignoring, node state: %s",
@@ -344,7 +349,7 @@ class StaticNode(SlurmNode):
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
         # Check if node is rebooting: if so, the node is healthy
-        if self.is_node_rebooting():
+        if self.is_rebooting():
             return True
         # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
         if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
@@ -426,12 +431,10 @@ class DynamicNode(SlurmNode):
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
         # Check if node is rebooting: if so, the node is healthy
-        if self.is_node_rebooting():
+        if self.is_rebooting():
             return True
         # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
         if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
-            if self.is_power_down():
-                return True
             if log_warn_if_unhealthy:
                 logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
             return False
