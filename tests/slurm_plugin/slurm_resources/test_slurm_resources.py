@@ -66,7 +66,7 @@ def test_slurm_node_has_job(node, expected_output):
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
-            False,
+            True,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
@@ -79,10 +79,22 @@ def test_slurm_node_has_job(node, expected_output):
         (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
-            False,
+            True,
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
+            True,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+REBOOT_ISSUED", "queue1"),
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+DRAIN+REBOOT_REQUESTED", "queue1"),
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue1"),
             True,
         ),
     ],
@@ -154,6 +166,18 @@ def test_slurm_node_is_drained(node, expected_output):
                 "queue1",
             ),
             False,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+REBOOT_ISSUED", "queue1"),
+            True,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+DRAIN+REBOOT_REQUESTED", "queue1"),
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+DRAIN+REBOOT_ISSUED", "queue1"),
+            True,
         ),
     ],
 )
