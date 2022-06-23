@@ -121,6 +121,8 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
     # Due to a bug in Slurm a powered down node can enter IDLE+CLOUD+POWER_DOWN+POWERED_DOWN state
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
+    SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
+    SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -166,11 +168,7 @@ class SlurmNode(metaclass=ABCMeta):
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return (
-            self._is_drain()
-            and not self.is_power_down()
-            and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
-        )
+        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
 
     def is_power_down(self):
         """Check if slurm node is in power down state."""
@@ -230,6 +228,28 @@ class SlurmNode(metaclass=ABCMeta):
 
     def is_ice(self):
         return self.error_code in self.EC2_ICE_ERROR_CODES
+
+    def is_reboot_requested(self):
+        return self.SLURM_SCONTROL_REBOOT_REQUESTED_STATE in self.states
+
+    def is_reboot_issued(self):
+        return self.SLURM_SCONTROL_REBOOT_ISSUED_STATE in self.states
+
+    def is_rebooting(self):
+        """
+        Check if the node is rebooting via scontrol reboot.
+
+        Check that the node is in a state consistent with the scontrol reboot request.
+        """
+        cond = False
+        if self.is_reboot_issued() or self.is_reboot_requested():
+            logger.debug(
+                "Node state check: node %s is currently rebooting, ignoring, node state: %s",
+                self,
+                self.state_string,
+            )
+            cond = True
+        return cond
 
     @abstractmethod
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
@@ -318,8 +338,11 @@ class StaticNode(SlurmNode):
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
-        # Check to see if node is in DRAINED, ignoring any node currently being replaced
-        if self.is_drained() and terminate_drain_nodes:
+        # Check if node is rebooting: if so, the node is healthy
+        if self.is_rebooting():
+            return True
+        # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
+        if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
             if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DRAINED but is currently being replaced, ignoring, node state: %s",
@@ -397,8 +420,11 @@ class DynamicNode(SlurmNode):
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
-        # Check to see if node is in DRAINED, ignoring any node currently being replaced
-        if self.is_drained() and terminate_drain_nodes:
+        # Check if node is rebooting: if so, the node is healthy
+        if self.is_rebooting():
+            return True
+        # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
+        if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
             if log_warn_if_unhealthy:
                 logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
             return False
