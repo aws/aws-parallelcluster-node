@@ -110,7 +110,7 @@ def test_slurm_node_is_drained(node, expected_output):
     [
         (
             DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+REBOOT_REQUESTED", "queue1"),
-            False,
+            True,
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue1"),

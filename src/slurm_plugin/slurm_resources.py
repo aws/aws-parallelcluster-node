@@ -239,26 +239,16 @@ class SlurmNode(metaclass=ABCMeta):
         """
         Check if the node is rebooting via scontrol reboot.
 
-        Check that the node is in a state consistent with the scontrol reboot request, which could trigger
-        the health checks.
+        Check that the node is in a state consistent with the scontrol reboot request.
         """
         cond = False
-        if self._is_drain():
-            if self.is_reboot_issued() or self.is_reboot_requested():
-                logger.debug(
-                    "Node state check: node %s in DRAINED but is currently rebooting, ignoring, node state: %s",
-                    self,
-                    self.state_string,
-                )
-                cond = True
-        elif self.is_down():
-            if self.is_reboot_issued():
-                logger.debug(
-                    "Node state check: node %s in DOWN but is currently rebooting, ignoring, node state: %s",
-                    self,
-                    self.state_string,
-                )
-                cond = True
+        if self.is_reboot_issued() or self.is_reboot_requested():
+            logger.debug(
+                "Node state check: node %s is currently rebooting, ignoring, node state: %s",
+                self,
+                self.state_string,
+            )
+            cond = True
         return cond
 
     @abstractmethod
