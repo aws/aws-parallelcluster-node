@@ -8,6 +8,7 @@ x.x.x
 
 **ENHANCEMENTS**
 - Temporarily disable compute resource when a node launch fails due to insufficient capacity.
+- Add support for rebooting compute nodes via Slurm.
 
 **CHANGES**
 - Drop support for python 3.6.
