@@ -3,7 +3,7 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-x.x.x
+3.2.0
 ------
 
 **ENHANCEMENTS**
@@ -14,6 +14,11 @@ x.x.x
 - Drop support for python 3.6.
 - Do not consider dynamic nodes in POWER_DOWN as in powering down.
 - Manage static nodes in POWERING_DOWN.
+- Automatic disabling of the compute fleet when the configuration parameter `Scheduling/SlurmQueues/ComputeResources/SpotPrice`
+  is lower than the minimum required Spot request fulfillment price.
+
+**BUG FIXES**
+- Handle corner case in the scaling logic when instance is just launched and the describe instances API doesn't report yet all the EC2 info.
 
 3.1.4
 ------
