@@ -17,7 +17,7 @@ from configparser import ConfigParser
 from datetime import datetime, timezone
 from logging.config import fileConfig
 from subprocess import CalledProcessError
-from tempfile import mkstemp
+from tempfile import NamedTemporaryFile
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
@@ -55,7 +55,8 @@ class ComputemgtdConfig:
     }
 
     def __init__(self, config_file_path):
-        _, self._local_config_file = mkstemp()
+        tf = NamedTemporaryFile()
+        self._local_config_file = tf.name
         self._get_config(config_file_path)
 
     def __repr__(self):
