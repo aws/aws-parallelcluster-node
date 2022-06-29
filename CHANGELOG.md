@@ -19,6 +19,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **BUG FIXES**
 - Handle corner case in the scaling logic when instance is just launched and the describe instances API doesn't report yet all the EC2 info.
+- Fix file handle leak in `computemgtd`.
 
 3.1.4
 ------
