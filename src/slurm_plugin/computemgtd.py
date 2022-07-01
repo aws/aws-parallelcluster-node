@@ -15,14 +15,14 @@ import os
 import time
 from configparser import ConfigParser
 from datetime import datetime, timezone
+from io import StringIO
 from logging.config import fileConfig
 from subprocess import CalledProcessError
-from tempfile import mkstemp
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
-from common.utils import run_command, sleep_remaining_loop_time
+from common.utils import check_command_output, run_command, sleep_remaining_loop_time
 from retrying import retry
 from slurm_plugin.common import (
     DEFAULT_COMMAND_TIMEOUT,
@@ -55,7 +55,6 @@ class ComputemgtdConfig:
     }
 
     def __init__(self, config_file_path):
-        _, self._local_config_file = mkstemp()
         self._get_config(config_file_path)
 
     def __repr__(self):
@@ -69,12 +68,12 @@ class ComputemgtdConfig:
         config = ConfigParser()
         try:
             # Use subprocess based method to copy shared file to local to prevent hanging when NFS is down
-            run_command(
-                f"cat {config_file_path} > {self._local_config_file}",
+            config_str = check_command_output(
+                f"cat {config_file_path}",
                 timeout=DEFAULT_COMMAND_TIMEOUT,
                 shell=True,  # nosec
             )
-            config.read_file(open(self._local_config_file, "r"))
+            config.read_file(StringIO(config_str))
         except Exception:
             log.error(f"Cannot read computemgtd configuration file: {config_file_path}")
             raise
