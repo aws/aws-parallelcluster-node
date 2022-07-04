@@ -12,7 +12,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **CHANGES**
 - Drop support for python 3.6.
-- Do not consider dynamic nodes in POWER_DOWN as in powering down.
+- Do not replace dynamic node in POWER_DOWN as jobs may be still running.
 - Manage static nodes in POWERING_DOWN.
 - Automatic disabling of the compute fleet when the configuration parameter `Scheduling/SlurmQueues/ComputeResources/SpotPrice`
   is lower than the minimum required Spot request fulfillment price.
