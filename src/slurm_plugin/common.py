@@ -73,7 +73,7 @@ def read_json(file_path, default=None):
             )
             raise
         else:
-            logger.info("Unable to read file '%s'. Using default: %s", file_path, default)
+            logger.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
             return default
 
 
