@@ -122,11 +122,12 @@ class ClustermgtdConfig:
         "logging_config": os.path.join(
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
-        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
-        "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
+        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",  # TODO remove this file
         # Launch configs
         "launch_max_batch_size": 500,
         "update_node_address": True,
+        "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
+        "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
         # Terminate configs
         "terminate_max_batch_size": 1000,
         # Timeout to wait for node initialization, should be the same as ResumeTimeout
@@ -159,7 +160,7 @@ class ClustermgtdConfig:
             return (
                 self._config == other._config
                 and self.instance_name_type_mapping == other.instance_name_type_mapping
-                and self.run_instances_overrides == other.run_instances_overrides
+                and self.launch_overrides == other.launch_overrides
             )
         return False
 
@@ -177,21 +178,6 @@ class ClustermgtdConfig:
             "clustermgtd", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
         )
         self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
-
-        # run_instances_overrides_file contains a json with the following format:
-        # {
-        #     "queue_name": {
-        #         "compute_resource_name": {
-        #             "RunInstancesCallParam": "Value"
-        #         },
-        #         ...
-        #     },
-        #     ...
-        # }
-        run_instances_overrides_file = config.get(
-            "clustermgtd", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
-        )
-        self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -218,6 +204,25 @@ class ClustermgtdConfig:
         self.update_node_address = config.getboolean(
             "clustermgtd", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
         )
+        self.cluster_config_file = config.get(
+            "clustermgtd", "cluster_config_file", fallback=self.DEFAULTS.get("cluster_config_file")
+        )
+
+        # run_instances_overrides_file contains a json with the following format:
+        # TODO generalize file name to add create-fleet support too.
+        # {
+        #     "queue_name": {
+        #         "compute_resource_name": {
+        #             "RunInstancesCallParam": "Value"
+        #         },
+        #         ...
+        #     },
+        #     ...
+        # }
+        run_instances_overrides_file = config.get(
+            "clustermgtd", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
+        )
+        self.launch_overrides = read_json(run_instances_overrides_file, default={})
 
     def _get_health_check_config(self, config):
         self.disable_ec2_health_check = config.getboolean(
@@ -340,7 +345,8 @@ class ClusterManager:
             head_node_private_ip=config.head_node_private_ip,
             head_node_hostname=config.head_node_hostname,
             instance_name_type_mapping=config.instance_name_type_mapping,
-            run_instances_overrides=config.run_instances_overrides,
+            launch_overrides=config.launch_overrides,
+            cluster_config_file=config.cluster_config_file,
         )
 
     def _update_compute_fleet_status(self, status):

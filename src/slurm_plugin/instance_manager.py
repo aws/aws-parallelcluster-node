@@ -18,6 +18,7 @@ from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
 from slurm_plugin.common import log_exception, print_with_count
+from slurm_plugin.fleet_manager import FleetManagerFactory
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -55,7 +56,8 @@ class InstanceManager:
         head_node_private_ip=None,
         head_node_hostname=None,
         instance_name_type_mapping=None,
-        run_instances_overrides=None,
+        launch_overrides=None,
+        cluster_config_file=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -70,7 +72,8 @@ class InstanceManager:
         self._head_node_private_ip = head_node_private_ip
         self._head_node_hostname = head_node_hostname
         self._instance_name_type_mapping = instance_name_type_mapping or {}
-        self._run_instances_overrides = run_instances_overrides or {}
+        self._launch_overrides = launch_overrides or {}
+        self._cluster_config_file = cluster_config_file
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -86,16 +89,23 @@ class InstanceManager:
         for queue, compute_resources in instances_to_launch.items():
             for compute_resource, slurm_node_list in compute_resources.items():
                 logger.info("Launching instances for slurm nodes %s", print_with_count(slurm_node_list))
+
+                # each compute resource can be configured to use create_fleet or run_instances
+                fleet_manager = FleetManagerFactory.get_manager(
+                    self._cluster_name,
+                    self._region,
+                    self._boto3_config,
+                    self._cluster_config_file,
+                    queue,
+                    compute_resource,
+                    all_or_nothing_batch,
+                )
+                launch_overrides = self._launch_overrides.get(queue, {}).get(compute_resource, {})
+
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
-                        run_instances_overrides = self._run_instances_overrides.get(queue, {}).get(compute_resource, {})
-                        launched_instances = self._launch_ec2_instances(
-                            queue,
-                            compute_resource,
-                            len(batch_nodes),
-                            all_or_nothing_batch=all_or_nothing_batch,
-                            run_instances_overrides=run_instances_overrides,
-                        )
+                        launched_instances = fleet_manager.launch_ec2_instances(len(batch_nodes), launch_overrides)
+
                         if update_node_address:
                             assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), launched_instances)
                             try:
@@ -244,45 +254,6 @@ class InstanceManager:
 
         return instances_to_launch
 
-    def _launch_ec2_instances(
-        self, queue, compute_resource, current_batch_size, all_or_nothing_batch=False, run_instances_overrides=None
-    ):
-        """Launch a batch of ec2 instances."""
-        try:
-            run_instances_params = {
-                # If not all_or_nothing_batch scaling, set MinCount=1
-                # so run_instances call will succeed even if entire count cannot be satisfied
-                # Otherwise set MinCount=current_batch_size so run_instances will fail unless all are launched
-                "MinCount": 1 if not all_or_nothing_batch else current_batch_size,
-                "MaxCount": current_batch_size,
-                # LaunchTemplate is different for every instance type in every queue
-                # LaunchTemplate name format: {cluster_name}-{queue_name}-{compute_resource_name}
-                # Sample LT name: hit-queue1-computeres1
-                "LaunchTemplate": {
-                    "LaunchTemplateName": f"{self._cluster_name}-{queue}-{compute_resource}",
-                    "Version": "$Latest",
-                },
-            }
-            run_instances_params.update(run_instances_overrides)
-            if run_instances_overrides:
-                logger.info(
-                    "Found RunInstances parameters override. Launching instances with: %s", run_instances_params
-                )
-            result = run_instances(self._region, self._boto3_config, run_instances_params)
-
-            return [
-                EC2Instance(
-                    instance_info["InstanceId"],
-                    instance_info["PrivateIpAddress"],
-                    instance_info["PrivateDnsName"].split(".")[0],
-                    instance_info["LaunchTime"],
-                )
-                for instance_info in result["Instances"]
-            ]
-        except ClientError as e:
-            logger.error("Failed RunInstances request: %s", e.response.get("ResponseMetadata").get("RequestId"))
-            raise
-
     def delete_instances(self, instance_ids_to_terminate, terminate_batch_size):
         """Terminate corresponding EC2 instances."""
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
@@ -290,9 +261,7 @@ class InstanceManager:
         for instances in grouper(instance_ids_to_terminate, terminate_batch_size):
             try:
                 # Boto3 clients retries on connection errors only
-                ec2_client.terminate_instances(
-                    InstanceIds=list(instances),
-                )
+                ec2_client.terminate_instances(InstanceIds=list(instances))
             except ClientError as e:
                 logger.error(
                     "Failed TerminateInstances request: %s", e.response.get("ResponseMetadata").get("RequestId")
@@ -392,14 +361,3 @@ class InstanceManager:
     def _update_failed_nodes(self, nodeset, error_code="Exception"):
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
-
-
-def run_instances(region, boto3_config, run_instances_kwargs):
-    """Check whether to override ec2 run_instance."""
-    try:
-        from slurm_plugin.overrides import run_instances
-
-        return run_instances(region=region, boto3_config=boto3_config, **run_instances_kwargs)
-    except ImportError:
-        ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
-        return ec2_client.run_instances(**run_instances_kwargs)
