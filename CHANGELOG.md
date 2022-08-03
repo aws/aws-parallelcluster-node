@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.x.x
+------
+
+**ENHANCEMENTS**
+- Add support for EC2 Fleet as an alternative instance provisioning mechanism that allows greater flexibility in terms of instance diversification and launch strategy.
+
 3.2.0
 ------
 

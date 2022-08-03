@@ -34,7 +34,7 @@ from slurm_plugin.slurm_resources import (
     StaticNode,
 )
 
-from tests.common import MockedBoto3Request
+from tests.common import MockedBoto3Request, client_error
 
 
 @pytest.fixture()
@@ -300,11 +300,13 @@ def test_get_ec2_instances(mocker):
         dns_domain="dns.domain",
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
         insufficient_capacity_timeout=600,
+        cluster_config_file="/path/of/config-file.yaml",
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
+    mocker.patch("time.sleep")
     # Run test
     cluster_manager._get_ec2_instances()
     # Assert calls
@@ -488,7 +490,8 @@ def test_perform_health_check_actions(
         dns_domain="dns.domain",
         use_private_hostname=False,
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        cluster_config_file="/path/of/config-file.yaml",
         insufficient_capacity_timeout=600,
     )
     # Mock functions
@@ -883,6 +886,7 @@ def test_handle_unhealthy_static_nodes(
     caplog,
     request,
     set_nodes_down_exception,
+    fleet_manager_factory,
 ):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -901,7 +905,8 @@ def test_handle_unhealthy_static_nodes(
         instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        cluster_config_file="/path/of/config-file.yaml",
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
@@ -912,12 +917,15 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
     cluster_manager._instance_manager._parse_requested_instances = mocker.MagicMock(
         return_value={
-            "some_queue": {
-                "some_compute_resource_name": ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"]
+            "queue1": {
+                "c5xlarge": [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                ]
             }
         }
     )
-    cluster_manager._instance_manager._launch_ec2_instances = mocker.MagicMock(return_value=launched_instances)
     mocker.patch("slurm_plugin.instance_manager.update_nodes")
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
@@ -929,6 +937,11 @@ def test_handle_unhealthy_static_nodes(
         reset_mock.side_effect = set_nodes_down_exception
     else:
         reset_mock.return_value = None
+
+    # patch fleet manager
+    mocker.patch.object(
+        slurm_plugin.fleet_manager.FleetManager, "launch_ec2_instances", return_value=launched_instances
+    )
 
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes)
@@ -1183,7 +1196,8 @@ def test_terminate_orphaned_instances(
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
         node_replacement_timeout=1800,
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        cluster_config_file="path/to/config-file.yaml",
     )
     for instance, node in zip(cluster_instances, slurm_nodes):
         instance.slurm_node = node
@@ -1424,7 +1438,10 @@ def test_manage_cluster(
 
 
 @pytest.mark.parametrize(
-    "config_file, mocked_active_nodes, mocked_inactive_nodes, mocked_boto3_request, expected_error_messages",
+    (
+        "config_file, mocked_active_nodes, mocked_inactive_nodes, mocked_boto3_request, "
+        "launched_instances, expected_error_messages"
+    ),
     [
         (
             # basic: This is the most comprehensive case in manage_cluster with max number of boto3 calls
@@ -1555,26 +1572,6 @@ def test_manage_cluster(
                     expected_params={"InstanceIds": ["i-1"]},
                     generate_error=False,
                 ),
-                # _maintain_nodes/add_instances_for_nodes: launch new instance for static node
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
-                        "Instances": [
-                            {
-                                "InstanceId": "i-1234",
-                                "PrivateIpAddress": "ip-1234",
-                                "PrivateDnsName": "hostname-1234",
-                                "LaunchTime": datetime(2020, 1, 1, 0, 0, 0),
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5xlarge", "Version": "$Latest"},
-                    },
-                    generate_error=False,
-                ),
                 # _terminate_orphaned_instances: terminate orphaned instances
                 MockedBoto3Request(
                     method="terminate_instances",
@@ -1582,6 +1579,19 @@ def test_manage_cluster(
                     expected_params={"InstanceIds": ["i-999"]},
                     generate_error=False,
                 ),
+            ],
+            # _maintain_nodes/add_instances_for_nodes: launch new instance for static node
+            [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-1234",
+                            "PrivateIpAddress": "ip-1234",
+                            "PrivateDnsName": "hostname-1234",
+                            "LaunchTime": datetime(2020, 1, 1, 0, 0, 0),
+                        }
+                    ]
+                }
             ],
             [],
         ),
@@ -1729,16 +1739,6 @@ def test_manage_cluster(
                     expected_params={"InstanceIds": ["i-1"]},
                     generate_error=True,
                 ),
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={"some run_instances error"},
-                    expected_params={
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5xlarge", "Version": "$Latest"},
-                        "MaxCount": 1,
-                        "MinCount": 1,
-                    },
-                    generate_error=True,
-                ),
                 # _terminate_orphaned_instances: terminate orphaned instances
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
@@ -1748,6 +1748,7 @@ def test_manage_cluster(
                     generate_error=True,
                 ),
             ],
+            [client_error("some run_instances error")],
             [
                 r"Failed TerminateInstances request:",
                 r"Failed when terminating instances \(x1\) \['i-4'\].*{'error for i-4'}",
@@ -1757,10 +1758,9 @@ def test_manage_cluster(
                 r"Failed when terminating instances \(x1\) \['i-2'\].*{'error for i-2'}",
                 r"Failed TerminateInstances request:",
                 r"Failed when terminating instances \(x1\) \['i-1'\].*{'error for i-1'}",
-                r"Failed RunInstances request:",
                 (
                     r"Encountered exception when launching instances for nodes \(x1\) \['queue-st-c5xlarge-1'\].*"
-                    r"{'some run_instances error'}"
+                    r"some run_instances error"
                 ),
                 r"Failed TerminateInstances request:",
                 r"Failed when terminating instances \(x1\) \['i-999'\].*{'error for i-999'}",
@@ -1795,6 +1795,7 @@ def test_manage_cluster(
                     generate_error=True,
                 ),
             ],
+            [{}],
             [
                 r"Failed when getting cluster instances from EC2 with exception",
                 r"Failed when getting instance info from EC2 with exception",
@@ -1807,6 +1808,7 @@ def test_manage_cluster(
             Exception,
             Exception,
             [],
+            [{}],
             ["Unable to get partition/node info from slurm, no other action can be performed"],
         ),
     ],
@@ -1818,10 +1820,12 @@ def test_manage_cluster_boto3(
     mocked_active_nodes,
     mocked_inactive_nodes,
     mocked_boto3_request,
+    launched_instances,
     expected_error_messages,
     test_datadir,
     mocker,
     caplog,
+    fleet_manager_factory,
 ):
     caplog.set_level(logging.ERROR)
     # This test only patches I/O and boto3 calls to ensure that all boto3 calls are expected
@@ -1832,7 +1836,7 @@ def test_manage_cluster_boto3(
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
     mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"queue": {"c5xlarge": "c5.xlarge"}})
     sync_config = ClustermgtdConfig(test_datadir / config_file)
-    sync_config.run_instances_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
+    sync_config.launch_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
     cluster_manager = ClusterManager(sync_config)
     check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output")
     check_command_output_mocked.return_value = '{"status": "RUNNING"}'
@@ -1842,6 +1846,12 @@ def test_manage_cluster_boto3(
     part_inactive = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
     part_inactive.slurm_nodes = mocked_inactive_nodes
     partitions = {"queue1": part_active, "queue2": part_inactive}
+
+    # patch fleet manager calls
+    mocker.patch.object(
+        slurm_plugin.fleet_manager.Ec2RunInstancesManager, "_launch_instances", side_effect=launched_instances
+    )
+
     if mocked_active_nodes is Exception or mocked_inactive_nodes is Exception:
         mocker.patch.object(
             cluster_manager,
@@ -1972,7 +1982,8 @@ def test_handle_successfully_launched_nodes(
         insufficient_capacity_timeout=600,
         terminate_drain_nodes=True,
         terminate_down_nodes=True,
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        cluster_config_file="/path/of/config-file.yaml",
     )
     # Mock associated function
     cluster_manager = ClusterManager(mock_sync_config)

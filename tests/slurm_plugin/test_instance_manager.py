@@ -15,6 +15,7 @@ from unittest.mock import call
 
 import botocore
 import pytest
+import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
@@ -25,14 +26,14 @@ from slurm_plugin.slurm_resources import (
     EC2InstanceHealthState,
 )
 
-from tests.common import MockedBoto3Request
+from tests.common import MockedBoto3Request, client_error
 
 
 @pytest.fixture()
 def boto3_stubber_path():
     # we need to set the region in the environment because the Boto3ClientFactory requires it.
     os.environ["AWS_DEFAULT_REGION"] = "us-east-2"
-    return "slurm_plugin.instance_manager.boto3"
+    return "slurm_plugin.instance_manager.boto3"  # FIXME
 
 
 class TestInstanceManager:
@@ -58,7 +59,7 @@ class TestInstanceManager:
             dns_domain="dns.domain",
             use_private_hostname=False,
             instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
-            run_instances_overrides={
+            launch_overrides={
                 "queue3": {
                     "p4d.24xlarge": {
                         "CapacityReservationSpecification": {
@@ -82,7 +83,7 @@ class TestInstanceManager:
             "launch_batch_size",
             "update_node_address",
             "all_or_nothing_batch",
-            "mocked_boto3_request",
+            "launched_instances",
             "expected_failed_nodes",
             "expected_update_nodes_calls",
         ),
@@ -91,79 +92,55 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
-                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
                 },
                 10,
                 True,
                 False,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-23456",
-                                    "InstanceType": "c5.2xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.2",
-                                    "PrivateDnsName": "ip-1-0-0-2",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-34567",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.3",
-                                    "PrivateDnsName": "ip-1-0-0-3",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                                {
-                                    "InstanceId": "i-45678",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.4",
-                                    "PrivateDnsName": "ip-1-0-0-4",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 2,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-23456",
+                                "InstanceType": "c5.2xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                        ]
+                    },
                 ],
                 {},
                 [
@@ -192,71 +169,45 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
-                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
                 },
                 10,
                 True,
                 False,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={},
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
-                        },
-                        generate_error=True,
-                        error_code="some_error_code",
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-34567",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.3",
-                                    "PrivateDnsName": "ip-1-0-0-3",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                                {
-                                    "InstanceId": "i-45678",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.4",
-                                    "PrivateDnsName": "ip-1-0-0-4",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 2,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    client_error("some_error_code"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                        ]
+                    },
                 ],
                 {"some_error_code": {"queue1-st-c52xlarge-1"}},
                 [
@@ -279,30 +230,22 @@ class TestInstanceManager:
             ),
             # no_update
             (
-                {"queue1": {"c5.xlarge": ["queue1-st-c5xlarge-2"]}},
+                {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-2"]}},
                 10,
                 False,
                 False,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
                 ],
                 {},
                 None,
@@ -311,11 +254,11 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
-                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
                     },
                     "queue2": {
-                        "c5.xlarge": [
+                        "c5xlarge": [
                             "queue2-st-c5xlarge-1",
                             "queue2-st-c5xlarge-2",
                             "queue2-dy-c5xlarge-1",
@@ -326,47 +269,19 @@ class TestInstanceManager:
                 True,
                 False,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={},
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
-                        },
-                        generate_error=True,
-                        error_code="InsufficientHostCapacity",
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={},
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 3,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                        generate_error=True,
-                        error_code="ServiceUnavailable",
-                    ),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    client_error("InsufficientHostCapacity"),
+                    client_error("ServiceUnavailable"),
                 ],
                 {
                     "InsufficientHostCapacity": {"queue1-st-c52xlarge-1"},
@@ -383,11 +298,11 @@ class TestInstanceManager:
             (
                 {
                     "queue1": {
-                        "c5.xlarge": ["queue1-st-c5xlarge-2"],
-                        "c5.2xlarge": ["queue1-st-c52xlarge-1"],
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
                     },
                     "queue2": {
-                        "c5.xlarge": [
+                        "c5xlarge": [
                             "queue2-st-c5xlarge-1",
                             "queue2-st-c5xlarge-2",
                             "queue2-dy-c5xlarge-1",
@@ -398,85 +313,41 @@ class TestInstanceManager:
                 True,
                 False,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={},
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5.2xlarge", "Version": "$Latest"},
-                        },
-                        generate_error=True,
-                        error_code="InsufficientVolumeCapacity",
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-34567",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.3",
-                                    "PrivateDnsName": "ip-1-0-0-3",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={},
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                        generate_error=True,
-                        error_code="InternalError",
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-45678",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.4",
-                                    "PrivateDnsName": "ip-1-0-0-4",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    client_error("InsufficientVolumeCapacity"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    client_error("InternalError"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
                 ],
                 {"InsufficientVolumeCapacity": {"queue1-st-c52xlarge-1"}, "InternalError": {"queue2-st-c5xlarge-2"}},
                 [
@@ -498,7 +369,7 @@ class TestInstanceManager:
             (
                 {
                     "queue2": {
-                        "c5.xlarge": [
+                        "c5xlarge": [
                             "queue2-st-c5xlarge-1",
                             "queue2-st-c5xlarge-2",
                             "queue2-dy-c5xlarge-1",
@@ -509,9 +380,8 @@ class TestInstanceManager:
                 True,
                 False,
                 # Simulate the case that only a part of the requested capacity is launched
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
+                [
+                    {
                         "Instances": [
                             {
                                 "InstanceId": "i-45678",
@@ -522,12 +392,8 @@ class TestInstanceManager:
                             }
                         ]
                     },
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 3,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                    },
-                ),
+                    client_error("LimitedInstanceCapacity"),
+                ],
                 {"LimitedInstanceCapacity": {"queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"}},
                 [
                     call(
@@ -540,7 +406,7 @@ class TestInstanceManager:
             (
                 {
                     "queue2": {
-                        "c5.xlarge": [
+                        "c5xlarge": [
                             "queue2-st-c5xlarge-1",
                             "queue2-st-c5xlarge-2",
                             "queue2-dy-c5xlarge-1",
@@ -553,50 +419,32 @@ class TestInstanceManager:
                 True,
                 True,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-11111",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                                {
-                                    "InstanceId": "i-22222",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.2",
-                                    "PrivateDnsName": "ip-1-0-0-2",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                                {
-                                    "InstanceId": "i-33333",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.3",
-                                    "PrivateDnsName": "ip-1-0-0-3",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 3,
-                            "MaxCount": 3,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={},
-                        expected_params={
-                            "MinCount": 2,
-                            "MaxCount": 2,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                        generate_error=True,
-                        error_code="InsufficientInstanceCapacity",
-                    ),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-11111",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                            {
+                                "InstanceId": "i-22222",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                            {
+                                "InstanceId": "i-33333",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            },
+                        ]
+                    },
+                    client_error("InsufficientInstanceCapacity"),
                 ],
                 {"InsufficientInstanceCapacity": {"queue2-dy-c5xlarge-2", "queue2-dy-c5xlarge-3"}},
                 [
@@ -620,105 +468,67 @@ class TestInstanceManager:
             (
                 {
                     "queue3": {
-                        "c5.xlarge": ["queue3-st-c5xlarge-2"],
-                        "c5.2xlarge": ["queue3-st-c52xlarge-1"],
-                        "p4d.24xlarge": ["queue3-st-p4d24xlarge-1"],
+                        "c5xlarge": ["queue3-st-c5xlarge-2"],
+                        "c52xlarge": ["queue3-st-c52xlarge-1"],
+                        "p4d24xlarge": ["queue3-st-p4d24xlarge-1"],
                     },
-                    "queue2": {"c5.xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
                 },
                 10,
                 True,
                 False,
                 [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue3-c5.xlarge", "Version": "$Latest"},
-                            "CapacityReservationSpecification": {
-                                "CapacityReservationTarget": {"CapacityReservationId": "cr-456"}
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-23456",
+                                "InstanceType": "c5.2xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12346",
+                                "InstanceType": "p4d.24xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.5",
+                                "PrivateDnsName": "ip-1-0-0-5",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             },
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-23456",
-                                    "InstanceType": "c5.2xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.2",
-                                    "PrivateDnsName": "ip-1-0-0-2",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue3-c5.2xlarge", "Version": "$Latest"},
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12346",
-                                    "InstanceType": "p4d.24xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.5",
-                                    "PrivateDnsName": "ip-1-0-0-5",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 1,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue3-p4d.24xlarge", "Version": "$Latest"},
-                            "CapacityReservationSpecification": {
-                                "CapacityReservationTarget": {"CapacityReservationId": "cr-123"}
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
                             },
-                        },
-                    ),
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-34567",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.3",
-                                    "PrivateDnsName": "ip-1-0-0-3",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                                {
-                                    "InstanceId": "i-45678",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.4",
-                                    "PrivateDnsName": "ip-1-0-0-4",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                },
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 2,
-                            "LaunchTemplate": {"LaunchTemplateName": "hit-queue2-c5.xlarge", "Version": "$Latest"},
-                        },
-                    ),
+                        ]
+                    },
                 ],
                 {},
                 [
@@ -766,11 +576,12 @@ class TestInstanceManager:
         launch_batch_size,
         update_node_address,
         all_or_nothing_batch,
-        mocked_boto3_request,
+        launched_instances,
         expected_failed_nodes,
         expected_update_nodes_calls,
         mocker,
         instance_manager,
+        fleet_manager_factory,
     ):
         mocker.patch("slurm_plugin.instance_manager.update_nodes")
 
@@ -782,8 +593,12 @@ class TestInstanceManager:
         original_update_func = instance_manager._update_slurm_node_addrs
         instance_manager._update_slurm_node_addrs = mocker.MagicMock(side_effect=original_update_func)
         instance_manager._parse_requested_instances = mocker.MagicMock(return_value=instances_to_launch)
-        # patch boto3 call
-        boto3_stubber("ec2", mocked_boto3_request)
+        # patch fleet manager calls
+        mocker.patch.object(
+            slurm_plugin.fleet_manager.Ec2RunInstancesManager,
+            "_launch_instances",
+            side_effect=launched_instances,
+        )
 
         # run test
         instance_manager.add_instances_for_nodes(
@@ -800,140 +615,6 @@ class TestInstanceManager:
             assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
         else:
             assert_that(instance_manager.failed_nodes).is_empty()
-
-    @pytest.mark.parametrize(
-        (
-            "current_batch_size",
-            "instance_type",
-            "all_or_nothing_batch",
-            "run_instances_overrides",
-            "mocked_boto3_request",
-        ),
-        [
-            (
-                5,
-                "p4d.24xlarge",
-                False,
-                {},
-                [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "p4d.24xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 5,
-                            "LaunchTemplate": {
-                                "LaunchTemplateName": "hit-queue-p4d.24xlarge",
-                                "Version": "$Latest",
-                            },
-                        },
-                    ),
-                ],
-            ),
-            (
-                5,
-                "c5.xlarge",
-                True,
-                {},
-                [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "c5.xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 5,
-                            "MaxCount": 5,
-                            "LaunchTemplate": {
-                                "LaunchTemplateName": "hit-queue-c5.xlarge",
-                                "Version": "$Latest",
-                            },
-                        },
-                    ),
-                ],
-            ),
-            (
-                5,
-                "p4d.24xlarge",
-                False,
-                {
-                    "CapacityReservationSpecification": {
-                        "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
-                    }
-                },
-                [
-                    MockedBoto3Request(
-                        method="run_instances",
-                        response={
-                            "Instances": [
-                                {
-                                    "InstanceId": "i-12345",
-                                    "InstanceType": "p4d.24xlarge",
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                    "PrivateDnsName": "ip-1-0-0-1",
-                                    "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                }
-                            ]
-                        },
-                        expected_params={
-                            "MinCount": 1,
-                            "MaxCount": 5,
-                            "LaunchTemplate": {
-                                "LaunchTemplateName": "hit-queue-p4d.24xlarge",
-                                "Version": "$Latest",
-                            },
-                            "CapacityReservationSpecification": {
-                                "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
-                            },
-                        },
-                    ),
-                ],
-            ),
-        ],
-        ids=["normal", "all_or_nothing_batch", "run_instances_overrides"],
-    )
-    def test_launch_ec2_instances(
-        self,
-        boto3_stubber,
-        current_batch_size,
-        instance_type,
-        all_or_nothing_batch,
-        run_instances_overrides,
-        mocked_boto3_request,
-        instance_manager,
-        caplog,
-    ):
-        caplog.set_level(logging.INFO)
-        # patch boto3 call
-        boto3_stubber("ec2", mocked_boto3_request)
-        # run test
-        instance_manager._launch_ec2_instances(
-            "queue",
-            instance_type,
-            current_batch_size,
-            all_or_nothing_batch=all_or_nothing_batch,
-            run_instances_overrides=run_instances_overrides,
-        )
-        if run_instances_overrides:
-            assert_that(caplog.text).contains("Found RunInstances parameters override")
 
     @pytest.mark.parametrize(
         (

@@ -37,8 +37,9 @@ class SlurmResumeConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
-        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
+        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",  # TODO remove this file
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
+        "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
         "all_or_nothing_batch": False,
     }
 
@@ -84,6 +85,7 @@ class SlurmResumeConfig:
         )
         self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
         # run_instances_overrides_file contains a json with the following format:
+        # TODO generalize file name to add create-fleet support too.
         # {
         #     "queue_name": {
         #         "compute_resource_name": {
@@ -96,7 +98,10 @@ class SlurmResumeConfig:
         run_instances_overrides_file = config.get(
             "slurm_resume", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
         )
-        self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
+        self.launch_overrides = read_json(run_instances_overrides_file, default={})
+        self.cluster_config_file = config.get(
+            "slurm_resume", "cluster_config_file", fallback=self.DEFAULTS.get("cluster_config_file")
+        )
         self.clustermgtd_timeout = config.getint(
             "slurm_resume",
             "clustermgtd_timeout",
@@ -167,7 +172,8 @@ def _resume(arg_nodes, resume_config):
         head_node_private_ip=resume_config.head_node_private_ip,
         head_node_hostname=resume_config.head_node_hostname,
         instance_name_type_mapping=resume_config.instance_name_type_mapping,
-        run_instances_overrides=resume_config.run_instances_overrides,
+        launch_overrides=resume_config.launch_overrides,
+        cluster_config_file=resume_config.cluster_config_file,
     )
     instance_manager.add_instances_for_nodes(
         node_list=node_list,

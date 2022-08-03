@@ -22,7 +22,7 @@ from assertpy import assert_that
 from slurm_plugin.resume import SlurmResumeConfig, _resume
 from slurm_plugin.slurm_resources import EC2Instance
 
-from tests.common import MockedBoto3Request
+from tests.common import client_error
 
 
 @pytest.fixture()
@@ -30,6 +30,9 @@ def boto3_stubber_path():
     # we need to set the region in the environment because the Boto3ClientFactory requires it.
     os.environ["AWS_DEFAULT_REGION"] = "us-east-2"
     return "slurm_plugin.instance_manager.boto3"
+
+
+# todo add tests with fleet
 
 
 @pytest.mark.parametrize(
@@ -82,7 +85,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         "mock_node_lists",
         "batch_size",
         "all_or_nothing_batch",
-        "mock_boto3_response",
+        "launched_instances",
         "expected_failed_nodes",
         "expected_update_node_calls",
         "expected_assigned_nodes",
@@ -100,50 +103,32 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             3,
             True,
             [
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
-                        "Instances": [
-                            {
-                                "InstanceId": "i-11111",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.1",
-                                "PrivateDnsName": "ip-1-0-0-1",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                            {
-                                "InstanceId": "i-22222",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.2",
-                                "PrivateDnsName": "ip-1-0-0-2",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                            {
-                                "InstanceId": "i-33333",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.3",
-                                "PrivateDnsName": "ip-1-0-0-3",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                        ]
-                    },
-                    expected_params={
-                        "MinCount": 3,
-                        "MaxCount": 3,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                ),
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={},
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                    generate_error=True,
-                    error_code="RequestLimitExceeded",
-                ),
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-11111",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.1",
+                            "PrivateDnsName": "ip-1-0-0-1",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                        {
+                            "InstanceId": "i-22222",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.2",
+                            "PrivateDnsName": "ip-1-0-0-2",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                        {
+                            "InstanceId": "i-33333",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.3",
+                            "PrivateDnsName": "ip-1-0-0-3",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                    ]
+                },
+                client_error("RequestLimitExceeded"),
             ],
             {"RequestLimitExceeded": {"queue1-st-c5xlarge-2"}},
             [
@@ -176,50 +161,32 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             3,
             True,
             [
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
-                        "Instances": [
-                            {
-                                "InstanceId": "i-11111",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.1",
-                                "PrivateDnsName": "ip-1-0-0-1",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                            {
-                                "InstanceId": "i-22222",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.2",
-                                "PrivateDnsName": "ip-1-0-0-2",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                            {
-                                "InstanceId": "i-33333",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.3",
-                                "PrivateDnsName": "ip-1-0-0-3",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                        ]
-                    },
-                    expected_params={
-                        "MinCount": 3,
-                        "MaxCount": 3,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                ),
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={},
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                    generate_error=True,
-                    error_code="InsufficientInstanceCapacity",
-                ),
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-11111",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.1",
+                            "PrivateDnsName": "ip-1-0-0-1",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                        {
+                            "InstanceId": "i-22222",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.2",
+                            "PrivateDnsName": "ip-1-0-0-2",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                        {
+                            "InstanceId": "i-33333",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.3",
+                            "PrivateDnsName": "ip-1-0-0-3",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                    ]
+                },
+                client_error("InsufficientInstanceCapacity"),
             ],
             {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-2"}},
             [
@@ -252,36 +219,18 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             3,
             False,
             [
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
-                        "Instances": [
-                            {
-                                "InstanceId": "i-11111",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.1",
-                                "PrivateDnsName": "ip-1-0-0-1",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                        ]
-                    },
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 3,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                ),
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={},
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                    generate_error=True,
-                    error_code="ServiceUnavailable",
-                ),
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-11111",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.1",
+                            "PrivateDnsName": "ip-1-0-0-1",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                    ]
+                },
+                client_error("ServiceUnavailable"),
             ],
             {
                 "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
@@ -309,36 +258,18 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             3,
             False,
             [
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
-                        "Instances": [
-                            {
-                                "InstanceId": "i-11111",
-                                "InstanceType": "c5.xlarge",
-                                "PrivateIpAddress": "ip.1.0.0.1",
-                                "PrivateDnsName": "ip-1-0-0-1",
-                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            },
-                        ]
-                    },
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 3,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                ),
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={},
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue1-c5xlarge", "Version": "$Latest"},
-                    },
-                    generate_error=True,
-                    error_code="InsufficientReservedInstanceCapacity",
-                ),
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-11111",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.1",
+                            "PrivateDnsName": "ip-1-0-0-1",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        },
+                    ]
+                },
+                client_error("InsufficientReservedInstanceCapacity"),
             ],
             {"InsufficientReservedInstanceCapacity": {"queue1-st-c5xlarge-2"}},
             [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
@@ -375,13 +306,14 @@ def test_resume_launch(
     mock_node_lists,
     batch_size,
     all_or_nothing_batch,
-    mock_boto3_response,
+    launched_instances,
     expected_failed_nodes,
     expected_update_node_calls,
     expected_assigned_nodes,
     is_heartbeat_valid,
     mocker,
     boto3_stubber,
+    fleet_manager_factory,
 ):
     # Test that all or nothing batch settings are working correctly
     mock_resume_config = SimpleNamespace(
@@ -394,7 +326,8 @@ def test_resume_launch(
         head_node_private_ip="some_ip",
         head_node_hostname="some_hostname",
         instance_name_type_mapping={"queue1": {"c5xlarge": "c5.xlarge"}, "queue2": {"c52xlarge": "c5.2xlarge"}},
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        cluster_config_file="/path/of/config-file.yaml",
         clustermgtd_heartbeat_file_path="some_path",
         clustermgtd_timeout=600,
         boto3_config=botocore.config.Config(),
@@ -416,10 +349,15 @@ def test_resume_launch(
     mock_update_dns = mocker.patch.object(
         slurm_plugin.instance_manager.InstanceManager, "_update_dns_hostnames", auto_spec=True
     )
-    # Only mock boto3 if testing case of valid clustermgtd heartbeat
+
+    # Only mock fleet manager if testing case of valid clustermgtd heartbeat
     if is_heartbeat_valid:
-        # patch boto3 call
-        boto3_stubber("ec2", mock_boto3_response)
+        # patch fleet manager calls
+        mocker.patch.object(
+            slurm_plugin.fleet_manager.Ec2RunInstancesManager,
+            "_launch_instances",
+            side_effect=launched_instances,
+        )
 
     _resume("some_arg_nodes", mock_resume_config)
     if not is_heartbeat_valid:

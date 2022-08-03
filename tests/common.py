@@ -11,6 +11,8 @@
 
 from collections import namedtuple
 
+from botocore.exceptions import ClientError
+
 MockedBoto3Request = namedtuple(
     "MockedBoto3Request", ["method", "response", "expected_params", "generate_error", "error_code"]
 )
@@ -24,3 +26,7 @@ def read_text(path):
     """Read the content of a file."""
     with path.open() as f:
         return f.read()
+
+
+def client_error(error_code):
+    return ClientError({"Error": {"Code": error_code}}, "failed_operation")
