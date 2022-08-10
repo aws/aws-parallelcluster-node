@@ -3,6 +3,11 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.11.8
+------
+**CHANGES**
+- Upgrade Slurm to 21.08
+
 2.11.7
 ------
 
