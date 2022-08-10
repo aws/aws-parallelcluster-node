@@ -413,7 +413,7 @@ class InstanceManager:
             self.delete_instances([instance.id for instance in compute_nodes], terminate_batch_size)
             return True
         except Exception as e:
-            logging.error("Failed when terminating compute fleet with error %s", e)
+            logger.error("Failed when terminating compute fleet with error %s", e)
             return False
 
 
@@ -439,14 +439,14 @@ def read_json(file_path, default=None):
             return json.load(mapping_file)
     except Exception as e:
         if default is None:
-            logging.error(
+            logger.error(
                 "Unable to read file from '%s'. Failed with exception: %s",
                 file_path,
                 e,
             )
             raise
         else:
-            logging.info("Unable to read file '%s'. Using default: %s", file_path, default)
+            logger.info("Unable to read file '%s'. Using default: %s", file_path, default)
             return default
 
 

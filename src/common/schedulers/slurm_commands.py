@@ -69,8 +69,8 @@ class SlurmNode:
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
-    SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
-    SLURM_SCONTROL_POWER_STATE = "IDLE+CLOUD+POWER"
+    SLURM_SCONTROL_POWERING_DOWN_STATES = {"POWERING_DOWN", "POWER_DOWN"}
+    SLURM_SCONTROL_POWER_STATE = {"IDLE", "CLOUD", "POWERED_DOWN"}
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
         """Initialize slurm node with attributes."""
@@ -78,7 +78,8 @@ class SlurmNode:
         self.is_static = is_static_node(name)
         self.nodeaddr = nodeaddr
         self.nodehostname = nodehostname
-        self.state = state
+        self.state_string = state
+        self.states = set(state.split("+"))
         self.partitions = partitions.strip().split(",") if partitions else None
 
     def is_nodeaddr_set(self):
@@ -87,11 +88,11 @@ class SlurmNode:
 
     def has_job(self):
         """Check if slurm node is in a working state."""
-        return any(working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
+        return any(working_state in self.states for working_state in self.SLURM_SCONTROL_BUSY_STATES)
 
     def _is_drain(self):
         """Check if slurm node is in any drain(draining, drained) states."""
-        return self.SLURM_SCONTROL_DRAIN_STATE in self.state
+        return self.SLURM_SCONTROL_DRAIN_STATE in self.states
 
     def is_drained(self):
         """
@@ -99,21 +100,21 @@ class SlurmNode:
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self._is_drain() and (
-            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.SLURM_SCONTROL_DOWN_STATE in self.state
-        )
+        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
-        return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.state
+        return any(
+            powering_down_state in self.states for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES
+        )
 
     def is_power(self):
         """Check if slurm node is in power state."""
-        return self.SLURM_SCONTROL_POWER_STATE == self.state
+        return self.SLURM_SCONTROL_POWER_STATE == self.states
 
     def is_down(self):
         """Check if slurm node is in a down state."""
-        return self.SLURM_SCONTROL_DOWN_STATE in self.state and not self.is_powering_down()
+        return self.SLURM_SCONTROL_DOWN_STATE in self.states and not self.is_powering_down()
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""
@@ -235,7 +236,7 @@ def update_all_partitions(state, reset_node_addrs_hostname):
                 logging.info(f"Setting partition {part.name} state from {part.state} to {state}")
                 if reset_node_addrs_hostname:
                     logging.info(f"Resetting partition nodes {part.nodes}")
-                    set_nodes_down_and_power_save(part.nodes, reason="stopping cluster")
+                    set_nodes_power_down(part.nodes, reason="stopping cluster")
                 partition_to_update.append(part.name)
         succeeded_partitions = update_partitions(partition_to_update, state)
         return succeeded_partitions == partition_to_update
@@ -291,9 +292,10 @@ def set_nodes_drain(nodes, reason):
     update_nodes(nodes, state="drain", reason=reason)
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1500)
 def set_nodes_power_down(nodes, reason=None):
     """Place slurm node into power_down state and reset nodeaddr/nodehostname."""
-    reset_nodes(nodes=nodes, state="power_down", reason=reason, raise_on_error=True)
+    reset_nodes(nodes=nodes, state="power_down_force", reason=reason, raise_on_error=True)
 
 
 def reset_nodes(nodes, state=None, reason=None, raise_on_error=False):
@@ -319,17 +321,6 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         reset_nodes(nodes, state="resume", reason=reason, raise_on_error=False)
     else:
         update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
-
-
-@retry(stop_max_attempt_number=3, wait_fixed=1500)
-def set_nodes_down_and_power_save(node_list, reason):
-    """
-    Set slurm nodes into down -> power_down.
-
-    This is the standard failure recovery procedure to reset a CLOUD node.
-    """
-    set_nodes_down(node_list, reason=reason)
-    set_nodes_power_down(node_list, reason=reason)
 
 
 def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
