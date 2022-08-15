@@ -439,14 +439,14 @@ def read_json(file_path, default=None):
             return json.load(mapping_file)
     except Exception as e:
         if default is None:
-            logging.error(
+            logger.error(
                 "Unable to read file from '%s'. Failed with exception: %s",
                 file_path,
                 e,
             )
             raise
         else:
-            logging.info("Unable to read file '%s'. Using default: %s", file_path, default)
+            logger.info("Unable to read file '%s'. Using default: %s", file_path, default)
             return default
 
 

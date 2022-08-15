@@ -28,8 +28,8 @@ from common.schedulers.slurm_commands import (
     get_partition_info,
     reset_nodes,
     set_nodes_down,
-    set_nodes_down_and_power_save,
     set_nodes_drain,
+    set_nodes_power_down,
     update_all_partitions,
 )
 from common.time_utils import seconds
@@ -316,7 +316,7 @@ class ClusterManager:
 
     def set_config(self, config):
         if self._config != config:
-            logging.info("Applying new clustermgtd config: %s", config)
+            log.info("Applying new clustermgtd config: %s", config)
             self._config = config
             self._compute_fleet_status_manager = self._initialize_compute_fleet_status_manager(config)
             self._instance_manager = self._initialize_instance_manager(config)
@@ -800,9 +800,7 @@ class ClusterManager:
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
         log.info("Setting unhealthy dynamic nodes to down and power_down.")
-        set_nodes_down_and_power_save(
-            [node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed"
-        )
+        set_nodes_power_down([node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed")
 
     @log_exception(log, "maintaining powering down nodes", raise_on_error=False)
     def _handle_powering_down_nodes(self, slurm_nodes, private_ip_to_instance_map):
