@@ -78,7 +78,8 @@ class SlurmNode:
         self.is_static = is_static_node(name)
         self.nodeaddr = nodeaddr
         self.nodehostname = nodehostname
-        self.state = state
+        self.state_string = state
+        self.states = set(state.split("+"))
         self.partitions = partitions.strip().split(",") if partitions else None
 
     def is_nodeaddr_set(self):
