@@ -88,11 +88,11 @@ class SlurmNode:
 
     def has_job(self):
         """Check if slurm node is in a working state."""
-        return any(working_state in self.state for working_state in self.SLURM_SCONTROL_BUSY_STATES)
+        return any(working_state in self.states for working_state in self.SLURM_SCONTROL_BUSY_STATES)
 
     def _is_drain(self):
         """Check if slurm node is in any drain(draining, drained) states."""
-        return self.SLURM_SCONTROL_DRAIN_STATE in self.state
+        return self.SLURM_SCONTROL_DRAIN_STATE in self.states
 
     def is_drained(self):
         """
