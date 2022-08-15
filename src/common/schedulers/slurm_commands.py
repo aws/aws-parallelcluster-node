@@ -100,9 +100,7 @@ class SlurmNode:
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self._is_drain() and (
-            self.SLURM_SCONTROL_IDLE_STATE in self.state or self.SLURM_SCONTROL_DOWN_STATE in self.state
-        )
+        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
