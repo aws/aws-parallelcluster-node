@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from assertpy import assert_that
 from common.utils import time_is_up
-from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
+from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat, read_json
 
 
 @pytest.mark.parametrize(
@@ -76,3 +76,17 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
         return_value=f"some_random_stdout\n{time.strftime(TIMESTAMP_FORMAT)}",
     )
     assert_that(get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
+
+
+@pytest.mark.parametrize(
+    "json_file, log_assertion",
+    [
+        ("test_read_json/faulty.json", lambda logs: "Failed with exception:" in logs),
+        ("test_read_json/standard.json", lambda logs: "Failed with exception:" not in logs),
+    ],
+)
+def test_read_json(test_datadir, caplog, json_file, log_assertion):
+    json_file_path = str(test_datadir.joinpath(json_file))
+    with pytest.raises(Exception):
+        read_json(json_file_path)
+    assert log_assertion
