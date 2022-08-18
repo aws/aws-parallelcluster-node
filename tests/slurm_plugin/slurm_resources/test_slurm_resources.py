@@ -13,7 +13,8 @@ from datetime import datetime
 
 import pytest
 from assertpy import assert_that
-from slurm_plugin.slurm_resources import DynamicNode, EC2Instance, EC2InstanceHealthState, SlurmPartition, StaticNode
+from slurm_plugin.fleet_manager import EC2Instance
+from slurm_plugin.slurm_resources import DynamicNode, EC2InstanceHealthState, SlurmPartition, StaticNode
 
 
 @pytest.mark.parametrize(

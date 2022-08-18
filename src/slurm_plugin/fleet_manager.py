@@ -16,9 +16,47 @@ from abc import ABC, abstractmethod
 import boto3
 import yaml
 from botocore.exceptions import ClientError
-from slurm_plugin.slurm_resources import EC2Instance
 
 logger = logging.getLogger(__name__)
+
+
+class EC2Instance:
+    def __init__(self, id, private_ip, hostname, launch_time):
+        """Initialize slurm node with attributes."""
+        self.id = id
+        self.private_ip = private_ip
+        self.hostname = hostname
+        self.launch_time = launch_time
+        self.slurm_node = None
+
+    def __eq__(self, other):
+        """Compare 2 SlurmNode objects."""
+        if isinstance(other, EC2Instance):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __repr__(self):
+        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
+        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
+
+    def __str__(self):
+        return f"{self.id}"
+
+    def __hash__(self):
+        return hash(self.id)
+
+    @staticmethod
+    def from_describe_instance_data(instance_info):
+        try:
+            return EC2Instance(
+                instance_info["InstanceId"],
+                instance_info["PrivateIpAddress"],
+                instance_info["PrivateDnsName"].split(".")[0],
+                instance_info["LaunchTime"],
+            )
+        except KeyError as e:
+            logger.error("Unable to retrieve EC2 instance info: %s", e)
+            raise e
 
 
 class FleetManagerException(Exception):

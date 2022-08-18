@@ -18,12 +18,11 @@ from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
 from slurm_plugin.common import log_exception, print_with_count
-from slurm_plugin.fleet_manager import FleetManagerFactory
+from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
-    EC2Instance,
     EC2InstanceHealthState,
     InvalidNodenameError,
     parse_nodename,

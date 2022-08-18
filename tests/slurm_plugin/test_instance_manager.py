@@ -17,12 +17,12 @@ import botocore
 import pytest
 import slurm_plugin
 from assertpy import assert_that
+from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
-    EC2Instance,
     EC2InstanceHealthState,
 )
 
