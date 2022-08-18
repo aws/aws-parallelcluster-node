@@ -19,8 +19,8 @@ import botocore
 import pytest
 import slurm_plugin
 from assertpy import assert_that
+from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.resume import SlurmResumeConfig, _resume
-from slurm_plugin.slurm_resources import EC2Instance
 
 from tests.common import client_error
 
