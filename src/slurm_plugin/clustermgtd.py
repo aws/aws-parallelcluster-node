@@ -33,9 +33,9 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import check_command_output, sleep_remaining_loop_time, time_is_up
+from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up
 from retrying import retry
-from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count, read_json
+from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     CONFIG_FILE_DIR,

@@ -11,7 +11,6 @@
 
 
 import functools
-import json
 import logging
 from datetime import datetime
 
@@ -57,24 +56,6 @@ def print_with_count(resource_list):
         return resource_list
     resource_list = [str(elem) for elem in resource_list]
     return f"(x{len(resource_list)}) {str(resource_list)}"
-
-
-def read_json(file_path, default=None):
-    """Read json file into a dict."""
-    try:
-        with open(file_path) as mapping_file:
-            return json.load(mapping_file)
-    except Exception as e:
-        if default is None:
-            logger.error(
-                "Unable to read file from '%s'. Failed with exception: %s",
-                file_path,
-                e,
-            )
-            raise
-        else:
-            logger.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
-            return default
 
 
 def get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):

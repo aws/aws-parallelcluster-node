@@ -14,8 +14,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from assertpy import assert_that
-from common.utils import time_is_up
-from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat, read_json
+from common.utils import read_json, time_is_up
+from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
 
 
 @pytest.mark.parametrize(
