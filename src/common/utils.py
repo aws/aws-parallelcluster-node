@@ -251,3 +251,17 @@ def time_is_up(initial_time, current_time, grace_time):
         current_time = current_time.astimezone(tz=timezone.utc)
     time_diff = (current_time - initial_time).total_seconds()
     return time_diff >= grace_time
+
+
+def read_json(file_path, default=None):
+    """Read json file into a dict."""
+    try:
+        with open(file_path) as mapping_file:
+            return json.load(mapping_file)
+    except Exception as e:
+        if default is None:
+            log.error("Unable to read file from '%s'. Failed with exception: %s", file_path, e)
+            raise
+        else:
+            log.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
+            return default
