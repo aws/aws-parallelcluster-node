@@ -26,7 +26,7 @@ from slurm_plugin.slurm_resources import (
     EC2InstanceHealthState,
 )
 
-from tests.common import MockedBoto3Request, client_error
+from tests.common import FLEET_CONFIG, MockedBoto3Request, client_error
 
 
 @pytest.fixture()
@@ -58,7 +58,7 @@ class TestInstanceManager:
             hosted_zone="hosted_zone",
             dns_domain="dns.domain",
             use_private_hostname=False,
-            instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+            fleet_config=FLEET_CONFIG,
             launch_overrides={
                 "queue3": {
                     "p4d.24xlarge": {
@@ -581,7 +581,6 @@ class TestInstanceManager:
         expected_update_nodes_calls,
         mocker,
         instance_manager,
-        fleet_manager_factory,
     ):
         mocker.patch("slurm_plugin.instance_manager.update_nodes")
 
@@ -1012,16 +1011,6 @@ class TestInstanceManager:
     def test_parse_requested_instances(
         self, node_list, expected_results, expected_failed_nodes, instance_manager, mocker
     ):
-        # Mock instance name/type mapping
-        instance_name_type_mapping = {
-            "queue1": {"c5xlarge": "c5.xlarge"},
-            "queue2": {"g34xlarge": "g3.4xlarge", "g38xlarge": "g3.8xlarge", "u6tb1metal": "u-6tb1.metal"},
-            "queuename-with-dash-and_underscore": {
-                "i3enmetal2tb": "i3en.metal-2tb",
-            },
-        }
-        instance_manager._instance_name_type_mapping = instance_name_type_mapping
-
         assert_that(instance_manager._parse_requested_instances(node_list)).is_equal_to(expected_results)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 

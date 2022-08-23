@@ -10,7 +10,6 @@
 # limitations under the License.
 import boto3
 import pytest
-import slurm_plugin
 from botocore.stub import Stubber
 
 
@@ -89,60 +88,3 @@ def boto3_stubber(mocker, boto3_stubber_path):
     for stubber in created_stubbers:
         stubber.assert_no_pending_responses()
         stubber.deactivate()
-
-
-@pytest.fixture
-def fleet_manager_factory(mocker):
-    """Mock FleetManagerFactury returning a cluter config with queues/compute resources required by all the tests."""
-    return mocker.patch.object(
-        slurm_plugin.fleet_manager.FleetManagerFactory,
-        "_load_cluster_config",
-        auto_spec=True,
-        return_value={
-            "Scheduling": {
-                "SlurmQueues": [
-                    {
-                        "Name": "queue",
-                        "ComputeResources": [
-                            {"Name": "c5xlarge", "InstanceType": "c5.xlarge"},
-                        ],
-                    },
-                    {
-                        "Name": "queue1",
-                        "ComputeResources": [
-                            {"Name": "c5xlarge", "InstanceType": "c5.xlarge"},
-                            {"Name": "c52xlarge", "InstanceType": "c5.2xlarge"},
-                            {"Name": "p4d24xlarge", "InstanceType": "p4d.24xlarge"},
-                            {
-                                "Name": "fleet-spot",
-                                "InstanceTypeList": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
-                                "SpotPrice": 10,
-                            },
-                        ],
-                        "AllocationStrategy": "capacity-optimized",
-                        "CapacityType": "SPOT",
-                    },
-                    {
-                        "Name": "queue2",
-                        "ComputeResources": [
-                            {"Name": "c5xlarge", "InstanceType": "c5.xlarge"},
-                            {
-                                "Name": "fleet-ondemand",
-                                "InstanceTypeList": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
-                            },
-                        ],
-                        "AllocationStrategy": "lowest-price",
-                        "CapacityType": "ONDEMAND",
-                    },
-                    {
-                        "Name": "queue3",
-                        "ComputeResources": [
-                            {"Name": "c5xlarge", "InstanceType": "c5.xlarge"},
-                            {"Name": "c52xlarge", "InstanceType": "c5.2xlarge"},
-                            {"Name": "p4d24xlarge", "InstanceType": "p4d.24xlarge"},
-                        ],
-                    },
-                ]
-            }
-        },
-    )

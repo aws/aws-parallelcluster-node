@@ -22,7 +22,7 @@ from assertpy import assert_that
 from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.resume import SlurmResumeConfig, _resume
 
-from tests.common import client_error
+from tests.common import FLEET_CONFIG, LAUNCH_OVERRIDES, client_error
 
 
 @pytest.fixture()
@@ -74,7 +74,7 @@ def boto3_stubber_path():
     ],
 )
 def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
-    mocker.patch("slurm_plugin.resume.read_json", return_value={"c5xlarge": "c5.xlarge"})
+    mocker.patch("slurm_plugin.resume.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES])
     resume_config = SlurmResumeConfig(test_datadir / config_file)
     for key in expected_attributes:
         assert_that(resume_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
@@ -313,7 +313,6 @@ def test_resume_launch(
     is_heartbeat_valid,
     mocker,
     boto3_stubber,
-    fleet_manager_factory,
 ):
     # Test that all or nothing batch settings are working correctly
     mock_resume_config = SimpleNamespace(
@@ -325,9 +324,8 @@ def test_resume_launch(
         cluster_name="hit",
         head_node_private_ip="some_ip",
         head_node_hostname="some_hostname",
-        instance_name_type_mapping={"queue1": {"c5xlarge": "c5.xlarge"}, "queue2": {"c52xlarge": "c5.2xlarge"}},
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
-        cluster_config_file="/path/of/config-file.yaml",
+        fleet_config=FLEET_CONFIG,
         clustermgtd_heartbeat_file_path="some_path",
         clustermgtd_timeout=600,
         boto3_config=botocore.config.Config(),
