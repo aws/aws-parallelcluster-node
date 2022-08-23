@@ -54,9 +54,8 @@ class InstanceManager:
         use_private_hostname=False,
         head_node_private_ip=None,
         head_node_hostname=None,
-        instance_name_type_mapping=None,
+        fleet_config=None,
         launch_overrides=None,
-        cluster_config_file=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -70,9 +69,8 @@ class InstanceManager:
         self._use_private_hostname = use_private_hostname
         self._head_node_private_ip = head_node_private_ip
         self._head_node_hostname = head_node_hostname
-        self._instance_name_type_mapping = instance_name_type_mapping or {}
+        self._fleet_config = fleet_config
         self._launch_overrides = launch_overrides or {}
-        self._cluster_config_file = cluster_config_file
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -94,7 +92,7 @@ class InstanceManager:
                     self._cluster_name,
                     self._region,
                     self._boto3_config,
-                    self._cluster_config_file,
+                    self._fleet_config,
                     queue,
                     compute_resource,
                     all_or_nothing_batch,
@@ -243,8 +241,6 @@ class InstanceManager:
         for node in node_list:
             try:
                 queue_name, node_type, compute_resource_name = parse_nodename(node)
-                # In case we need to map the compute resource to the instance type
-                # instance_type = self._instance_name_type_mapping[queue_name][compute_resource_name]
                 instances_to_launch[queue_name][compute_resource_name].append(node)
             except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)

@@ -8,7 +8,6 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
 from collections import namedtuple
 
 from botocore.exceptions import ClientError
@@ -30,3 +29,34 @@ def read_text(path):
 
 def client_error(error_code):
     return ClientError({"Error": {"Code": error_code}}, "failed_operation")
+
+
+FLEET_CONFIG = {
+    "queue": {"c5xlarge": {"InstanceType": "c5.xlarge"}},
+    "queue1": {
+        "c5xlarge": {"InstanceType": "c5.xlarge"},
+        "c52xlarge": {"InstanceType": "c5.2xlarge"},
+        "p4d24xlarge": {"InstanceType": "p4d.24xlarge"},
+        "fleet-spot": {
+            "InstanceTypeList": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "MaxPrice": 10,
+            "AllocationStrategy": "capacity-optimized",
+            "CapacityType": "spot",
+        },
+    },
+    "queue2": {
+        "c5xlarge": {"InstanceType": "c5.xlarge"},
+        "fleet-ondemand": {
+            "InstanceTypeList": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+        },
+    },
+    "queue3": {
+        "c5xlarge": {"InstanceType": "c5.xlarge"},
+        "c52xlarge": {"InstanceType": "c5.2xlarge"},
+        "p4d24xlarge": {"InstanceType": "p4d.24xlarge"},
+    },
+}
+
+LAUNCH_OVERRIDES = {}

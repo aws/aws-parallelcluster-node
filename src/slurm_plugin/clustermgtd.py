@@ -122,12 +122,12 @@ class ClustermgtdConfig:
         "logging_config": os.path.join(
             os.path.dirname(__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
         ),
-        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",  # TODO remove this file
         # Launch configs
         "launch_max_batch_size": 500,
         "update_node_address": True,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
+        "fleet_config_file": "/opt/parallelcluster/shared/fleet-config.json",
         # Terminate configs
         "terminate_max_batch_size": 1000,
         # Timeout to wait for node initialization, should be the same as ResumeTimeout
@@ -159,7 +159,7 @@ class ClustermgtdConfig:
         if type(other) is type(self):
             return (
                 self._config == other._config
-                and self.instance_name_type_mapping == other.instance_name_type_mapping
+                and self.fleet_config == other.fleet_config
                 and self.launch_overrides == other.launch_overrides
             )
         return False
@@ -174,10 +174,6 @@ class ClustermgtdConfig:
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
         self.head_node_private_ip = config.get("clustermgtd", "head_node_private_ip")
         self.head_node_hostname = config.get("clustermgtd", "head_node_hostname")
-        instance_name_type_mapping_file = config.get(
-            "clustermgtd", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
-        )
-        self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -207,6 +203,10 @@ class ClustermgtdConfig:
         self.cluster_config_file = config.get(
             "clustermgtd", "cluster_config_file", fallback=self.DEFAULTS.get("cluster_config_file")
         )
+        fleet_config_file = config.get(
+            "clustermgtd", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
+        )
+        self.fleet_config = read_json(fleet_config_file)
 
         # run_instances_overrides_file contains a json with the following format:
         # TODO generalize file name to add create-fleet support too.
@@ -344,9 +344,8 @@ class ClusterManager:
             use_private_hostname=config.use_private_hostname,
             head_node_private_ip=config.head_node_private_ip,
             head_node_hostname=config.head_node_hostname,
-            instance_name_type_mapping=config.instance_name_type_mapping,
             launch_overrides=config.launch_overrides,
-            cluster_config_file=config.cluster_config_file,
+            fleet_config=config.fleet_config,
         )
 
     def _update_compute_fleet_status(self, status):

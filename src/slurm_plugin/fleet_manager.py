@@ -14,7 +14,6 @@ import time
 from abc import ABC, abstractmethod
 
 import boto3
-import yaml
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -68,23 +67,14 @@ class FleetManagerException(Exception):
 
 class FleetManagerFactory:
     @staticmethod
-    def get_manager(cluster_name, region, boto3_config, cluster_config_file, queue, compute_resource, all_or_nothing):
+    def get_manager(cluster_name, region, boto3_config, fleet_config, queue, compute_resource, all_or_nothing):
         try:
-            cluster_config = FleetManagerFactory._load_cluster_config(cluster_config_file)
-
-            queue_config = next(
-                q_config for q_config in cluster_config["Scheduling"]["SlurmQueues"] if q_config["Name"] == queue
-            )
-            compute_resource_config = next(
-                cr_config for cr_config in queue_config["ComputeResources"] if cr_config["Name"] == compute_resource
-            )
-        except FileNotFoundError as e:
-            message = f"Unable to read {cluster_config_file}, {e}"
-            logger.error(message)
-            raise FleetManagerException(message)
-        except StopIteration:
+            queue_config = fleet_config[queue]
+            compute_resource_config = queue_config[compute_resource]
+        except KeyError:
             message = (
-                f"Unable to found queue {queue} or compute resource {compute_resource} in the {cluster_config_file}"
+                f"Unable to find queue {queue} or compute resource {compute_resource} "
+                f"in the fleet config: {fleet_config}"
             )
             logger.error(message)
             raise FleetManagerException(message)
@@ -94,7 +84,8 @@ class FleetManagerFactory:
                 cluster_name,
                 region,
                 boto3_config,
-                queue_config,
+                queue,
+                compute_resource,
                 compute_resource_config,
                 all_or_nothing,
             )
@@ -103,25 +94,16 @@ class FleetManagerFactory:
                 cluster_name,
                 region,
                 boto3_config,
-                queue_config,
+                queue,
+                compute_resource,
                 compute_resource_config,
                 all_or_nothing,
             )
         else:
-            raise Exception(
+            raise FleetManagerException(
                 "InstanceTypeList or InstanceType field not found "
                 f"in queue: {queue}, compute resource: {compute_resource}"
             )
-
-    @staticmethod
-    def _load_cluster_config(config_file_path):
-        """
-        Load cluster configuration.
-
-        Cluster config is required to retrieve queue/compute-resource settings to be used in create-fleet call.
-        """
-        with open(config_file_path) as config_file:
-            return yaml.load(config_file, Loader=yaml.SafeLoader)
 
 
 class FleetManager(ABC):
@@ -133,17 +115,17 @@ class FleetManager(ABC):
         cluster_name,
         region,
         boto3_config,
-        queue_config,
+        queue,
+        compute_resource,
         compute_resource_config,
         all_or_nothing=False,
     ):
         self._cluster_name = cluster_name
         self._region = region
         self._boto3_config = boto3_config
-        self._queue_config = queue_config
-        self._queue = queue_config["Name"]
+        self._queue = queue
+        self._compute_resource = compute_resource
         self._compute_resource_config = compute_resource_config
-        self._compute_resource = compute_resource_config["Name"]
         self._all_or_nothing = all_or_nothing
 
     @abstractmethod
@@ -175,7 +157,8 @@ class Ec2RunInstancesManager(FleetManager):
         cluster_name,
         region,
         boto3_config,
-        queue_config,
+        queue,
+        compute_resource,
         compute_resource_config,
         all_or_nothing,
     ):
@@ -183,7 +166,8 @@ class Ec2RunInstancesManager(FleetManager):
             cluster_name,
             region,
             boto3_config,
-            queue_config,
+            queue,
+            compute_resource,
             compute_resource_config,
             all_or_nothing,
         )
@@ -223,7 +207,8 @@ class Ec2CreateFleetManager(FleetManager):
         cluster_name,
         region,
         boto3_config,
-        queue_config,
+        queue,
+        compute_resource,
         compute_resource_config,
         all_or_nothing,
     ):
@@ -231,7 +216,8 @@ class Ec2CreateFleetManager(FleetManager):
             cluster_name,
             region,
             boto3_config,
-            queue_config,
+            queue,
+            compute_resource,
             compute_resource_config,
             all_or_nothing,
         )
@@ -240,9 +226,28 @@ class Ec2CreateFleetManager(FleetManager):
         """Evaluate parameters to be passed to create_fleet call."""
         template_overrides = []
         try:
+            common_launch_options = {
+                # AllocationStrategy can assume different values for SpotOptions and OnDemandOptions
+                "AllocationStrategy": self._compute_resource_config["AllocationStrategy"],
+                "SingleInstanceType": False,
+                "SingleAvailabilityZone": True,  # Set to False for Multi-AZ support
+                # If the minimum target capacity is not reached, the fleet launches no instances
+                "MinTargetCapacity": 1 if not self._all_or_nothing else count,
+            }
+
             queue_overrides = {}
-            if self._queue_config["CapacityType"] == "SPOT" and self._compute_resource_config["SpotPrice"]:
-                queue_overrides = {"MaxPrice": str(self._compute_resource_config["SpotPrice"])}
+            if self._compute_resource_config["CapacityType"] == "spot":
+                if self._compute_resource_config.get("MaxPrice"):
+                    queue_overrides = {"MaxPrice": str(self._compute_resource_config["MaxPrice"])}
+
+                launch_options = {"SpotOptions": common_launch_options}
+            else:
+                launch_options = {
+                    "OnDemandOptions": {
+                        **common_launch_options,
+                        "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
+                    },
+                }
 
             for instance_type in self._compute_resource_config["InstanceTypeList"]:
                 override = copy.deepcopy(queue_overrides)
@@ -262,26 +267,10 @@ class Ec2CreateFleetManager(FleetManager):
                 ],
                 "TargetCapacitySpecification": {
                     "TotalTargetCapacity": count,
-                    "DefaultTargetCapacityType": "on-demand"
-                    if self._queue_config["CapacityType"] == "ONDEMAND"
-                    else "spot",
+                    "DefaultTargetCapacityType": self._compute_resource_config["CapacityType"],
                 },
                 "Type": "instant",
-                "SpotOptions": {
-                    "AllocationStrategy": self._queue_config["AllocationStrategy"],
-                    "SingleInstanceType": False,
-                    "SingleAvailabilityZone": True,  # Set to False for Multi-AZ support
-                    # If the minimum target capacity is not reached, the fleet launches no instances
-                    "MinTargetCapacity": 1 if not self._all_or_nothing else count,
-                },
-                "OnDemandOptions": {
-                    "AllocationStrategy": self._queue_config["AllocationStrategy"],
-                    "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
-                    "SingleInstanceType": False,
-                    "SingleAvailabilityZone": True,  # Set to False for Multi-AZ support
-                    # If the minimum target capacity is not reached, the fleet launches no instances
-                    "MinTargetCapacity": 1 if not self._all_or_nothing else count,
-                },
+                **launch_options,
                 # TODO verify if we need to add user's tag in "TagSpecifications": []
             }
         except KeyError as e:

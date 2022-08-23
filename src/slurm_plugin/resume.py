@@ -38,9 +38,9 @@ class SlurmResumeConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
-        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",  # TODO remove this file
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
+        "fleet_config_file": "/opt/parallelcluster/shared/fleet-config.json",
         "all_or_nothing_batch": False,
     }
 
@@ -81,10 +81,10 @@ class SlurmResumeConfig:
         self.all_or_nothing_batch = config.getboolean(
             "slurm_resume", "all_or_nothing_batch", fallback=self.DEFAULTS.get("all_or_nothing_batch")
         )
-        instance_name_type_mapping_file = config.get(
-            "slurm_resume", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
+        fleet_config_file = config.get(
+            "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
         )
-        self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
+        self.fleet_config = read_json(fleet_config_file)
         # run_instances_overrides_file contains a json with the following format:
         # TODO generalize file name to add create-fleet support too.
         # {
@@ -172,9 +172,8 @@ def _resume(arg_nodes, resume_config):
         use_private_hostname=resume_config.use_private_hostname,
         head_node_private_ip=resume_config.head_node_private_ip,
         head_node_hostname=resume_config.head_node_hostname,
-        instance_name_type_mapping=resume_config.instance_name_type_mapping,
+        fleet_config=resume_config.fleet_config,
         launch_overrides=resume_config.launch_overrides,
-        cluster_config_file=resume_config.cluster_config_file,
     )
     instance_manager.add_instances_for_nodes(
         node_list=node_list,

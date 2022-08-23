@@ -34,7 +34,7 @@ from slurm_plugin.slurm_resources import (
     StaticNode,
 )
 
-from tests.common import MockedBoto3Request, client_error
+from tests.common import FLEET_CONFIG, LAUNCH_OVERRIDES, MockedBoto3Request, client_error
 
 
 @pytest.fixture()
@@ -150,15 +150,26 @@ class TestClustermgtdConfig:
         ids=["default", "all_options", "health_check"],
     )
     def test_config_parsing(self, config_file, expected_attributes, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"c5xlarge": "c5.xlarge"})
+        mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES])
         sync_config = ClustermgtdConfig(test_datadir / config_file)
         for key in expected_attributes:
             assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
 
-    def test_config_comparison(self, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"c5xlarge": "c5.xlarge"})
+    @pytest.mark.parametrize(
+        ("file_to_compare", "read_json_mock"),
+        [
+            ("config_modified.conf", 4 * [FLEET_CONFIG, LAUNCH_OVERRIDES]),
+            (
+                "config.conf",
+                3 * [FLEET_CONFIG, LAUNCH_OVERRIDES] + [{**FLEET_CONFIG, **{"queue7": "fake"}}, LAUNCH_OVERRIDES],
+            ),
+        ],
+        ids=["different_config_file", "same_file_different_fleet_config"],
+    )
+    def test_config_comparison(self, test_datadir, mocker, file_to_compare, read_json_mock):
+        mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=read_json_mock)
         config = test_datadir / "config.conf"
-        config_modified = test_datadir / "config_modified.conf"
+        config_modified = test_datadir / file_to_compare
 
         assert_that(ClustermgtdConfig(config)).is_equal_to(ClustermgtdConfig(config))
         assert_that(ClustermgtdConfig(config)).is_not_equal_to(ClustermgtdConfig(config_modified))
@@ -299,10 +310,9 @@ def test_get_ec2_instances(mocker):
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
         insufficient_capacity_timeout=600,
-        cluster_config_file="/path/of/config-file.yaml",
+        fleet_config=FLEET_CONFIG,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
@@ -489,9 +499,8 @@ def test_perform_health_check_actions(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
-        cluster_config_file="/path/of/config-file.yaml",
+        fleet_config=FLEET_CONFIG,
         insufficient_capacity_timeout=600,
     )
     # Mock functions
@@ -886,7 +895,6 @@ def test_handle_unhealthy_static_nodes(
     caplog,
     request,
     set_nodes_down_exception,
-    fleet_manager_factory,
 ):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -902,7 +910,7 @@ def test_handle_unhealthy_static_nodes(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+        fleet_config=FLEET_CONFIG,
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
@@ -1192,12 +1200,11 @@ def test_terminate_orphaned_instances(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
         node_replacement_timeout=1800,
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
-        cluster_config_file="path/to/config-file.yaml",
+        fleet_config=FLEET_CONFIG,
     )
     for instance, node in zip(cluster_instances, slurm_nodes):
         instance.slurm_node = node
@@ -1825,7 +1832,6 @@ def test_manage_cluster_boto3(
     test_datadir,
     mocker,
     caplog,
-    fleet_manager_factory,
 ):
     caplog.set_level(logging.ERROR)
     # This test only patches I/O and boto3 calls to ensure that all boto3 calls are expected
@@ -1834,7 +1840,7 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
-    mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"queue": {"c5xlarge": "c5.xlarge"}})
+    mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES])
     sync_config = ClustermgtdConfig(test_datadir / config_file)
     sync_config.launch_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
     cluster_manager = ClusterManager(sync_config)
@@ -1853,17 +1859,11 @@ def test_manage_cluster_boto3(
     )
 
     if mocked_active_nodes is Exception or mocked_inactive_nodes is Exception:
-        mocker.patch.object(
-            cluster_manager,
-            "_get_node_info_with_retry",
-            side_effect=Exception,
-        )
+        mocker.patch.object(cluster_manager, "_get_node_info_with_retry", side_effect=Exception)
 
     else:
         mocker.patch.object(
-            cluster_manager,
-            "_get_node_info_with_retry",
-            return_value=mocked_active_nodes + mocked_inactive_nodes,
+            cluster_manager, "_get_node_info_with_retry", return_value=mocked_active_nodes + mocked_inactive_nodes
         )
         mocker.patch(
             "slurm_plugin.clustermgtd.ClusterManager._parse_scheduler_nodes_data", return_value=[partitions, {}]
@@ -1882,16 +1882,8 @@ class TestComputeFleetStatusManager:
         "get_item_response, fallback, expected_status",
         [
             ('{"status": "RUNNING"}', None, ComputeFleetStatus.RUNNING),
-            (
-                "",
-                ComputeFleetStatus.STOPPED,
-                ComputeFleetStatus.STOPPED,
-            ),
-            (
-                Exception,
-                ComputeFleetStatus.STOPPED,
-                ComputeFleetStatus.STOPPED,
-            ),
+            ("", ComputeFleetStatus.STOPPED, ComputeFleetStatus.STOPPED),
+            (Exception, ComputeFleetStatus.STOPPED, ComputeFleetStatus.STOPPED),
         ],
         ids=["success", "empty_response", "exception"],
     )
@@ -1910,14 +1902,8 @@ class TestComputeFleetStatusManager:
     @pytest.mark.parametrize(
         "desired_status, update_item_response",
         [
-            (
-                ComputeFleetStatus.PROTECTED,
-                None,
-            ),
-            (
-                ComputeFleetStatus.STOPPED,
-                Exception,
-            ),
+            (ComputeFleetStatus.PROTECTED, None),
+            (ComputeFleetStatus.STOPPED, Exception),
         ],
         ids=["success", "exception"],
     )
@@ -1977,13 +1963,12 @@ def test_handle_successfully_launched_nodes(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
         terminate_drain_nodes=True,
         terminate_down_nodes=True,
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
-        cluster_config_file="/path/of/config-file.yaml",
+        fleet_config=FLEET_CONFIG,
     )
     # Mock associated function
     cluster_manager = ClusterManager(mock_sync_config)

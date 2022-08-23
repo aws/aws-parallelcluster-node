@@ -13,12 +13,11 @@ import os
 from datetime import datetime, timezone
 
 import pytest
-import slurm_plugin
 from assertpy import assert_that
 from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import Ec2CreateFleetManager, Ec2RunInstancesManager, FleetManagerFactory
 
-from tests.common import MockedBoto3Request
+from tests.common import FLEET_CONFIG, MockedBoto3Request
 
 
 @pytest.fixture()
@@ -30,46 +29,14 @@ def boto3_stubber_path():
 
 class TestFleetManagerFactory:
     @pytest.mark.parametrize(
-        ("config_file_content", "expected_failure", "expected_manager"),
+        ("fleet_config", "expected_failure", "expected_manager"),
         [
-            (
-                None,
-                "Unable to read",
-                None,
-            ),
-            (
-                {"Scheduling": {"SlurmQueues": [{"Name": "bad_queue", "ComputeResources": [{"Name": "cr1"}]}]}},
-                "Unable to found queue .* or compute resource .* in the .*",
-                None,
-            ),
-            (
-                {"Scheduling": {"SlurmQueues": [{"Name": "q1", "ComputeResources": [{"Name": "bad_cr"}]}]}},
-                "Unable to found queue .* or compute resource .* in the .*",
-                None,
-            ),
-            (
-                {"Scheduling": {"SlurmQueues": [{"Name": "q1", "ComputeResources": [{"Name": "cr1"}]}]}},
-                "InstanceTypeList or InstanceType field not found .*",
-                None,
-            ),
-            (
-                {
-                    "Scheduling": {
-                        "SlurmQueues": [{"Name": "q1", "ComputeResources": [{"Name": "cr1", "InstanceType": "x"}]}]
-                    }
-                },
-                None,
-                Ec2RunInstancesManager,
-            ),
-            (
-                {
-                    "Scheduling": {
-                        "SlurmQueues": [{"Name": "q1", "ComputeResources": [{"Name": "cr1", "InstanceTypeList": "x"}]}]
-                    }
-                },
-                None,
-                Ec2CreateFleetManager,
-            ),
+            ({}, "Unable to find queue .* or compute resource .* in the fleet config: {}", None),
+            ({"bad_queue": {}}, "Unable to find queue .* or compute resource .* in the .*", None),
+            ({"q1": {"bad_cr": {}}}, "Unable to find queue .* or compute resource .* in the .*", None),
+            ({"q1": {"cr1": {}}}, "InstanceTypeList or InstanceType field not found .*", None),
+            ({"q1": {"cr1": {"InstanceType": "x"}, "other": {"InstanceTypeList": "x"}}}, None, Ec2RunInstancesManager),
+            ({"q1": {"cr1": {"InstanceTypeList": "x"}, "other": {"InstanceType": "x"}}}, None, Ec2CreateFleetManager),
         ],
         ids=[
             "not_existing_config_file",
@@ -80,24 +47,15 @@ class TestFleetManagerFactory:
             "right_config_file_create_fleet",
         ],
     )
-    def test_get_manager(self, mocker, config_file_content, expected_failure, expected_manager):
-        if config_file_content:
-            # patch fleet manager
-            mocker.patch.object(
-                slurm_plugin.fleet_manager.FleetManagerFactory,
-                "_load_cluster_config",
-                auto_spec=True,
-                return_value=config_file_content,
-            )
-
+    def test_get_manager(self, fleet_config, expected_failure, expected_manager):
         if expected_failure:
             with pytest.raises(Exception, match=expected_failure):
                 FleetManagerFactory.get_manager(
-                    "cluster_name", "region", "boto3_config", "config_file", "q1", "cr1", all_or_nothing=False
+                    "cluster_name", "region", "boto3_config", fleet_config, "q1", "cr1", all_or_nothing=False
                 )
         else:
             manager = FleetManagerFactory.get_manager(
-                "cluster_name", "region", "boto3_config", "config_file", "q1", "cr1", all_or_nothing=False
+                "cluster_name", "region", "boto3_config", fleet_config, "q1", "cr1", all_or_nothing=False
             )
             assert_that(manager).is_instance_of(expected_manager)
 
@@ -174,13 +132,12 @@ class TestEc2RunInstancesManager:
         all_or_nothing,
         launch_overrides,
         expected_params,
-        fleet_manager_factory,
         caplog,
     ):
         caplog.set_level(logging.INFO)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", "config_file", "queue1", compute_resource, all_or_nothing
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue1", compute_resource, all_or_nothing
         )
         launch_params = fleet_manager._evaluate_launch_params(batch_size, launch_overrides=launch_overrides)
         if launch_overrides:
@@ -234,19 +191,12 @@ class TestEc2RunInstancesManager:
         ],
         ids=["normal"],
     )
-    def test_launch_instances(
-        self,
-        boto3_stubber,
-        launch_params,
-        mocked_boto3_request,
-        expected_assigned_nodes,
-        fleet_manager_factory,
-    ):
+    def test_launch_instances(self, boto3_stubber, launch_params, mocked_boto3_request, expected_assigned_nodes):
         # patch boto3 call
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", "config_file", "queue1", "p4d24xlarge", all_or_nothing=False
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue1", "p4d24xlarge", all_or_nothing=False
         )
         assigned_nodes = fleet_manager._launch_instances(launch_params)
         assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
@@ -263,6 +213,25 @@ def _mocked_create_fleet_params(
         override = {"InstanceType": instance_type}
         if capacity_type == "spot":
             override["MaxPrice"] = str(10)
+            launch_options = {
+                "SpotOptions": {
+                    "AllocationStrategy": allocation_strategy,
+                    "SingleInstanceType": False,
+                    "SingleAvailabilityZone": True,
+                    "MinTargetCapacity": min_capacity,
+                }
+            }
+        else:
+            launch_options = {
+                "OnDemandOptions": {
+                    "AllocationStrategy": allocation_strategy,
+                    "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
+                    "SingleInstanceType": False,
+                    "SingleAvailabilityZone": True,
+                    "MinTargetCapacity": min_capacity,
+                },
+            }
+
         template_overrides.append(override)
 
     params = {
@@ -280,19 +249,7 @@ def _mocked_create_fleet_params(
             "DefaultTargetCapacityType": capacity_type,
         },
         "Type": "instant",
-        "SpotOptions": {
-            "AllocationStrategy": allocation_strategy,
-            "SingleInstanceType": False,
-            "SingleAvailabilityZone": True,
-            "MinTargetCapacity": min_capacity,
-        },
-        "OnDemandOptions": {
-            "AllocationStrategy": allocation_strategy,
-            "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
-            "SingleInstanceType": False,
-            "SingleAvailabilityZone": True,
-            "MinTargetCapacity": min_capacity,
-        },
+        **launch_options,
     }
     if overrides:
         params.update(overrides)
@@ -372,13 +329,12 @@ class TestCreateFleetManager:
         all_or_nothing,
         launch_overrides,
         expected_params,
-        fleet_manager_factory,
         caplog,
     ):
         caplog.set_level(logging.INFO)
         # run tests
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", "config_file", queue, compute_resource, all_or_nothing
+            "hit", "region", "boto3_config", FLEET_CONFIG, queue, compute_resource, all_or_nothing
         )
         launch_params = fleet_manager._evaluate_launch_params(batch_size, launch_overrides)
         assert_that(launch_params).is_equal_to(expected_params)
@@ -489,7 +445,6 @@ class TestCreateFleetManager:
         launch_params,
         mocked_boto3_request,
         expected_assigned_nodes,
-        fleet_manager_factory,
         mocker,
     ):
         mocker.patch("time.sleep")
@@ -497,7 +452,7 @@ class TestCreateFleetManager:
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", "config_file", "queue2", "fleet-ondemand", all_or_nothing=False
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", all_or_nothing=False
         )
 
         assigned_nodes = fleet_manager._launch_instances(launch_params)
@@ -698,7 +653,6 @@ class TestCreateFleetManager:
         self,
         boto3_stubber,
         mocker,
-        fleet_manager_factory,
         instance_ids,
         mocked_boto3_request,
         expected_exception,
@@ -711,7 +665,7 @@ class TestCreateFleetManager:
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", "config_file", "queue2", "fleet-ondemand", True
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True
         )
 
         if expected_exception:
