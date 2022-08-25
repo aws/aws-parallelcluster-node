@@ -404,6 +404,28 @@ def test_slurm_node_is_power_with_job(node, expected_output):
                 "nodehostname",
                 "DOWN+CLOUD",
                 "queue1",
+                "(Code:InstanceLimitExceeded)Failure when resuming nodes",
+            ),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD",
+                "queue1",
+                "(Code:HostLimitExceeded)Failure when resuming nodes",
+            ),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD",
+                "queue1",
                 "(Code:Unsupported)Failure when resuming nodes",
             ),
             True,
