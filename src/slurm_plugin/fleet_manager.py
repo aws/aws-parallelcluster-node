@@ -71,15 +71,19 @@ class FleetManagerFactory:
         try:
             queue_config = fleet_config[queue]
             compute_resource_config = queue_config[compute_resource]
-        except KeyError:
-            message = (
-                f"Unable to find queue {queue} or compute resource {compute_resource} "
-                f"in the fleet config: {fleet_config}"
-            )
+            api = compute_resource_config["Api"]
+        except KeyError as e:
+            message = "Unable to find"
+            if e.args[0] == "Api":
+                message += f" 'Api' key in the compute resource '{compute_resource}',"
+            else:
+                message += f" queue '{queue}' or compute resource '{compute_resource}'"
+            message += f" in the fleet config: {fleet_config}"
+
             logger.error(message)
             raise FleetManagerException(message)
 
-        if compute_resource_config.get("InstanceTypeList"):
+        if api == "create-fleet":
             return Ec2CreateFleetManager(
                 cluster_name,
                 region,
@@ -89,7 +93,7 @@ class FleetManagerFactory:
                 compute_resource_config,
                 all_or_nothing,
             )
-        elif compute_resource_config.get("InstanceType"):
+        elif api == "run-instances":
             return Ec2RunInstancesManager(
                 cluster_name,
                 region,
@@ -101,8 +105,7 @@ class FleetManagerFactory:
             )
         else:
             raise FleetManagerException(
-                "InstanceTypeList or InstanceType field not found "
-                f"in queue: {queue}, compute resource: {compute_resource}"
+                f"Unsupported Api '{api}' specified in queue '{queue}', compute resource '{compute_resource}'"
             )
 
 
