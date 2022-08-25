@@ -127,7 +127,7 @@ class ClustermgtdConfig:
         "update_node_address": True,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
-        "fleet_config_file": "/opt/parallelcluster/shared/fleet-config.json",
+        "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         # Terminate configs
         "terminate_max_batch_size": 1000,
         # Timeout to wait for node initialization, should be the same as ResumeTimeout

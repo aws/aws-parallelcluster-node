@@ -40,7 +40,7 @@ class SlurmResumeConfig:
         "use_private_hostname": False,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
-        "fleet_config_file": "/opt/parallelcluster/shared/fleet-config.json",
+        "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "all_or_nothing_batch": False,
     }
 
