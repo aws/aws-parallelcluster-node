@@ -75,7 +75,7 @@ class ComputemgtdConfig:
             )
             config.read_file(StringIO(config_str))
         except Exception:
-            log.error(f"Cannot read computemgtd configuration file: {config_file_path}")
+            log.error("Cannot read computemgtd configuration file: %s", config_file_path)
             raise
 
         # Get config settings
