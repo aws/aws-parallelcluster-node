@@ -148,7 +148,7 @@ class FleetManager(ABC):
         """
         launch_params = self._evaluate_launch_params(count, launch_overrides)
         assigned_nodes = self._launch_instances(launch_params)
-        logger.info(f"Launched the following instances: {assigned_nodes.get('Instances')}")
+        logger.debug("Launched the following instances: %s", assigned_nodes.get("Instances"))
         return [EC2Instance.from_describe_instance_data(instance_info) for instance_info in assigned_nodes["Instances"]]
 
 
