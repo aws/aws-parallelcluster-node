@@ -210,7 +210,8 @@ def load_additional_instance_types_data(config, section):
 
                 log.info(
                     "Additional instance types data loaded for instance types '%s': %s",
-                        instance_types_data.keys(), instance_types_data
+                    instance_types_data.keys(),
+                    instance_types_data,
                 )
             except Exception as e:
                 raise CriticalError("Error loading instance types data from configuration: {0}".format(e))

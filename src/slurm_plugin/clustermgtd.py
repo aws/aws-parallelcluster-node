@@ -1071,7 +1071,8 @@ class ClusterManager:
     ):
         """Reset nodes in the compute resource which insufficient_capacity_timeout expired."""
         logging.info(
-            "Reset the following compute resources because insufficient capacity timeout expired: %s", timeout_expired_cr
+            "Reset the following compute resources because insufficient capacity timeout expired: %s",
+            timeout_expired_cr,
         )
         nodes_to_power_down = []
         for queue, compute_resources in timeout_expired_cr.items():
