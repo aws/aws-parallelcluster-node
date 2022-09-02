@@ -54,7 +54,7 @@ class SlurmFleetManagerConfig:
         try:
             config.read_file(open(config_file_path, "r"))
         except IOError:
-            log.error(f"Cannot read slurm fleet manager configuration file: {config_file_path}")
+            log.error("Cannot read slurm fleet manager configuration file: %s", config_file_path)
             raise
 
         self.region = config.get("slurm_fleet_status_manager", "region")

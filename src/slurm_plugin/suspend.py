@@ -34,7 +34,7 @@ class SlurmSuspendConfig:
         try:
             config.read_file(open(config_file_path, "r"))
         except IOError:
-            log.error(f"Cannot read slurm cloud bursting scripts configuration file: {config_file_path}")
+            log.error("Cannot read slurm cloud bursting scripts configuration file: %s", config_file_path)
             raise
 
         self.clustermgtd_timeout = config.getint(

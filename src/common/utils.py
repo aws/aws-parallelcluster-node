@@ -145,14 +145,14 @@ def _run_command(command_function, command, env=None, raise_on_error=True, execu
 
         env.update(os.environ.copy())
         if execute_as_user:
-            log.debug("Executing command as user '{0}': {1}".format(execute_as_user, command))
+            log.debug("Executing command as user '%s': %s", execute_as_user, command)
             pw_record = pwd.getpwnam(execute_as_user)
             user_uid = pw_record.pw_uid
             user_gid = pw_record.pw_gid
             preexec_fn = _demote(user_uid, user_gid)
             return command_function(command, env, preexec_fn)
         else:
-            log.debug("Executing command: %s" % command)
+            log.debug("Executing command: %s", command)
             return command_function(command, env, None)
     except subprocess.CalledProcessError as e:
         # CalledProcessError.__str__ already produces a significant error message
@@ -209,9 +209,8 @@ def load_additional_instance_types_data(config, section):
                     instance_types_data = {}
 
                 log.info(
-                    "Additional instance types data loaded for instance types '{0}': {1}".format(
+                    "Additional instance types data loaded for instance types '%s': %s",
                         instance_types_data.keys(), instance_types_data
-                    )
                 )
             except Exception as e:
                 raise CriticalError("Error loading instance types data from configuration: {0}".format(e))

@@ -305,7 +305,7 @@ class Ec2CreateFleetManager(FleetManager):
             instance_ids = [inst_id for instance in instances for inst_id in instance["InstanceIds"]]
             instances, partial_instance_ids = self._get_instances_info(instance_ids)
             if partial_instance_ids:
-                logger.error(f"Unable to retrieve instance info for instances: {partial_instance_ids}")
+                logger.error("Unable to retrieve instance info for instances: %s", partial_instance_ids)
 
             return {"Instances": instances}
         except ClientError as e:
@@ -370,7 +370,7 @@ def run_instances(region, boto3_config, run_instances_kwargs):
 
         return run_instances(region=region, boto3_config=boto3_config, **run_instances_kwargs)
     except ImportError:
-        logger.info(f"Launching instances with Boto3 run_instances API. Parameters: {run_instances_kwargs}")
+        logger.info("Launching instances with run_instances API. Parameters: %s", run_instances_kwargs)
         ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
         return ec2_client.run_instances(**run_instances_kwargs)
 
@@ -386,6 +386,6 @@ def create_fleet(region, boto3_config, create_fleet_kwargs):
 
         return create_fleet(region=region, boto3_config=boto3_config, **create_fleet_kwargs)
     except ImportError:
-        logger.info(f"Launching instances with Boto3 create_fleet API. Parameters: {create_fleet_kwargs}")
+        logger.info("Launching instances with create_fleet API. Parameters: %s", create_fleet_kwargs)
         ec2_client = boto3.client("ec2", region_name=region, config=boto3_config)
         return ec2_client.create_fleet(**create_fleet_kwargs)
