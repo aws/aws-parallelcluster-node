@@ -82,7 +82,8 @@ class SlurmPartition:
 
 
 class SlurmNode(metaclass=ABCMeta):
-    SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", "COMPLETING"}
+    SLURM_SCONTROL_COMPLETING_STATE = "COMPLETING"
+    SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", SLURM_SCONTROL_COMPLETING_STATE}
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
@@ -142,7 +143,15 @@ class SlurmNode(metaclass=ABCMeta):
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
+        return (
+            self._is_drain()
+            and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
+            and not self.is_completing()
+        )
+
+    def is_completing(self):
+        """Check if slurm node is in COMPLETING state."""
+        return self.SLURM_SCONTROL_COMPLETING_STATE in self.states
 
     def is_power_down(self):
         """Check if slurm node is in power down state."""
