@@ -100,6 +100,14 @@ def test_slurm_node_has_job(node, expected_output):
             StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue1"),
             True,
         ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+COMPLETING", "queue1"),
+            False,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN+COMPLETING", "queue1"),
+            False,
+        ),
     ],
 )
 def test_slurm_node_is_drained(node, expected_output):
