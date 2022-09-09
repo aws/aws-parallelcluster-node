@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+2.11.8
+------
+
+**CHANGES**
+- Update Slurm plugin to support version 21.08.
+
 2.11.7
 ------
 

@@ -319,13 +319,13 @@ def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
             "nodes-1,nodes[2-6]",
             None,
             False,
-            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": None, "raise_on_error": True},
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down_force", "reason": None, "raise_on_error": True},
         ),
         (
             "nodes-1,nodes[2-6]",
             "debugging",
             True,
-            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down", "reason": "debugging", "raise_on_error": True},
+            {"nodes": "nodes-1,nodes[2-6]", "state": "power_down_force", "reason": "debugging", "raise_on_error": True},
         ),
         (
             ["nodes-1", "nodes[2-4]", "nodes-5"],
@@ -333,7 +333,7 @@ def test_set_nodes_down(nodes, reason, reset_addrs, update_call_kwargs, mocker):
             True,
             {
                 "nodes": ["nodes-1", "nodes[2-4]", "nodes-5"],
-                "state": "power_down",
+                "state": "power_down_force",
                 "reason": "debugging",
                 "raise_on_error": True,
             },
@@ -489,8 +489,13 @@ def test_slurm_node_is_nodeaddr_set(node, expected_output):
     "node, expected_output",
     [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DRAIN", "queue1"), True),
+        (
+            SlurmNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+Not_RESPONDING+CLOUD+DRAIN", "queue1"
+            ),
+            True,
+        ),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD", "queue1"), False),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD", "queue1"), False),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "COMPLETING+DRAIN", "queue1"), True),
@@ -504,9 +509,17 @@ def test_slurm_node_has_job(node, expected_output):
     "node, expected_output",
     [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE*+CLOUD+DRAIN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DRAIN", "queue1"), False),
+        (
+            SlurmNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+Not_RESPONDING+CLOUD+DRAIN", "queue1"
+            ),
+            False,
+        ),
+        (
+            SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+Not_RESPONDING+CLOUD+DRAIN", "queue1"),
+            True,
+        ),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
     ],
 )
@@ -518,9 +531,14 @@ def test_slurm_node_is_drained(node, expected_output):
     "node, expected_output",
     [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DOWN", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN*+CLOUD", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DOWN", "queue1"), True),
+        (
+            SlurmNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+Not_RESPONDING+CLOUD+DRAIN", "queue1"
+            ),
+            False,
+        ),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+Not_RESPONDING+CLOUD", "queue1"), True),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN", "queue1"), False),
     ],
@@ -533,10 +551,15 @@ def test_slurm_node_is_down(node, expected_output):
     "node, expected_output",
     [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED#+CLOUD+DRAIN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED*+CLOUD+DOWN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DRAIN", "queue1"), False),
+        (
+            SlurmNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+Not_RESPONDING+CLOUD+DOWN", "queue1"
+            ),
+            False,
+        ),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE#+CLOUD", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+POWERING_UP+CLOUD", "queue1"), True),
     ],
 )
 def test_slurm_node_is_up(node, expected_output):
@@ -682,9 +705,7 @@ def test_update_all_partitions(
     expected_results,
     mocker,
 ):
-    set_nodes_down_and_power_save_spy = mocker.patch(
-        "common.schedulers.slurm_commands.set_nodes_down_and_power_save", auto_spec=True
-    )
+    set_nodes_power_down_spy = mocker.patch("common.schedulers.slurm_commands.set_nodes_power_down", auto_spec=True)
     update_partitions_spy = mocker.patch(
         "common.schedulers.slurm_commands.update_partitions", return_value=mock_succeeded_partitions, auto_spec=True
     )
@@ -694,7 +715,7 @@ def test_update_all_partitions(
     assert_that(update_all_partitions(state, reset_node_addrs_hostname=reset_node_info)).is_equal_to(expected_results)
     get_part_spy.assert_called_with(get_all_nodes=True)
     if expected_reset_nodes_calls:
-        set_nodes_down_and_power_save_spy.assert_has_calls(expected_reset_nodes_calls)
+        set_nodes_power_down_spy.assert_has_calls(expected_reset_nodes_calls)
     else:
-        set_nodes_down_and_power_save_spy.assert_not_called()
+        set_nodes_power_down_spy.assert_not_called()
     update_partitions_spy.assert_called_with(partitions_to_update, state)
