@@ -522,20 +522,20 @@ def test_slurm_node_has_job(node, expected_output):
         ),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
         (
-                SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
-                False,
+            SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
+            False,
         ),
         (
-                SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
-                True,
+            SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
+            True,
         ),
         (
-                SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
-                False,
+            SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
+            False,
         ),
         (
-                SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
-                True,
+            SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
+            True,
         ),
     ],
 )
@@ -558,24 +558,24 @@ def test_slurm_node_is_drained(node, expected_output):
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN", "queue1"), False),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD+POWER_DOWN",
-                    "queue1",
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+POWER_DOWN",
+                "queue1",
+            ),
+            False,
         ),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD+POWERING_DOWN",
-                    "queue1",
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+POWERING_DOWN",
+                "queue1",
+            ),
+            False,
         ),
     ],
 )
@@ -587,68 +587,66 @@ def test_slurm_node_is_down(node, expected_output):
     "node, expected_result",
     [
         (
-                SlurmNode(
-                    "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
-                ),
-                False,
+            SlurmNode(
+                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            False,
         ),
         (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+POWERED_DOWN", "queue1"), False),
         (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"), True),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"
+            ),
+            False,
         ),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN", "queue1"
-                ),
-                True,
+            SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN", "queue1"),
+            True,
         ),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1",
-                    "queue1-dy-c5xlarge-1",
-                    "nodehostname",
-                    "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN",
-                    "queue1",
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "nodehostname",
+                "IDLE+CLOUD+POWERED_DOWN+POWER_DOWN",
+                "queue1",
+            ),
+            False,
         ),
         (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "POWERING_DOWN", "queue1"), True),
         (SlurmNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "POWERING_DOWN", "queue1"), False),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"
+            ),
+            False,
         ),
         (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING", "queue1"), False),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+            ),
+            False,
         ),
         (
-                SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+POWER_DOWN", "queue1"),
-                False,
+            SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+POWER_DOWN", "queue1"),
+            False,
         ),
         (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"), False),
         (
-                SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
-                True,
+            SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
+            True,
         ),
         (
-                SlurmNode(
-                    "queue1-dy-c5xlarge-1",
-                    "queue1-dy-c5xlarge-1",
-                    "nodehostname",
-                    "IDLE+CLOUD+DRAIN+POWERING_DOWN",
-                    "queue1",
-                ),
-                False,
+            SlurmNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "nodehostname",
+                "IDLE+CLOUD+DRAIN+POWERING_DOWN",
+                "queue1",
+            ),
+            False,
         ),
     ],
 )

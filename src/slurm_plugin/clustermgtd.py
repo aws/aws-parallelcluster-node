@@ -812,7 +812,11 @@ class ClusterManager:
         """
         powering_down_nodes = []
         for node in slurm_nodes:
-            if not node.name in self._static_nodes_in_replacement and node.is_nodeaddr_set() and (node.is_power() or node.is_powering_down()):
+            if (
+                not node.name in self._static_nodes_in_replacement
+                and node.is_nodeaddr_set()
+                and (node.is_power() or node.is_powering_down())
+            ):
                 powering_down_nodes.append(node)
 
         if powering_down_nodes:
