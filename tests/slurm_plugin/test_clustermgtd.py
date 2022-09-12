@@ -950,15 +950,18 @@ def test_handle_unhealthy_dynamic_nodes(
             [
                 SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
                 SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_", "queue1"),
+                SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
+                SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
                 SlurmNode(
                     "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "POWERING_DOWN", "queue1"
                 ),
                 SlurmNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
+                SlurmNode("queue1-dy-c5xlarge-7", "ip-7", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
+                SlurmNode("queue1-st-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
+                SlurmNode("queue1-st-c5xlarge-9", "ip-9", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             ["id-1", "id-2"],
-            ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-6"],
+            ["queue1-dy-c5xlarge-2"],
         )
     ],
     ids=["basic"],
