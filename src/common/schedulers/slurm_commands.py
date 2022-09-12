@@ -73,6 +73,7 @@ class SlurmNode:
     SLURM_SCONTROL_POWER_STATE = {"IDLE", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
     SLURM_SCONTROL_POWERED_DOWN_STATE = "POWERED_DOWN"
+    SLURM_SCONTROL_POWER_DOWN_STATE = "POWER_DOWN"
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
         """Initialize slurm node with attributes."""

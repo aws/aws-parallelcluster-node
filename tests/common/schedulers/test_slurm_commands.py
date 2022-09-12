@@ -509,18 +509,18 @@ def test_slurm_node_has_job(node, expected_output):
     "node, expected_output",
     [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DRAIN", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DRAIN", "queue1"), True),
         (
             SlurmNode(
                 "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+Not_RESPONDING+CLOUD+DRAIN", "queue1"
             ),
-            False,
+            True,
         ),
         (
             SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+Not_RESPONDING+CLOUD+DRAIN", "queue1"),
             True,
         ),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), True),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN", "queue1"), False),
         (
             SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
             False,
