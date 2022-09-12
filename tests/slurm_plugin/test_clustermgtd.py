@@ -961,7 +961,7 @@ def test_handle_unhealthy_dynamic_nodes(
                 SlurmNode("queue1-st-c5xlarge-9", "ip-9", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             ["id-1", "id-2"],
-            ["queue1-dy-c5xlarge-2"],
+            ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-6", "queue1-st-c5xlarge-9"],
         )
     ],
     ids=["basic"],
