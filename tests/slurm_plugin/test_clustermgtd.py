@@ -951,7 +951,7 @@ def test_handle_unhealthy_dynamic_nodes(
                 SlurmNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
                 SlurmNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "POWERING_DOWN", "queue1"),
                 SlurmNode("queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
-                SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
+                SlurmNode("queue1-dy-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"),
                 SlurmNode(
                     "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "queue1-dy-c5xlarge-5", "POWERING_DOWN", "queue1"
                 ),
@@ -961,7 +961,7 @@ def test_handle_unhealthy_dynamic_nodes(
                 SlurmNode("queue1-st-c5xlarge-9", "ip-9", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             ["id-1", "id-2"],
-            ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-6", "queue1-st-c5xlarge-9"],
+            ["queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-9","queue1-dy-c5xlarge-4"],
         )
     ],
     ids=["basic"],
@@ -970,6 +970,7 @@ def test_handle_unhealthy_dynamic_nodes(
 def test_handle_powering_down_nodes(slurm_nodes, mock_backing_instances, expected_powering_down_nodes, mocker):
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
     cluster_manager = ClusterManager(mock_sync_config)
+    cluster_manager._static_nodes_in_replacement = {"queue1-st-c5xlarge-6"}
     mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
     mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._get_backing_instance_ids",
