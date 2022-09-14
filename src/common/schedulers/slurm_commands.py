@@ -69,8 +69,10 @@ class SlurmNode:
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
     SLURM_SCONTROL_DOWN_STATE = "DOWN"
     SLURM_SCONTROL_DRAIN_STATE = "DRAIN"
-    SLURM_SCONTROL_POWERING_DOWN_STATES = {"POWERING_DOWN", "POWER_DOWN"}
     SLURM_SCONTROL_POWER_STATE = {"IDLE", "CLOUD", "POWERED_DOWN"}
+    SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
+    SLURM_SCONTROL_POWERED_DOWN_STATE = "POWERED_DOWN"
+    SLURM_SCONTROL_POWER_DOWN_STATE = "POWER_DOWN"
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
         """Initialize slurm node with attributes."""
@@ -100,13 +102,23 @@ class SlurmNode:
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
+        return (
+            self._is_drain()
+            and not self.is_power_down()
+            and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
+        )
+
+    def is_power_down(self):
+        """Check if slurm node is in power down state."""
+        return self.SLURM_SCONTROL_POWER_DOWN_STATE in self.states
 
     def is_powering_down(self):
         """Check if slurm node is in powering down state."""
-        return any(
-            powering_down_state in self.states for powering_down_state in self.SLURM_SCONTROL_POWERING_DOWN_STATES
-        )
+        return self.SLURM_SCONTROL_POWERING_DOWN_STATE in self.states
+
+    def is_powered_down(self):
+        """Check if slurm node is in powered down state."""
+        return self.SLURM_SCONTROL_POWERED_DOWN_STATE in self.states
 
     def is_power(self):
         """Check if slurm node is in power state."""
@@ -114,7 +126,11 @@ class SlurmNode:
 
     def is_down(self):
         """Check if slurm node is in a down state."""
-        return self.SLURM_SCONTROL_DOWN_STATE in self.states and not self.is_powering_down()
+        return (
+            self.SLURM_SCONTROL_DOWN_STATE in self.states
+            and not self.is_powering_down()
+            and (not self.is_power_down() or self.is_powered_down())
+        )
 
     def is_up(self):
         """Check if slurm node is in a healthy state."""

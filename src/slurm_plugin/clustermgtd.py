@@ -812,7 +812,11 @@ class ClusterManager:
         """
         powering_down_nodes = []
         for node in slurm_nodes:
-            if not node.is_static and node.is_nodeaddr_set() and (node.is_power() or node.is_powering_down()):
+            if (
+                node.name not in self._static_nodes_in_replacement
+                and node.is_nodeaddr_set()
+                and (node.is_power() or node.is_powering_down())
+            ):
                 powering_down_nodes.append(node)
 
         if powering_down_nodes:
@@ -880,13 +884,13 @@ class ClusterManager:
         A list of slurm nodes is passed in and slurm node map with IP/nodeaddr as key should be avoided.
         """
         log.info("Performing node maintenance actions")
-        self._handle_powering_down_nodes(slurm_nodes, private_ip_to_instance_map)
 
         # Update self.static_nodes_in_replacement by removing any up nodes from the set
         self._update_static_nodes_in_replacement(slurm_nodes)
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
+        self._handle_powering_down_nodes(slurm_nodes, private_ip_to_instance_map)
         unhealthy_dynamic_nodes, unhealthy_static_nodes = self._find_unhealthy_slurm_nodes(
             slurm_nodes, private_ip_to_instance_map
         )
