@@ -150,7 +150,9 @@ class TestClustermgtdConfig:
         ids=["default", "all_options", "health_check"],
     )
     def test_config_parsing(self, config_file, expected_attributes, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES])
+        mocker.patch(
+            "slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES]
+        )
         sync_config = ClustermgtdConfig(test_datadir / config_file)
         for key in expected_attributes:
             assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
@@ -158,10 +160,11 @@ class TestClustermgtdConfig:
     @pytest.mark.parametrize(
         ("file_to_compare", "read_json_mock"),
         [
-            ("config_modified.conf", 4 * [FLEET_CONFIG, LAUNCH_OVERRIDES]),
+            ("config_modified.conf", 4 * [FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES]),
             (
                 "config.conf",
-                3 * [FLEET_CONFIG, LAUNCH_OVERRIDES] + [{**FLEET_CONFIG, **{"queue7": "fake"}}, LAUNCH_OVERRIDES],
+                3 * [FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES]
+                + [{**FLEET_CONFIG, **{"queue7": "fake"}}, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES],
             ),
         ],
         ids=["different_config_file", "same_file_different_fleet_config"],
@@ -310,7 +313,8 @@ def test_get_ec2_instances(mocker):
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
         insufficient_capacity_timeout=600,
         fleet_config=FLEET_CONFIG,
     )
@@ -499,7 +503,8 @@ def test_perform_health_check_actions(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
         fleet_config=FLEET_CONFIG,
         insufficient_capacity_timeout=600,
     )
@@ -913,7 +918,8 @@ def test_handle_unhealthy_static_nodes(
         fleet_config=FLEET_CONFIG,
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
-        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
@@ -1202,7 +1208,8 @@ def test_terminate_orphaned_instances(
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
         node_replacement_timeout=1800,
-        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
         fleet_config=FLEET_CONFIG,
     )
     for instance, node in zip(cluster_instances, slurm_nodes):
@@ -1839,7 +1846,7 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
-    mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES])
+    mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES])
     sync_config = ClustermgtdConfig(test_datadir / config_file)
     sync_config.launch_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
     cluster_manager = ClusterManager(sync_config)
@@ -1966,7 +1973,8 @@ def test_handle_successfully_launched_nodes(
         insufficient_capacity_timeout=600,
         terminate_drain_nodes=True,
         terminate_down_nodes=True,
-        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
         fleet_config=FLEET_CONFIG,
     )
     # Mock associated function

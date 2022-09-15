@@ -59,20 +59,8 @@ class TestInstanceManager:
             dns_domain="dns.domain",
             use_private_hostname=False,
             fleet_config=FLEET_CONFIG,
-            launch_overrides={
-                "queue3": {
-                    "p4d.24xlarge": {
-                        "CapacityReservationSpecification": {
-                            "CapacityReservationTarget": {"CapacityReservationId": "cr-123"}
-                        }
-                    },
-                    "c5.xlarge": {
-                        "CapacityReservationSpecification": {
-                            "CapacityReservationTarget": {"CapacityReservationId": "cr-456"}
-                        }
-                    },
-                },
-            },
+            run_instances_overrides={},
+            create_fleet_overrides={},
         )
         mocker.patch.object(instance_manager, "_table")
         return instance_manager

@@ -126,6 +126,7 @@ class ClustermgtdConfig:
         "launch_max_batch_size": 500,
         "update_node_address": True,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
+        "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         # Terminate configs
         "terminate_max_batch_size": 1000,
@@ -159,7 +160,8 @@ class ClustermgtdConfig:
             return (
                 self._config == other._config
                 and self.fleet_config == other.fleet_config
-                and self.launch_overrides == other.launch_overrides
+                and self.run_instances_overrides == other.run_instances_overrides
+                and self.create_fleet_overrides == other.create_fleet_overrides
             )
         return False
 
@@ -204,12 +206,11 @@ class ClustermgtdConfig:
         )
         self.fleet_config = read_json(fleet_config_file)
 
-        # run_instances_overrides_file contains a json with the following format:
-        # TODO generalize file name to add create-fleet support too.
+        # run_instances_overrides_file and create_fleet_overrides_file contain a json with the following format:
         # {
         #     "queue_name": {
         #         "compute_resource_name": {
-        #             "RunInstancesCallParam": "Value"
+        #             <arbitrary-json-with-boto3-api-params-to-override>
         #         },
         #         ...
         #     },
@@ -218,7 +219,11 @@ class ClustermgtdConfig:
         run_instances_overrides_file = config.get(
             "clustermgtd", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
         )
-        self.launch_overrides = read_json(run_instances_overrides_file, default={})
+        self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
+        create_fleet_overrides_file = config.get(
+            "clustermgtd", "create_fleet_overrides", fallback=self.DEFAULTS.get("create_fleet_overrides")
+        )
+        self.create_fleet_overrides = read_json(create_fleet_overrides_file, default={})
 
     def _get_health_check_config(self, config):
         self.disable_ec2_health_check = config.getboolean(
@@ -340,7 +345,8 @@ class ClusterManager:
             use_private_hostname=config.use_private_hostname,
             head_node_private_ip=config.head_node_private_ip,
             head_node_hostname=config.head_node_hostname,
-            launch_overrides=config.launch_overrides,
+            run_instances_overrides=config.run_instances_overrides,
+            create_fleet_overrides=config.create_fleet_overrides,
             fleet_config=config.fleet_config,
         )
 

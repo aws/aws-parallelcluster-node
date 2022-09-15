@@ -67,7 +67,17 @@ class FleetManagerException(Exception):
 
 class FleetManagerFactory:
     @staticmethod
-    def get_manager(cluster_name, region, boto3_config, fleet_config, queue, compute_resource, all_or_nothing):
+    def get_manager(
+        cluster_name,
+        region,
+        boto3_config,
+        fleet_config,
+        queue,
+        compute_resource,
+        all_or_nothing,
+        run_instances_overrides,
+        create_fleet_overrides,
+    ):
         try:
             queue_config = fleet_config[queue]
             compute_resource_config = queue_config[compute_resource]
@@ -92,6 +102,7 @@ class FleetManagerFactory:
                 compute_resource,
                 compute_resource_config,
                 all_or_nothing,
+                create_fleet_overrides.get(queue, {}).get(compute_resource, {}),
             )
         elif api == "run-instances":
             return Ec2RunInstancesManager(
@@ -102,6 +113,7 @@ class FleetManagerFactory:
                 compute_resource,
                 compute_resource_config,
                 all_or_nothing,
+                run_instances_overrides.get(queue, {}).get(compute_resource, {}),
             )
         else:
             raise FleetManagerException(
@@ -121,7 +133,8 @@ class FleetManager(ABC):
         queue,
         compute_resource,
         compute_resource_config,
-        all_or_nothing=False,
+        all_or_nothing,
+        launch_overrides,
     ):
         self._cluster_name = cluster_name
         self._region = region
@@ -130,23 +143,24 @@ class FleetManager(ABC):
         self._compute_resource = compute_resource
         self._compute_resource_config = compute_resource_config
         self._all_or_nothing = all_or_nothing
+        self._launch_overrides = launch_overrides
 
     @abstractmethod
-    def _evaluate_launch_params(self, count, launch_overrides):
+    def _evaluate_launch_params(self, count):
         pass
 
     @abstractmethod
     def _launch_instances(self, launch_params):
         pass
 
-    def launch_ec2_instances(self, count, launch_overrides):
+    def launch_ec2_instances(self, count):
         """
         Launch EC2 instances.
 
         :raises ClientError in case of failures with Boto3 calls (run_instances, create_fleet, describe_instances)
         :raises FleetManagerException in case of missing required instance type info (e.g. private-ip) after 3 retries.
         """
-        launch_params = self._evaluate_launch_params(count, launch_overrides)
+        launch_params = self._evaluate_launch_params(count)
         assigned_nodes = self._launch_instances(launch_params)
         logger.debug("Launched the following instances: %s", assigned_nodes.get("Instances"))
         return [EC2Instance.from_describe_instance_data(instance_info) for instance_info in assigned_nodes["Instances"]]
@@ -164,6 +178,7 @@ class Ec2RunInstancesManager(FleetManager):
         compute_resource,
         compute_resource_config,
         all_or_nothing,
+        launch_overrides,
     ):
         super().__init__(
             cluster_name,
@@ -173,9 +188,10 @@ class Ec2RunInstancesManager(FleetManager):
             compute_resource,
             compute_resource_config,
             all_or_nothing,
+            launch_overrides,
         )
 
-    def _evaluate_launch_params(self, count, launch_overrides):
+    def _evaluate_launch_params(self, count):
         """Evaluate parameters to be passed to run_instances call."""
         launch_params = {
             # Set MinCount to "count" to make the run_instances call fail if entire count cannot be satisfied
@@ -188,8 +204,8 @@ class Ec2RunInstancesManager(FleetManager):
             },
         }
 
-        launch_params.update(launch_overrides)
-        if launch_overrides:
+        launch_params.update(self._launch_overrides)
+        if self._launch_overrides:
             logger.info("Found RunInstances parameters override. Launching instances with: %s", launch_params)
         return launch_params
 
@@ -214,6 +230,7 @@ class Ec2CreateFleetManager(FleetManager):
         compute_resource,
         compute_resource_config,
         all_or_nothing,
+        launch_overrides,
     ):
         super().__init__(
             cluster_name,
@@ -223,9 +240,10 @@ class Ec2CreateFleetManager(FleetManager):
             compute_resource,
             compute_resource_config,
             all_or_nothing,
+            launch_overrides,
         )
 
-    def _evaluate_launch_params(self, count, launch_overrides):
+    def _evaluate_launch_params(self, count):
         """Evaluate parameters to be passed to create_fleet call."""
         template_overrides = []
         try:
@@ -284,8 +302,8 @@ class Ec2CreateFleetManager(FleetManager):
             logger.error(message)
             raise FleetManagerException(message)
 
-        launch_params.update(launch_overrides)
-        if launch_overrides:
+        launch_params.update(self._launch_overrides)
+        if self._launch_overrides:
             logger.info("Found CreateFleet parameters override. Launching instances with: %s", launch_params)
         return launch_params
 
