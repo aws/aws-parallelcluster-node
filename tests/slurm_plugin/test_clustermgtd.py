@@ -914,7 +914,6 @@ def test_handle_unhealthy_static_nodes(
         protected_failure_count=10,
         insufficient_capacity_timeout=600,
         launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
-        cluster_config_file="/path/of/config-file.yaml",
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
