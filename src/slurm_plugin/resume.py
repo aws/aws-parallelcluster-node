@@ -39,6 +39,7 @@ class SlurmResumeConfig:
         "dns_domain": None,
         "use_private_hostname": False,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
+        "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "all_or_nothing_batch": False,
     }
@@ -84,12 +85,12 @@ class SlurmResumeConfig:
             "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
         )
         self.fleet_config = read_json(fleet_config_file)
-        # run_instances_overrides_file contains a json with the following format:
-        # TODO generalize file name to add create-fleet support too.
+
+        # run_instances_overrides_file and create_fleet_overrides_file contain a json with the following format:
         # {
         #     "queue_name": {
         #         "compute_resource_name": {
-        #             "RunInstancesCallParam": "Value"
+        #             <arbitrary-json-with-boto3-api-params-to-override>
         #         },
         #         ...
         #     },
@@ -98,7 +99,12 @@ class SlurmResumeConfig:
         run_instances_overrides_file = config.get(
             "slurm_resume", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
         )
-        self.launch_overrides = read_json(run_instances_overrides_file, default={})
+        self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
+        create_fleet_overrides_file = config.get(
+            "slurm_resume", "create_fleet_overrides", fallback=self.DEFAULTS.get("create_fleet_overrides")
+        )
+        self.create_fleet_overrides = read_json(create_fleet_overrides_file, default={})
+
         self.clustermgtd_timeout = config.getint(
             "slurm_resume",
             "clustermgtd_timeout",
@@ -169,7 +175,8 @@ def _resume(arg_nodes, resume_config):
         head_node_private_ip=resume_config.head_node_private_ip,
         head_node_hostname=resume_config.head_node_hostname,
         fleet_config=resume_config.fleet_config,
-        launch_overrides=resume_config.launch_overrides,
+        run_instances_overrides=resume_config.run_instances_overrides,
+        create_fleet_overrides=resume_config.create_fleet_overrides,
     )
     instance_manager.add_instances_for_nodes(
         node_list=node_list,

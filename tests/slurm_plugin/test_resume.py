@@ -74,7 +74,7 @@ def boto3_stubber_path():
     ],
 )
 def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
-    mocker.patch("slurm_plugin.resume.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES])
+    mocker.patch("slurm_plugin.resume.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES])
     resume_config = SlurmResumeConfig(test_datadir / config_file)
     for key in expected_attributes:
         assert_that(resume_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
@@ -324,7 +324,8 @@ def test_resume_launch(
         cluster_name="hit",
         head_node_private_ip="some_ip",
         head_node_hostname="some_hostname",
-        launch_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
         fleet_config=FLEET_CONFIG,
         clustermgtd_heartbeat_file_path="some_path",
         clustermgtd_timeout=600,

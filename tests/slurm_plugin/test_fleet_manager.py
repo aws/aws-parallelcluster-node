@@ -53,11 +53,11 @@ class TestFleetManagerFactory:
         if expected_failure:
             with pytest.raises(Exception, match=expected_failure):
                 FleetManagerFactory.get_manager(
-                    "cluster_name", "region", "boto3_config", fleet_config, "q1", "cr1", all_or_nothing=False
+                    "cluster_name", "region", "boto3_config", fleet_config, "q1", "cr1", False, {}, {}
                 )
         else:
             manager = FleetManagerFactory.get_manager(
-                "cluster_name", "region", "boto3_config", fleet_config, "q1", "cr1", all_or_nothing=False
+                "cluster_name", "region", "boto3_config", fleet_config, "q1", "cr1", False, {}, {}
             )
             assert_that(manager).is_instance_of(expected_manager)
 
@@ -108,8 +108,12 @@ class TestEc2RunInstancesManager:
                 "p4d24xlarge",
                 False,
                 {
-                    "CapacityReservationSpecification": {
-                        "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
+                    "queue1": {
+                        "p4d24xlarge": {
+                            "CapacityReservationSpecification": {
+                                "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
+                            }
+                        }
                     }
                 },
                 {
@@ -139,9 +143,17 @@ class TestEc2RunInstancesManager:
         caplog.set_level(logging.INFO)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", FLEET_CONFIG, "queue1", compute_resource, all_or_nothing
+            "hit",
+            "region",
+            "boto3_config",
+            FLEET_CONFIG,
+            "queue1",
+            compute_resource,
+            all_or_nothing,
+            launch_overrides,
+            {},
         )
-        launch_params = fleet_manager._evaluate_launch_params(batch_size, launch_overrides=launch_overrides)
+        launch_params = fleet_manager._evaluate_launch_params(batch_size)
         if launch_overrides:
             assert_that(caplog.text).contains("Found RunInstances parameters override")
         assert_that(launch_params).is_equal_to(expected_params)
@@ -198,7 +210,7 @@ class TestEc2RunInstancesManager:
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", FLEET_CONFIG, "queue1", "p4d24xlarge", all_or_nothing=False
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue1", "p4d24xlarge", False, {}, {}
         )
         assigned_nodes = fleet_manager._launch_instances(launch_params)
         assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
@@ -303,9 +315,13 @@ class TestCreateFleetManager:
                 "fleet-ondemand",
                 False,
                 {
-                    "TagSpecifications": [
-                        {"ResourceType": "capacity-reservation", "Tags": [{"Key": "string", "Value": "string"}]}
-                    ]
+                    "queue2": {
+                        "fleet-ondemand": {
+                            "TagSpecifications": [
+                                {"ResourceType": "capacity-reservation", "Tags": [{"Key": "string", "Value": "string"}]}
+                            ]
+                        }
+                    }
                 },
                 _mocked_create_fleet_params(
                     "queue2",
@@ -336,9 +352,9 @@ class TestCreateFleetManager:
         caplog.set_level(logging.INFO)
         # run tests
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", FLEET_CONFIG, queue, compute_resource, all_or_nothing
+            "hit", "region", "boto3_config", FLEET_CONFIG, queue, compute_resource, all_or_nothing, {}, launch_overrides
         )
-        launch_params = fleet_manager._evaluate_launch_params(batch_size, launch_overrides)
+        launch_params = fleet_manager._evaluate_launch_params(batch_size)
         assert_that(launch_params).is_equal_to(expected_params)
         if launch_overrides:
             assert_that(caplog.text).contains("Found CreateFleet parameters override")
@@ -454,7 +470,7 @@ class TestCreateFleetManager:
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", all_or_nothing=False
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", False, {}, {}
         )
 
         assigned_nodes = fleet_manager._launch_instances(launch_params)
@@ -667,7 +683,7 @@ class TestCreateFleetManager:
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
         )
 
         if expected_exception:

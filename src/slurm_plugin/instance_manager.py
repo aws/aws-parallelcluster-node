@@ -55,7 +55,8 @@ class InstanceManager:
         head_node_private_ip=None,
         head_node_hostname=None,
         fleet_config=None,
-        launch_overrides=None,
+        run_instances_overrides=None,
+        create_fleet_overrides=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -70,7 +71,8 @@ class InstanceManager:
         self._head_node_private_ip = head_node_private_ip
         self._head_node_hostname = head_node_hostname
         self._fleet_config = fleet_config
-        self._launch_overrides = launch_overrides or {}
+        self._run_instances_overrides = run_instances_overrides or {}
+        self._create_fleet_overrides = create_fleet_overrides or {}
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -96,12 +98,12 @@ class InstanceManager:
                     queue,
                     compute_resource,
                     all_or_nothing_batch,
+                    self._run_instances_overrides,
+                    self._create_fleet_overrides,
                 )
-                launch_overrides = self._launch_overrides.get(queue, {}).get(compute_resource, {})
-
                 for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                     try:
-                        launched_instances = fleet_manager.launch_ec2_instances(len(batch_nodes), launch_overrides)
+                        launched_instances = fleet_manager.launch_ec2_instances(len(batch_nodes))
 
                         if update_node_address:
                             assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), launched_instances)

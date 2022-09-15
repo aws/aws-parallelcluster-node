@@ -8,8 +8,7 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
-
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -79,14 +78,25 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
 
 
 @pytest.mark.parametrize(
-    "json_file, log_assertion",
+    "json_file, default_value, raises_exception, message_in_log",
     [
-        ("test_read_json/faulty.json", lambda logs: "Failed with exception:" in logs),
-        ("test_read_json/standard.json", lambda logs: "Failed with exception:" not in logs),
+        ("faulty.json", None, True, "Failed with exception"),
+        ("faulty.json", {}, False, "due to an exception"),  # info message
+        ("standard.json", None, False, None),
+        ("non_existing.json", None, True, "Failed with exception"),
+        ("non_existing.json", {}, False, None),  # info message not displayed
     ],
 )
-def test_read_json(test_datadir, caplog, json_file, log_assertion):
+def test_read_json(test_datadir, caplog, json_file, default_value, raises_exception, message_in_log):
+    caplog.set_level(logging.INFO)
     json_file_path = str(test_datadir.joinpath(json_file))
-    with pytest.raises(Exception):
-        read_json(json_file_path)
-    assert log_assertion
+    if raises_exception:
+        with pytest.raises(Exception):
+            read_json(json_file_path, default_value)
+    else:
+        read_json(json_file_path, default_value)
+
+    if message_in_log:
+        assert_that(caplog.text).matches(message_in_log)
+    else:
+        assert_that(caplog.text).does_not_match("exception")

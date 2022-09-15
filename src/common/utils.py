@@ -263,5 +263,6 @@ def read_json(file_path, default=None):
             log.error("Unable to read file from '%s'. Failed with exception: %s", file_path, e)
             raise
         else:
-            log.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
+            if not isinstance(e, FileNotFoundError):
+                log.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
             return default
