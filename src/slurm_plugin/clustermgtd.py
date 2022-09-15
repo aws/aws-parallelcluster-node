@@ -126,7 +126,6 @@ class ClustermgtdConfig:
         "launch_max_batch_size": 500,
         "update_node_address": True,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
-        "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         # Terminate configs
         "terminate_max_batch_size": 1000,
@@ -199,9 +198,6 @@ class ClustermgtdConfig:
         )
         self.update_node_address = config.getboolean(
             "clustermgtd", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
-        )
-        self.cluster_config_file = config.get(
-            "clustermgtd", "cluster_config_file", fallback=self.DEFAULTS.get("cluster_config_file")
         )
         fleet_config_file = config.get(
             "clustermgtd", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")

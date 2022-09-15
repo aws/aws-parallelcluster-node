@@ -39,7 +39,6 @@ class SlurmResumeConfig:
         "dns_domain": None,
         "use_private_hostname": False,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
-        "cluster_config_file": "/opt/parallelcluster/shared/cluster-config.yaml",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "all_or_nothing_batch": False,
     }
@@ -100,9 +99,6 @@ class SlurmResumeConfig:
             "slurm_resume", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
         )
         self.launch_overrides = read_json(run_instances_overrides_file, default={})
-        self.cluster_config_file = config.get(
-            "slurm_resume", "cluster_config_file", fallback=self.DEFAULTS.get("cluster_config_file")
-        )
         self.clustermgtd_timeout = config.getint(
             "slurm_resume",
             "clustermgtd_timeout",
