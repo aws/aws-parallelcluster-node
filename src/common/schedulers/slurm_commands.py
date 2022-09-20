@@ -156,6 +156,7 @@ class SlurmNode:
     def is_rebooting(self):
         """
         Check if the node is rebooting via scontrol reboot.
+
         Check that the node is in a state consistent with the scontrol reboot request.
         """
         if self.is_reboot_issued() or self.is_reboot_requested():
