@@ -527,15 +527,15 @@ def test_slurm_node_has_job(node, expected_output):
         ),
         (
             SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
-            False,
+            True,
         ),
         (
             SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
-            False,
+            True,
         ),
         (
             SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+DRAIN+POWERING_DOWN", "queue1"),
-            False,
+            True,
         ),
         (
             SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue1"),
