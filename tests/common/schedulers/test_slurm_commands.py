@@ -584,6 +584,90 @@ def test_slurm_node_is_rebooting(node, expected_output):
     "node, expected_output",
     [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DOWN+POWERING_UP", "queue1"), True),
+        (
+                SlurmNode(
+                    "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+CLOUD+DRAIN+NOT_RESPONDING", "queue1"
+                ),
+                False,
+        ),
+        (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"), True),
+        (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
+        (SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"), False),
+        (
+                SlurmNode(
+                    "queue1-dy-c5xlarge-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+POWER_DOWN+POWERED_DOWN",
+                    "queue1",
+                ),
+                True,
+        ),
+        (
+                SlurmNode(
+                    "queue1-dy-c5xlarge-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+POWER_DOWN",
+                    "queue1",
+                ),
+                False,
+        ),
+        (
+                SlurmNode(
+                    "queue1-dy-c5xlarge-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+POWERING_DOWN",
+                    "queue1",
+                ),
+                False,
+        ),
+        (
+                SlurmNode(
+                    "queue1-dy-c5xlarge-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+POWERING_DOWN+POWERED_DOWN",
+                    "queue1",
+                ),
+                False,
+        ),
+        (
+                SlurmNode(
+                    "queue1-dy-c5xlarge-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+POWER_DOWN+POWERING_DOWN+POWERED_DOWN",
+                    "queue1",
+                ),
+                False,
+        ),
+        (
+                SlurmNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue1"),
+                True,
+        ),
+        (
+                SlurmNode(
+                    "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DRAIN+REBOOT_REQUESTED", "queue1"
+                ),
+                False,
+        ),
+        (
+                SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue1"),
+                True,
+        ),
+    ],
+)
+def test_slurm_node_is_down(node, expected_output):
+    assert_that(node.is_down()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DOWN", "queue1"), True),
         (
             SlurmNode(
