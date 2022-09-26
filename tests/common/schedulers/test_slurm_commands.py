@@ -665,46 +665,6 @@ def test_slurm_node_is_down(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DOWN", "queue1"), True),
-        (
-            SlurmNode(
-                "queue1-st-c5xlarge-1", "nodeip", "nodehostname", "ALLOCATED+Not_RESPONDING+CLOUD+DRAIN", "queue1"
-            ),
-            False,
-        ),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+Not_RESPONDING+CLOUD", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+POWER", "queue1"), True),
-        (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE~+CLOUD+POWERING_DOWN", "queue1"), False),
-        (
-            SlurmNode(
-                "queue1-dy-c5xlarge-1",
-                "nodeip",
-                "nodehostname",
-                "DOWN+CLOUD+POWER_DOWN",
-                "queue1",
-            ),
-            False,
-        ),
-        (
-            SlurmNode(
-                "queue1-dy-c5xlarge-1",
-                "nodeip",
-                "nodehostname",
-                "DOWN+CLOUD+POWERING_DOWN",
-                "queue1",
-            ),
-            False,
-        ),
-    ],
-)
-def test_slurm_node_is_down(node, expected_output):
-    assert_that(node.is_down()).is_equal_to(expected_output)
-
-
-@pytest.mark.parametrize(
-    "node, expected_output",
-    [
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), True),
         (SlurmNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+POWERING_UP+CLOUD+DRAIN", "queue1"), False),
         (
