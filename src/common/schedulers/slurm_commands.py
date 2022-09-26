@@ -73,6 +73,8 @@ class SlurmNode:
     SLURM_SCONTROL_POWERING_DOWN_STATE = "POWERING_DOWN"
     SLURM_SCONTROL_POWERED_DOWN_STATE = "POWERED_DOWN"
     SLURM_SCONTROL_POWER_DOWN_STATE = "POWER_DOWN"
+    SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
+    SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
 
     def __init__(self, name, nodeaddr, nodehostname, state, partitions=None):
         """Initialize slurm node with attributes."""
@@ -102,11 +104,7 @@ class SlurmNode:
 
         drained(sinfo) is equivalent to IDLE+DRAIN(scontrol) or DOWN+DRAIN(scontrol)
         """
-        return (
-            self._is_drain()
-            and not self.is_power_down()
-            and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
-        )
+        return self._is_drain() and (self.SLURM_SCONTROL_IDLE_STATE in self.states or self.is_down())
 
     def is_power_down(self):
         """Check if slurm node is in power down state."""
@@ -148,6 +146,27 @@ class SlurmNode:
 
     def __str__(self):
         return f"{self.name}({self.nodeaddr})"
+
+    def is_reboot_requested(self):
+        return self.SLURM_SCONTROL_REBOOT_REQUESTED_STATE in self.states
+
+    def is_reboot_issued(self):
+        return self.SLURM_SCONTROL_REBOOT_ISSUED_STATE in self.states
+
+    def is_rebooting(self):
+        """
+        Check if the node is rebooting via scontrol reboot.
+
+        Check that the node is in a state consistent with the scontrol reboot request.
+        """
+        if self.is_reboot_issued() or self.is_reboot_requested():
+            logging.debug(
+                "Node state check: node %s is currently rebooting, ignoring, node state: %s",
+                self,
+                self.state_string,
+            )
+            return True
+        return False
 
 
 class InvalidNodenameError(ValueError):

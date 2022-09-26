@@ -833,6 +833,42 @@ def test_is_backing_instance_valid(node, instances_ips_in_cluster, expected_resu
             False,
             True,
         ),
+        (
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue"),
+            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
+            False,
+            True,
+        ),
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+REBOOT_ISSUED", "queue"),
+            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
+            False,
+            True,
+        ),
+        (
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DRAIN+CLOUD+REBOOT_REQUESTED", "queue"),
+            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
+            False,
+            True,
+        ),
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DRAIN+CLOUD+REBOOT_REQUESTED", "queue"),
+            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
+            False,
+            True,
+        ),
+        (
+            SlurmNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue"),
+            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
+            False,
+            True,
+        ),
+        (
+            SlurmNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+DRAIN+REBOOT_ISSUED", "queue"),
+            SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True),
+            False,
+            True,
+        ),
     ],
     ids=[
         "healthy_node",
@@ -842,6 +878,12 @@ def test_is_backing_instance_valid(node, instances_ips_in_cluster, expected_resu
         "down_not_in_replacement",
         "down_in_replacement",
         "down_not_term",
+        "scontrol_reboot_issued_static",
+        "scontrol_reboot_issued_dynamic",
+        "scontrol_reboot_asap_requested_static",
+        "scontrol_reboot_asap_requested_dynamic",
+        "scontrol_reboot_asap_issued_static",
+        "scontrol_reboot_asap_issued_dynamic",
     ],
 )
 @pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
