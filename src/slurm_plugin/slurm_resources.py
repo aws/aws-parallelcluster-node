@@ -98,6 +98,7 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
+    SLURM_SCONTROL_BUG_STUCK_DYNAMIC_NODES_STATE = {"IDLE", "CLOUD", "COMPLETING", "POWER_DOWN", "NOT_RESPONDING"}
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -420,6 +421,9 @@ class DynamicNode(SlurmNode):
                 if log_warn_if_unhealthy:
                     logger.warning("Node state check: node %s in DOWN, node state: %s", self, self.state_string)
             return False
+        # Workaround for IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING bug
+        if self.is_stuck_in_bug_state():
+            return False
         return True
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
@@ -460,6 +464,10 @@ class DynamicNode(SlurmNode):
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""
         return self.is_nodeaddr_set() or (not (self.is_power() or self.is_powering_down() or self.is_down()))
+
+    def is_stuck_in_bug_state(self):
+        """Check if the node is stuck in a bug state IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING."""
+        return self.states == self.SLURM_SCONTROL_BUG_STUCK_DYNAMIC_NODES_STATE
 
 
 class EC2InstanceHealthState:
