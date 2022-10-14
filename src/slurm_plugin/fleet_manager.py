@@ -317,7 +317,11 @@ class Ec2CreateFleetManager(FleetManager):
             log_level = logging.WARNING if instances else logging.ERROR
             for err in response.get("Errors", []):
                 logger.log(
-                    log_level, "Error in CreateFleet request: %s - %s", err.get("ErrorCode"), err.get("ErrorMessage")
+                    log_level,
+                    "Error in CreateFleet request (%s): %s - %s",
+                    err.get("ResponseMetadata").get("RequestId"),
+                    err.get("ErrorCode"),
+                    err.get("ErrorMessage"),
                 )
 
             instance_ids = [inst_id for instance in instances for inst_id in instance["InstanceIds"]]
