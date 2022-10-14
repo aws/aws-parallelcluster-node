@@ -3,7 +3,7 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-3.x.x
+3.3.0
 ------
 
 **ENHANCEMENTS**
@@ -11,6 +11,13 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **CHANGES**
 - Do not replace DRAIN nodes when nodes are in COMPLETING state as Epilog may be still running.
+- Consider all dynamic nodes in IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING as unhealthy.
+
+3.2.1
+------
+
+**CHANGES**
+- There were no changes for this version.
 
 3.2.0
 ------
