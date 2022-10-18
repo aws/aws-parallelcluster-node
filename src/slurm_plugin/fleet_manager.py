@@ -319,7 +319,7 @@ class Ec2CreateFleetManager(FleetManager):
                 logger.log(
                     log_level,
                     "Error in CreateFleet request (%s): %s - %s",
-                    err.get("ResponseMetadata").get("RequestId"),
+                    response.get("ResponseMetadata", {}).get("RequestId"),
                     err.get("ErrorCode"),
                     err.get("ErrorMessage"),
                 )
@@ -331,7 +331,7 @@ class Ec2CreateFleetManager(FleetManager):
 
             return {"Instances": instances}
         except ClientError as e:
-            logger.error("Failed CreateFleet request: %s", e.response.get("ResponseMetadata").get("RequestId"))
+            logger.error("Failed CreateFleet request: %s", e.response.get("ResponseMetadata", {}).get("RequestId"))
             raise e
 
     def _get_instances_info(self, instance_ids: list):
