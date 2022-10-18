@@ -368,7 +368,13 @@ class TestCreateFleetManager:
                 [
                     MockedBoto3Request(
                         method="create_fleet",
-                        response={"Instances": [{"InstanceIds": ["i-12345", "i-23456"]}]},
+                        response={
+                            "Instances": [{"InstanceIds": ["i-12345", "i-23456"]}],
+                            "Errors": [
+                                {"ErrorCode": "InsufficientInstanceCapacity", "ErrorMessage": "Insufficient capacity."}
+                            ],
+                            "ResponseMetadata": {"RequestId": "1234-abcde"},
+                        },
                         expected_params=_mocked_create_fleet_params(
                             "queue1", "fleet-spot", 1, "capacity-optimized", "spot"
                         ),
@@ -420,7 +426,13 @@ class TestCreateFleetManager:
                 [
                     MockedBoto3Request(
                         method="create_fleet",
-                        response={"Instances": [{"InstanceIds": ["i-12345"]}]},
+                        response={
+                            "Instances": [{"InstanceIds": ["i-12345"]}],
+                            "Errors": [
+                                {"ErrorCode": "InsufficientInstanceCapacity", "ErrorMessage": "Insufficient capacity."}
+                            ],
+                            "ResponseMetadata": {"RequestId": "1234-abcde"},
+                        },
                         expected_params=_mocked_create_fleet_params(
                             "queue2", "fleet-ondemand", 1, "lowest-price", "on-demand"
                         ),
