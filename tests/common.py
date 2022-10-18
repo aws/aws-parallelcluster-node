@@ -32,32 +32,32 @@ def client_error(error_code):
 
 
 FLEET_CONFIG = {
-    "queue": {"c5xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "c5.xlarge"}]}},
+    "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
     "queue1": {
-        "c5xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "c5.xlarge"}]},
-        "c52xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "c5.2xlarge"}]},
-        "p4d24xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "p4d.24xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
+        "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
         "fleet-spot": {
             "Api": "create-fleet",
-            "InstanceTypeList": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "MaxPrice": 10,
             "AllocationStrategy": "capacity-optimized",
             "CapacityType": "spot",
         },
     },
     "queue2": {
-        "c5xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "c5.xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
         "fleet-ondemand": {
             "Api": "create-fleet",
-            "InstanceTypeList": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "AllocationStrategy": "lowest-price",
             "CapacityType": "on-demand",
         },
     },
     "queue3": {
-        "c5xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "c5.xlarge"}]},
-        "c52xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "c5.2xlarge"}]},
-        "p4d24xlarge": {"Api": "run-instances", "InstanceTypeList": [{"InstanceType": "p4d.24xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
+        "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
     },
 }
 

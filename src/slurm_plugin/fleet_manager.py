@@ -270,7 +270,7 @@ class Ec2CreateFleetManager(FleetManager):
                     },
                 }
 
-            for instance_type in self._compute_resource_config["InstanceTypeList"]:
+            for instance_type in self._compute_resource_config["Instances"]:
                 override = copy.deepcopy(queue_overrides)
                 override["InstanceType"] = instance_type["InstanceType"]
                 template_overrides.append(override)
