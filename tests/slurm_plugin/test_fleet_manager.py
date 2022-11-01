@@ -8,6 +8,7 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import logging
 import os
 from datetime import datetime, timezone
@@ -17,7 +18,7 @@ from assertpy import assert_that
 from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import Ec2CreateFleetManager, Ec2RunInstancesManager, FleetManagerFactory
 
-from tests.common import FLEET_CONFIG, MockedBoto3Request
+from tests.common import FLEET_CONFIG, SINGLE_SUBNET, MULTIPLE_SUBNETS, MockedBoto3Request
 
 
 @pytest.fixture()
@@ -220,18 +221,25 @@ class TestEc2RunInstancesManager:
 
 
 def _mocked_create_fleet_params(
-    queue, compute_resource, min_capacity, allocation_strategy, capacity_type, overrides=None
+    queue,
+    compute_resource,
+    min_capacity,
+    allocation_strategy,
+    capacity_type,
+    networking=SINGLE_SUBNET,
+    is_single_az=True,
+    overrides=None
 ):
     template_overrides = []
     for instance_type in ["t2.medium", "t2.large"]:
-        override = {"InstanceType": instance_type}
+        override = {}
         if capacity_type == "spot":
             override["MaxPrice"] = str(10)
             launch_options = {
                 "SpotOptions": {
                     "AllocationStrategy": allocation_strategy,
                     "SingleInstanceType": False,
-                    "SingleAvailabilityZone": True,
+                    "SingleAvailabilityZone": is_single_az,
                     "MinTargetCapacity": min_capacity,
                 }
             }
@@ -241,12 +249,17 @@ def _mocked_create_fleet_params(
                     "AllocationStrategy": allocation_strategy,
                     "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
                     "SingleInstanceType": False,
-                    "SingleAvailabilityZone": True,
+                    "SingleAvailabilityZone": is_single_az,
                     "MinTargetCapacity": min_capacity,
                 },
             }
 
-        template_overrides.append(override)
+        for subnet_id in networking.get("SubnetIds", []):
+            override.update({
+               "InstanceType": instance_type,
+               "SubnetId": subnet_id
+            })
+            template_overrides.append(copy.deepcopy(override))
 
     params = {
         "LaunchTemplateConfigs": [
@@ -297,7 +310,15 @@ class TestCreateFleetManager:
                 "fleet-ondemand",
                 False,
                 {},
-                _mocked_create_fleet_params("queue2", "fleet-ondemand", 1, "lowest-price", "on-demand"),
+                _mocked_create_fleet_params(
+                    "queue2",
+                    "fleet-ondemand",
+                    1,
+                    "lowest-price",
+                    "on-demand",
+                    MULTIPLE_SUBNETS,
+                    False,
+                ),
             ),
             # all or nothing
             (
@@ -329,6 +350,8 @@ class TestCreateFleetManager:
                     1,
                     "lowest-price",
                     "on-demand",
+                    MULTIPLE_SUBNETS,
+                    False,
                     {
                         "TagSpecifications": [
                             {"ResourceType": "capacity-reservation", "Tags": [{"Key": "string", "Value": "string"}]}

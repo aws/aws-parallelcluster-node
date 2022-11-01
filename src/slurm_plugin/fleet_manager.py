@@ -243,15 +243,34 @@ class Ec2CreateFleetManager(FleetManager):
             launch_overrides,
         )
 
+    def _evaluate_template_overrides(self, queue_overrides: dict):
+        template_overrides = []
+        overrides = copy.deepcopy(queue_overrides)
+
+        for instance_type in self._compute_resource_config["Instances"]:
+            subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
+
+            # All (InstanceType and SubnetId) combinations
+            for subnet_id in subnet_ids:
+                overrides.update(
+                    {
+                        "InstanceType": instance_type.get("InstanceType"),
+                        "SubnetId": subnet_id
+                    }
+                )
+                template_overrides.append(copy.deepcopy(overrides))
+        return template_overrides
+
     def _evaluate_launch_params(self, count):
         """Evaluate parameters to be passed to create_fleet call."""
-        template_overrides = []
         try:
+            subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
             common_launch_options = {
                 # AllocationStrategy can assume different values for SpotOptions and OnDemandOptions
                 "AllocationStrategy": self._compute_resource_config["AllocationStrategy"],
                 "SingleInstanceType": False,
-                "SingleAvailabilityZone": True,  # Set to False for Multi-AZ support
+                "SingleAvailabilityZone": len(subnet_ids) == 1,  # If using Multi-AZ (by specifying multiple subnets),
+                # set SingleAvailabilityZone to False
                 # If the minimum target capacity is not reached, the fleet launches no instances
                 "MinTargetCapacity": 1 if not self._all_or_nothing else count,
             }
@@ -270,10 +289,7 @@ class Ec2CreateFleetManager(FleetManager):
                     },
                 }
 
-            for instance_type in self._compute_resource_config["Instances"]:
-                override = copy.deepcopy(queue_overrides)
-                override["InstanceType"] = instance_type["InstanceType"]
-                template_overrides.append(override)
+            template_overrides = self._evaluate_template_overrides(queue_overrides)
 
             launch_params = {
                 "LaunchTemplateConfigs": [

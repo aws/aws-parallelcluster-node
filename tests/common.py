@@ -31,6 +31,14 @@ def client_error(error_code):
     return ClientError({"Error": {"Code": error_code}}, "failed_operation")
 
 
+SINGLE_SUBNET = {
+    "SubnetIds": ["1234567"]
+}
+
+MULTIPLE_SUBNETS = {
+    "SubnetIds": ["1234567", "7654321"]
+}
+
 FLEET_CONFIG = {
     "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
     "queue1": {
@@ -43,6 +51,7 @@ FLEET_CONFIG = {
             "MaxPrice": 10,
             "AllocationStrategy": "capacity-optimized",
             "CapacityType": "spot",
+            "Networking": SINGLE_SUBNET,
         },
     },
     "queue2": {
@@ -52,6 +61,7 @@ FLEET_CONFIG = {
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "AllocationStrategy": "lowest-price",
             "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
         },
     },
     "queue3": {

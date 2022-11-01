@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.x.x
+------
+
+**ENHANCEMENTS**
+- Add support for launching nodes across multiple availability zones to increase capacity availability.
+
 3.3.0
 ------
 
