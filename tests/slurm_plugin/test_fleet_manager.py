@@ -18,7 +18,7 @@ from assertpy import assert_that
 from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import Ec2CreateFleetManager, Ec2RunInstancesManager, FleetManagerFactory
 
-from tests.common import FLEET_CONFIG, SINGLE_SUBNET, MULTIPLE_SUBNETS, MockedBoto3Request
+from tests.common import FLEET_CONFIG, MULTIPLE_SUBNETS, SINGLE_SUBNET, MockedBoto3Request
 
 
 @pytest.fixture()
@@ -228,11 +228,15 @@ def _mocked_create_fleet_params(
     capacity_type,
     networking=SINGLE_SUBNET,
     is_single_az=True,
-    overrides=None
+    overrides=None,
 ):
     template_overrides = []
     for instance_type in ["t2.medium", "t2.large"]:
         override = {}
+        common_launch_options = {}
+        if min_capacity:
+            common_launch_options["MinTargetCapacity"] = min_capacity
+
         if capacity_type == "spot":
             override["MaxPrice"] = str(10)
             launch_options = {
@@ -240,7 +244,7 @@ def _mocked_create_fleet_params(
                     "AllocationStrategy": allocation_strategy,
                     "SingleInstanceType": False,
                     "SingleAvailabilityZone": is_single_az,
-                    "MinTargetCapacity": min_capacity,
+                    **common_launch_options,
                 }
             }
         else:
@@ -250,15 +254,12 @@ def _mocked_create_fleet_params(
                     "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
                     "SingleInstanceType": False,
                     "SingleAvailabilityZone": is_single_az,
-                    "MinTargetCapacity": min_capacity,
+                    **common_launch_options,
                 },
             }
 
         for subnet_id in networking.get("SubnetIds", []):
-            override.update({
-               "InstanceType": instance_type,
-               "SubnetId": subnet_id
-            })
+            override.update({"InstanceType": instance_type, "SubnetId": subnet_id})
             template_overrides.append(copy.deepcopy(override))
 
     params = {
@@ -313,7 +314,7 @@ class TestCreateFleetManager:
                 _mocked_create_fleet_params(
                     "queue2",
                     "fleet-ondemand",
-                    1,
+                    0,
                     "lowest-price",
                     "on-demand",
                     MULTIPLE_SUBNETS,
@@ -347,7 +348,7 @@ class TestCreateFleetManager:
                 _mocked_create_fleet_params(
                     "queue2",
                     "fleet-ondemand",
-                    1,
+                    0,
                     "lowest-price",
                     "on-demand",
                     MULTIPLE_SUBNETS,

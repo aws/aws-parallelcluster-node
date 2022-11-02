@@ -31,13 +31,8 @@ def client_error(error_code):
     return ClientError({"Error": {"Code": error_code}}, "failed_operation")
 
 
-SINGLE_SUBNET = {
-    "SubnetIds": ["1234567"]
-}
-
-MULTIPLE_SUBNETS = {
-    "SubnetIds": ["1234567", "7654321"]
-}
+SINGLE_SUBNET = {"SubnetIds": ["1234567"]}
+MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"]}
 
 FLEET_CONFIG = {
     "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
