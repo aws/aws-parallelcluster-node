@@ -56,13 +56,43 @@ FLEET_CONFIG = {
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "AllocationStrategy": "lowest-price",
             "CapacityType": "on-demand",
-            "Networking": MULTIPLE_SUBNETS,
+            "Networking": SINGLE_SUBNET,
         },
     },
     "queue3": {
         "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
         "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
         "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
+    },
+    "queue4": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": SINGLE_SUBNET,
+        },
+    },
+    "queue5": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue6": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
     },
 }
 

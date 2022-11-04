@@ -8,7 +8,7 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -18,7 +18,7 @@ from assertpy import assert_that
 from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import Ec2CreateFleetManager, Ec2RunInstancesManager, FleetManagerFactory
 
-from tests.common import FLEET_CONFIG, MULTIPLE_SUBNETS, SINGLE_SUBNET, MockedBoto3Request
+from tests.common import FLEET_CONFIG, MockedBoto3Request
 
 
 @pytest.fixture()
@@ -219,69 +219,46 @@ class TestEc2RunInstancesManager:
 
 # -------- Ec2CreateFleetManager ------
 
+test_fleet_spot_params = {
+    "LaunchTemplateConfigs": [
+        {
+            "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
+            "Overrides": [
+                {"MaxPrice": "10", "InstanceType": "t2.medium", "SubnetId": "1234567"},
+                {"MaxPrice": "10", "InstanceType": "t2.large", "SubnetId": "1234567"},
+            ],
+        }
+    ],
+    "SpotOptions": {
+        "AllocationStrategy": "capacity-optimized",
+        "SingleInstanceType": False,
+        "SingleAvailabilityZone": True,
+        "MinTargetCapacity": 1,
+    },
+    "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "spot"},
+    "Type": "instant",
+}
 
-def _mocked_create_fleet_params(
-    queue,
-    compute_resource,
-    min_capacity,
-    allocation_strategy,
-    capacity_type,
-    networking=SINGLE_SUBNET,
-    is_single_az=True,
-    overrides=None,
-):
-    template_overrides = []
-    for instance_type in ["t2.medium", "t2.large"]:
-        override = {}
-        common_launch_options = {}
-        if min_capacity:
-            common_launch_options["MinTargetCapacity"] = min_capacity
-
-        if capacity_type == "spot":
-            override["MaxPrice"] = str(10)
-            launch_options = {
-                "SpotOptions": {
-                    "AllocationStrategy": allocation_strategy,
-                    "SingleInstanceType": False,
-                    "SingleAvailabilityZone": is_single_az,
-                    **common_launch_options,
-                }
-            }
-        else:
-            launch_options = {
-                "OnDemandOptions": {
-                    "AllocationStrategy": allocation_strategy,
-                    "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
-                    "SingleInstanceType": False,
-                    "SingleAvailabilityZone": is_single_az,
-                    **common_launch_options,
-                },
-            }
-
-        for subnet_id in networking.get("SubnetIds", []):
-            override.update({"InstanceType": instance_type, "SubnetId": subnet_id})
-            template_overrides.append(copy.deepcopy(override))
-
-    params = {
-        "LaunchTemplateConfigs": [
-            {
-                "LaunchTemplateSpecification": {
-                    "LaunchTemplateName": f"hit-{queue}-{compute_resource}",
-                    "Version": "$Latest",
-                },
-                "Overrides": template_overrides,
-            }
-        ],
-        "TargetCapacitySpecification": {
-            "TotalTargetCapacity": 5,
-            "DefaultTargetCapacityType": capacity_type,
-        },
-        "Type": "instant",
-        **launch_options,
-    }
-    if overrides:
-        params.update(overrides)
-    return params
+test_on_demand_params = {
+    "LaunchTemplateConfigs": [
+        {
+            "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue2-fleet-ondemand", "Version": "$Latest"},
+            "Overrides": [
+                {"InstanceType": "t2.medium", "SubnetId": "1234567"},
+                {"InstanceType": "t2.large", "SubnetId": "1234567"},
+            ],
+        }
+    ],
+    "OnDemandOptions": {
+        "AllocationStrategy": "lowest-price",
+        "SingleInstanceType": False,
+        "SingleAvailabilityZone": True,
+        "MinTargetCapacity": 1,
+        "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
+    },
+    "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "on-demand"},
+    "Type": "instant",
+}
 
 
 class TestCreateFleetManager:
@@ -292,7 +269,6 @@ class TestCreateFleetManager:
             "compute_resource",
             "all_or_nothing",
             "launch_overrides",
-            "expected_params",
         ),
         [
             # normal - spot
@@ -302,7 +278,6 @@ class TestCreateFleetManager:
                 "fleet-spot",
                 False,
                 {},
-                _mocked_create_fleet_params("queue1", "fleet-spot", 1, "capacity-optimized", "spot"),
             ),
             # normal - on-demand
             (
@@ -311,15 +286,6 @@ class TestCreateFleetManager:
                 "fleet-ondemand",
                 False,
                 {},
-                _mocked_create_fleet_params(
-                    "queue2",
-                    "fleet-ondemand",
-                    0,
-                    "lowest-price",
-                    "on-demand",
-                    MULTIPLE_SUBNETS,
-                    False,
-                ),
             ),
             # all or nothing
             (
@@ -328,7 +294,6 @@ class TestCreateFleetManager:
                 "fleet-spot",
                 True,
                 {},
-                _mocked_create_fleet_params("queue1", "fleet-spot", 5, "capacity-optimized", "spot"),
             ),
             # launch_overrides
             (
@@ -345,33 +310,44 @@ class TestCreateFleetManager:
                         }
                     }
                 },
-                _mocked_create_fleet_params(
-                    "queue2",
-                    "fleet-ondemand",
-                    0,
-                    "lowest-price",
-                    "on-demand",
-                    MULTIPLE_SUBNETS,
-                    False,
-                    {
-                        "TagSpecifications": [
-                            {"ResourceType": "capacity-reservation", "Tags": [{"Key": "string", "Value": "string"}]}
-                        ]
-                    },
-                ),
+            ),
+            # Fleet with (Single-Subnet, Multi-InstanceType) AND all_or_nothing is True --> MinTargetCapacity is set
+            (
+                5,
+                "queue4",
+                "fleet1",
+                True,
+                {},
+            ),
+            # Fleet with (Multi-Subnet, Single-InstanceType) AND all_or_nothing is True --> MinTargetCapacity is set
+            (
+                5,
+                "queue5",
+                "fleet1",
+                True,
+                {},
+            ),
+            # Fleet with (Multi-Subnet, Multi-InstanceType) AND all_or_nothing is False --> NOT set MinTargetCapacity
+            (
+                5,
+                "queue6",
+                "fleet1",
+                False,
+                {},
             ),
         ],
-        ids=["fleet_spot", "fleet_ondemand", "all_or_nothing", "launch_overrides"],
+        ids=[
+            "fleet_spot",
+            "fleet_ondemand",
+            "all_or_nothing",
+            "launch_overrides",
+            "fleet-single-az-multi-it-all_or_nothing",
+            "fleet-multi-az-single-it-all_or_nothing",
+            "fleet-multi-az-multi-it",
+        ],
     )
     def test_evaluate_launch_params(
-        self,
-        batch_size,
-        queue,
-        compute_resource,
-        all_or_nothing,
-        launch_overrides,
-        expected_params,
-        caplog,
+        self, batch_size, queue, compute_resource, all_or_nothing, launch_overrides, caplog, test_datadir, request
     ):
         caplog.set_level(logging.INFO)
         # run tests
@@ -379,7 +355,9 @@ class TestCreateFleetManager:
             "hit", "region", "boto3_config", FLEET_CONFIG, queue, compute_resource, all_or_nothing, {}, launch_overrides
         )
         launch_params = fleet_manager._evaluate_launch_params(batch_size)
-        assert_that(launch_params).is_equal_to(expected_params)
+
+        params_path = test_datadir / request.node.callspec.id / "expected_launch_params.json"
+        assert_that(launch_params).is_equal_to(json.loads(params_path.read_text()))
         if launch_overrides:
             assert_that(caplog.text).contains("Found CreateFleet parameters override")
 
@@ -388,7 +366,7 @@ class TestCreateFleetManager:
         [
             # normal - spot
             (
-                _mocked_create_fleet_params("queue1", "fleet-spot", 1, "capacity-optimized", "spot"),
+                test_fleet_spot_params,
                 [
                     MockedBoto3Request(
                         method="create_fleet",
@@ -399,9 +377,7 @@ class TestCreateFleetManager:
                             ],
                             "ResponseMetadata": {"RequestId": "1234-abcde"},
                         },
-                        expected_params=_mocked_create_fleet_params(
-                            "queue1", "fleet-spot", 1, "capacity-optimized", "spot"
-                        ),
+                        expected_params=test_fleet_spot_params,
                     ),
                     MockedBoto3Request(
                         method="describe_instances",
@@ -446,7 +422,7 @@ class TestCreateFleetManager:
             ),
             # normal - on-demand
             (
-                _mocked_create_fleet_params("queue2", "fleet-ondemand", 1, "lowest-price", "on-demand"),
+                test_on_demand_params,
                 [
                     MockedBoto3Request(
                         method="create_fleet",
@@ -457,9 +433,7 @@ class TestCreateFleetManager:
                             ],
                             "ResponseMetadata": {"RequestId": "1234-abcde"},
                         },
-                        expected_params=_mocked_create_fleet_params(
-                            "queue2", "fleet-ondemand", 1, "lowest-price", "on-demand"
-                        ),
+                        expected_params=test_on_demand_params,
                     ),
                     MockedBoto3Request(
                         method="describe_instances",

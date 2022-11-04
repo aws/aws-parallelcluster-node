@@ -243,20 +243,31 @@ class Ec2CreateFleetManager(FleetManager):
             launch_overrides,
         )
 
-    def _evaluate_template_overrides(self, queue_overrides: dict):
+    def _evaluate_template_overrides(self) -> list:
+        """Build and return the list of Launch Template Overrides to be applied in the CreateFleet request.
+
+        (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_FleetLaunchTemplateOverridesRequest.html)
+        """
         template_overrides = []
-        overrides = copy.deepcopy(queue_overrides)
+        overrides = {}
+
+        if self._compute_resource_config["CapacityType"] == "spot":
+            if self._compute_resource_config.get("MaxPrice"):
+                overrides = {"MaxPrice": str(self._compute_resource_config["MaxPrice"])}
 
         for instance_type in self._compute_resource_config["Instances"]:
-            subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
-
-            # All (InstanceType and SubnetId) combinations
+            subnet_ids = self._compute_resource_config["Networking"]["SubnetIds"]
             for subnet_id in subnet_ids:
-                overrides.update({"InstanceType": instance_type.get("InstanceType"), "SubnetId": subnet_id})
+                overrides.update({"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id})
                 template_overrides.append(copy.deepcopy(overrides))
         return template_overrides
 
+    def _uses_single_instance_type(self):
+        """Check if the compute resource uses only one instance type."""
+        return len(self._compute_resource_config["Instances"]) == 1
+
     def _uses_single_az(self):
+        """Check if the queue uses only one Subnet Id."""
         subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
         return len(subnet_ids) == 1
 
@@ -266,20 +277,16 @@ class Ec2CreateFleetManager(FleetManager):
             common_launch_options = {
                 # AllocationStrategy can assume different values for SpotOptions and OnDemandOptions
                 "AllocationStrategy": self._compute_resource_config["AllocationStrategy"],
-                "SingleInstanceType": False,
+                "SingleInstanceType": self._uses_single_instance_type(),
                 "SingleAvailabilityZone": self._uses_single_az(),  # If using Multi-AZ (by specifying multiple subnets),
                 # set SingleAvailabilityZone to False
             }
 
-            if self._uses_single_az():
+            if self._uses_single_az() or self._uses_single_instance_type():
                 # If the minimum target capacity is not reached, the fleet launches no instances
                 common_launch_options.update({"MinTargetCapacity": count if self._all_or_nothing else 1})
 
-            queue_overrides = {}
             if self._compute_resource_config["CapacityType"] == "spot":
-                if self._compute_resource_config.get("MaxPrice"):
-                    queue_overrides = {"MaxPrice": str(self._compute_resource_config["MaxPrice"])}
-
                 launch_options = {"SpotOptions": common_launch_options}
             else:
                 launch_options = {
@@ -289,7 +296,7 @@ class Ec2CreateFleetManager(FleetManager):
                     },
                 }
 
-            template_overrides = self._evaluate_template_overrides(queue_overrides)
+            template_overrides = self._evaluate_template_overrides()
 
             launch_params = {
                 "LaunchTemplateConfigs": [
