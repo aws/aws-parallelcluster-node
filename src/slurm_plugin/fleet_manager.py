@@ -253,7 +253,7 @@ class Ec2CreateFleetManager(FleetManager):
 
         if self._compute_resource_config["CapacityType"] == "spot":
             if self._compute_resource_config.get("MaxPrice"):
-                overrides = {"MaxPrice": str(self._compute_resource_config["MaxPrice"])}
+                overrides.update({"MaxPrice": str(self._compute_resource_config["MaxPrice"])})
 
         for instance_type in self._compute_resource_config["Instances"]:
             subnet_ids = self._compute_resource_config["Networking"]["SubnetIds"]
