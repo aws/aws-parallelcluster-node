@@ -1,0 +1,41 @@
+{
+  "LaunchTemplateConfigs": [
+    {
+      "LaunchTemplateSpecification": {
+        "LaunchTemplateName": "hit-queue6-fleet1",
+        "Version": "$Latest"
+      },
+      "Overrides": [
+        {
+          "InstanceType": "t2.medium",
+          "SubnetId": "1234567"
+        },
+        {
+          "InstanceType": "t2.medium",
+          "SubnetId": "7654321"
+        },
+        {
+          "InstanceType": "t2.large",
+          "SubnetId": "1234567"
+        },
+        {
+          "InstanceType": "t2.large",
+          "SubnetId": "7654321"
+        }
+      ]
+    }
+  ],
+  "OnDemandOptions": {
+    "AllocationStrategy": "lowest-price",
+    "SingleInstanceType": false,
+    "SingleAvailabilityZone": false,
+    "CapacityReservationOptions": {
+      "UsageStrategy": "use-capacity-reservations-first"
+    }
+  },
+  "TargetCapacitySpecification": {
+    "TotalTargetCapacity": 5,
+    "DefaultTargetCapacityType": "on-demand"
+  },
+  "Type": "instant"
+}
