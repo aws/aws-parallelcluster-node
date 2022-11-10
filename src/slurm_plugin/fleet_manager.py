@@ -202,6 +202,8 @@ class Ec2RunInstancesManager(FleetManager):
                 "LaunchTemplateName": f"{self._cluster_name}-{self._queue}-{self._compute_resource}",
                 "Version": "$Latest",
             },
+            # Single InstanceType Compute Resource should have only one Subnet Id
+            "SubnetId": self._compute_resource_config["Networking"]["SubnetIds"][0],
         }
 
         launch_params.update(self._launch_overrides)

@@ -88,6 +88,7 @@ class TestEc2RunInstancesManager:
                         "LaunchTemplateName": "hit-queue1-p4d24xlarge",
                         "Version": "$Latest",
                     },
+                    "SubnetId": "1234567",
                 },
             ),
             (
@@ -102,6 +103,7 @@ class TestEc2RunInstancesManager:
                         "LaunchTemplateName": "hit-queue1-c5xlarge",
                         "Version": "$Latest",
                     },
+                    "SubnetId": "1234567",
                 },
             ),
             (
@@ -124,6 +126,7 @@ class TestEc2RunInstancesManager:
                         "LaunchTemplateName": "hit-queue1-p4d24xlarge",
                         "Version": "$Latest",
                     },
+                    "SubnetId": "1234567",
                     "CapacityReservationSpecification": {
                         "CapacityReservationTarget": {"CapacityReservationId": "cr-12345"}
                     },

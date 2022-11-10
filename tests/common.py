@@ -35,11 +35,21 @@ SINGLE_SUBNET = {"SubnetIds": ["1234567"]}
 MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"]}
 
 FLEET_CONFIG = {
-    "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
+    "queue": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET}
+    },
     "queue1": {
-        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
-        "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
-        "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET},
+        "c52xlarge": {
+            "Api": "run-instances",
+            "Instances": [{"InstanceType": "c5.2xlarge"}],
+            "Networking": SINGLE_SUBNET,
+        },
+        "p4d24xlarge": {
+            "Api": "run-instances",
+            "Instances": [{"InstanceType": "p4d.24xlarge"}],
+            "Networking": SINGLE_SUBNET,
+        },
         "fleet-spot": {
             "Api": "create-fleet",
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
@@ -50,7 +60,7 @@ FLEET_CONFIG = {
         },
     },
     "queue2": {
-        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET},
         "fleet-ondemand": {
             "Api": "create-fleet",
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
@@ -60,12 +70,20 @@ FLEET_CONFIG = {
         },
     },
     "queue3": {
-        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
-        "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
-        "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET},
+        "c52xlarge": {
+            "Api": "run-instances",
+            "Instances": [{"InstanceType": "c5.2xlarge"}],
+            "Networking": SINGLE_SUBNET,
+        },
+        "p4d24xlarge": {
+            "Api": "run-instances",
+            "Instances": [{"InstanceType": "p4d.24xlarge"}],
+            "Networking": SINGLE_SUBNET,
+        },
     },
     "queue4": {
-        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET},
         "fleet1": {
             "Api": "create-fleet",
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
@@ -75,7 +93,7 @@ FLEET_CONFIG = {
         },
     },
     "queue5": {
-        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET},
         "fleet1": {
             "Api": "create-fleet",
             "Instances": [{"InstanceType": "t2.medium"}],
@@ -85,7 +103,7 @@ FLEET_CONFIG = {
         },
     },
     "queue6": {
-        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}], "Networking": SINGLE_SUBNET},
         "fleet1": {
             "Api": "create-fleet",
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
