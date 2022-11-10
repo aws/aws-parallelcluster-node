@@ -697,6 +697,17 @@ class ClusterManager:
         except Exception as e:
             log.error("Encountered exception when setting unhealthy static nodes into down state: %s", e)
 
+        timer = start_timer()
+        next(timer)
+        for output in self._instance_manager.get_console_output_from_nodes(unhealthy_static_nodes):
+            log.info(
+                "Unhealthy node %s (Instance Id %s) console output:\r%s",
+                output.get("name"),
+                output.get("InstanceId"),
+                output.get("LogOutput"),
+            )
+        log.info("Gathering console output for [x%d] nodes took %s", len(unhealthy_static_nodes), next(timer))
+
         instances_to_terminate = [node.instance.id for node in unhealthy_static_nodes if node.instance]
 
         if instances_to_terminate:
@@ -1122,6 +1133,21 @@ def _run_clustermgtd(config_file):
         # Manage cluster
         cluster_manager.manage_cluster()
         sleep_remaining_loop_time(config.loop_time, start_time)
+
+
+def start_timer():
+    start_time = time.perf_counter_ns() // 1000000
+    last_time = {"start": start_time, "current": start_time, "delta": 0, "total": 0}
+    while True:
+        now = time.perf_counter_ns() // 1000000
+        this_time = {
+            "start": start_time,
+            "current": now,
+            "delta": now - last_time.get("start"),
+            "total": now - start_time,
+        }
+        yield this_time
+        last_time = this_time
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))

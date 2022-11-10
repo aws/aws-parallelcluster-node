@@ -11,6 +11,7 @@
 
 import collections
 import logging
+import re
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
@@ -362,3 +363,46 @@ class InstanceManager:
     def _update_failed_nodes(self, nodeset, error_code="Exception"):
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
+
+    def get_console_output_from_nodes(self, nodes):
+        ec2 = boto3.client("ec2", region_name=self._region)
+        instances = self._get_instances_for_nodes(nodes)
+        for instance in instances:
+            instance_id = instance.get("InstanceId")
+            logger.info("Getting console output for %s", instance_id)
+            response = ec2.get_console_output(InstanceId=instance_id)
+            output = response.get("Output")
+            if output:
+                output = re.sub(r"\r\n|\n", "\r", output)
+            yield {"name": instance.get("name"), "InstanceId": instance_id, "LogOutput": output}
+
+    def _get_instances_for_nodes(self, nodes):
+        node_name_partitions = self._partition_nodes(node.name for node in nodes)
+        for node_name_partition in node_name_partitions:
+            query = self._create_query_for_nodes(node_name_partition)
+            logger.info("Query: %s", query)
+            response = self._ddb_resource.batch_get_item(RequestItems=query)
+            logging.info("Response: %s", response)
+            for item in response.get("Responses").get(self._table.table_name):
+                yield {
+                    "name": item.get("Id"),
+                    "InstanceId": item.get("InstanceId"),
+                }
+
+    @staticmethod
+    def _partition_nodes(node_names, size=50):
+        node_name_list = list(node_names)
+        return (node_name_list[start : start + size] for start in range(0, len(node_name_list), size))
+
+    def _create_query_for_nodes(self, node_names):
+        return {
+            str(self._table.table_name): {
+                "Keys": [
+                    {
+                        "Id": str(node_name),
+                    }
+                    for node_name in node_names
+                ],
+                "ProjectionExpression": "Id, InstanceId",
+            }
+        }
