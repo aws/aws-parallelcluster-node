@@ -52,6 +52,7 @@ from slurm_plugin.slurm_resources import (
 
 LOOP_TIME = 60
 log = logging.getLogger(__name__)
+compute_logger = log.getChild('console_output')
 
 
 class ComputeFleetStatus(Enum):
@@ -149,6 +150,8 @@ class ClustermgtdConfig:
         "use_private_hostname": False,
         "protected_failure_count": 10,
         "insufficient_capacity_timeout": 600,
+        "compute_console_logging_enabled": True,
+        "compute_console_logging_max_sample_size": 100,
     }
 
     def __init__(self, config_file_path):
@@ -279,6 +282,19 @@ class ClustermgtdConfig:
             "clustermgtd", "use_private_hostname", fallback=self.DEFAULTS.get("use_private_hostname")
         )
 
+    def _get_compute_console_output_config(self, config):
+        """Get config options related to logging console output from compute nodes."""
+        self.compute_console_logging_enabled = config.getboolean(
+            "clustermgtd",
+            "compute_console_logging_enabled",
+            fallback=self.DEFAULTS.get("compute_console_logging_enabled")
+        )
+        self.compute_console_logging_max_sample_size = config.getint(
+            "clustermgtd",
+            "compute_console_logging_max_sample_size",
+            fallback=self.DEFAULTS.get("compute_console_logging_max_sample_size")
+        )
+
     @log_exception(log, "reading cluster manager configuration file", catch_exception=IOError, raise_on_error=True)
     def _get_config(self, config_file_path):
         """Get clustermgtd configuration."""
@@ -292,6 +308,7 @@ class ClustermgtdConfig:
         self._get_launch_config(self._config)
         self._get_terminate_config(self._config)
         self._get_dns_config(self._config)
+        self._get_compute_console_output_config(self._config)
 
 
 class ClusterManager:
@@ -553,7 +570,7 @@ class ClusterManager:
                 )
 
     def _get_nodes_failing_health_check(
-        self, unhealthy_instances_status, instance_id_to_active_node_map, health_check_type
+            self, unhealthy_instances_status, instance_id_to_active_node_map, health_check_type
     ):
         """Get nodes fail health check."""
         log.info("Performing actions for health check type: %s", health_check_type)
@@ -682,6 +699,23 @@ class ClusterManager:
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
 
+    def _report_console_output_from_nodes(self, compute_nodes):
+        if self._config.compute_console_logging_enabled:
+            timer = start_timer()
+            next(timer)
+            if self._config.compute_console_logging_max_sample_size > 0:
+                report_nodes = compute_nodes[:self._config.compute_console_logging_max_sample_size]
+            else:
+                report_nodes = compute_nodes
+            for output in self._instance_manager.get_console_output_from_nodes(report_nodes):
+                compute_logger.info(
+                    'Console output for node %s (Instance Id %s):\r%s',
+                    output.get('Name'),
+                    output.get('InstanceId'),
+                    output.get('ConsoleOutput')
+                )
+            log.info('Gathering console output for [x%d] nodes took %s', len(report_nodes), next(timer))
+
     @log_exception(log, "maintaining unhealthy static nodes", raise_on_error=False)
     def _handle_unhealthy_static_nodes(self, unhealthy_static_nodes):
         """
@@ -697,16 +731,10 @@ class ClusterManager:
         except Exception as e:
             log.error("Encountered exception when setting unhealthy static nodes into down state: %s", e)
 
-        timer = start_timer()
-        next(timer)
-        for output in self._instance_manager.get_console_output_from_nodes(unhealthy_static_nodes):
-            log.info(
-                "Unhealthy node %s (Instance Id %s) console output:\r%s",
-                output.get("name"),
-                output.get("InstanceId"),
-                output.get("LogOutput"),
-            )
-        log.info("Gathering console output for [x%d] nodes took %s", len(unhealthy_static_nodes), next(timer))
+        try:
+            self._report_console_output_from_nodes(unhealthy_static_nodes)
+        except Exception as e:
+            log.error("Encountered exception when retrieving console output from static nodes into down state: %s", e)
 
         instances_to_terminate = [node.instance.id for node in unhealthy_static_nodes if node.instance]
 
@@ -768,7 +796,7 @@ class ClusterManager:
         instances_to_terminate = []
         for instance in cluster_instances:
             if not instance.slurm_node and time_is_up(
-                instance.launch_time, self._current_time, self._config.orphaned_instance_timeout
+                    instance.launch_time, self._current_time, self._config.orphaned_instance_timeout
             ):
                 instances_to_terminate.append(instance.id)
 
@@ -1006,9 +1034,9 @@ class ClusterManager:
         log, "handling nodes failed due to insufficient capacity", catch_exception=Exception, raise_on_error=False
     )
     def _handle_ice_nodes(
-        self,
-        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[DynamicNode]]],
-        compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
+            self,
+            ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[DynamicNode]]],
+            compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
     ):
         """Handle nodes failed with insufficient capacity."""
         if ice_compute_resources_and_nodes_map:
@@ -1017,7 +1045,7 @@ class ClusterManager:
         self._set_ice_compute_resources_to_down(compute_resource_nodes_map)
 
     def _update_insufficient_capacity_compute_resources(
-        self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
+            self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
     ):
         """Add compute resource to insufficient_capacity_compute_resources if node is ICE node."""
         for queue_name, compute_resources in ice_compute_resources_and_nodes_map.items():
@@ -1028,7 +1056,7 @@ class ClusterManager:
                     ] = ComputeResourceFailureEvent(self._current_time, nodes[0].error_code)
 
     def _reset_timeout_expired_compute_resources(
-        self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
+            self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
     ):
         """Reset compute resources which insufficient_capacity_timeout expired."""
         # Find insufficient_capacity_timeout compute resources
@@ -1067,7 +1095,7 @@ class ClusterManager:
                 )
 
     def _find_insufficient_capacity_timeout_expired_compute_resources(
-        self,
+            self,
     ) -> Dict[str, Dict[str, ComputeResourceFailureEvent]]:
         """Find compute resources which insufficient_capacity_timeout expired."""
         timeout_expired_cr = dict()
@@ -1081,9 +1109,9 @@ class ClusterManager:
         return timeout_expired_cr
 
     def _reset_insufficient_capacity_timeout_expired_nodes(
-        self,
-        timeout_expired_cr: Dict[str, Dict[str, ComputeResourceFailureEvent]],
-        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+            self,
+            timeout_expired_cr: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+            ice_compute_resources_and_nodes_map: Dict[str, Dict[str, ComputeResourceFailureEvent]],
     ):
         """Reset nodes in the compute resource which insufficient_capacity_timeout expired."""
         logging.info(

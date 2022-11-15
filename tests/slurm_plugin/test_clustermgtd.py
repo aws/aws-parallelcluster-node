@@ -59,7 +59,8 @@ class TestClustermgtdConfig:
                     "disable_all_cluster_management": False,
                     "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                     "logging_config": os.path.join(
-                        os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
+                        os.path.dirname(slurm_plugin.__file__), "logging",
+                        "parallelcluster_clustermgtd_logging.conf"
                     ),
                     "dynamodb_table": "table-name",
                     # launch configs
@@ -78,6 +79,8 @@ class TestClustermgtdConfig:
                     "health_check_timeout": 180,
                     "protected_failure_count": 10,
                     "insufficient_capacity_timeout": 600,
+                    "compute_console_logging_enabled": True,
+                    "compute_console_logging_max_sample_size": 100,
                 },
             ),
             (
@@ -111,6 +114,8 @@ class TestClustermgtdConfig:
                     "health_check_timeout": 10,
                     "protected_failure_count": 5,
                     "insufficient_capacity_timeout": 50.5,
+                    "compute_console_logging_enabled": False,
+                    "compute_console_logging_max_sample_size": 50,
                 },
             ),
             (
@@ -225,7 +230,8 @@ def test_set_config(initialize_instance_manager_mock):
                 ),
                 StaticNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE", "queue1"),
                 StaticNode(
-                    "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN", "queue1"
+                    "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN",
+                    "queue1"
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-8",
@@ -796,6 +802,7 @@ def test_handle_powering_down_nodes(
         "expected_replacing_nodes",
         "delete_instance_list",
         "add_node_list",
+        "output_enabled",
         "set_nodes_down_exception",
     ),
     [
@@ -824,6 +831,7 @@ def test_handle_powering_down_nodes(
             },
             ["id-1", "id-2"],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            True,
             None,
         ),
         (
@@ -847,6 +855,7 @@ def test_handle_powering_down_nodes(
             },
             [],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            False,
             None,
         ),
         (
@@ -864,6 +873,7 @@ def test_handle_powering_down_nodes(
             {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
             [],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            False,
             None,
         ),
         (
@@ -881,6 +891,7 @@ def test_handle_powering_down_nodes(
             {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
             [],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            False,
             Exception,
         ),
     ],
@@ -897,6 +908,7 @@ def test_handle_unhealthy_static_nodes(
     mocker,
     caplog,
     request,
+    output_enabled,
     set_nodes_down_exception,
 ):
     # Test setup
@@ -918,6 +930,8 @@ def test_handle_unhealthy_static_nodes(
         insufficient_capacity_timeout=600,
         run_instances_overrides={},
         create_fleet_overrides={},
+        compute_console_logging_enabled=output_enabled,
+        compute_console_logging_max_sample_size=100,
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
@@ -937,6 +951,19 @@ def test_handle_unhealthy_static_nodes(
             }
         }
     )
+    if output_enabled:
+        cluster_manager._instance_manager.get_console_output_from_nodes = mocker.MagicMock(
+            return_value=(
+                output for output in (
+                    {
+                        "Name": node,
+                        "InstanceId": instance,
+                        "ConsoleOutput": f"Compute {node}-{instance}!"
+                    } for node, instance in zip(unhealthy_static_nodes, launched_instances)
+                )
+            )
+        )
+
     mocker.patch("slurm_plugin.instance_manager.update_nodes")
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
@@ -2589,7 +2616,7 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                 call(
                     ["queue1-dy-c5xlarge-1"],
                     reason="(Code:InsufficientReservedInstanceCapacity)Temporarily disabling node due to insufficient "
-                    "capacity",
+                           "capacity",
                 ),
             ],
         ),
@@ -3020,7 +3047,7 @@ def test_reset_timeout_expired_compute_resources(
                 call(
                     ["queue1-dy-c5xlarge-1"],
                     reason="(Code:InsufficientReservedInstanceCapacity)Temporarily disabling node due to insufficient "
-                    "capacity",
+                           "capacity",
                 ),
                 call(
                     ["queue2-dy-c5large-1", "queue2-dy-c5large-2"],
