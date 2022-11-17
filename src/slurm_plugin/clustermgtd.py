@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
@@ -36,7 +37,7 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up
+from common.utils import check_command_output, read_json, sleep_remaining_loop_time, start_timer, time_is_up
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
 from slurm_plugin.instance_manager import InstanceManager
@@ -51,6 +52,7 @@ from slurm_plugin.slurm_resources import (
 )
 
 LOOP_TIME = 60
+CONSOLE_OUTPUT_WAIT_TIME = (3 * 60)
 log = logging.getLogger(__name__)
 compute_logger = log.getChild('console_output')
 
@@ -151,7 +153,9 @@ class ClustermgtdConfig:
         "protected_failure_count": 10,
         "insufficient_capacity_timeout": 600,
         "compute_console_logging_enabled": True,
-        "compute_console_logging_max_sample_size": 100,
+        "compute_console_logging_max_sample_size": 1,
+        "compute_console_wait_time": CONSOLE_OUTPUT_WAIT_TIME,
+        "worker_pool_size": 5,
     }
 
     def __init__(self, config_file_path):
@@ -294,6 +298,18 @@ class ClustermgtdConfig:
             "compute_console_logging_max_sample_size",
             fallback=self.DEFAULTS.get("compute_console_logging_max_sample_size")
         )
+        self.compute_console_wait_time = config.getint(
+            "clustermgtd",
+            "compute_console_wait_time",
+            fallback=self.DEFAULTS.get("compute_console_wait_time")
+        )
+
+    def _get_worker_pool_config(self, config):
+        self.worker_pool_size = config.getint(
+            "clustermgtd",
+            "worker_pool_size",
+            fallback=self.DEFAULTS.get("worker_pool_size")
+        )
 
     @log_exception(log, "reading cluster manager configuration file", catch_exception=IOError, raise_on_error=True)
     def _get_config(self, config_file_path):
@@ -309,6 +325,7 @@ class ClustermgtdConfig:
         self._get_terminate_config(self._config)
         self._get_dns_config(self._config)
         self._get_compute_console_output_config(self._config)
+        self._get_worker_pool_config(self._config)
 
 
 class ClusterManager:
@@ -343,14 +360,26 @@ class ClusterManager:
         self._config = None
         self._compute_fleet_status_manager = None
         self._instance_manager = None
+        self._executor_pool = None
         self.set_config(config)
 
     def set_config(self, config):
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
+
+            if self._config is None or self._config.worker_pool_size != config.worker_pool_size:
+                if self._executor_pool:
+                    self._executor_pool.shudown(wait=False, cancel_futures=True)
+                self._executor_pool = ThreadPoolExecutor(max_workers=config.worker_pool_size)
+
             self._config = config
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
+
+    def shutdown(self):
+        if self._executor_pool:
+            self._executor_pool.shudown(wait=False, cancel_futures=True)
+            self._executor_pool = None
 
     @staticmethod
     def _initialize_instance_manager(config):
@@ -369,6 +398,10 @@ class ClusterManager:
             create_fleet_overrides=config.create_fleet_overrides,
             fleet_config=config.fleet_config,
         )
+
+    def _queue_executor_task(self, task):
+        if task:
+            self._executor_pool.submit(task)
 
     def _update_compute_fleet_status(self, status):
         log.info("Updating compute fleet status from %s to %s", self._compute_fleet_status, status)
@@ -699,6 +732,15 @@ class ClusterManager:
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
 
+    @staticmethod
+    def _console_output_callback(output):
+        compute_logger.info(
+            'Console output for node %s (Instance Id %s):\r%s',
+            output.get('Name'),
+            output.get('InstanceId'),
+            output.get('ConsoleOutput')
+        )
+
     def _report_console_output_from_nodes(self, compute_nodes):
         if self._config.compute_console_logging_enabled:
             timer = start_timer()
@@ -707,13 +749,15 @@ class ClusterManager:
                 report_nodes = compute_nodes[:self._config.compute_console_logging_max_sample_size]
             else:
                 report_nodes = compute_nodes
-            for output in self._instance_manager.get_console_output_from_nodes(report_nodes):
-                compute_logger.info(
-                    'Console output for node %s (Instance Id %s):\r%s',
-                    output.get('Name'),
-                    output.get('InstanceId'),
-                    output.get('ConsoleOutput')
+
+            self._queue_executor_task(
+                self._instance_manager.get_console_output_task(
+                    report_nodes,
+                    ClusterManager._console_output_callback,
+                    self._config.compute_console_wait_time,
                 )
+            )
+
             log.info('Gathering console output for [x%d] nodes took %s', len(report_nodes), next(timer))
 
     @log_exception(log, "maintaining unhealthy static nodes", raise_on_error=False)
@@ -1136,46 +1180,34 @@ def _run_clustermgtd(config_file):
     """Run clustermgtd actions."""
     config = ClustermgtdConfig(config_file)
     cluster_manager = ClusterManager(config=config)
-    while True:
-        # Get loop start time
-        start_time = datetime.now(tz=timezone.utc)
-        # Get program config
-        try:
-            config = ClustermgtdConfig(config_file)
-            cluster_manager.set_config(config)
-        except Exception as e:
-            log.warning(
-                "Unable to reload daemon config from %s, using previous one.\nException: %s",
-                config_file,
-                e,
-            )
-        # Configure root logger
-        try:
-            fileConfig(config.logging_config, disable_existing_loggers=False)
-        except Exception as e:
-            log.warning(
-                "Unable to configure logging from %s, using default logging settings.\nException: %s",
-                config.logging_config,
-                e,
-            )
-        # Manage cluster
-        cluster_manager.manage_cluster()
-        sleep_remaining_loop_time(config.loop_time, start_time)
-
-
-def start_timer():
-    start_time = time.perf_counter_ns() // 1000000
-    last_time = {"start": start_time, "current": start_time, "delta": 0, "total": 0}
-    while True:
-        now = time.perf_counter_ns() // 1000000
-        this_time = {
-            "start": start_time,
-            "current": now,
-            "delta": now - last_time.get("start"),
-            "total": now - start_time,
-        }
-        yield this_time
-        last_time = this_time
+    try:
+        while True:
+            # Get loop start time
+            start_time = datetime.now(tz=timezone.utc)
+            # Get program config
+            try:
+                config = ClustermgtdConfig(config_file)
+                cluster_manager.set_config(config)
+            except Exception as e:
+                log.warning(
+                    "Unable to reload daemon config from %s, using previous one.\nException: %s",
+                    config_file,
+                    e,
+                )
+            # Configure root logger
+            try:
+                fileConfig(config.logging_config, disable_existing_loggers=False)
+            except Exception as e:
+                log.warning(
+                    "Unable to configure logging from %s, using default logging settings.\nException: %s",
+                    config.logging_config,
+                    e,
+                )
+            # Manage cluster
+            cluster_manager.manage_cluster()
+            sleep_remaining_loop_time(config.loop_time, start_time)
+    finally:
+        cluster_manager.shutdown()
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))

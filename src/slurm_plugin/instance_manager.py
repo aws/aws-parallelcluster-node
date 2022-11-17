@@ -10,18 +10,20 @@
 # limitations under the License.
 
 import collections
+import hashlib
 import logging
 import re
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
 import subprocess  # nosec B404
+from datetime import datetime, timezone
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
-from common.utils import grouper
+from common.utils import grouper, sleep_remaining_loop_time, start_timer
 from slurm_plugin.common import log_exception, print_with_count
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
@@ -364,17 +366,61 @@ class InstanceManager:
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
 
-    def get_console_output_from_nodes(self, nodes):
-        ec2 = boto3.client("ec2", region_name=self._region)
-        instances = self._get_instances_for_nodes(nodes)
+    def get_console_output_task(self, nodes, output_callback, wait_time):
+        """
+        Return a function that will retrieve the console output for each node in `nodes`.
+
+        The console output for each node will be passed to output_callback.
+        """
+        start_time = datetime.now(tz=timezone.utc)
+
+        region = self._region
+        instances = list(self._get_instances_for_nodes(nodes))
+        if len(instances) < 1:
+            return None
+
+        def console_collector():
+            ec2 = boto3.session.Session().client('ec2', region_name=region)
+            sleep_remaining_loop_time(30, start_time)
+
+            logger.info("Collecting initial console output for %d nodes", len(instances))
+            output_hashes = {}
+            timer = start_timer()
+            next(timer)
+            for output in InstanceManager._get_console_output_from_nodes(ec2, instances, region):
+                instance_id = output.get("InstanceId")
+                output_hash = hashlib.sha256(str(output).encode()).digest()
+                output_hashes.update({instance_id: output_hash})
+                output_callback(output)
+            logger.info("Collecting logs for %d nodes took %s", len(instances), next(timer))
+
+            logger.info("Beginning wait for console output settling time")
+            sleep_remaining_loop_time(wait_time, start_time)
+            logger.info("Collecting console output for %d nodes...", len(instances))
+            next(timer)
+            for output in InstanceManager._get_console_output_from_nodes(ec2, instances, region):
+                instance_id = output.get("InstanceId")
+                output_hash = hashlib.sha256(str(output).encode()).digest()
+                if output_hash != output_hashes.get(output.get(instance_id)):
+                    output_callback(output)
+            logger.info("Collecting logs for %d nodes took %s", len(instances), next(timer))
+
+        return console_collector
+
+    @staticmethod
+    def _get_console_output_from_nodes(ec2client, instances, region):
         for instance in instances:
             instance_id = instance.get("InstanceId")
             logger.info("Getting console output for %s", instance_id)
-            response = ec2.get_console_output(InstanceId=instance_id)
-            output = response.get("Output")
+            response = ec2client.get_console_output(InstanceId=instance_id)
+            output = response.get('Output')
             if output:
-                output = re.sub(r"\r\n|\n", "\r", output)
-            yield {"name": instance.get("name"), "InstanceId": instance_id, "LogOutput": output}
+                output = re.sub(r'\r\n|\n', '\r', output)
+            yield {
+                'Name': instance.get('name'),
+                'InstanceId': instance_id,
+                'ConsoleOutput': output
+            }
 
     def _get_instances_for_nodes(self, nodes):
         node_name_partitions = self._partition_nodes(node.name for node in nodes)
