@@ -23,6 +23,7 @@ from logging.config import fileConfig
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
 from subprocess import CalledProcessError  # nosec B404
+from threading import Semaphore
 from typing import Dict, List
 
 from botocore.config import Config
@@ -53,6 +54,7 @@ from slurm_plugin.slurm_resources import (
 
 LOOP_TIME = 60
 CONSOLE_OUTPUT_WAIT_TIME = (3 * 60)
+MAXIMUM_TASK_BACKLOG = 100
 log = logging.getLogger(__name__)
 compute_logger = log.getChild('console_output')
 
@@ -360,6 +362,7 @@ class ClusterManager:
         self._config = None
         self._compute_fleet_status_manager = None
         self._instance_manager = None
+        self._executor_limit = None
         self._executor_pool = None
         self.set_config(config)
 
@@ -370,6 +373,7 @@ class ClusterManager:
             if self._config is None or self._config.worker_pool_size != config.worker_pool_size:
                 if self._executor_pool:
                     self._executor_pool.shudown(wait=False, cancel_futures=True)
+                self._executor_limit = Semaphore(MAXIMUM_TASK_BACKLOG)
                 self._executor_pool = ThreadPoolExecutor(max_workers=config.worker_pool_size)
 
             self._config = config
@@ -401,7 +405,13 @@ class ClusterManager:
 
     def _queue_executor_task(self, task):
         if task:
-            self._executor_pool.submit(task)
+            if self._executor_limit.acquire(blocking=False):
+                future = self._executor_pool.submit(task)
+                future.add_done_callback(lambda: self._executor_limit.release())
+                return future
+            else:
+                log.warning("Unable to queue task due to exceeding backlog limit")
+                return None
 
     def _update_compute_fleet_status(self, status):
         log.info("Updating compute fleet status from %s to %s", self._compute_fleet_status, status)
@@ -603,7 +613,7 @@ class ClusterManager:
                 )
 
     def _get_nodes_failing_health_check(
-            self, unhealthy_instances_status, instance_id_to_active_node_map, health_check_type
+        self, unhealthy_instances_status, instance_id_to_active_node_map, health_check_type
     ):
         """Get nodes fail health check."""
         log.info("Performing actions for health check type: %s", health_check_type)
@@ -778,7 +788,7 @@ class ClusterManager:
         try:
             self._report_console_output_from_nodes(unhealthy_static_nodes)
         except Exception as e:
-            log.error("Encountered exception when retrieving console output from static nodes into down state: %s", e)
+            log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
 
         instances_to_terminate = [node.instance.id for node in unhealthy_static_nodes if node.instance]
 
@@ -840,7 +850,7 @@ class ClusterManager:
         instances_to_terminate = []
         for instance in cluster_instances:
             if not instance.slurm_node and time_is_up(
-                    instance.launch_time, self._current_time, self._config.orphaned_instance_timeout
+                instance.launch_time, self._current_time, self._config.orphaned_instance_timeout
             ):
                 instances_to_terminate.append(instance.id)
 
@@ -1078,9 +1088,9 @@ class ClusterManager:
         log, "handling nodes failed due to insufficient capacity", catch_exception=Exception, raise_on_error=False
     )
     def _handle_ice_nodes(
-            self,
-            ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[DynamicNode]]],
-            compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
+        self,
+        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[DynamicNode]]],
+        compute_resource_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
     ):
         """Handle nodes failed with insufficient capacity."""
         if ice_compute_resources_and_nodes_map:
@@ -1089,7 +1099,7 @@ class ClusterManager:
         self._set_ice_compute_resources_to_down(compute_resource_nodes_map)
 
     def _update_insufficient_capacity_compute_resources(
-            self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
+        self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
     ):
         """Add compute resource to insufficient_capacity_compute_resources if node is ICE node."""
         for queue_name, compute_resources in ice_compute_resources_and_nodes_map.items():
@@ -1100,7 +1110,7 @@ class ClusterManager:
                     ] = ComputeResourceFailureEvent(self._current_time, nodes[0].error_code)
 
     def _reset_timeout_expired_compute_resources(
-            self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
+        self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]
     ):
         """Reset compute resources which insufficient_capacity_timeout expired."""
         # Find insufficient_capacity_timeout compute resources
@@ -1139,7 +1149,7 @@ class ClusterManager:
                 )
 
     def _find_insufficient_capacity_timeout_expired_compute_resources(
-            self,
+        self,
     ) -> Dict[str, Dict[str, ComputeResourceFailureEvent]]:
         """Find compute resources which insufficient_capacity_timeout expired."""
         timeout_expired_cr = dict()
@@ -1153,9 +1163,9 @@ class ClusterManager:
         return timeout_expired_cr
 
     def _reset_insufficient_capacity_timeout_expired_nodes(
-            self,
-            timeout_expired_cr: Dict[str, Dict[str, ComputeResourceFailureEvent]],
-            ice_compute_resources_and_nodes_map: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+        self,
+        timeout_expired_cr: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, ComputeResourceFailureEvent]],
     ):
         """Reset nodes in the compute resource which insufficient_capacity_timeout expired."""
         logging.info(

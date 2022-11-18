@@ -276,6 +276,7 @@ def start_timer():
     start_time = time.perf_counter_ns() // 1000000
     last_time = {
         'start': start_time,
+        'previous': None,
         'current': start_time,
         'delta': 0,
         'total': 0
@@ -284,8 +285,9 @@ def start_timer():
         now = time.perf_counter_ns() // 1000000
         this_time = {
             'start': start_time,
+            'previous': last_time.get('current'),
             'current': now,
-            'delta': now - last_time.get('start'),
+            'delta': now - last_time.get('current'),
             'total': now - start_time,
         }
         yield this_time

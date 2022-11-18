@@ -380,30 +380,32 @@ class InstanceManager:
             return None
 
         def console_collector():
-            ec2 = boto3.session.Session().client('ec2', region_name=region)
-            sleep_remaining_loop_time(30, start_time)
+            def report_console_output():
+                next(timer)
+                for output in InstanceManager._get_console_output_from_nodes(ec2, instances, region):
+                    instance_id = output.get("InstanceId")
+                    console_output = output.get("ConsoleOutput")
+                    current_hash = hashlib.sha256(console_output.encode()).hexdigest()
+                    previous_hash = output_hashes.get(instance_id)
+                    logger.info("%s: current hash: %s, previous hash: %s", instance_id, current_hash, previous_hash)
+                    if current_hash != previous_hash:
+                        output_callback(output)
+                        output_hashes.update({instance_id: current_hash})
+                logger.info("Collecting logs for %d nodes took %s", len(instances), next(timer))
 
-            logger.info("Collecting initial console output for %d nodes", len(instances))
+            ec2 = boto3.session.Session().client('ec2', region_name=region)
+
             output_hashes = {}
             timer = start_timer()
-            next(timer)
-            for output in InstanceManager._get_console_output_from_nodes(ec2, instances, region):
-                instance_id = output.get("InstanceId")
-                output_hash = hashlib.sha256(str(output).encode()).digest()
-                output_hashes.update({instance_id: output_hash})
-                output_callback(output)
-            logger.info("Collecting logs for %d nodes took %s", len(instances), next(timer))
+
+            report_console_output()
+
+            sleep_remaining_loop_time(30, start_time)
+            report_console_output()
 
             logger.info("Beginning wait for console output settling time")
             sleep_remaining_loop_time(wait_time, start_time)
-            logger.info("Collecting console output for %d nodes...", len(instances))
-            next(timer)
-            for output in InstanceManager._get_console_output_from_nodes(ec2, instances, region):
-                instance_id = output.get("InstanceId")
-                output_hash = hashlib.sha256(str(output).encode()).digest()
-                if output_hash != output_hashes.get(output.get(instance_id)):
-                    output_callback(output)
-            logger.info("Collecting logs for %d nodes took %s", len(instances), next(timer))
+            report_console_output()
 
         return console_collector
 

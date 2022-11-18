@@ -59,8 +59,7 @@ class TestClustermgtdConfig:
                     "disable_all_cluster_management": False,
                     "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                     "logging_config": os.path.join(
-                        os.path.dirname(slurm_plugin.__file__), "logging",
-                        "parallelcluster_clustermgtd_logging.conf"
+                        os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
                     ),
                     "dynamodb_table": "table-name",
                     # launch configs
@@ -230,8 +229,7 @@ def test_set_config(initialize_instance_manager_mock):
                 ),
                 StaticNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE", "queue1"),
                 StaticNode(
-                    "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN",
-                    "queue1"
+                    "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "queue1-st-c5xlarge-7", "POWERING_DOWN", "queue1"
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-8",
@@ -2616,7 +2614,7 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                 call(
                     ["queue1-dy-c5xlarge-1"],
                     reason="(Code:InsufficientReservedInstanceCapacity)Temporarily disabling node due to insufficient "
-                           "capacity",
+                    "capacity",
                 ),
             ],
         ),
@@ -3047,7 +3045,7 @@ def test_reset_timeout_expired_compute_resources(
                 call(
                     ["queue1-dy-c5xlarge-1"],
                     reason="(Code:InsufficientReservedInstanceCapacity)Temporarily disabling node due to insufficient "
-                           "capacity",
+                    "capacity",
                 ),
                 call(
                     ["queue2-dy-c5large-1", "queue2-dy-c5large-2"],
