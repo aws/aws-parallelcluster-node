@@ -274,21 +274,15 @@ def read_json(file_path, default=None):
 
 def start_timer():
     start_time = time.perf_counter_ns() // 1000000
-    last_time = {
-        'start': start_time,
-        'previous': None,
-        'current': start_time,
-        'delta': 0,
-        'total': 0
-    }
+    last_time = {"start": start_time, "previous": None, "current": start_time, "delta": 0, "total": 0}
     while True:
         now = time.perf_counter_ns() // 1000000
         this_time = {
-            'start': start_time,
-            'previous': last_time.get('current'),
-            'current': now,
-            'delta': now - last_time.get('current'),
-            'total': now - start_time,
+            "start": start_time,
+            "previous": last_time.get("current"),
+            "current": now,
+            "delta": now - last_time.get("current"),
+            "total": now - start_time,
         }
         yield this_time
         last_time = this_time

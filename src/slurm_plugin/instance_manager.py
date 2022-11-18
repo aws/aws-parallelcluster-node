@@ -23,7 +23,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
-from common.utils import grouper, sleep_remaining_loop_time, start_timer
+from common.utils import grouper, sleep_remaining_loop_time
 from slurm_plugin.common import log_exception, print_with_count
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
@@ -366,7 +366,7 @@ class InstanceManager:
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
 
-    def get_console_output_task(self, nodes, output_callback, wait_time):
+    def get_console_output_task(self, nodes, output_callback, wait_times):
         """
         Return a function that will retrieve the console output for each node in `nodes`.
 
@@ -379,72 +379,60 @@ class InstanceManager:
         if len(instances) < 1:
             return None
 
+        def report_console_output(ec2client, output_hashes):
+            for output in InstanceManager._get_console_output_from_nodes(ec2client, instances, region):
+                instance_id = output.get("InstanceId")
+                console_output = output.get("ConsoleOutput")
+                current_hash = hashlib.sha256(console_output.encode()).hexdigest()
+                previous_hash = output_hashes.get(instance_id)
+                if current_hash != previous_hash:
+                    output_callback(output)
+                    output_hashes.update({instance_id: current_hash})
+
         def console_collector():
-            def report_console_output():
-                next(timer)
-                for output in InstanceManager._get_console_output_from_nodes(ec2, instances, region):
-                    instance_id = output.get("InstanceId")
-                    console_output = output.get("ConsoleOutput")
-                    current_hash = hashlib.sha256(console_output.encode()).hexdigest()
-                    previous_hash = output_hashes.get(instance_id)
-                    logger.info("%s: current hash: %s, previous hash: %s", instance_id, current_hash, previous_hash)
-                    if current_hash != previous_hash:
-                        output_callback(output)
-                        output_hashes.update({instance_id: current_hash})
-                logger.info("Collecting logs for %d nodes took %s", len(instances), next(timer))
+            try:
+                ec2 = boto3.session.Session().client("ec2", region_name=region)
 
-            ec2 = boto3.session.Session().client('ec2', region_name=region)
+                output_hashes = {}
 
-            output_hashes = {}
-            timer = start_timer()
-
-            report_console_output()
-
-            sleep_remaining_loop_time(min(30, wait_time), start_time)
-            report_console_output()
-
-            logger.info("Beginning wait for console output settling time")
-            sleep_remaining_loop_time(wait_time, start_time)
-            report_console_output()
+                for next_wait in wait_times:
+                    sleep_remaining_loop_time(next_wait, start_time)
+                    report_console_output(ec2, output_hashes)
+            except Exception as e:
+                logger.error("Encountered exception while retrieving compute console output: %s", e)
 
         return console_collector
+
+    def _get_instances_for_nodes(self, nodes):
+        node_name_partitions = self._partition_nodes(node.name for node in nodes)
+        for node_name_partition in node_name_partitions:
+            query = self._create_request_for_nodes(str(self._table.table_name), node_name_partition)
+            response = self._ddb_resource.batch_get_item(RequestItems=query)
+            for item in response.get("Responses").get(self._table.table_name):
+                yield {
+                    "Name": item.get("Id"),
+                    "InstanceId": item.get("InstanceId"),
+                }
 
     @staticmethod
     def _get_console_output_from_nodes(ec2client, instances, region):
         for instance in instances:
             instance_id = instance.get("InstanceId")
-            logger.info("Getting console output for %s", instance_id)
             response = ec2client.get_console_output(InstanceId=instance_id)
-            output = response.get('Output')
+            output = response.get("Output")
             if output:
-                output = re.sub(r'\r\n|\n', '\r', output)
-            yield {
-                'Name': instance.get('Name'),
-                'InstanceId': instance_id,
-                'ConsoleOutput': output
-            }
-
-    def _get_instances_for_nodes(self, nodes):
-        node_name_partitions = self._partition_nodes(node.name for node in nodes)
-        for node_name_partition in node_name_partitions:
-            query = self._create_query_for_nodes(node_name_partition)
-            logger.info("Query: %s", query)
-            response = self._ddb_resource.batch_get_item(RequestItems=query)
-            logging.info("Response: %s", response)
-            for item in response.get("Responses").get(self._table.table_name):
-                yield {
-                    'Name': item.get('Id'),
-                    'InstanceId': item.get('InstanceId'),
-                }
+                output = re.sub(r"\r\n|\n", "\r", output)
+            yield {"Name": instance.get("Name"), "InstanceId": instance_id, "ConsoleOutput": output}
 
     @staticmethod
     def _partition_nodes(node_names, size=50):
         node_name_list = list(node_names)
         return (node_name_list[start : start + size] for start in range(0, len(node_name_list), size))
 
-    def _create_query_for_nodes(self, node_names):
+    @staticmethod
+    def _create_request_for_nodes(table_name, node_names):
         return {
-            str(self._table.table_name): {
+            str(table_name): {
                 "Keys": [
                     {
                         "Id": str(node_name),

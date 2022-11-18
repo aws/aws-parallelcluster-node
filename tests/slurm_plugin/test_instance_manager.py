@@ -11,7 +11,7 @@
 import logging
 import os
 from datetime import datetime, timezone
-from unittest.mock import call
+from unittest.mock import call, patch
 
 import botocore
 import pytest
@@ -24,6 +24,7 @@ from slurm_plugin.slurm_resources import (
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
     EC2InstanceHealthState,
+    StaticNode,
 )
 
 from tests.common import FLEET_CONFIG, MockedBoto3Request, client_error
@@ -62,7 +63,8 @@ class TestInstanceManager:
             run_instances_overrides={},
             create_fleet_overrides={},
         )
-        mocker.patch.object(instance_manager, "_table")
+        table_mock = mocker.patch.object(instance_manager, "_table")
+        table_mock.table_name = "table_name"
         return instance_manager
 
     @pytest.mark.parametrize(
@@ -1304,3 +1306,98 @@ class TestInstanceManager:
         # run test
         result = instance_manager.get_cluster_instances(**mock_kwargs)
         assert_that(result).is_equal_to(expected_parsed_result)
+
+    @pytest.mark.parametrize(
+        "nodes,mocked_ec2_requests,error_on_callback",
+        [
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1", "ip-3", "hostname", "some_state", "queue1", instance="i-instance-1"
+                    ),
+                ],
+                [
+                    MockedBoto3Request(
+                        method="get_console_output",
+                        response={
+                            "InstanceId": "i-instance-1",
+                            "Output": "Console output for you.",
+                            "Timestamp": "2022-11-18T23:37:25.000Z",
+                        },
+                        expected_params={
+                            "InstanceId": "i-instance-1",
+                        },
+                        generate_error=False,
+                    ),
+                ],
+                False,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1", instance="i-instance-1"
+                    ),
+                ],
+                [
+                    MockedBoto3Request(
+                        method="get_console_output",
+                        response={
+                            "InstanceId": "i-instance-1",
+                            "Output": "Console output for you.",
+                            "Timestamp": "2022-11-18T23:37:25.000Z",
+                        },
+                        expected_params={
+                            "InstanceId": "i-instance-1",
+                        },
+                        generate_error=False,
+                    ),
+                ],
+                True,
+            ),
+        ],
+    )
+    def test_get_console_output(
+        self,
+        nodes,
+        mocked_ec2_requests,
+        error_on_callback,
+        instance_manager,
+        boto3_stubber,
+        boto3_stubber_path,
+    ):
+        def batch_get_item(*args, **kwargs):
+            return {
+                "Responses": {
+                    str(instance_manager._table.table_name): [
+                        {
+                            "Id": node.name,
+                            "InstanceId": node.instance,
+                        }
+                        for node in nodes
+                    ],
+                },
+            }
+
+        def output_callback(output):
+            received_output.append(output)
+            if error_on_callback:
+                raise Exception("Big Oof")
+
+        received_output = []
+
+        with patch.object(instance_manager, "_ddb_resource") as resource_mock:
+            # patch boto3 call
+            resource_mock.batch_get_item = batch_get_item
+            task = instance_manager.get_console_output_task(nodes, output_callback, (0,))
+
+        ec2_stub = boto3_stubber("ec2", mocked_ec2_requests)
+        services = {"ec2": ec2_stub}
+
+        with patch(boto3_stubber_path + ".session.Session") as session_mock:
+            # session_mock = mocker.patch(boto3_stubber_path + ".session.Session")
+            instance_mock = session_mock.return_value
+            instance_mock.client.side_effect = lambda x, **kwargs: services[x]
+
+            task()
+
+        assert_that(received_output).is_length(len(mocked_ec2_requests))

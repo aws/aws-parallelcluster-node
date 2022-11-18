@@ -53,10 +53,10 @@ from slurm_plugin.slurm_resources import (
 )
 
 LOOP_TIME = 60
-CONSOLE_OUTPUT_WAIT_TIME = (3 * 60)
+CONSOLE_OUTPUT_WAIT_TIME = 3 * 60
 MAXIMUM_TASK_BACKLOG = 100
 log = logging.getLogger(__name__)
-compute_logger = log.getChild('console_output')
+compute_logger = log.getChild("console_output")
 
 
 class ComputeFleetStatus(Enum):
@@ -158,6 +158,7 @@ class ClustermgtdConfig:
         "compute_console_logging_max_sample_size": 1,
         "compute_console_wait_time": CONSOLE_OUTPUT_WAIT_TIME,
         "worker_pool_size": 5,
+        "worker_pool_max_backlog": MAXIMUM_TASK_BACKLOG,
     }
 
     def __init__(self, config_file_path):
@@ -293,24 +294,23 @@ class ClustermgtdConfig:
         self.compute_console_logging_enabled = config.getboolean(
             "clustermgtd",
             "compute_console_logging_enabled",
-            fallback=self.DEFAULTS.get("compute_console_logging_enabled")
+            fallback=self.DEFAULTS.get("compute_console_logging_enabled"),
         )
         self.compute_console_logging_max_sample_size = config.getint(
             "clustermgtd",
             "compute_console_logging_max_sample_size",
-            fallback=self.DEFAULTS.get("compute_console_logging_max_sample_size")
+            fallback=self.DEFAULTS.get("compute_console_logging_max_sample_size"),
         )
         self.compute_console_wait_time = config.getint(
-            "clustermgtd",
-            "compute_console_wait_time",
-            fallback=self.DEFAULTS.get("compute_console_wait_time")
+            "clustermgtd", "compute_console_wait_time", fallback=self.DEFAULTS.get("compute_console_wait_time")
         )
 
     def _get_worker_pool_config(self, config):
         self.worker_pool_size = config.getint(
-            "clustermgtd",
-            "worker_pool_size",
-            fallback=self.DEFAULTS.get("worker_pool_size")
+            "clustermgtd", "worker_pool_size", fallback=self.DEFAULTS.get("worker_pool_size")
+        )
+        self.worker_pool_max_backlog = config.getint(
+            "clustermgtd", "worker_pool_max_backlog", fallback=self.DEFAULTS.get("worker_pool_max_backlog")
         )
 
     @log_exception(log, "reading cluster manager configuration file", catch_exception=IOError, raise_on_error=True)
@@ -400,11 +400,15 @@ class ClusterManager:
         )
 
     def _initialize_executor(self, config):
-        if self._config is None or self._config.worker_pool_size != config.worker_pool_size:
+        if (
+            self._config is None
+            or self._config.worker_pool_size != config.worker_pool_size
+            or self._config.worker_pool_max_backlog != config.worker_pool_max_backlog
+        ):
             if self._executor_pool:
                 # Can't use `cancel_futures=True` pre-3.9
                 self._executor_pool.shutdown(wait=False)
-            self._executor_limit = Semaphore(MAXIMUM_TASK_BACKLOG)
+            self._executor_limit = Semaphore(config.worker_pool_max_backlog)
             self._executor_pool = ThreadPoolExecutor(max_workers=config.worker_pool_size)
 
     def _queue_executor_task(self, task):
@@ -419,7 +423,7 @@ class ClusterManager:
                 return future
             else:
                 log.warning("Unable to queue task due to exceeding backlog limit")
-                return None
+        return None
 
     def _update_compute_fleet_status(self, status):
         log.info("Updating compute fleet status from %s to %s", self._compute_fleet_status, status)
@@ -753,10 +757,10 @@ class ClusterManager:
     @staticmethod
     def _console_output_callback(output):
         compute_logger.info(
-            'Console output for node %s (Instance Id %s):\r%s',
-            output.get('Name'),
-            output.get('InstanceId'),
-            output.get('ConsoleOutput')
+            "Console output for node %s (Instance Id %s):\r%s",
+            output.get("Name"),
+            output.get("InstanceId"),
+            output.get("ConsoleOutput"),
         )
 
     def _report_console_output_from_nodes(self, compute_nodes):
@@ -764,7 +768,7 @@ class ClusterManager:
             timer = start_timer()
             next(timer)
             if self._config.compute_console_logging_max_sample_size > 0:
-                report_nodes = compute_nodes[:self._config.compute_console_logging_max_sample_size]
+                report_nodes = compute_nodes[: self._config.compute_console_logging_max_sample_size]
             else:
                 report_nodes = compute_nodes
 
@@ -772,11 +776,11 @@ class ClusterManager:
                 self._instance_manager.get_console_output_task(
                     report_nodes,
                     ClusterManager._console_output_callback,
-                    self._config.compute_console_wait_time,
+                    (0, self._config.compute_console_wait_time),
                 )
             )
 
-            log.info('Gathering console output for [x%d] nodes took %s', len(report_nodes), next(timer))
+            log.info("Gathering console output for [x%d] nodes took %s", len(report_nodes), next(timer))
 
     @log_exception(log, "maintaining unhealthy static nodes", raise_on_error=False)
     def _handle_unhealthy_static_nodes(self, unhealthy_static_nodes):
@@ -785,6 +789,11 @@ class ClusterManager:
 
         Set node to down, terminate backing instance, and launch new instance for static node.
         """
+        try:
+            self._report_console_output_from_nodes(unhealthy_static_nodes)
+        except Exception as e:
+            log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
+
         node_list = [node.name for node in unhealthy_static_nodes]
         # Set nodes into down state so jobs can be requeued immediately
         try:
@@ -792,11 +801,6 @@ class ClusterManager:
             reset_nodes(node_list, state="down", reason="Static node maintenance: unhealthy node is being replaced")
         except Exception as e:
             log.error("Encountered exception when setting unhealthy static nodes into down state: %s", e)
-
-        try:
-            self._report_console_output_from_nodes(unhealthy_static_nodes)
-        except Exception as e:
-            log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
 
         instances_to_terminate = [node.instance.id for node in unhealthy_static_nodes if node.instance]
 

@@ -14,7 +14,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import call
+from unittest.mock import ANY, call
 
 import botocore
 import pytest
@@ -185,13 +185,18 @@ class TestClustermgtdConfig:
 
 def test_set_config(initialize_instance_manager_mock):
     initial_config = SimpleNamespace(
-        some_key_1="some_value_1", some_key_2="some_value_2", insufficient_capacity_timeout=20, worker_pool_size=5
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=5,
+        worker_pool_max_backlog=10,
     )
     updated_config = SimpleNamespace(
         some_key_1="some_value_1",
         some_key_2="some_value_2_changed",
         insufficient_capacity_timeout=10,
-        worker_pool_size=10
+        worker_pool_size=10,
+        worker_pool_max_backlog=5,
     )
 
     cluster_manager = ClusterManager(initial_config)
@@ -202,6 +207,53 @@ def test_set_config(initialize_instance_manager_mock):
     assert_that(cluster_manager._config).is_equal_to(updated_config)
 
     assert_that(initialize_instance_manager_mock.call_count).is_equal_to(2)
+
+
+def test_exceeding_worker_pool_backlog(initialize_instance_manager_mock):
+    initial_config = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=1,
+        worker_pool_max_backlog=0,
+        compute_console_wait_time=1,
+        compute_console_logging_enabled=True,
+        compute_console_logging_max_sample_size=-1,
+    )
+
+    cluster_manager = ClusterManager(initial_config)
+
+    future = cluster_manager._queue_executor_task(lambda output: None)
+    assert_that(future).is_none()
+
+    cluster_manager._report_console_output_from_nodes(
+        [
+            StaticNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE", "queue1"),
+        ]
+    )
+    cluster_manager.shutdown()
+
+
+def test_exception_from_report_console_output_from_nodes(initialize_instance_manager_mock, mocker):
+    config = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=5,
+        worker_pool_max_backlog=0,
+    )
+    unhealthy_nodes = [
+        StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
+    ]
+    mocker.patch("slurm_plugin.clustermgtd.ClusterManager._report_console_output_from_nodes", side_effect=Exception)
+    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
+    cluster_manager = ClusterManager(config)
+    cluster_manager._handle_unhealthy_static_nodes(unhealthy_nodes)
+
+    # Make sure the code after _report_console_from_output_nodes is called.
+    reset_nodes_mock.assert_called_once_with(
+        ANY, state="down", reason="Static node maintenance: unhealthy node is being replaced"
+    )
 
 
 @pytest.mark.parametrize(
@@ -324,7 +376,6 @@ def test_get_ec2_instances(mocker):
         create_fleet_overrides={},
         insufficient_capacity_timeout=600,
         fleet_config=FLEET_CONFIG,
-
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
@@ -809,6 +860,7 @@ def test_handle_powering_down_nodes(
         "add_node_list",
         "output_enabled",
         "set_nodes_down_exception",
+        "sample_size",
     ),
     [
         (
@@ -838,6 +890,7 @@ def test_handle_powering_down_nodes(
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             True,
             None,
+            100,
         ),
         (
             {"current-queue1-st-c5xlarge-6"},
@@ -862,6 +915,7 @@ def test_handle_powering_down_nodes(
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             False,
             None,
+            1,
         ),
         (
             {"current-queue1-st-c5xlarge-6"},
@@ -880,6 +934,7 @@ def test_handle_powering_down_nodes(
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             False,
             None,
+            1,
         ),
         (
             {"current-queue1-st-c5xlarge-6"},
@@ -898,6 +953,7 @@ def test_handle_powering_down_nodes(
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             False,
             Exception,
+            1,
         ),
     ],
     ids=["basic", "no_associated_instances", "partial_launch", "set_nodes_down_exception"],
@@ -915,6 +971,7 @@ def test_handle_unhealthy_static_nodes(
     request,
     output_enabled,
     set_nodes_down_exception,
+    sample_size,
 ):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -936,9 +993,10 @@ def test_handle_unhealthy_static_nodes(
         run_instances_overrides={},
         create_fleet_overrides={},
         compute_console_logging_enabled=output_enabled,
-        compute_console_logging_max_sample_size=100,
+        compute_console_logging_max_sample_size=sample_size,
         compute_console_wait_time=1,
         worker_pool_size=5,
+        worker_pool_max_backlog=10,
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
@@ -961,22 +1019,26 @@ def test_handle_unhealthy_static_nodes(
     if output_enabled:
         cluster_manager._instance_manager._get_instances_for_nodes = mocker.MagicMock(
             return_value=(
-                output for output in (
+                output
+                for output in (
                     {
                         "Name": node,
                         "InstanceId": instance,
-                    } for node, instance in zip(unhealthy_static_nodes, launched_instances)
+                    }
+                    for node, instance in zip(unhealthy_static_nodes, launched_instances)
                 )
             )
         )
         InstanceManager._get_console_output_from_nodes = mocker.MagicMock(
             return_value=(
-                output for output in (
+                output
+                for output in (
                     {
                         "Name": node,
                         "InstanceId": instance,
                         "ConsoleOutput": f"{node}-{instance} output",
-                    } for node, instance in zip(unhealthy_static_nodes, launched_instances)
+                    }
+                    for node, instance in zip(unhealthy_static_nodes, launched_instances)
                 )
             )
         )
@@ -2227,9 +2289,7 @@ def initialize_instance_manager_mock(mocker):
 
 @pytest.fixture()
 def initialize_executor_mock(mocker):
-    return mocker.patch.object(
-        ClusterManager, "_initialize_executor", spec=ClusterManager._initialize_executor
-    )
+    return mocker.patch.object(ClusterManager, "_initialize_executor", spec=ClusterManager._initialize_executor)
 
 
 @pytest.mark.parametrize(
