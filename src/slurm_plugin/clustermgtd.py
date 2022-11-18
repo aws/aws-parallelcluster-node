@@ -370,19 +370,15 @@ class ClusterManager:
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
 
-            if self._config is None or self._config.worker_pool_size != config.worker_pool_size:
-                if self._executor_pool:
-                    self._executor_pool.shudown(wait=False, cancel_futures=True)
-                self._executor_limit = Semaphore(MAXIMUM_TASK_BACKLOG)
-                self._executor_pool = ThreadPoolExecutor(max_workers=config.worker_pool_size)
-
+            self._initialize_executor(config)
             self._config = config
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
 
     def shutdown(self):
         if self._executor_pool:
-            self._executor_pool.shudown(wait=False, cancel_futures=True)
+            # Can't use `cancel_futures=True` pre-3.9
+            self._executor_pool.shutdown(wait=False)
             self._executor_pool = None
 
     @staticmethod
@@ -403,11 +399,23 @@ class ClusterManager:
             fleet_config=config.fleet_config,
         )
 
+    def _initialize_executor(self, config):
+        if self._config is None or self._config.worker_pool_size != config.worker_pool_size:
+            if self._executor_pool:
+                # Can't use `cancel_futures=True` pre-3.9
+                self._executor_pool.shutdown(wait=False)
+            self._executor_limit = Semaphore(MAXIMUM_TASK_BACKLOG)
+            self._executor_pool = ThreadPoolExecutor(max_workers=config.worker_pool_size)
+
     def _queue_executor_task(self, task):
+        def queue_executor_task_callback(*args):
+            semaphore.release()
+
+        semaphore = self._executor_limit
         if task:
-            if self._executor_limit.acquire(blocking=False):
+            if semaphore.acquire(blocking=False):
                 future = self._executor_pool.submit(task)
-                future.add_done_callback(lambda: self._executor_limit.release())
+                future.add_done_callback(queue_executor_task_callback)
                 return future
             else:
                 log.warning("Unable to queue task due to exceeding backlog limit")

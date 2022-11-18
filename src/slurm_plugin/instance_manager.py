@@ -400,7 +400,7 @@ class InstanceManager:
 
             report_console_output()
 
-            sleep_remaining_loop_time(30, start_time)
+            sleep_remaining_loop_time(min(30, wait_time), start_time)
             report_console_output()
 
             logger.info("Beginning wait for console output settling time")
@@ -419,7 +419,7 @@ class InstanceManager:
             if output:
                 output = re.sub(r'\r\n|\n', '\r', output)
             yield {
-                'Name': instance.get('name'),
+                'Name': instance.get('Name'),
                 'InstanceId': instance_id,
                 'ConsoleOutput': output
             }
@@ -433,8 +433,8 @@ class InstanceManager:
             logging.info("Response: %s", response)
             for item in response.get("Responses").get(self._table.table_name):
                 yield {
-                    "name": item.get("Id"),
-                    "InstanceId": item.get("InstanceId"),
+                    'Name': item.get('Id'),
+                    'InstanceId': item.get('InstanceId'),
                 }
 
     @staticmethod
