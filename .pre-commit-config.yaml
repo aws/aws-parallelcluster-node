@@ -37,7 +37,7 @@ repos:
       - id: seed-isort-config
 
   - repo: https://github.com/ambv/black
-    rev: 22.6.0
+    rev: stable
     hooks:
       - id: black
         args: ['-l 120']
