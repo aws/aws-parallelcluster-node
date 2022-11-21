@@ -269,6 +269,7 @@ class TestCreateFleetManager:
             "compute_resource",
             "all_or_nothing",
             "launch_overrides",
+            "log_assertions",
         ),
         [
             # normal - spot
@@ -278,6 +279,7 @@ class TestCreateFleetManager:
                 "fleet-spot",
                 False,
                 {},
+                None,
             ),
             # normal - on-demand
             (
@@ -286,6 +288,7 @@ class TestCreateFleetManager:
                 "fleet-ondemand",
                 False,
                 {},
+                None,
             ),
             # all or nothing
             (
@@ -294,6 +297,7 @@ class TestCreateFleetManager:
                 "fleet-spot",
                 True,
                 {},
+                None,
             ),
             # launch_overrides
             (
@@ -310,6 +314,7 @@ class TestCreateFleetManager:
                         }
                     }
                 },
+                None,
             ),
             # Fleet with (Single-Subnet, Multi-InstanceType) AND all_or_nothing is True --> MinTargetCapacity is set
             (
@@ -318,6 +323,7 @@ class TestCreateFleetManager:
                 "fleet1",
                 True,
                 {},
+                None,
             ),
             # Fleet with (Multi-Subnet, Single-InstanceType) AND all_or_nothing is True --> MinTargetCapacity is set
             (
@@ -326,6 +332,7 @@ class TestCreateFleetManager:
                 "fleet1",
                 True,
                 {},
+                None,
             ),
             # Fleet with (Multi-Subnet, Multi-InstanceType) AND all_or_nothing is False --> NOT set MinTargetCapacity
             (
@@ -334,6 +341,16 @@ class TestCreateFleetManager:
                 "fleet1",
                 False,
                 {},
+                None,
+            ),
+            # Fleet with (Multi-Subnet, Multi-InstanceType) AND all_or_nothing is True --> Log a warning
+            (
+                5,
+                "queue6",
+                "fleet1",
+                True,
+                {},
+                "All-or-Nothing is only available with single instance type compute resources or single subnet queues",
             ),
         ],
         ids=[
@@ -344,10 +361,20 @@ class TestCreateFleetManager:
             "fleet-single-az-multi-it-all_or_nothing",
             "fleet-multi-az-single-it-all_or_nothing",
             "fleet-multi-az-multi-it",
+            "fleet-multi-az-multi-it-all_or_nothing",
         ],
     )
     def test_evaluate_launch_params(
-        self, batch_size, queue, compute_resource, all_or_nothing, launch_overrides, caplog, test_datadir, request
+        self,
+        batch_size,
+        queue,
+        compute_resource,
+        all_or_nothing,
+        launch_overrides,
+        log_assertions,
+        caplog,
+        test_datadir,
+        request,
     ):
         caplog.set_level(logging.INFO)
         # run tests
@@ -360,6 +387,9 @@ class TestCreateFleetManager:
         assert_that(launch_params).is_equal_to(json.loads(params_path.read_text()))
         if launch_overrides:
             assert_that(caplog.text).contains("Found CreateFleet parameters override")
+
+        if log_assertions:
+            assert_that(caplog.text).contains(log_assertions)
 
     @pytest.mark.parametrize(
         ("launch_params", "mocked_boto3_request", "expected_assigned_nodes"),
