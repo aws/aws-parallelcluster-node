@@ -375,15 +375,14 @@ class InstanceManager:
         start_time = datetime.now(tz=timezone.utc)
 
         region = self._region
-        instances = list(self._get_instances_for_nodes(nodes))
+        instances = tuple(self._get_instances_for_nodes(nodes))
         if len(instances) < 1:
             return None
 
         def report_console_output(ec2client, output_hashes):
-            for output in InstanceManager._get_console_output_from_nodes(ec2client, instances, region):
-                instance_id = output.get("InstanceId")
-                console_output = output.get("ConsoleOutput")
-                current_hash = hashlib.sha256(console_output.encode()).hexdigest()
+            for output in InstanceManager._get_console_output_from_nodes(ec2client, instances):
+                instance_id, console_output = output.get("InstanceId"), output.get("ConsoleOutput")
+                current_hash = hashlib.sha256(console_output.encode()).hexdigest() if console_output else None
                 previous_hash = output_hashes.get(instance_id)
                 if current_hash != previous_hash:
                     output_callback(output)
@@ -415,7 +414,7 @@ class InstanceManager:
                 }
 
     @staticmethod
-    def _get_console_output_from_nodes(ec2client, instances, region):
+    def _get_console_output_from_nodes(ec2client, instances):
         for instance in instances:
             instance_id = instance.get("InstanceId")
             response = ec2client.get_console_output(InstanceId=instance_id)

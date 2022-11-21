@@ -38,7 +38,7 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import check_command_output, read_json, sleep_remaining_loop_time, start_timer, time_is_up
+from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
 from slurm_plugin.instance_manager import InstanceManager
@@ -765,8 +765,6 @@ class ClusterManager:
 
     def _report_console_output_from_nodes(self, compute_nodes):
         if self._config.compute_console_logging_enabled:
-            timer = start_timer()
-            next(timer)
             if self._config.compute_console_logging_max_sample_size > 0:
                 report_nodes = compute_nodes[: self._config.compute_console_logging_max_sample_size]
             else:
@@ -779,8 +777,6 @@ class ClusterManager:
                     (0, self._config.compute_console_wait_time),
                 )
             )
-
-            log.info("Gathering console output for [x%d] nodes took %s", len(report_nodes), next(timer))
 
     @log_exception(log, "maintaining unhealthy static nodes", raise_on_error=False)
     def _handle_unhealthy_static_nodes(self, unhealthy_static_nodes):
