@@ -18,8 +18,6 @@ ignore =
     W503,
     # N818: exception name should be named with an Error suffix
     N818,
-    # No space around ':' in a slice => conflicts with black style.
-    E203,
 exclude =
     .tox,
     .git,

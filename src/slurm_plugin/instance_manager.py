@@ -10,7 +10,6 @@
 # limitations under the License.
 
 import collections
-import hashlib
 import logging
 import re
 
@@ -23,7 +22,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
-from common.utils import grouper, sleep_remaining_loop_time
+from common.utils import grouper
 from slurm_plugin.common import log_exception, print_with_count
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
@@ -40,6 +39,28 @@ logger = logging.getLogger(__name__)
 # PageSize parameter used for Boto3 paginated calls
 # Corresponds to MaxResults in describe_instances and describe_instance_status API
 BOTO3_PAGINATION_PAGE_SIZE = 1000
+BOTO3_MAX_BATCH_SIZE = 50
+
+
+def _partition_nodes(node_names, size=BOTO3_MAX_BATCH_SIZE):
+    node_name_list = list(node_names)
+
+    # black and flake conflict on this style
+    return (node_name_list[start : start + size] for start in range(0, len(node_name_list), size))  # noqa: E203
+
+
+def _create_request_for_nodes(table_name, node_names):
+    return {
+        str(table_name): {
+            "Keys": [
+                {
+                    "Id": str(node_name),
+                }
+                for node_name in node_names
+            ],
+            "ProjectionExpression": "Id, InstanceId",
+        }
+    }
 
 
 class InstanceManager:
@@ -80,6 +101,9 @@ class InstanceManager:
         self._fleet_config = fleet_config
         self._run_instances_overrides = run_instances_overrides or {}
         self._create_fleet_overrides = create_fleet_overrides or {}
+        self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
+            resource_name, region_name=region, config=boto3_config
+        )
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -366,78 +390,42 @@ class InstanceManager:
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
 
-    def get_console_output_task(self, nodes, output_callback, wait_times):
-        """
-        Return a function that will retrieve the console output for each node in `nodes`.
+    def get_node_instance_mapper(self):
+        """Return a function that maps nodes to instance ids."""
 
-        The console output for each node will be passed to output_callback.
-        """
-        start_time = datetime.now(tz=timezone.utc)
-
-        region = self._region
-        instances = tuple(self._get_instances_for_nodes(nodes))
-        if len(instances) < 1:
-            return None
-
-        def report_console_output(ec2client, output_hashes):
-            for output in InstanceManager._get_console_output_from_nodes(ec2client, instances):
-                instance_id, console_output = output.get("InstanceId"), output.get("ConsoleOutput")
-                current_hash = hashlib.sha256(console_output.encode()).hexdigest() if console_output else None
-                previous_hash = output_hashes.get(instance_id)
-                if current_hash != previous_hash:
-                    output_callback(output)
-                    output_hashes.update({instance_id: current_hash})
-
-        def console_collector():
-            try:
-                ec2 = boto3.session.Session().client("ec2", region_name=region)
-
-                output_hashes = {}
-
-                for next_wait in wait_times:
-                    sleep_remaining_loop_time(next_wait, start_time)
-                    report_console_output(ec2, output_hashes)
-            except Exception as e:
-                logger.error("Encountered exception while retrieving compute console output: %s", e)
-
-        return console_collector
-
-    def _get_instances_for_nodes(self, nodes):
-        node_name_partitions = self._partition_nodes(node.name for node in nodes)
-        for node_name_partition in node_name_partitions:
-            query = self._create_request_for_nodes(str(self._table.table_name), node_name_partition)
-            response = self._ddb_resource.batch_get_item(RequestItems=query)
-            for item in response.get("Responses").get(self._table.table_name):
-                yield {
-                    "Name": item.get("Id"),
-                    "InstanceId": item.get("InstanceId"),
-                }
-
-    @staticmethod
-    def _get_console_output_from_nodes(ec2client, instances):
-        for instance in instances:
-            instance_id = instance.get("InstanceId")
-            response = ec2client.get_console_output(InstanceId=instance_id)
-            output = response.get("Output")
-            if output:
-                output = re.sub(r"\r\n|\n", "\r", output)
-            yield {"Name": instance.get("Name"), "InstanceId": instance_id, "ConsoleOutput": output}
-
-    @staticmethod
-    def _partition_nodes(node_names, size=50):
-        node_name_list = list(node_names)
-        return (node_name_list[start : start + size] for start in range(0, len(node_name_list), size))
-
-    @staticmethod
-    def _create_request_for_nodes(table_name, node_names):
-        return {
-            str(table_name): {
-                "Keys": [
+        def get_instances_for_nodes(nodes):
+            nodes_with_instance_id = []
+            nodes_without_instance_id = []
+            for node in nodes:
+                (nodes_with_instance_id if node.instance else nodes_without_instance_id).append(
                     {
-                        "Id": str(node_name),
+                        "Name": node.name,
+                        "InstanceId": node.instance.id if node.instance else None,
                     }
-                    for node_name in node_names
-                ],
-                "ProjectionExpression": "Id, InstanceId",
-            }
-        }
+                )
+
+            # Return instance ids that don't require a DDB lookup first.
+            for node in nodes_with_instance_id:
+                yield node
+
+            # Only get a ddb resource if we have something to do.
+            if len(nodes_without_instance_id) < 1:
+                return
+
+            # Lookup instance ids in DDB for nodes that we don't already have the instance id for.
+            ddb_resource = resource_factory("dynamodb")
+            node_name_partitions = _partition_nodes(node.get("Name") for node in nodes_without_instance_id)
+            for node_name_partition in node_name_partitions:
+                query = _create_request_for_nodes(table_name=table_name, node_names=node_name_partition)
+                response = ddb_resource.batch_get_item(RequestItems=query)
+                for item in response.get("Responses").get(table_name):
+                    yield {
+                        "Name": item.get("Id"),
+                        "InstanceId": item.get("InstanceId"),
+                    }
+
+        # Set up our closure so that we don't have to reference self.
+        table_name = str(self._table.table_name)
+        resource_factory = self._boto3_resource_factory
+
+        return get_instances_for_nodes

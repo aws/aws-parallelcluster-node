@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
@@ -41,6 +40,7 @@ from common.time_utils import seconds
 from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
+from slurm_plugin.console_logger import ConsoleLogger
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     CONFIG_FILE_DIR,
@@ -51,6 +51,7 @@ from slurm_plugin.slurm_resources import (
     SlurmNode,
     StaticNode,
 )
+from slurm_plugin.task_executor import TaskExecutor
 
 LOOP_TIME = 60
 CONSOLE_OUTPUT_WAIT_TIME = 3 * 60
@@ -362,24 +363,24 @@ class ClusterManager:
         self._config = None
         self._compute_fleet_status_manager = None
         self._instance_manager = None
-        self._executor_limit = None
-        self._executor_pool = None
+        self._task_executor = None
+        self._console_logger = None
         self.set_config(config)
 
     def set_config(self, config):
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
 
-            self._initialize_executor(config)
+            self._task_executor = self._initialize_executor(config)
             self._config = config
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
+            self._console_logger = self._initialize_console_logger(config)
 
     def shutdown(self):
-        if self._executor_pool:
-            # Can't use `cancel_futures=True` pre-3.9
-            self._executor_pool.shutdown(wait=False)
-            self._executor_pool = None
+        if self._task_executor:
+            self._task_executor.shutdown()
+            self._task_executor = None
 
     @staticmethod
     def _initialize_instance_manager(config):
@@ -405,25 +406,25 @@ class ClusterManager:
             or self._config.worker_pool_size != config.worker_pool_size
             or self._config.worker_pool_max_backlog != config.worker_pool_max_backlog
         ):
-            if self._executor_pool:
-                # Can't use `cancel_futures=True` pre-3.9
-                self._executor_pool.shutdown(wait=False)
-            self._executor_limit = Semaphore(config.worker_pool_max_backlog)
-            self._executor_pool = ThreadPoolExecutor(max_workers=config.worker_pool_size)
+            if self._task_executor:
+                self._task_executor.shutdown()
+            return TaskExecutor(
+                worker_pool_size=config.worker_pool_size,
+                max_backlog=config.worker_pool_max_backlog,
+            )
+        return self._task_executor
 
-    def _queue_executor_task(self, task):
-        def queue_executor_task_callback(*args):
-            semaphore.release()
-
-        semaphore = self._executor_limit
-        if task:
-            if semaphore.acquire(blocking=False):
-                future = self._executor_pool.submit(task)
-                future.add_done_callback(queue_executor_task_callback)
-                return future
-            else:
-                log.warning("Unable to queue task due to exceeding backlog limit")
-        return None
+    @staticmethod
+    def _initialize_console_logger(config):
+        return ConsoleLogger(
+            region=config.region,
+            enabled=config.compute_console_logging_enabled,
+            console_output_consumer=lambda name, instance_id, output: compute_logger.info(
+                "Console output for node %s (Instance Id %s):\r%s", name, instance_id, output
+            ),
+            max_sample_size=config.compute_console_logging_max_sample_size,
+            console_output_wait_time=config.compute_console_wait_time,
+        )
 
     def _update_compute_fleet_status(self, status):
         log.info("Updating compute fleet status from %s to %s", self._compute_fleet_status, status)
@@ -437,7 +438,7 @@ class ClusterManager:
         Includes resetting partition bootstrap failure count for these nodes type and updating the
         bootstrap_failure_nodes_types.
         If a node has been failed successfully launched, the partition count of this node will be reset.
-        So the successfully launched nodes type will be remove from bootstrap_failure_nodes_types.
+        So the successfully launched nodes type will be removed from bootstrap_failure_nodes_types.
         If there's node types failed in this partition later, it will keep count again.
         """
         # Find nodes types which have been failed during bootstrap now become online.
@@ -754,30 +755,6 @@ class ClusterManager:
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
 
-    @staticmethod
-    def _console_output_callback(output):
-        compute_logger.info(
-            "Console output for node %s (Instance Id %s):\r%s",
-            output.get("Name"),
-            output.get("InstanceId"),
-            output.get("ConsoleOutput"),
-        )
-
-    def _report_console_output_from_nodes(self, compute_nodes):
-        if self._config.compute_console_logging_enabled:
-            if self._config.compute_console_logging_max_sample_size > 0:
-                report_nodes = compute_nodes[: self._config.compute_console_logging_max_sample_size]
-            else:
-                report_nodes = compute_nodes
-
-            self._queue_executor_task(
-                self._instance_manager.get_console_output_task(
-                    report_nodes,
-                    ClusterManager._console_output_callback,
-                    (0, self._config.compute_console_wait_time),
-                )
-            )
-
     @log_exception(log, "maintaining unhealthy static nodes", raise_on_error=False)
     def _handle_unhealthy_static_nodes(self, unhealthy_static_nodes):
         """
@@ -786,7 +763,11 @@ class ClusterManager:
         Set node to down, terminate backing instance, and launch new instance for static node.
         """
         try:
-            self._report_console_output_from_nodes(unhealthy_static_nodes)
+            self._console_logger.report_console_output_from_nodes(
+                compute_nodes=unhealthy_static_nodes,
+                instance_supplier=self._instance_manager.get_node_instance_mapper(),
+                task_executor=lambda task: self._task_executor.queue_executor_task(task),
+            )
         except Exception as e:
             log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
 

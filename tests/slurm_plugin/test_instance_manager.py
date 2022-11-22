@@ -8,11 +8,10 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-import collections
 import logging
 import os
 from datetime import datetime, timezone
-from unittest.mock import call, patch
+from unittest.mock import call
 
 import botocore
 import pytest
@@ -1309,216 +1308,96 @@ class TestInstanceManager:
         assert_that(result).is_equal_to(expected_parsed_result)
 
     @pytest.mark.parametrize(
-        "nodes,mocked_responses,error_on_callback",
+        "nodes",
         [
-            (
-                [
-                    StaticNode(
-                        "queue1-st-c5xlarge-1",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue1",
-                        instance="i-instance-1",
-                    ),
-                    StaticNode(
-                        "queue1-st-c5xlarge-2", "ip-2", "hostname-2", "some_state", "queue1", instance="i-instance-2"
-                    ),
-                ],
-                [
-                    {
-                        "InstanceId": "i-instance-1",
-                        "Output": "Console output for you.",
-                    },
-                    {
-                        "InstanceId": "i-instance-2",
-                        "Output": "Console output for you too.",
-                    },
-                ],
-                False,
-            ),
-            (
-                [
-                    StaticNode(
-                        "queue1-st-c5xlarge-1",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue1",
-                        instance="i-instance-1",
-                    ),
-                    StaticNode(
-                        "queue1-st-c5xlarge-2", "ip-2", "hostname-2", "some_state", "queue1", instance="i-instance-2"
-                    ),
-                ],
-                [
-                    {
-                        "InstanceId": "i-instance-1",
-                        "Output": "Console output for you.",
-                    },
-                    {
-                        "InstanceId": "i-instance-2",
-                        "Output": None,
-                    },
-                ],
-                False,
-            ),
-            (
-                [
-                    StaticNode(
-                        "queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1", instance="i-instance-1"
-                    ),
-                    StaticNode(
-                        "queue1-st-c5xlarge-2", "ip-2", "hostname-2", "some_state", "queue1", instance="i-instance-2"
-                    ),
-                ],
-                [
-                    {
-                        "InstanceId": "i-instance-1",
-                        "Output": "Console output for you.",
-                    },
-                ],
-                True,
-            ),
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname-1",
+                    "some_state",
+                    "queue1",
+                    instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                ),
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname-2",
+                    "some_state",
+                    "queue1",
+                    instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                ),
+                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
+                StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
+                StaticNode(
+                    "queue1-st-c5xlarge-5",
+                    "ip-5",
+                    "hostname-5",
+                    "some_state",
+                    "queue1",
+                    instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                ),
+                StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
+            ],
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname-1",
+                    "some_state",
+                    "queue1",
+                    instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                ),
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname-2",
+                    "some_state",
+                    "queue1",
+                    instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                ),
+                StaticNode(
+                    "queue1-st-c5xlarge-5",
+                    "ip-5",
+                    "hostname-5",
+                    "some_state",
+                    "queue1",
+                    instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                ),
+            ],
         ],
     )
     def test_get_console_output(
         self,
         nodes,
-        mocked_responses,
-        error_on_callback,
         instance_manager,
-        boto3_stubber,
-        boto3_stubber_path,
+        mocker,
     ):
-        instances_response = ({"Name": node.name, "InstanceId": node.instance} for node in nodes)
-        output_responses = {response["InstanceId"]: response for response in mocked_responses}
+        node_lookup = {node.name: node for node in nodes}
 
-        def output_callback(output):
-            received_output.append(output)
-            if error_on_callback:
-                raise Exception("Big Oof")
-
-        def get_console_output(ec2client, instances):
-            for instance in instances:
-                instance_id = instance["InstanceId"]
-                yield {
-                    "Name": f"named-{instance_id}",
-                    "InstancedId": instance_id,
-                    "ConsoleOutput": output_responses[instance_id]["Output"],
+        class DdbResource:
+            def batch_get_item(*args, **kwargs):
+                return {
+                    "Responses": {
+                        table_name: [
+                            {
+                                "Id": key.get("Id"),
+                                "InstanceId": "instance-" + node_lookup.get(key.get("Id")).name,
+                            }
+                            for key in keys.get("Keys")
+                        ]
+                        for table_name, keys in kwargs.get("RequestItems").items()
+                    }
                 }
 
-        received_output = []
+        instance_manager._boto3_resource_factory = lambda resource_name: DdbResource()
+        mapper = instance_manager.get_node_instance_mapper()
+        results = list(mapper(nodes))
 
-        with patch.object(instance_manager, "_get_instances_for_nodes") as get_instances_for_nodes_mock:
-            get_instances_for_nodes_mock.return_value = instances_response
-            task = instance_manager.get_console_output_task(nodes, output_callback, (0,))
-
-        with patch(
-            "slurm_plugin.instance_manager.InstanceManager._get_console_output_from_nodes"
-        ) as get_console_output_from_nodes_mock:
-            get_console_output_from_nodes_mock.side_effect = get_console_output
-            task()
-
-        assert_that(received_output).is_length(len(mocked_responses))
-
-    @pytest.mark.parametrize(
-        "mocked_ec2_requests",
-        [
-            [
-                MockedBoto3Request(
-                    method="get_console_output",
-                    response={
-                        "InstanceId": "i-instance-1",
-                        "Output": "Console output for you.",
-                        "Timestamp": "2022-11-18T23:37:25.000Z",
-                    },
-                    expected_params={
-                        "InstanceId": "i-instance-1",
-                    },
-                    generate_error=False,
-                ),
-                MockedBoto3Request(
-                    method="get_console_output",
-                    response={
-                        "InstanceId": "i-instance-2",
-                        "Output": "Console output for you too.",
-                        "Timestamp": "2022-11-18T23:37:25.000Z",
-                    },
-                    expected_params={
-                        "InstanceId": "i-instance-2",
-                    },
-                    generate_error=False,
-                ),
-            ],
-        ],
-    )
-    def test_get_console_output_from_nodes(
-        self,
-        mocked_ec2_requests,
-        instance_manager,
-        boto3_stubber,
-        boto3_stubber_path,
-    ):
-        expected_results = {
-            request.response["InstanceId"]: request.response["Output"]
-            for request in (requests for requests in mocked_ec2_requests)
-        }
-
-        ec2_stub = boto3_stubber("ec2", mocked_ec2_requests)
-
-        results = InstanceManager._get_console_output_from_nodes(
-            ec2_stub,
-            (
-                {"InstanceId": request.response["InstanceId"], "Name": f"name-of-{request.response['InstanceId']}"}
-                for request in mocked_ec2_requests
-            ),
-        )
-
-        assert_that(list(results)).is_length(len(mocked_ec2_requests))
-
-        collections.deque(
-            map(
-                lambda result: assert_that(result["ConsoleOutput"]).is_equal_to(expected_results[result["InstanceId"]]),
-                results,
-            ),
-            0,
-        )
-
-    @pytest.mark.parametrize(
-        "response_map",
-        [
-            {
-                "instance-name-st-n-1": "instance-1",
-                "instance-name-st-n-2": "instance-2",
-                "instance-name-st-n-3": "instance-3",
-            }
-        ],
-    )
-    def test_get_instances_for_nodes(self, response_map, instance_manager, mocker):
-        def batch_get_item(**kwargs):
-            request_items = kwargs["RequestItems"]
-            table = request_items[instance_manager._table.table_name]
-            return {
-                "Responses": {
-                    instance_manager._table.table_name: [
-                        {"Id": key["Id"], "InstanceId": response_map[key["Id"]]} for key in table["Keys"]
-                    ]
-                }
-            }
-
-        with patch.object(instance_manager, "_ddb_resource") as resource_mock:
-            resource_mock.batch_get_item = batch_get_item
-            response = list(
-                instance_manager._get_instances_for_nodes(
-                    (
-                        StaticNode(name, f"{name}-ip", f"{name}-hostname", "some_state", "queue1")
-                        for name in response_map
-                    )
-                )
-            )
-
-            assert_that(response).is_length(len(response_map))
-            collections.deque(
-                map(lambda item: assert_that(item["InstanceId"]).is_equal_to(response_map[item["Name"]]), response), 0
-            )
+        assert_that(results).is_length(len(nodes))
+        for result in results:
+            node = node_lookup.get(result.get("Name"))
+            if node.instance:
+                assert_that(result.get("InstanceId")).is_equal_to(node.instance.id)
+            else:
+                assert_that(result.get("InstanceId")).is_equal_to("instance-" + node.name)

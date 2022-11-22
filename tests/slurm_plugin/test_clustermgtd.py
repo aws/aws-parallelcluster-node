@@ -22,7 +22,6 @@ import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
 from slurm_plugin.fleet_manager import EC2Instance
-from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -183,6 +182,7 @@ class TestClustermgtdConfig:
         assert_that(ClustermgtdConfig(config)).is_not_equal_to(ClustermgtdConfig(config_modified))
 
 
+@pytest.mark.usefixtures("initialize_console_logger_mock")
 def test_set_config(initialize_instance_manager_mock):
     initial_config = SimpleNamespace(
         some_key_1="some_value_1",
@@ -209,32 +209,10 @@ def test_set_config(initialize_instance_manager_mock):
     assert_that(initialize_instance_manager_mock.call_count).is_equal_to(2)
 
 
-def test_exceeding_worker_pool_backlog(initialize_instance_manager_mock):
-    initial_config = SimpleNamespace(
-        some_key_1="some_value_1",
-        some_key_2="some_value_2",
-        insufficient_capacity_timeout=20,
-        worker_pool_size=1,
-        worker_pool_max_backlog=0,
-        compute_console_wait_time=1,
-        compute_console_logging_enabled=True,
-        compute_console_logging_max_sample_size=-1,
-    )
-
-    cluster_manager = ClusterManager(initial_config)
-
-    future = cluster_manager._queue_executor_task(lambda output: None)
-    assert_that(future).is_none()
-
-    cluster_manager._report_console_output_from_nodes(
-        [
-            StaticNode("queue1-st-c5xlarge-6", "ip-6", "ip-6", "IDLE", "queue1"),
-        ]
-    )
-    cluster_manager.shutdown()
-
-
-def test_exception_from_report_console_output_from_nodes(initialize_instance_manager_mock, mocker):
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_exception_from_report_console_output_from_nodes(mocker):
     config = SimpleNamespace(
         some_key_1="some_value_1",
         some_key_2="some_value_2",
@@ -245,10 +223,18 @@ def test_exception_from_report_console_output_from_nodes(initialize_instance_man
     unhealthy_nodes = [
         StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
     ]
-    mocker.patch("slurm_plugin.clustermgtd.ClusterManager._report_console_output_from_nodes", side_effect=Exception)
     reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     cluster_manager = ClusterManager(config)
+
+    mock_console_logger = mocker.patch.object(cluster_manager, "_console_logger", auto_spec=True)
+    report_mock = mocker.patch.object(
+        mock_console_logger, "report_console_output_from_nodes", side_effect=Exception, auto_spec=True
+    )
+
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_nodes)
+
+    # Make sure report_console_output_from_nodes was called.
+    report_mock.assert_called_once()
 
     # Make sure the code after _report_console_from_output_nodes is called.
     reset_nodes_mock.assert_called_once_with(
@@ -323,8 +309,10 @@ def test_exception_from_report_console_output_from_nodes(initialize_instance_man
     ],
     ids=["normal", "delete_exception", "reset_exception"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
-def test_clean_up_inactive_parititon(
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_clean_up_inactive_partition(
     inactive_instances,
     slurm_inactive_nodes,
     expected_reset,
@@ -359,7 +347,7 @@ def test_clean_up_inactive_parititon(
         mock_reset_node.assert_not_called()
 
 
-@pytest.mark.usefixtures("initialize_executor_mock")
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_get_ec2_instances(mocker):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -531,7 +519,7 @@ def test_get_ec2_instances(mocker):
     ],
     ids=["basic", "disable_ec2", "disable_all", "disable_scheduled", "no_unhealthy_instance"],
 )
-@pytest.mark.usefixtures("initialize_executor_mock")
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_perform_health_check_actions(
     mock_instance_health_states,
     disable_ec2_health_check,
@@ -613,7 +601,9 @@ def test_perform_health_check_actions(
     ],
     ids=["scheduled_event", "ec2_health", "all_healthy"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_health_check(
     health_check_type,
     mock_fail_ec2_side_effect,
@@ -685,7 +675,9 @@ def test_handle_health_check(
     ],
     ids=["mixed"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes, expected_replacing_nodes, mocker):
     mock_sync_config = SimpleNamespace(insufficient_capacity_timeout=600)
     cluster_manager = ClusterManager(mock_sync_config)
@@ -778,7 +770,9 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
     ],
     ids=["basic", "disable smart instance capacity"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_unhealthy_dynamic_nodes(
     unhealthy_dynamic_nodes,
     instances,
@@ -834,7 +828,9 @@ def test_handle_unhealthy_dynamic_nodes(
     ],
     ids=["basic"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_powering_down_nodes(
     slurm_nodes, instances, instances_to_terminate, expected_powering_down_nodes, mocker
 ):
@@ -958,6 +954,7 @@ def test_handle_powering_down_nodes(
     ],
     ids=["basic", "no_associated_instances", "partial_launch", "set_nodes_down_exception"],
 )
+@pytest.mark.usefixtures("initialize_console_logger_mock")
 def test_handle_unhealthy_static_nodes(
     current_replacing_nodes,
     unhealthy_static_nodes,
@@ -1016,32 +1013,10 @@ def test_handle_unhealthy_static_nodes(
             }
         }
     )
-    if output_enabled:
-        cluster_manager._instance_manager._get_instances_for_nodes = mocker.MagicMock(
-            return_value=(
-                output
-                for output in (
-                    {
-                        "Name": node,
-                        "InstanceId": instance,
-                    }
-                    for node, instance in zip(unhealthy_static_nodes, launched_instances)
-                )
-            )
-        )
-        InstanceManager._get_console_output_from_nodes = mocker.MagicMock(
-            return_value=(
-                output
-                for output in (
-                    {
-                        "Name": node,
-                        "InstanceId": instance,
-                        "ConsoleOutput": f"{node}-{instance} output",
-                    }
-                    for node, instance in zip(unhealthy_static_nodes, launched_instances)
-                )
-            )
-        )
+
+    report_mock = mocker.patch.object(
+        cluster_manager._console_logger, "report_console_output_from_nodes", auto_spec=True
+    )
 
     mocker.patch("slurm_plugin.instance_manager.update_nodes")
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
@@ -1062,6 +1037,7 @@ def test_handle_unhealthy_static_nodes(
 
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes)
+
     if set_nodes_down_exception is Exception:
         assert_that(caplog.text).contains("Encountered exception when setting unhealthy static nodes into down state:")
         return
@@ -1079,6 +1055,7 @@ def test_handle_unhealthy_static_nodes(
     if "partial_launch" not in request.node.name:
         assert_that(caplog.text).is_empty()
     assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_replacing_nodes)
+    report_mock.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -1192,7 +1169,9 @@ def test_handle_unhealthy_static_nodes(
     ],
     ids=["basic", "disable smart instance capacity fail over mechanism"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_maintain_nodes(
     active_nodes,
     instances,
@@ -1289,7 +1268,9 @@ def test_maintain_nodes(
     ],
     ids=["all_good", "orphaned", "orphaned_timeout"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_terminate_orphaned_instances(
     cluster_instances, slurm_nodes, current_time, expected_instance_to_terminate, mocker
 ):
@@ -1442,7 +1423,7 @@ def test_terminate_orphaned_instances(
         "stopped_disabled",
     ],
 )
-@pytest.mark.usefixtures("initialize_executor_mock")
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_manage_cluster(
     disable_cluster_management,
     disable_health_check,
@@ -1929,6 +1910,7 @@ def test_manage_cluster(
     ],
     ids=["basic", "failures", "critical_failure_1", "critical_failure_2"],
 )
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_manage_cluster_boto3(
     boto3_stubber,
     config_file,
@@ -2053,7 +2035,7 @@ class TestComputeFleetStatusManager:
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_executor_mock")
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_handle_successfully_launched_nodes(
     healthy_nodes,
     expected_partitions_protected_failure_count_map,
@@ -2132,7 +2114,9 @@ def test_handle_successfully_launched_nodes(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_increase_partitions_protected_failure_count(nodes, initial_map, expected_map, mocker):
     # Mock associated function
     mock_sync_config = SimpleNamespace(insufficient_capacity_timeout=600)
@@ -2151,7 +2135,9 @@ def test_increase_partitions_protected_failure_count(nodes, initial_map, expecte
         ("queue2", {"queue1": 2}),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_reset_partition_failure_count(mocker, partition, expected_map):
     # Mock associated function
     mock_sync_config = SimpleNamespace(insufficient_capacity_timeout=600)
@@ -2208,7 +2194,9 @@ def test_reset_partition_failure_count(mocker, partition, expected_map):
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_protected_mode_process(
     partitions,
     slurm_nodes_list,
@@ -2258,7 +2246,9 @@ def test_handle_protected_mode_process(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_enter_protected_mode(
     partitions_to_disable,
     mocker,
@@ -2290,6 +2280,15 @@ def initialize_instance_manager_mock(mocker):
 @pytest.fixture()
 def initialize_executor_mock(mocker):
     return mocker.patch.object(ClusterManager, "_initialize_executor", spec=ClusterManager._initialize_executor)
+
+
+@pytest.fixture()
+def initialize_console_logger_mock(mocker):
+    return mocker.patch.object(
+        ClusterManager,
+        "_initialize_console_logger",
+        spec=ClusterManager._initialize_console_logger,
+    )
 
 
 @pytest.mark.parametrize(
@@ -2326,7 +2325,9 @@ def initialize_executor_mock(mocker):
     ],
     ids=["not_in_replacement", "no-backing-instance", "in_replacement", "timeout"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_is_node_being_replaced(current_replacing_nodes, node, instance, current_time, expected_result):
     mock_sync_config = SimpleNamespace(node_replacement_timeout=30, insufficient_capacity_timeout=3)
     cluster_manager = ClusterManager(mock_sync_config)
@@ -2377,7 +2378,9 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_is_node_replacement_timeout(node, current_node_in_replacement, is_replacement_timeout, instance):
     node.instance = instance
     mock_sync_config = SimpleNamespace(node_replacement_timeout=30, insufficient_capacity_timeout=-2.2)
@@ -2428,7 +2431,9 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_failed_health_check_nodes_in_replacement(
     active_nodes,
     is_static_nodes_in_replacement,
@@ -2489,7 +2494,9 @@ def test_handle_failed_health_check_nodes_in_replacement(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_bootstrap_failure_nodes(
     active_nodes,
     instances,
@@ -2551,7 +2558,9 @@ def test_handle_bootstrap_failure_nodes(
     ],
     ids=["basic"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_find_bootstrap_failure_nodes(active_nodes, instances):
     # Mock functions
     mock_sync_config = SimpleNamespace(
@@ -2709,7 +2718,9 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_ice_nodes(
     queue_compute_resource_nodes_map,
     ice_compute_resources_and_nodes_map,
@@ -2872,7 +2883,9 @@ def test_handle_ice_nodes(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_update_insufficient_capacity_compute_resources(
     ice_compute_resources_and_nodes_map,
     initial_insufficient_capacity_compute_resources,
@@ -3041,7 +3054,9 @@ def test_update_insufficient_capacity_compute_resources(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_reset_timeout_expired_compute_resources(
     ice_compute_resources_and_nodes_map,
     initial_insufficient_capacity_compute_resources,
@@ -3144,7 +3159,9 @@ def test_reset_timeout_expired_compute_resources(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_set_ice_compute_resources_to_down(
     queue_compute_resource_nodes_map,
     insufficient_capacity_compute_resources,
@@ -3381,7 +3398,9 @@ def test_set_ice_compute_resources_to_down(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_executor_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_find_unhealthy_slurm_nodes(
     active_nodes,
     expected_unhealthy_dynamic_nodes,
