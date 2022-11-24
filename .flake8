@@ -1,14 +1,23 @@
 [flake8]
 ignore =
-    D105, # Missing docstring in magic method
-    D100, # Missing docstring in public module
-    D101, # Missing docstring in public class
-    D102, # Missing docstring in public method
-    D103, # Missing docstring in public function
-    D104, # Missing docstring in public package
-    D107, # Missing docstring in __init__
-    W503, # line break before binary operator => Conflicts with black style.
-    N818, # exception name should be named with an Error suffix
+    # D105: Missing docstring in magic method
+    D105,
+    # D100: Missing docstring in public module
+    D100,
+    # D101: Missing docstring in public class
+    D101,
+    # D102: Missing docstring in public method
+    D102,
+    # D103: Missing docstring in public function
+    D103,
+    # D104: Missing docstring in public package
+    D104
+    # D107: Missing docstring in __init__
+    D107,
+    # W503: line break before binary operator => Conflicts with black style.
+    W503,
+    # N818: exception name should be named with an Error suffix
+    N818
 exclude =
     .tox,
     .git,
