@@ -286,6 +286,12 @@ class Ec2CreateFleetManager(FleetManager):
                 # If the minimum target capacity is not reached, the fleet launches no instances
                 common_launch_options.update({"MinTargetCapacity": count if self._all_or_nothing else 1})
 
+            if not self._uses_single_az() and not self._uses_single_instance_type() and self._all_or_nothing:
+                logger.warning(
+                    "All-or-Nothing is only available with single instance type compute resources or "
+                    "single subnet queues"
+                )
+
             if self._compute_resource_config["CapacityType"] == "spot":
                 launch_options = {"SpotOptions": common_launch_options}
             else:
