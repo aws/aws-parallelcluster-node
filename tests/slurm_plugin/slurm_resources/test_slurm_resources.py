@@ -859,18 +859,6 @@ def test_slurm_node_is_bootstrap_failure(
             None,
             True,
         ),
-        # Workaround for nodes stuck in IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING
-        (
-            DynamicNode(
-                "queue-dy-c5xlarge-1",
-                "queue-dy-c5xlarge-1",
-                "queue-dy-c5xlarge-1",
-                "IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING",
-                "queue",
-            ),
-            None,
-            False,
-        ),
     ],
     ids=[
         "basic",
@@ -883,7 +871,6 @@ def test_slurm_node_is_bootstrap_failure(
         "power_unhealthy1",
         "power_unhealthy2",
         "power_healthy",
-        "dynamic_node_stuck_in_bug_state",
     ],
 )
 def test_slurm_node_is_healthy(node, instance, expected_result):
