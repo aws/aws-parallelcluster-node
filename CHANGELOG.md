@@ -9,6 +9,10 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **ENHANCEMENTS**
 - Add support for launching nodes across multiple availability zones to increase capacity availability.
 
+**CHANGES**
+- Do not consider dynamic nodes in IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING as unhealthy anymore.
+  - The root cause has been fixed in Slurm 22.05.6.
+
 3.3.0
 ------
 
