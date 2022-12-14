@@ -155,9 +155,11 @@ class ClustermgtdConfig:
         "use_private_hostname": False,
         "protected_failure_count": 10,
         "insufficient_capacity_timeout": 600,
+        # Compute console logging configs
         "compute_console_logging_enabled": True,
         "compute_console_logging_max_sample_size": 1,
         "compute_console_wait_time": CONSOLE_OUTPUT_WAIT_TIME,
+        # Task executor configs
         "worker_pool_size": 5,
         "worker_pool_max_backlog": MAXIMUM_TASK_BACKLOG,
     }
@@ -422,7 +424,6 @@ class ClusterManager:
             console_output_consumer=lambda name, instance_id, output: compute_logger.info(
                 "Console output for node %s (Instance Id %s):\r%s", name, instance_id, output
             ),
-            max_sample_size=config.compute_console_logging_max_sample_size,
             console_output_wait_time=config.compute_console_wait_time,
         )
 
@@ -764,9 +765,11 @@ class ClusterManager:
         """
         try:
             self._console_logger.report_console_output_from_nodes(
-                compute_nodes=unhealthy_static_nodes,
-                instance_supplier=self._instance_manager.get_node_instance_mapper(),
-                task_executor=lambda task: self._task_executor.queue_executor_task(task),
+                compute_instances=self._instance_manager.get_compute_node_instances(
+                    unhealthy_static_nodes,
+                    self._config.compute_console_logging_max_sample_size,
+                ),
+                task_executor=self._task_executor.queue_executor_task,
             )
         except Exception as e:
             log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)

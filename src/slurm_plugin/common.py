@@ -13,6 +13,7 @@
 import functools
 import logging
 from datetime import datetime
+from typing import Iterable, TypedDict
 
 from common.utils import check_command_output, time_is_up
 
@@ -22,6 +23,16 @@ logger = logging.getLogger(__name__)
 # YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM[:SS[.ffffff]]
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
 DEFAULT_COMMAND_TIMEOUT = 30
+
+ComputeInstanceDescriptor = Iterable[
+    TypedDict(
+        "ComputeInstance",
+        {
+            "Name": str,
+            "InstanceId": str,
+        },
+    )
+]
 
 
 def log_exception(

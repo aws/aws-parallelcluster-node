@@ -11,6 +11,7 @@
 import logging
 import os
 from datetime import datetime, timezone
+from typing import Iterable
 from unittest.mock import call
 
 import botocore
@@ -24,6 +25,7 @@ from slurm_plugin.slurm_resources import (
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
     EC2InstanceHealthState,
+    SlurmNode,
     StaticNode,
 )
 
@@ -1307,97 +1309,322 @@ class TestInstanceManager:
         result = instance_manager.get_cluster_instances(**mock_kwargs)
         assert_that(result).is_equal_to(expected_parsed_result)
 
+    class DdbResource:
+        """Test class to mimic DynamoDb resource."""
+
+        def __init__(self, nodes: Iterable[SlurmNode]):
+            self.requested_key_count = 0
+            self.call_count = 0
+            self.node_lookup = {node.name: node for node in nodes}
+            self.request_counts = []
+
+        def batch_get_item(self, *args, **kwargs):
+            self.call_count += 1
+            responses = {}
+            for table_name, keys in kwargs.get("RequestItems").items():
+                table_response = [
+                    {
+                        "Id": key.get("Id"),
+                        "InstanceId": "instance-" + self.node_lookup.get(key.get("Id")).name,
+                    }
+                    for key in keys.get("Keys")
+                ]
+                self.request_counts.append(len(table_response))
+                self.requested_key_count += len(table_response)
+                responses.update({table_name: table_response})
+            return {
+                "Responses": responses,
+            }
+
     @pytest.mark.parametrize(
-        "nodes",
+        "nodes,max_count,expected_key_requests",
         [
-            [
-                StaticNode(
-                    "queue1-st-c5xlarge-1",
-                    "ip-1",
-                    "hostname-1",
-                    "some_state",
-                    "queue1",
-                    instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
-                ),
-                StaticNode(
-                    "queue1-st-c5xlarge-2",
-                    "ip-2",
-                    "hostname-2",
-                    "some_state",
-                    "queue1",
-                    instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
-                ),
-                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
-                StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
-                StaticNode(
-                    "queue1-st-c5xlarge-5",
-                    "ip-5",
-                    "hostname-5",
-                    "some_state",
-                    "queue1",
-                    instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
-                ),
-                StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
-            ],
-            [
-                StaticNode(
-                    "queue1-st-c5xlarge-1",
-                    "ip-1",
-                    "hostname-1",
-                    "some_state",
-                    "queue1",
-                    instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
-                ),
-                StaticNode(
-                    "queue1-st-c5xlarge-2",
-                    "ip-2",
-                    "hostname-2",
-                    "some_state",
-                    "queue1",
-                    instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
-                ),
-                StaticNode(
-                    "queue1-st-c5xlarge-5",
-                    "ip-5",
-                    "hostname-5",
-                    "some_state",
-                    "queue1",
-                    instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
-                ),
-            ],
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
+                    StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
+                ],
+                0,
+                3,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
+                    StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
+                ],
+                2,
+                0,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
+                    StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
+                ],
+                5,
+                2,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
+                    StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
+                ],
+                6,
+                3,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
+                    StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                    StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
+                ],
+                20,
+                3,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                ],
+                0,
+                0,
+            ),
+            (
+                [
+                    StaticNode(
+                        "queue1-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                    ),
+                    StaticNode(
+                        "queue1-st-c5xlarge-5",
+                        "ip-5",
+                        "hostname-5",
+                        "some_state",
+                        "queue1",
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                    ),
+                ],
+                2,
+                0,
+            ),
         ],
     )
     def test_get_console_output(
         self,
         nodes,
+        max_count,
+        expected_key_requests,
         instance_manager,
-        mocker,
     ):
-        node_lookup = {node.name: node for node in nodes}
+        ddb_resource = TestInstanceManager.DdbResource(nodes)
+        instance_manager._boto3_resource_factory = lambda resource_name: ddb_resource
+        instances = instance_manager.get_compute_node_instances(nodes, max_count)
+        results = list(instances)
 
-        class DdbResource:
-            def batch_get_item(*args, **kwargs):
-                return {
-                    "Responses": {
-                        table_name: [
-                            {
-                                "Id": key.get("Id"),
-                                "InstanceId": "instance-" + node_lookup.get(key.get("Id")).name,
-                            }
-                            for key in keys.get("Keys")
-                        ]
-                        for table_name, keys in kwargs.get("RequestItems").items()
-                    }
-                }
+        expected_count = min(max_count, len(nodes)) if max_count > 0 else len(nodes)
 
-        instance_manager._boto3_resource_factory = lambda resource_name: DdbResource()
-        mapper = instance_manager.get_node_instance_mapper()
-        results = list(mapper(nodes))
-
-        assert_that(results).is_length(len(nodes))
+        assert_that(results).is_length(expected_count)
+        assert_that(ddb_resource.requested_key_count).is_equal_to(expected_key_requests)
         for result in results:
-            node = node_lookup.get(result.get("Name"))
+            node = ddb_resource.node_lookup.get(result.get("Name"))
             if node.instance:
                 assert_that(result.get("InstanceId")).is_equal_to(node.instance.id)
             else:
                 assert_that(result.get("InstanceId")).is_equal_to("instance-" + node.name)
+
+    @pytest.mark.parametrize(
+        "node_count,max_retrieval_count,expected_request_counts",
+        [
+            (200, 200, [50, 50, 50, 50]),
+            (200, 400, [50, 50, 50, 50]),
+            (200, 139, [50, 50, 39]),
+            (201, 400, [50, 50, 50, 50, 1]),
+        ],
+    )
+    def test_instance_retrieval_partitioning(self, node_count, max_retrieval_count, expected_request_counts):
+        nodes = [
+            StaticNode(
+                f"queue1-st-c5xlarge-{item_id}",
+                f"ip-{item_id}",
+                f"hostname-{item_id}",
+                "some_state",
+                "queue1",
+            )
+            for item_id in range(node_count)
+        ]
+
+        compute_nodes = ({"Name": node.name, "InstanceId": None} for node in nodes)
+
+        ddb_resource = TestInstanceManager.DdbResource(nodes)
+
+        results = list(
+            InstanceManager._retrieve_instance_ids_from_dynamo(
+                ddb_resource=ddb_resource,
+                table_name="the_table",
+                compute_nodes=compute_nodes,
+                max_retrieval_count=max_retrieval_count,
+            )
+        )
+
+        expected_node_count = min(len(nodes), max_retrieval_count)
+        assert_that(results).is_length(expected_node_count)
+        assert_that(ddb_resource.requested_key_count).is_equal_to(expected_node_count)
+        assert_that(ddb_resource.call_count).is_equal_to(len(expected_request_counts))
+        assert_that(ddb_resource.request_counts).is_equal_to(expected_request_counts)

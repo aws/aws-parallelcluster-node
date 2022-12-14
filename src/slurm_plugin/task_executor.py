@@ -7,14 +7,14 @@ logger = logging.getLogger(__name__)
 
 
 class TaskExecutor:
+    """Class for managing execution of asynchronous tasks."""
+
     class MaximumBacklogExceededException(RuntimeError):
         """Exception raised when a task can't be queued due to backlog."""
 
         def __init__(self, task, maximum_backlog):
             self.failed_task = task
             self.maximum_backlog = maximum_backlog
-
-    """Class for managing execution of asynchronous tasks."""
 
     def __init__(self, worker_pool_size, max_backlog):
         self._max_backlog = max_backlog
@@ -41,11 +41,11 @@ class TaskExecutor:
 
         return None
 
-    def shutdown(self):
+    def shutdown(self, wait=False, cancel_futures=True):
         if self._executor_pool:
             # `cancel_futures` parameter does not exist in python pre-3.9
             can_cancel = "cancel_futures" in inspect.getfullargspec(self._executor_pool.shutdown).kwonlyargs
             self._executor_pool.shutdown(
-                wait=False, cancel_futures=True
+                wait=wait, cancel_futures=cancel_futures
             ) if can_cancel else self._executor_pool.shutdown(wait=False)
             self._executor_pool = None

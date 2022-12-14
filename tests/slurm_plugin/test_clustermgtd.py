@@ -78,8 +78,13 @@ class TestClustermgtdConfig:
                     "health_check_timeout": 180,
                     "protected_failure_count": 10,
                     "insufficient_capacity_timeout": 600,
+                    # Compute console logging configs
                     "compute_console_logging_enabled": True,
                     "compute_console_logging_max_sample_size": 1,
+                    "compute_console_wait_time": 180,
+                    # Task executor configs
+                    "worker_pool_size": 5,
+                    "worker_pool_max_backlog": 100,
                 },
             ),
             (
@@ -113,8 +118,13 @@ class TestClustermgtdConfig:
                     "health_check_timeout": 10,
                     "protected_failure_count": 5,
                     "insufficient_capacity_timeout": 50.5,
+                    # Compute console logging configs
                     "compute_console_logging_enabled": False,
                     "compute_console_logging_max_sample_size": 50,
+                    "compute_console_wait_time": 10,
+                    # Task executor configs
+                    "worker_pool_size": 2,
+                    "worker_pool_max_backlog": 5,
                 },
             ),
             (
@@ -219,6 +229,7 @@ def test_exception_from_report_console_output_from_nodes(mocker):
         insufficient_capacity_timeout=20,
         worker_pool_size=5,
         worker_pool_max_backlog=0,
+        compute_console_logging_max_sample_size=2,
     )
     unhealthy_nodes = [
         StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
@@ -954,7 +965,6 @@ def test_handle_powering_down_nodes(
     ],
     ids=["basic", "no_associated_instances", "partial_launch", "set_nodes_down_exception"],
 )
-@pytest.mark.usefixtures("initialize_console_logger_mock")
 def test_handle_unhealthy_static_nodes(
     current_replacing_nodes,
     unhealthy_static_nodes,
