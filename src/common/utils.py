@@ -174,15 +174,19 @@ def _run_command(command_function, command, env=None, raise_on_error=True, execu
 
 
 def sleep_remaining_loop_time(total_loop_time, loop_start_time=None):
+    wait_remaining_time(time.sleep, total_wait_time=total_loop_time, wait_start_time=loop_start_time)
+
+
+def wait_remaining_time(wait_function, total_wait_time, wait_start_time=None):
     end_time = datetime.now(tz=timezone.utc)
-    if not loop_start_time:
-        loop_start_time = end_time
+    if not wait_start_time:
+        wait_start_time = end_time
     # Always convert the received loop_start_time to utc timezone. This is so that we never rely on the system local
     # time and risk to compare naive datatime instances with localized ones
-    loop_start_time = loop_start_time.astimezone(tz=timezone.utc)
-    time_delta = (end_time - loop_start_time).total_seconds()
-    if 0 <= time_delta < total_loop_time:
-        time.sleep(total_loop_time - time_delta)
+    wait_start_time = wait_start_time.astimezone(tz=timezone.utc)
+    time_delta = (end_time - wait_start_time).total_seconds()
+    if 0 <= time_delta < total_wait_time:
+        wait_function(total_wait_time - time_delta)
 
 
 def grouper(iterable, n):

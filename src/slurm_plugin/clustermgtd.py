@@ -17,6 +17,7 @@ import time
 from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
+from functools import partial
 from logging.config import fileConfig
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
@@ -37,7 +38,7 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up
+from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up, wait_remaining_time
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
@@ -424,7 +425,6 @@ class ClusterManager:
             console_output_consumer=lambda name, instance_id, output: compute_logger.info(
                 "Console output for node %s (Instance Id %s):\r%s", name, instance_id, output
             ),
-            console_output_wait_time=config.compute_console_wait_time,
         )
 
     def _update_compute_fleet_status(self, status):
@@ -764,12 +764,19 @@ class ClusterManager:
         Set node to down, terminate backing instance, and launch new instance for static node.
         """
         try:
+            wait_function = partial(
+                wait_remaining_time,
+                wait_start_time=datetime.now(tz=timezone.utc),
+                total_wait_time=self._config.compute_console_wait_time,
+                wait_function=self._task_executor.wait_unless_shutdown,
+            )
             self._console_logger.report_console_output_from_nodes(
                 compute_instances=self._instance_manager.get_compute_node_instances(
                     unhealthy_static_nodes,
                     self._config.compute_console_logging_max_sample_size,
                 ),
-                task_executor=self._task_executor.queue_executor_task,
+                task_controller=self._task_executor,
+                task_wait_function=wait_function,
             )
         except Exception as e:
             log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)

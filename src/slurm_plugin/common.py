@@ -12,8 +12,9 @@
 
 import functools
 import logging
+from concurrent.futures import Future
 from datetime import datetime
-from typing import Iterable, TypedDict
+from typing import Callable, Iterable, Optional, Protocol, TypedDict
 
 from common.utils import check_command_output, time_is_up
 
@@ -33,6 +34,28 @@ ComputeInstanceDescriptor = Iterable[
         },
     )
 ]
+
+
+class TaskController(Protocol):
+    class TaskShutdownError(RuntimeError):
+        """Exception raised if shutdown has been requested."""
+
+        pass
+
+    def queue_task(self, task: Callable[[], None]) -> Optional[Future]:
+        """Queue a task and returns a Future for the task or None if the task could not be queued."""
+
+    def is_shutdown(self) -> bool:
+        """Is shutdown has been requested."""
+
+    def raise_if_shutdown(self) -> None:
+        """Raise an error if a shutdown has been requested."""
+
+    def wait_unless_shutdown(self, seconds_to_wait: float) -> None:
+        """Wait for seconds_to_wait or will raise an error if a shutdown has been requested."""
+
+    def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+        """Request that all tasks be shutdown."""
 
 
 def log_exception(

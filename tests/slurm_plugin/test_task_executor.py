@@ -1,6 +1,8 @@
 import time
+from datetime import datetime, timezone
 
 from assertpy import assert_that, soft_assertions
+from slurm_plugin.common import TaskController
 from slurm_plugin.task_executor import TaskExecutor
 
 
@@ -13,7 +15,7 @@ def test_task_executor():
 
     task_executor = TaskExecutor(worker_pool_size=3, max_backlog=10)
 
-    futures = {value: task_executor.queue_executor_task(get_task(value)) for value in range(10, 20)}
+    futures = {value: task_executor.queue_task(get_task(value)) for value in range(10, 20)}
 
     with soft_assertions():
         for value, future in futures.items():
@@ -32,11 +34,39 @@ def test_exceeding_max_backlog():
 
     task_executor = TaskExecutor(worker_pool_size=1, max_backlog=1)
 
-    future = task_executor.queue_executor_task(get_task(10))
-    assert_that(task_executor.queue_executor_task).raises(
-        TaskExecutor.MaximumBacklogExceededException
-    ).when_called_with(get_task(20))
+    future = task_executor.queue_task(get_task(10))
+    assert_that(task_executor.queue_task).raises(TaskExecutor.MaximumBacklogExceededError).when_called_with(
+        get_task(20)
+    )
 
     assert_that(future.result()).is_equal_to(11)
 
     task_executor.shutdown()
+
+
+def test_that_shutdown_does_not_block():
+    def get_task(value):
+        def task():
+            task_executor.wait_unless_shutdown(value)
+            return value + 1
+
+        return task
+
+    def callback(*args):
+        nonlocal callback_called
+        callback_called = True
+
+    task_executor = TaskExecutor(worker_pool_size=1, max_backlog=1)
+
+    callback_called = False
+    start_wait = datetime.now(tz=timezone.utc)
+    future = task_executor.queue_task(get_task(600))
+    future.add_done_callback(callback)
+
+    task_executor.shutdown(wait=True)
+
+    delta = (datetime.now(tz=timezone.utc) - start_wait).total_seconds()
+    assert_that(delta).is_less_than(300)
+
+    assert_that(future.exception).raises(TaskController.TaskShutdownError)
+    assert_that(callback_called).is_true()

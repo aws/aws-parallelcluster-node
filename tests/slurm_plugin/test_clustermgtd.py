@@ -230,6 +230,7 @@ def test_exception_from_report_console_output_from_nodes(mocker):
         worker_pool_size=5,
         worker_pool_max_backlog=0,
         compute_console_logging_max_sample_size=2,
+        compute_console_wait_time=10,
     )
     unhealthy_nodes = [
         StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
