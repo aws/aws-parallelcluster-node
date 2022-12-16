@@ -374,7 +374,17 @@ class ClusterManager:
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
 
+            # If a new task executor is needed, the old one will be shutdown.
+            # This should cause any pending tasks to be cancelled (Py 3.9) and
+            # any executing tasks to raise an exception as long as they test
+            # the executor for shutdown. If tracking of cancelled or failed
+            # tasks is needed, then the Future object returned from task_executor
+            # can be queried to determine how the task exited.
+            # The shutdown on the task_executor is by default, non-blocking, so
+            # it is possible for some tasks to continue executing even after the
+            # shutdown request has returned.
             self._task_executor = self._initialize_executor(config)
+
             self._config = config
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
