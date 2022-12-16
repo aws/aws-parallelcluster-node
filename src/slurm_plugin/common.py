@@ -14,7 +14,7 @@ import functools
 import logging
 from concurrent.futures import Future
 from datetime import datetime
-from typing import Callable, Iterable, Optional, Protocol, TypedDict
+from typing import Callable, Optional, Protocol, TypedDict
 
 from common.utils import check_command_output, time_is_up
 
@@ -25,15 +25,13 @@ logger = logging.getLogger(__name__)
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
 DEFAULT_COMMAND_TIMEOUT = 30
 
-ComputeInstanceDescriptor = Iterable[
-    TypedDict(
-        "ComputeInstance",
-        {
-            "Name": str,
-            "InstanceId": str,
-        },
-    )
-]
+ComputeInstanceDescriptor = TypedDict(
+    "ComputeInstanceDescriptor",
+    {
+        "Name": str,
+        "InstanceId": str,
+    },
+)
 
 
 class TaskController(Protocol):

@@ -21,6 +21,7 @@ import pytest
 import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
+from slurm_plugin.console_logger import ConsoleLogger
 from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
@@ -238,10 +239,9 @@ def test_exception_from_report_console_output_from_nodes(mocker):
     reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     cluster_manager = ClusterManager(config)
 
-    mock_console_logger = mocker.patch.object(cluster_manager, "_console_logger", auto_spec=True)
-    report_mock = mocker.patch.object(
-        mock_console_logger, "report_console_output_from_nodes", side_effect=Exception, auto_spec=True
-    )
+    mock_console_logger = mocker.patch.object(cluster_manager, "_console_logger", spec=ConsoleLogger)
+    report_mock = mock_console_logger.report_console_output_from_nodes
+    report_mock.side_effect = Exception
 
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_nodes)
 
@@ -1026,7 +1026,7 @@ def test_handle_unhealthy_static_nodes(
     )
 
     report_mock = mocker.patch.object(
-        cluster_manager._console_logger, "report_console_output_from_nodes", auto_spec=True
+        cluster_manager._console_logger, "report_console_output_from_nodes", autospec=True
     )
 
     mocker.patch("slurm_plugin.instance_manager.update_nodes")
