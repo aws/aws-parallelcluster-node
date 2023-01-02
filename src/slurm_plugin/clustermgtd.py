@@ -18,7 +18,10 @@ from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
 from logging.config import fileConfig
-from subprocess import CalledProcessError
+
+# A nosec comment is appended to the following line in order to disable the B404 check.
+# In this file the input of the module subprocess is trusted.
+from subprocess import CalledProcessError  # nosec
 from typing import Dict, List
 
 from botocore.config import Config
