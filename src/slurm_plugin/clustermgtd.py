@@ -21,7 +21,7 @@ from logging.config import fileConfig
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
-from subprocess import CalledProcessError  # nosec
+from subprocess import CalledProcessError  # nosec B404
 from typing import Dict, List
 
 from botocore.config import Config
