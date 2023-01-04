@@ -104,15 +104,41 @@ def update_nodes(
         update_cmd += f" state={state}"
     if reason:
         update_cmd += f' reason="{reason}"'
-    for nodenames, addrs, hostnames in batched_node_info:
-        node_info = f"nodename={nodenames}"
+    for nodenames_, addrs_, hostnames_ in batched_node_info:
+        if nodeaddrs or nodehostnames:
+            # Sorting is only necessary if we set nodeaddrs or nodehostnames
+            nodenames, addrs, hostnames = _sort_nodes_attributes(nodenames_, addrs_, hostnames_)
+        node_info = f"nodename={','.join(nodenames)}"
         if addrs:
-            node_info += f" nodeaddr={addrs}"
+            node_info += f" nodeaddr={','.join(addrs)}"
         if hostnames:
-            node_info += f" nodehostname={hostnames}"
+            node_info += f" nodehostname={','.join(hostnames)}"
         run_command(  # nosec
             f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
         )
+
+
+def _sort_nodes_attributes(nodes, nodeaddrs, nodehostnames):
+    nodes_str = ",".join(nodes) if type(nodes) is tuple else nodes
+    sorted_node_names_str = check_command_output(
+        f"{SCONTROL} show hostlistsorted {nodes_str} | xargs {SCONTROL} show hostnames", shell=True
+    )
+    sorted_node_names = sorted_node_names_str.strip().split("\n")
+    if nodes == nodeaddrs and nodeaddrs == nodehostnames:
+        # Path from reset_nodes
+        nodes = nodeaddrs = nodehostnames = sorted_node_names
+    else:
+        # Path from _update_slurm_node_addrs
+        order = {k: i for i, k in enumerate(sorted_node_names)}
+        sorting_key = lambda x: order[x[0]]
+        if nodeaddrs and nodehostnames:
+            _, nodeaddrs, nodehostnames = zip(*sorted(zip(nodes, nodeaddrs, nodehostnames), key=sorting_key))
+        elif nodeaddrs:
+            _, nodeaddrs = zip(*sorted(zip(nodes, nodeaddrs), key=sorting_key))
+        elif nodehostnames:
+            _, nodehostnames = zip(*sorted(zip(nodes, nodehostnames), key=sorting_key))
+        nodes = sorted_node_names
+    return nodes, nodeaddrs, nodehostnames
 
 
 def update_partitions(partitions, state):
@@ -156,7 +182,7 @@ def _batch_attribute(attribute, batch_size, expected_length=None):
     if expected_length and len(attribute) != expected_length:
         raise ValueError
 
-    return [",".join(batch) for batch in grouper(attribute, batch_size)]
+    return [batch for batch in grouper(attribute, batch_size)]
 
 
 def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):

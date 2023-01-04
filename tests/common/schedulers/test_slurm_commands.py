@@ -260,22 +260,24 @@ def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_r
 
 
 @pytest.mark.parametrize(
-    "nodes, reason, reset_addrs, update_call_kwargs",
+    "nodes, check_command_output, reason, reset_addrs, update_call_kwargs",
     [
         (
             "nodes-1,nodes[2-6]",
+            "nodes-1\nnodes-2\nnodes-3\nnodes-4\nnodes-5\nnodes-6",
             None,
             False,
             {"nodes": "nodes-1,nodes[2-6]", "state": "resume", "reason": None, "raise_on_error": False},
         ),
         (
             "nodes-1,nodes[2-6]",
+            "nodes-1\nnodes-2\nnodes-3\nnodes-4\nnodes-5\nnodes-6",
             "debugging",
             True,
             {
-                "nodes": "nodes-1,nodes[2-6]",
-                "nodeaddrs": "nodes-1,nodes[2-6]",
-                "nodehostnames": "nodes-1,nodes[2-6]",
+                "nodes": ["nodes-1", "nodes-2", "nodes-3", "nodes-4", "nodes-5", "nodes-6"],
+                "nodeaddrs": ["nodes-1", "nodes-2", "nodes-3", "nodes-4", "nodes-5", "nodes-6"],
+                "nodehostnames": ["nodes-1", "nodes-2", "nodes-3", "nodes-4", "nodes-5", "nodes-6"],
                 "state": "resume",
                 "reason": "debugging",
                 "raise_on_error": False,
@@ -283,12 +285,13 @@ def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_r
         ),
         (
             ["nodes-1", "nodes[2-4]", "nodes-5"],
+            "nodes-1\nnodes-2\nnodes-3\nnodes-4\nnodes-5",
             "debugging",
             True,
             {
-                "nodes": ["nodes-1", "nodes[2-4]", "nodes-5"],
-                "nodeaddrs": ["nodes-1", "nodes[2-4]", "nodes-5"],
-                "nodehostnames": ["nodes-1", "nodes[2-4]", "nodes-5"],
+                "nodes": ["nodes-1", "nodes-2", "nodes-3", "nodes-4", "nodes-5"],
+                "nodeaddrs": ["nodes-1", "nodes-2", "nodes-3", "nodes-4", "nodes-5"],
+                "nodehostnames": ["nodes-1", "nodes-2", "nodes-3", "nodes-4", "nodes-5"],
                 "state": "resume",
                 "reason": "debugging",
                 "raise_on_error": False,
@@ -296,8 +299,11 @@ def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_r
         ),
     ],
 )
-def test_set_nodes_idle(nodes, reason, reset_addrs, update_call_kwargs, mocker):
+def test_set_nodes_idle(nodes, check_command_output, reason, reset_addrs, update_call_kwargs, mocker):
     update_mock = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
+    mocker.patch(
+        "common.schedulers.slurm_commands.check_command_output", return_value=check_command_output, autospec=True
+    )
     set_nodes_idle(nodes, reason, reset_addrs)
     update_mock.assert_called_with(**update_call_kwargs)
 
@@ -383,9 +389,10 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
 
 
 @pytest.mark.parametrize(
-    "batch_node_info, state, reason, raise_on_error, run_command_calls",
+    "nodenames, batch_node_info, state, reason, raise_on_error, run_command_calls, check_command_output",
     [
         (
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             [("queue1-st-c5xlarge-1", None, None), ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
             None,
             None,
@@ -404,8 +411,10 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                     shell=True,
                 ),
             ],
+            "queue1-st-c5xlarge-1\nqueue1-st-c5xlarge-2\nqueue1-st-c5xlarge-3",
         ),
         (
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             [
                 ("queue1-st-c5xlarge-1", None, "hostname-1"),
                 ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", "addr-2,addr-3", None),
@@ -429,8 +438,10 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                     shell=True,
                 ),
             ],
+            "queue1-st-c5xlarge-1\nqueue1-st-c5xlarge-2\nqueue1-st-c5xlarge-3",
         ),
         (
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-[3-6]"],
             [
                 ("queue1-st-c5xlarge-1", None, "hostname-1"),
                 ("queue1-st-c5xlarge-[3-6]", "addr-[3-6]", "hostname-[3-6]"),
@@ -458,13 +469,19 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                     shell=True,
                 ),
             ],
+            "queue1-st-c5xlarge-1\nqueue1-st-c5xlarge-3\nqueue1-st-c5xlarge-4\nqueue1-st-c5xlarge-5\nqueue1-st-c5xlarge-6",
         ),
     ],
 )
-def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_command_calls, mocker):
+def test_update_nodes(
+    nodenames, batch_node_info, state, reason, raise_on_error, run_command_calls, check_command_output, mocker
+):
     mocker.patch("common.schedulers.slurm_commands._batch_node_info", return_value=batch_node_info, autospec=True)
     cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
-    update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+    mocker.patch(
+        "common.schedulers.slurm_commands.check_command_output", return_value=check_command_output, autospec=True
+    )
+    update_nodes(nodenames, None, None, state, reason, raise_on_error)
     cmd_mock.assert_has_calls(run_command_calls)
 
 
