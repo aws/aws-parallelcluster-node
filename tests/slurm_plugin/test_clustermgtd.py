@@ -279,17 +279,15 @@ def test_clean_up_inactive_parititon(
     for node, instance in zip(slurm_inactive_nodes, inactive_instances):
         node.instance = instance
     part.slurm_nodes = slurm_inactive_nodes
-    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
+    mock_instance_manager = cluster_manager._instance_manager
     if delete_instances_side_effect:
-        mock_instance_manager.delete_instances = mocker.patch.object(
-            mock_instance_manager, "delete_instances", side_effect=delete_instances_side_effect, auto_spec=True
-        )
+        mock_instance_manager.delete_instances.side_effect = delete_instances_side_effect
     if reset_nodes_side_effect:
         mock_reset_node = mocker.patch(
-            "slurm_plugin.clustermgtd.reset_nodes", side_effect=reset_nodes_side_effect, auto_spec=True
+            "slurm_plugin.clustermgtd.reset_nodes", side_effect=reset_nodes_side_effect, autospec=True
         )
     else:
-        mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+        mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     cluster_manager._clean_up_inactive_partition([part])
     inactive_instance_ids = {instance.id for instance in inactive_instances if instance}
     mock_instance_manager.delete_instances.assert_called_with(inactive_instance_ids, terminate_batch_size=4)
@@ -590,7 +588,7 @@ def test_handle_health_check(
 
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = "some_current_time"
-    drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", auto_spec=True)
+    drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", autospec=True)
 
     # Run tests
     cluster_manager._handle_health_check(placeholder_states, instance_id_to_active_node_map, health_check_type)
@@ -733,8 +731,8 @@ def test_handle_unhealthy_dynamic_nodes(
         terminate_max_batch_size=4, disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity
     )
     cluster_manager = ClusterManager(mock_sync_config)
-    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", auto_spec=True)
+    mock_instance_manager = cluster_manager._instance_manager
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", autospec=True)
     cluster_manager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
     mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     power_save_mock.assert_called_with(expected_power_save_node_list, reason="Scheduler health check failed")
@@ -782,8 +780,8 @@ def test_handle_powering_down_nodes(
         node.instance = instance
     mock_sync_config = SimpleNamespace(terminate_max_batch_size=4, insufficient_capacity_timeout=600)
     cluster_manager = ClusterManager(mock_sync_config)
-    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+    mock_instance_manager = cluster_manager._instance_manager
+    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     cluster_manager._handle_powering_down_nodes(slurm_nodes)
     mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     reset_nodes_mock.assert_called_with(nodes=expected_powering_down_nodes)
@@ -945,7 +943,7 @@ def test_handle_unhealthy_static_nodes(
     # Mock add_instances_for_nodes but still try to execute original code
     original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
     cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
-    reset_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+    reset_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     if set_nodes_down_exception is Exception:
         reset_mock.side_effect = set_nodes_down_exception
     else:
@@ -1114,21 +1112,17 @@ def test_maintain_nodes(
     cluster_manager._static_nodes_in_replacement = static_nodes_in_replacement
     cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
     cluster_manager._config.node_replacement_timeout = 30
-    mock_update_replacement = mocker.patch.object(
-        cluster_manager, "_update_static_nodes_in_replacement", auto_spec=True
-    )
-    mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", auto_spec=True)
-    mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", auto_spec=True)
-    mock_handle_powering_down_nodes = mocker.patch.object(
-        cluster_manager, "_handle_powering_down_nodes", auto_spec=True
-    )
+    mock_update_replacement = mocker.patch.object(cluster_manager, "_update_static_nodes_in_replacement", autospec=True)
+    mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", autospec=True)
+    mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", autospec=True)
+    mock_handle_powering_down_nodes = mocker.patch.object(cluster_manager, "_handle_powering_down_nodes", autospec=True)
     mock_handle_protected_mode_process = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._handle_protected_mode_process"
     )
     mock_handle_failed_health_check_nodes_in_replacement = mocker.patch.object(
-        cluster_manager, "_handle_failed_health_check_nodes_in_replacement", auto_spec=True
+        cluster_manager, "_handle_failed_health_check_nodes_in_replacement", autospec=True
     )
-    mock_handle_ice_nodes = mocker.patch.object(cluster_manager, "_handle_ice_nodes", auto_spec=True)
+    mock_handle_ice_nodes = mocker.patch.object(cluster_manager, "_handle_ice_nodes", autospec=True)
     mocker.patch.object(cluster_manager, "_is_protected_mode_enabled", return_value=_is_protected_mode_enabled)
     part1 = SlurmPartition("queue1", "placeholder_nodes", "ACTIVE")
     part2 = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
@@ -1385,27 +1379,27 @@ def test_manage_cluster(
         "slurm_plugin.clustermgtd.ClusterManager._get_partition_info_with_retry", return_value=partitions
     )
 
-    write_timestamp_to_file_mock = mocker.patch.object(ClusterManager, "_write_timestamp_to_file", auto_spec=True)
+    write_timestamp_to_file_mock = mocker.patch.object(ClusterManager, "_write_timestamp_to_file", autospec=True)
     perform_health_check_actions_mock = mocker.patch.object(
-        ClusterManager, "_perform_health_check_actions", auto_spec=True
+        ClusterManager, "_perform_health_check_actions", autospec=True
     )
     clean_up_inactive_partition_mock = mocker.patch.object(
-        ClusterManager, "_clean_up_inactive_partition", return_value=mock_cluster_instances, auto_spec=True
+        ClusterManager, "_clean_up_inactive_partition", return_value=mock_cluster_instances, autospec=True
     )
     terminate_orphaned_instances_mock = mocker.patch.object(
-        ClusterManager, "_terminate_orphaned_instances", auto_spec=True
+        ClusterManager, "_terminate_orphaned_instances", autospec=True
     )
-    maintain_nodes_mock = mocker.patch.object(ClusterManager, "_maintain_nodes", auto_spec=True)
+    maintain_nodes_mock = mocker.patch.object(ClusterManager, "_maintain_nodes", autospec=True)
     get_ec2_instances_mock = mocker.patch.object(
-        ClusterManager, "_get_ec2_instances", auto_spec=True, return_value=mock_cluster_instances
+        ClusterManager, "_get_ec2_instances", autospec=True, return_value=mock_cluster_instances
     )
     get_node_info_with_retry_mock = mocker.patch.object(
         ClusterManager,
         "_get_node_info_with_retry",
-        auto_spec=True,
+        autospec=True,
         return_value=nodes,
     )
-    update_all_partitions_mock = mocker.patch("slurm_plugin.clustermgtd.update_all_partitions", auto_spec=True)
+    update_all_partitions_mock = mocker.patch("slurm_plugin.clustermgtd.update_all_partitions", autospec=True)
 
     # Run test
     cluster_manager.manage_cluster()
@@ -1424,16 +1418,16 @@ def test_manage_cluster(
         initialize_instance_manager_mock().terminate_all_compute_nodes.assert_not_called()
         return
     if status == ComputeFleetStatus.RUNNING:
-        clean_up_inactive_partition_mock.assert_called_with(list(partitions.values()))
+        clean_up_inactive_partition_mock.assert_called_with(cluster_manager, list(partitions.values()))
         get_ec2_instances_mock.assert_called_once()
 
         if disable_health_check:
             perform_health_check_actions_mock.assert_not_called()
-            maintain_nodes_mock.assert_called_with(partitions, queue_compute_resource_nodes_map)
+            maintain_nodes_mock.assert_called_with(cluster_manager, partitions, queue_compute_resource_nodes_map)
         else:
-            perform_health_check_actions_mock.assert_called_with(list(partitions.values()))
-            maintain_nodes_mock.assert_called_with(partitions, queue_compute_resource_nodes_map)
-        terminate_orphaned_instances_mock.assert_called_with(mock_cluster_instances)
+            perform_health_check_actions_mock.assert_called_with(cluster_manager, list(partitions.values()))
+            maintain_nodes_mock.assert_called_with(cluster_manager, partitions, queue_compute_resource_nodes_map)
+        terminate_orphaned_instances_mock.assert_called_with(cluster_manager, mock_cluster_instances)
 
         assert_that(caplog.text).is_empty()
         get_partition_info_with_retry_mock.assert_called_once()
@@ -1852,7 +1846,7 @@ def test_manage_cluster_boto3(
     cluster_manager = ClusterManager(sync_config)
     check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output")
     check_command_output_mocked.return_value = '{"status": "RUNNING"}'
-    mocker.patch.object(cluster_manager, "_write_timestamp_to_file", auto_spec=True)
+    mocker.patch.object(cluster_manager, "_write_timestamp_to_file", autospec=True)
     part_active = SlurmPartition("queue1", "placeholder_nodes", "UP")
     part_active.slurm_nodes = mocked_active_nodes
     part_inactive = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
@@ -1894,7 +1888,7 @@ class TestComputeFleetStatusManager:
         ids=["success", "empty_response", "exception"],
     )
     def test_get_status(self, mocker, get_item_response, fallback, expected_status):
-        check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", auto_spec=True)
+        check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
         compute_fleet_status_manager = ComputeFleetStatusManager()
 
         if get_item_response is Exception:
@@ -1914,7 +1908,7 @@ class TestComputeFleetStatusManager:
         ids=["success", "exception"],
     )
     def test_update_status(self, mocker, desired_status, update_item_response):
-        check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", auto_spec=True)
+        check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
         compute_fleet_status_manager = ComputeFleetStatusManager()
 
         if update_item_response is Exception:
@@ -2166,7 +2160,7 @@ def test_enter_protected_mode(
     mock_sync_config = SimpleNamespace(insufficient_capacity_timeout=600)
     cluster_manager = ClusterManager(mock_sync_config)
     mock_update_compute_fleet_status = mocker.patch.object(cluster_manager, "_update_compute_fleet_status")
-    mocker.patch("common.schedulers.slurm_commands.run_command", auto_spec=True)
+    mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
     cluster_manager._compute_fleet_status = compute_fleet_status
     cluster_manager._enter_protected_mode(partitions_to_disable)
     if compute_fleet_status != ComputeFleetStatus.PROTECTED:
@@ -2617,8 +2611,8 @@ def test_handle_ice_nodes(
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = datetime(2021, 1, 2, 0, 0, 0)
     cluster_manager._insufficient_capacity_compute_resources = initial_insufficient_capacity_compute_resources
-    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", auto_spec=True)
-    power_down_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", auto_spec=True)
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", autospec=True)
+    power_down_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", autospec=True)
     # Run test
     cluster_manager._handle_ice_nodes(ice_compute_resources_and_nodes_map, queue_compute_resource_nodes_map)
     # Assert calls
@@ -2947,7 +2941,7 @@ def test_reset_timeout_expired_compute_resources(
     cluster_manager = ClusterManager(config)
     cluster_manager._current_time = datetime(2021, 1, 2, 0, 0, 0)
     cluster_manager._insufficient_capacity_compute_resources = initial_insufficient_capacity_compute_resources
-    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", auto_spec=True)
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", autospec=True)
 
     # Run test
     cluster_manager._reset_timeout_expired_compute_resources(ice_compute_resources_and_nodes_map)
@@ -3046,7 +3040,7 @@ def test_set_ice_compute_resources_to_down(
 ):
     caplog.set_level(logging.INFO)
     cluster_manager = ClusterManager(mocker.MagicMock())
-    power_down_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", auto_spec=True)
+    power_down_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", autospec=True)
     cluster_manager._insufficient_capacity_compute_resources = insufficient_capacity_compute_resources
 
     # Run test

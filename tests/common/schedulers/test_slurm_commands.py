@@ -516,7 +516,7 @@ def test_update_partitions(
     partitions, state, run_command_calls, run_command_side_effects, expected_succeeded_partitions, mocker
 ):
     run_command_spy = mocker.patch(
-        "common.schedulers.slurm_commands.run_command", side_effect=run_command_side_effects, auto_spec=True
+        "common.schedulers.slurm_commands.run_command", side_effect=run_command_side_effects, autospec=True
     )
     assert_that(update_partitions(partitions, state)).is_equal_to(expected_succeeded_partitions)
     if run_command_calls:
@@ -611,12 +611,12 @@ def test_update_all_partitions(
     expected_results,
     mocker,
 ):
-    set_nodes_power_down_spy = mocker.patch("common.schedulers.slurm_commands.set_nodes_power_down", auto_spec=True)
+    set_nodes_power_down_spy = mocker.patch("common.schedulers.slurm_commands.set_nodes_power_down", autospec=True)
     update_partitions_spy = mocker.patch(
-        "common.schedulers.slurm_commands.update_partitions", return_value=mock_succeeded_partitions, auto_spec=True
+        "common.schedulers.slurm_commands.update_partitions", return_value=mock_succeeded_partitions, autospec=True
     )
     get_part_spy = mocker.patch(
-        "common.schedulers.slurm_commands.get_partition_info", return_value=mock_partitions, auto_spec=True
+        "common.schedulers.slurm_commands.get_partition_info", return_value=mock_partitions, autospec=True
     )
     assert_that(update_all_partitions(state, reset_node_addrs_hostname=reset_node_info)).is_equal_to(expected_results)
     get_part_spy.assert_called_with(get_all_nodes=True)
@@ -628,8 +628,8 @@ def test_update_all_partitions(
 
 
 def test_resume_powering_down_nodes(mocker):
-    get_slurm_nodes_mocked = mocker.patch("common.schedulers.slurm_commands._get_slurm_nodes", auto_spec=True)
-    update_nodes_mocked = mocker.patch("common.schedulers.slurm_commands.update_nodes", auto_spec=True)
+    get_slurm_nodes_mocked = mocker.patch("common.schedulers.slurm_commands._get_slurm_nodes", autospec=True)
+    update_nodes_mocked = mocker.patch("common.schedulers.slurm_commands.update_nodes", autospec=True)
 
     resume_powering_down_nodes()
     get_slurm_nodes_mocked.assert_called_with(states="powering_down")
@@ -644,7 +644,7 @@ def test_resume_powering_down_nodes(mocker):
     ],
 )
 def test_get_slurm_nodes(mocker, states, partition_name, expected_command):
-    check_command_output_mocked = mocker.patch("common.schedulers.slurm_commands.check_command_output", auto_spec=True)
+    check_command_output_mocked = mocker.patch("common.schedulers.slurm_commands.check_command_output", autospec=True)
 
     _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
     check_command_output_mocked.assert_called_with(expected_command, timeout=10, shell=True)
