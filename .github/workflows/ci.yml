@@ -27,6 +27,7 @@ jobs:
         os: [ubuntu-latest]
         name:
           - Python 3.9 Tests
+          - Python 3.10 Tests
           - Python 3.9 Tests Coverage
           - Code Checks
         include:
@@ -34,6 +35,10 @@ jobs:
             python: 3.9
             toxdir: cli
             toxenv: py39-nocov
+          - name: Python 3.10 Tests
+            python: '3.10'
+            toxdir: cli
+            toxenv: py310-nocov
           - name: Python 3.9 Tests Coverage
             python: 3.9
             toxdir: cli
