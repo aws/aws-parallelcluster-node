@@ -12,6 +12,7 @@
 
 import os
 from types import SimpleNamespace
+from unittest.mock import ANY
 
 import botocore
 import pytest
@@ -146,7 +147,7 @@ def test_stop_partitions(mocker):
     update_all_partitions_mocked = mocker.patch("slurm_plugin.fleet_status_manager.update_all_partitions")
 
     terminate_all_compute_nodes_mocked = mocker.patch.object(
-        slurm_plugin.instance_manager.InstanceManager, "terminate_all_compute_nodes", auto_spec=True
+        slurm_plugin.instance_manager.InstanceManager, "terminate_all_compute_nodes", autospec=True
     )
 
     # method to test
@@ -154,4 +155,4 @@ def test_stop_partitions(mocker):
 
     # assertions
     update_all_partitions_mocked.assert_called_once_with(PartitionStatus.INACTIVE, reset_node_addrs_hostname=True)
-    terminate_all_compute_nodes_mocked.assert_called_once_with(config.terminate_max_batch_size)
+    terminate_all_compute_nodes_mocked.assert_called_once_with(ANY, config.terminate_max_batch_size)

@@ -13,7 +13,7 @@
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import call
+from unittest.mock import ANY, call
 
 import botocore
 import pytest
@@ -334,19 +334,17 @@ def test_resume_launch(
         dns_domain=None,
         use_private_hostname=False,
     )
-    mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", auto_spec=True, return_value=is_heartbeat_valid)
-    mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", auto_spec=True)
+    mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", autospec=True, return_value=is_heartbeat_valid)
+    mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", autospec=True)
     # patch slurm calls
-    mock_update_nodes = mocker.patch("slurm_plugin.instance_manager.update_nodes", auto_spec=True)
-    mock_get_node_info = mocker.patch(
-        "slurm_plugin.resume.get_nodes_info", return_value=mock_node_lists, auto_spec=True
-    )
+    mock_update_nodes = mocker.patch("slurm_plugin.instance_manager.update_nodes", autospec=True)
+    mock_get_node_info = mocker.patch("slurm_plugin.resume.get_nodes_info", return_value=mock_node_lists, autospec=True)
     # patch DNS related functions
     mock_store_hostname = mocker.patch.object(
-        slurm_plugin.instance_manager.InstanceManager, "_store_assigned_hostnames", auto_spec=True
+        slurm_plugin.instance_manager.InstanceManager, "_store_assigned_hostnames", autospec=True
     )
     mock_update_dns = mocker.patch.object(
-        slurm_plugin.instance_manager.InstanceManager, "_update_dns_hostnames", auto_spec=True
+        slurm_plugin.instance_manager.InstanceManager, "_update_dns_hostnames", autospec=True
     )
 
     # Only mock fleet manager if testing case of valid clustermgtd heartbeat
@@ -376,5 +374,5 @@ def test_resume_launch(
         if expected_update_node_calls:
             mock_update_nodes.assert_has_calls(expected_update_node_calls)
         if expected_assigned_nodes:
-            mock_store_hostname.assert_called_with(expected_assigned_nodes)
-            mock_update_dns.assert_called_with(expected_assigned_nodes)
+            mock_store_hostname.assert_called_with(ANY, expected_assigned_nodes)
+            mock_update_dns.assert_called_with(ANY, expected_assigned_nodes)
