@@ -108,6 +108,9 @@ def update_nodes(
         if nodeaddrs or nodehostnames:
             # Sorting is only necessary if we set nodeaddrs or nodehostnames
             nodenames, addrs, hostnames = _sort_nodes_attributes(nodenames_, addrs_, hostnames_)
+        else:
+            nodenames = nodenames_
+            addrs = hostnames = None
         node_info = f"nodename={','.join(nodenames)}"
         if addrs:
             node_info += f" nodeaddr={','.join(addrs)}"
