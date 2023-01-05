@@ -234,6 +234,16 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
             2,
             ValueError,
         ),
+        (
+            # FIXME: This is a legit combination for slurm update, but our current batching
+            ## logic cannot handle it. We should review the batching logic so that this
+            ## scenario does not fail.
+            "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-3",
+            "nodeaddr-1,nodeaddr-2,nodeaddr-3",
+            "nodehostname-[1-3]",
+            2,
+            ValueError,
+        ),
     ],
     ids=[
         "nodename_only",
@@ -244,6 +254,7 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
         "incorrect_addr2",
         "mixed_format",
         "same_length_string",
+        "strings_different_groupings",
     ],
 )
 def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_result):
