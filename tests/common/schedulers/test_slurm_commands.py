@@ -166,7 +166,7 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
             None,
             None,
             2,
-            [("queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
+            [(("queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",), None, None)],
         ),
         (
             # Only split on commas after bucket
@@ -177,8 +177,8 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
             2,
             [
                 (
-                    "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-3,queue1-st-c5xlarge-[4,6]",
-                    "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]",
+                    ("queue1-st-c5xlarge-[1-2]", "queue1-st-c5xlarge-2,queue1-st-c5xlarge-3,queue1-st-c5xlarge-[4,6]"),
+                    ("nodeaddr-[1-2]", "nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]"),
                     None,
                 )
             ],
@@ -190,11 +190,11 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
             2,
             [
                 (
-                    "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-[3]",
-                    "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3]",
-                    "nodehostname-[1-2],nodehostname-2,nodehostname-[3]",
+                    ("queue1-st-c5xlarge-[1-2]", "queue1-st-c5xlarge-2,queue1-st-c5xlarge-[3]"),
+                    ("nodeaddr-[1-2]", "nodeaddr-2,nodeaddr-[3]"),
+                    ("nodehostname-[1-2]", "nodehostname-2,nodehostname-[3]"),
                 ),
-                ("queue1-st-c5xlarge-[4,6]", "nodeaddr-[4,6]", "nodehostname-[4,6]"),
+                (("queue1-st-c5xlarge-[4,6]",), ("nodeaddr-[4,6]",), ("nodehostname-[4,6]",)),
             ],
         ),
         ("queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3", ["nodeaddr-1"], None, 2, ValueError),
@@ -219,11 +219,11 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
             2,
             [
                 (
-                    "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2",
-                    "nodeaddr-[1],nodeaddr-[2]",
-                    "nodehostname-1,nodehostname-2",
+                    ("queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"),
+                    ("nodeaddr-[1]", "nodeaddr-[2]"),
+                    ("nodehostname-1", "nodehostname-2"),
                 ),
-                ("queue1-st-c5xlarge-3", "nodeaddr-3", "nodehostname-3"),
+                (("queue1-st-c5xlarge-3",), ("nodeaddr-3",), ("nodehostname-3",)),
             ],
         ),
         (
