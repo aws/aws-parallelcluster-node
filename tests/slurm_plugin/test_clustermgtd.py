@@ -82,7 +82,7 @@ class TestClustermgtdConfig:
                     # Compute console logging configs
                     "compute_console_logging_enabled": True,
                     "compute_console_logging_max_sample_size": 1,
-                    "compute_console_wait_time": 180,
+                    "compute_console_wait_time": 300,
                     # Task executor configs
                     "worker_pool_size": 5,
                     "worker_pool_max_backlog": 100,

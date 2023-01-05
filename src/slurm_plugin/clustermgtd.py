@@ -54,7 +54,7 @@ from slurm_plugin.slurm_resources import (
 from slurm_plugin.task_executor import TaskExecutor
 
 LOOP_TIME = 60
-CONSOLE_OUTPUT_WAIT_TIME = 3 * 60
+CONSOLE_OUTPUT_WAIT_TIME = 5 * 60
 MAXIMUM_TASK_BACKLOG = 100
 log = logging.getLogger(__name__)
 compute_logger = log.getChild("console_output")
