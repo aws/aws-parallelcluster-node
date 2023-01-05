@@ -105,7 +105,7 @@ def update_nodes(
     if reason:
         update_cmd += f' reason="{reason}"'
     for nodenames_, addrs_, hostnames_ in batched_node_info:
-        if nodeaddrs or nodehostnames:
+        if addrs_ or hostnames_:
             # Sorting is only necessary if we set nodeaddrs or nodehostnames
             nodenames, addrs, hostnames = _sort_nodes_attributes(nodenames_, addrs_, hostnames_)
         else:
