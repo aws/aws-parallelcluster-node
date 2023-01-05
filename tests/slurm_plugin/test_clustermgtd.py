@@ -1452,7 +1452,7 @@ def test_manage_cluster(
 
 @pytest.mark.parametrize(
     (
-        "config_file, mocked_active_nodes, mocked_inactive_nodes, mocked_check_command_output, mocked_boto3_request, "
+        "config_file, mocked_active_nodes, mocked_inactive_nodes, mocked_boto3_request, "
         "launched_instances, expected_error_messages"
     ),
     [
@@ -1475,7 +1475,6 @@ def test_manage_cluster(
                 StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
                 DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
-            "queue-st-c5xlarge-4\nqueue-dy-c5xlarge-5",
             [
                 # _get_ec2_instances: get all cluster instances by tags
                 MockedBoto3Request(
@@ -1621,7 +1620,6 @@ def test_manage_cluster(
                 StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
                 DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
-            "queue-st-c5xlarge-4\nqueue-dy-c5xlarge-5",
             [
                 # _get_ec2_instances: get all cluster instances by tags
                 # Not producing failure here so logic after can be executed
@@ -1793,7 +1791,6 @@ def test_manage_cluster(
                 StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
                 DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
-            "queue-st-c5xlarge-4\nqueue-dy-c5xlarge-5",
             [
                 # _get_ec2_instances: get all cluster instances by tags
                 # Produce an error, cluster should be able to handle exception and skip other actions
@@ -1824,7 +1821,6 @@ def test_manage_cluster(
             Exception,
             Exception,
             [],
-            [],
             [{}],
             ["Unable to get partition/node info from slurm, no other action can be performed"],
         ),
@@ -1836,7 +1832,6 @@ def test_manage_cluster_boto3(
     config_file,
     mocked_active_nodes,
     mocked_inactive_nodes,
-    mocked_check_command_output,
     mocked_boto3_request,
     launched_instances,
     expected_error_messages,
@@ -1857,7 +1852,14 @@ def test_manage_cluster_boto3(
     cluster_manager = ClusterManager(sync_config)
     check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output")
     check_command_output_mocked.return_value = '{"status": "RUNNING"}'
-    mocker.patch("common.schedulers.slurm_commands.check_command_output", return_value=mocked_check_command_output)
+    mocker.patch(
+        "common.schedulers.slurm_commands.check_command_output",
+        side_effect=lambda x, shell=False: "\n".join(
+            x.replace("sudo /opt/slurm/bin/scontrol show hostlistsorted ", "")
+            .replace(" | xargs sudo /opt/slurm/bin/scontrol show hostnames", "")
+            .split(",")
+        ),
+    )
     mocker.patch.object(cluster_manager, "_write_timestamp_to_file", auto_spec=True)
     part_active = SlurmPartition("queue1", "placeholder_nodes", "UP")
     part_active.slurm_nodes = mocked_active_nodes
