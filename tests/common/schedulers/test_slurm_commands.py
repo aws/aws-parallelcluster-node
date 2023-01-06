@@ -236,8 +236,8 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
         ),
         (
             # FIXME: This is a legit combination for slurm update, but our current batching
-            ## logic cannot handle it. We should review the batching logic so that this
-            ## scenario does not fail.
+            # logic cannot handle it. We should review the batching logic so that this
+            # scenario does not fail.
             "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-3",
             "nodeaddr-1,nodeaddr-2,nodeaddr-3",
             "nodehostname-[1-3]",
@@ -463,7 +463,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 call(
                     (
                         'sudo /opt/slurm/bin/scontrol update state=down reason="debugging"'
-                        + " nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1"
+                        " nodename=queue1-st-c5xlarge-1 nodehostname=hostname-1"
                     ),
                     raise_on_error=True,
                     timeout=60,
@@ -472,7 +472,10 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                 call(
                     (
                         'sudo /opt/slurm/bin/scontrol update state=down reason="debugging"'
-                        + " nodename=queue1-st-c5xlarge-3,queue1-st-c5xlarge-4,queue1-st-c5xlarge-5,queue1-st-c5xlarge-6 nodeaddr=queue1-st-c5xlarge-3,queue1-st-c5xlarge-4,queue1-st-c5xlarge-5,queue1-st-c5xlarge-6 nodehostname=queue1-st-c5xlarge-3,queue1-st-c5xlarge-4,queue1-st-c5xlarge-5,queue1-st-c5xlarge-6"
+                        " nodename=queue1-st-c5xlarge-3,queue1-st-c5xlarge-4,queue1-st-c5xlarge-5,"
+                        "queue1-st-c5xlarge-6 nodeaddr=queue1-st-c5xlarge-3,queue1-st-c5xlarge-4,queue1-st-c5xlarge-5,"
+                        "queue1-st-c5xlarge-6 nodehostname=queue1-st-c5xlarge-3,queue1-st-c5xlarge-4,"
+                        "queue1-st-c5xlarge-5,queue1-st-c5xlarge-6"
                     ),
                     raise_on_error=True,
                     timeout=60,

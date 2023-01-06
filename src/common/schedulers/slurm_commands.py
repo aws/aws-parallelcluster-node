@@ -123,7 +123,7 @@ def update_nodes(
 
 def _sort_nodes_attributes(nodes, nodeaddrs, nodehostnames):
     nodes_str = ",".join(nodes)
-    sorted_node_names_str = check_command_output(
+    sorted_node_names_str = check_command_output(  # nosec
         f"{SCONTROL} show hostlistsorted {nodes_str} | xargs {SCONTROL} show hostnames", shell=True
     )
     sorted_node_names = sorted_node_names_str.strip().split("\n")
@@ -133,7 +133,10 @@ def _sort_nodes_attributes(nodes, nodeaddrs, nodehostnames):
     else:
         # Path from _update_slurm_node_addrs
         order = {k: i for i, k in enumerate(sorted_node_names)}
-        sorting_key = lambda x: order[x[0]]
+
+        def sorting_key(x):
+            return order[x[0]]
+
         if nodeaddrs and nodehostnames:
             _, nodeaddrs, nodehostnames = zip(*sorted(zip(nodes, nodeaddrs, nodehostnames), key=sorting_key))
         elif nodeaddrs:
