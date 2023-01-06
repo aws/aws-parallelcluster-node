@@ -122,7 +122,7 @@ def update_nodes(
 
 
 def _sort_nodes_attributes(nodes, nodeaddrs, nodehostnames):
-    nodes_str = ",".join(nodes) if type(nodes) is tuple else nodes
+    nodes_str = ",".join(nodes)
     sorted_node_names_str = check_command_output(
         f"{SCONTROL} show hostlistsorted {nodes_str} | xargs {SCONTROL} show hostnames", shell=True
     )
