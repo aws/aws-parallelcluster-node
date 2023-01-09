@@ -17,6 +17,7 @@ import time
 from configparser import ConfigParser
 from datetime import datetime, timezone
 from enum import Enum
+from functools import partial
 from logging.config import fileConfig
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
@@ -36,9 +37,10 @@ from common.schedulers.slurm_commands import (
     update_partitions,
 )
 from common.time_utils import seconds
-from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up
+from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up, wait_remaining_time
 from retrying import retry
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
+from slurm_plugin.console_logger import ConsoleLogger
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     CONFIG_FILE_DIR,
@@ -49,9 +51,13 @@ from slurm_plugin.slurm_resources import (
     SlurmNode,
     StaticNode,
 )
+from slurm_plugin.task_executor import TaskExecutor
 
 LOOP_TIME = 60
+CONSOLE_OUTPUT_WAIT_TIME = 5 * 60
+MAXIMUM_TASK_BACKLOG = 100
 log = logging.getLogger(__name__)
+compute_logger = log.getChild("console_output")
 
 
 class ComputeFleetStatus(Enum):
@@ -149,6 +155,13 @@ class ClustermgtdConfig:
         "use_private_hostname": False,
         "protected_failure_count": 10,
         "insufficient_capacity_timeout": 600,
+        # Compute console logging configs
+        "compute_console_logging_enabled": True,
+        "compute_console_logging_max_sample_size": 1,
+        "compute_console_wait_time": CONSOLE_OUTPUT_WAIT_TIME,
+        # Task executor configs
+        "worker_pool_size": 5,
+        "worker_pool_max_backlog": MAXIMUM_TASK_BACKLOG,
     }
 
     def __init__(self, config_file_path):
@@ -279,6 +292,30 @@ class ClustermgtdConfig:
             "clustermgtd", "use_private_hostname", fallback=self.DEFAULTS.get("use_private_hostname")
         )
 
+    def _get_compute_console_output_config(self, config):
+        """Get config options related to logging console output from compute nodes."""
+        self.compute_console_logging_enabled = config.getboolean(
+            "clustermgtd",
+            "compute_console_logging_enabled",
+            fallback=self.DEFAULTS.get("compute_console_logging_enabled"),
+        )
+        self.compute_console_logging_max_sample_size = config.getint(
+            "clustermgtd",
+            "compute_console_logging_max_sample_size",
+            fallback=self.DEFAULTS.get("compute_console_logging_max_sample_size"),
+        )
+        self.compute_console_wait_time = config.getint(
+            "clustermgtd", "compute_console_wait_time", fallback=self.DEFAULTS.get("compute_console_wait_time")
+        )
+
+    def _get_worker_pool_config(self, config):
+        self.worker_pool_size = config.getint(
+            "clustermgtd", "worker_pool_size", fallback=self.DEFAULTS.get("worker_pool_size")
+        )
+        self.worker_pool_max_backlog = config.getint(
+            "clustermgtd", "worker_pool_max_backlog", fallback=self.DEFAULTS.get("worker_pool_max_backlog")
+        )
+
     @log_exception(log, "reading cluster manager configuration file", catch_exception=IOError, raise_on_error=True)
     def _get_config(self, config_file_path):
         """Get clustermgtd configuration."""
@@ -292,6 +329,8 @@ class ClustermgtdConfig:
         self._get_launch_config(self._config)
         self._get_terminate_config(self._config)
         self._get_dns_config(self._config)
+        self._get_compute_console_output_config(self._config)
+        self._get_worker_pool_config(self._config)
 
 
 class ClusterManager:
@@ -326,14 +365,34 @@ class ClusterManager:
         self._config = None
         self._compute_fleet_status_manager = None
         self._instance_manager = None
+        self._task_executor = None
+        self._console_logger = None
         self.set_config(config)
 
     def set_config(self, config):
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
+
+            # If a new task executor is needed, the old one will be shutdown.
+            # This should cause any pending tasks to be cancelled (Py 3.9) and
+            # any executing tasks to raise an exception as long as they test
+            # the executor for shutdown. If tracking of cancelled or failed
+            # tasks is needed, then the Future object returned from task_executor
+            # can be queried to determine how the task exited.
+            # The shutdown on the task_executor is by default, non-blocking, so
+            # it is possible for some tasks to continue executing even after the
+            # shutdown request has returned.
+            self._task_executor = self._initialize_executor(config)
+
             self._config = config
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
+            self._console_logger = self._initialize_console_logger(config)
+
+    def shutdown(self):
+        if self._task_executor:
+            self._task_executor.shutdown()
+            self._task_executor = None
 
     @staticmethod
     def _initialize_instance_manager(config):
@@ -353,6 +412,30 @@ class ClusterManager:
             fleet_config=config.fleet_config,
         )
 
+    def _initialize_executor(self, config):
+        if (
+            self._config is None
+            or self._config.worker_pool_size != config.worker_pool_size
+            or self._config.worker_pool_max_backlog != config.worker_pool_max_backlog
+        ):
+            if self._task_executor:
+                self._task_executor.shutdown()
+            return TaskExecutor(
+                worker_pool_size=config.worker_pool_size,
+                max_backlog=config.worker_pool_max_backlog,
+            )
+        return self._task_executor
+
+    @staticmethod
+    def _initialize_console_logger(config):
+        return ConsoleLogger(
+            region=config.region,
+            enabled=config.compute_console_logging_enabled,
+            console_output_consumer=lambda name, instance_id, output: compute_logger.info(
+                "Console output for node %s (Instance Id %s):\r%s", name, instance_id, output
+            ),
+        )
+
     def _update_compute_fleet_status(self, status):
         log.info("Updating compute fleet status from %s to %s", self._compute_fleet_status, status)
         self._compute_fleet_status_manager.update_status(status)
@@ -365,7 +448,7 @@ class ClusterManager:
         Includes resetting partition bootstrap failure count for these nodes type and updating the
         bootstrap_failure_nodes_types.
         If a node has been failed successfully launched, the partition count of this node will be reset.
-        So the successfully launched nodes type will be remove from bootstrap_failure_nodes_types.
+        So the successfully launched nodes type will be removed from bootstrap_failure_nodes_types.
         If there's node types failed in this partition later, it will keep count again.
         """
         # Find nodes types which have been failed during bootstrap now become online.
@@ -689,6 +772,24 @@ class ClusterManager:
 
         Set node to down, terminate backing instance, and launch new instance for static node.
         """
+        try:
+            wait_function = partial(
+                wait_remaining_time,
+                wait_start_time=datetime.now(tz=timezone.utc),
+                total_wait_time=self._config.compute_console_wait_time,
+                wait_function=self._task_executor.wait_unless_shutdown,
+            )
+            self._console_logger.report_console_output_from_nodes(
+                compute_instances=self._instance_manager.get_compute_node_instances(
+                    unhealthy_static_nodes,
+                    self._config.compute_console_logging_max_sample_size,
+                ),
+                task_controller=self._task_executor,
+                task_wait_function=wait_function,
+            )
+        except Exception as e:
+            log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
+
         node_list = [node.name for node in unhealthy_static_nodes]
         # Set nodes into down state so jobs can be requeued immediately
         try:
@@ -1097,31 +1198,34 @@ def _run_clustermgtd(config_file):
     """Run clustermgtd actions."""
     config = ClustermgtdConfig(config_file)
     cluster_manager = ClusterManager(config=config)
-    while True:
-        # Get loop start time
-        start_time = datetime.now(tz=timezone.utc)
-        # Get program config
-        try:
-            config = ClustermgtdConfig(config_file)
-            cluster_manager.set_config(config)
-        except Exception as e:
-            log.warning(
-                "Unable to reload daemon config from %s, using previous one.\nException: %s",
-                config_file,
-                e,
-            )
-        # Configure root logger
-        try:
-            fileConfig(config.logging_config, disable_existing_loggers=False)
-        except Exception as e:
-            log.warning(
-                "Unable to configure logging from %s, using default logging settings.\nException: %s",
-                config.logging_config,
-                e,
-            )
-        # Manage cluster
-        cluster_manager.manage_cluster()
-        sleep_remaining_loop_time(config.loop_time, start_time)
+    try:
+        while True:
+            # Get loop start time
+            start_time = datetime.now(tz=timezone.utc)
+            # Get program config
+            try:
+                config = ClustermgtdConfig(config_file)
+                cluster_manager.set_config(config)
+            except Exception as e:
+                log.warning(
+                    "Unable to reload daemon config from %s, using previous one.\nException: %s",
+                    config_file,
+                    e,
+                )
+            # Configure root logger
+            try:
+                fileConfig(config.logging_config, disable_existing_loggers=False)
+            except Exception as e:
+                log.warning(
+                    "Unable to configure logging from %s, using default logging settings.\nException: %s",
+                    config.logging_config,
+                    e,
+                )
+            # Manage cluster
+            cluster_manager.manage_cluster()
+            sleep_remaining_loop_time(config.loop_time, start_time)
+    finally:
+        cluster_manager.shutdown()
 
 
 @retry(wait_fixed=seconds(LOOP_TIME))

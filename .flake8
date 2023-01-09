@@ -17,7 +17,7 @@ ignore =
     # W503: line break before binary operator => Conflicts with black style.
     W503,
     # N818: exception name should be named with an Error suffix
-    N818
+    N818,
 exclude =
     .tox,
     .git,

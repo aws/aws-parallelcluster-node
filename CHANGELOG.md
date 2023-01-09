@@ -6,11 +6,15 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.5.0
 ------
 
+**ENHANCEMENTS**
+- Add logging of compute node console output to CloudWatch from head node on compute node bootstrap failure.
+
 3.4.0
 ------
 
 **ENHANCEMENTS**
 - Add support for launching nodes across multiple availability zones to increase capacity availability.
+
 
 **CHANGES**
 - Do not consider dynamic nodes in IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING as unhealthy anymore.

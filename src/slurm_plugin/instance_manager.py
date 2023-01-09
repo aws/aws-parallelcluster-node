@@ -10,18 +10,20 @@
 # limitations under the License.
 
 import collections
+import itertools
 import logging
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
 import subprocess  # nosec B404
+from typing import Iterable
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
-from slurm_plugin.common import log_exception, print_with_count
+from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
@@ -29,6 +31,7 @@ from slurm_plugin.slurm_resources import (
     EC2_SCHEDULED_EVENT_CODES,
     EC2InstanceHealthState,
     InvalidNodenameError,
+    SlurmNode,
     parse_nodename,
 )
 
@@ -37,6 +40,7 @@ logger = logging.getLogger(__name__)
 # PageSize parameter used for Boto3 paginated calls
 # Corresponds to MaxResults in describe_instances and describe_instance_status API
 BOTO3_PAGINATION_PAGE_SIZE = 1000
+BOTO3_MAX_BATCH_SIZE = 50
 
 
 class InstanceManager:
@@ -77,6 +81,9 @@ class InstanceManager:
         self._fleet_config = fleet_config
         self._run_instances_overrides = run_instances_overrides or {}
         self._create_fleet_overrides = create_fleet_overrides or {}
+        self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
+            resource_name, region_name=region, config=boto3_config
+        )
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -362,3 +369,95 @@ class InstanceManager:
     def _update_failed_nodes(self, nodeset, error_code="Exception"):
         """Update failed nodes dict with error code as key and nodeset value."""
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
+
+    def get_compute_node_instances(
+        self, compute_nodes: Iterable[SlurmNode], max_retrieval_count: int
+    ) -> Iterable[ComputeInstanceDescriptor]:
+        """Return an iterable of dicts containing a node name and instance ID for each node in compute_nodes."""
+        return InstanceManager._get_instances_for_nodes(
+            compute_nodes=compute_nodes,
+            table_name=self._table.table_name,
+            resource_factory=self._boto3_resource_factory,
+            max_retrieval_count=max_retrieval_count if max_retrieval_count > 0 else None,
+        )
+
+    @staticmethod
+    def _get_instances_for_nodes(
+        compute_nodes, table_name, resource_factory, max_retrieval_count
+    ) -> Iterable[ComputeInstanceDescriptor]:
+        # Partition compute_nodes into a list of nodes with an instance ID and a list of nodes without an instance ID.
+        nodes_with_instance_id = []
+        nodes_without_instance_id = []
+        for node in compute_nodes:
+            (nodes_with_instance_id if node.instance else nodes_without_instance_id).append(
+                {
+                    "Name": node.name,
+                    "InstanceId": node.instance.id if node.instance else None,
+                }
+            )
+
+        # Make sure that we don't return more than max_retrieval_count if set.
+        nodes_with_instance_id = (
+            nodes_with_instance_id[:max_retrieval_count] if max_retrieval_count else nodes_with_instance_id
+        )
+
+        # Determine the remaining number nodes we will need to retrieve from DynamoDB.
+        remaining = (
+            max(0, max_retrieval_count - len(nodes_with_instance_id))
+            if max_retrieval_count
+            else len(nodes_without_instance_id)
+        )
+
+        # Return instance ids that don't require a DDB lookup first.
+        yield from nodes_with_instance_id
+
+        # Lookup instance IDs in DynamoDB for nodes that we don't already have the instance ID for; but only
+        # if we haven't already returned max_retrieval_count instances.
+        if remaining:
+            yield from InstanceManager._retrieve_instance_ids_from_dynamo(
+                ddb_resource=resource_factory("dynamodb"),
+                table_name=table_name,
+                compute_nodes=nodes_without_instance_id,
+                max_retrieval_count=remaining,
+            )
+
+    @staticmethod
+    def _retrieve_instance_ids_from_dynamo(
+        ddb_resource, table_name, compute_nodes, max_retrieval_count
+    ) -> Iterable[ComputeInstanceDescriptor]:
+        node_name_partitions = InstanceManager._partition_nodes(node.get("Name") for node in compute_nodes)
+
+        for node_name_partition in node_name_partitions:
+            node_name_partition = itertools.islice(node_name_partition, max_retrieval_count)
+            query = InstanceManager._create_request_for_nodes(table_name=table_name, node_names=node_name_partition)
+            response = ddb_resource.batch_get_item(RequestItems=query)
+
+            # Because we can't assume that len(partition) equals len(Responses.table_name), e.g. when a node name does
+            # not exist in the DynamoDB table, we only decrement the remaining number of nodes we need when we actually
+            # return an instance ID.
+            for item in response.get("Responses").get(table_name):
+                yield {
+                    "Name": item.get("Id"),
+                    "InstanceId": item.get("InstanceId"),
+                }
+                max_retrieval_count -= 1
+            if max_retrieval_count < 1:
+                break
+
+    @staticmethod
+    def _partition_nodes(node_names, size=BOTO3_MAX_BATCH_SIZE):
+        yield from grouper(node_names, size)
+
+    @staticmethod
+    def _create_request_for_nodes(table_name, node_names):
+        return {
+            str(table_name): {
+                "Keys": [
+                    {
+                        "Id": str(node_name),
+                    }
+                    for node_name in node_names
+                ],
+                "ProjectionExpression": "Id, InstanceId",
+            }
+        }
