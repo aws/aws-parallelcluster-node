@@ -16,7 +16,7 @@ from concurrent.futures import Future
 from datetime import datetime
 from typing import Callable, Optional, Protocol, TypedDict
 
-from common.utils import check_command_output, time_is_up
+from common.utils import check_command_output, time_is_up, validate_absolute_path
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +95,15 @@ def get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):
     # Use subprocess based method to read shared file to prevent hanging when NFS is down
     # Do not copy to local. Different users need to access the file, but file should be writable by root only
     # Only use last line of output to avoid taking unexpected output in stdout
+
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_absolute_path(clustermgtd_heartbeat_file_path)
+
     heartbeat = (
         check_command_output(
             f"cat {clustermgtd_heartbeat_file_path}",
             timeout=DEFAULT_COMMAND_TIMEOUT,
-            shell=True,  # nosec
+            shell=True,  # nosec B604
         )
         .splitlines()[-1]
         .strip()

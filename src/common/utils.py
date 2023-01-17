@@ -74,11 +74,11 @@ def check_command_output(
     """
     if isinstance(command, str) and not shell:
         command = shlex.split(command)
-    # A nosec comment is appended to the following line in order to disable the B602 check.
+    # A nosec B602 comment is appended to the following line in order to disable the B602 check.
     # This check is disabled for the following reasons:
     # - Some callers (e.g., common slurm commands) require the use of `shell=True`.
-    # - All values passed as the command arg are constructed from known inputs.
-    result = _run_command(  # nosec
+    # - All values passed as the command arg are constructed from known inputs and are properly validated.
+    result = _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
@@ -88,7 +88,7 @@ def check_command_output(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
-            shell=shell,
+            shell=shell,  # nosec B602
         ),
         command,
         env,
@@ -112,11 +112,11 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     if isinstance(command, str) and not shell:
         command = shlex.split(command)
-    # A nosec comment is appended to the following line in order to disable the B602 check.
+    # A nosec B602 comment is appended to the following line in order to disable the B602 check.
     # This check is disabled for the following reasons:
     # - Some callers (e.g., common slurm commands) require the use of `shell=True`.
-    # - All values passed as the command arg are constructed from known inputs.
-    _run_command(  # nosec
+    # - All values passed as the command arg are constructed from known inputs and are properly validated.
+    _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
@@ -124,7 +124,7 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
             timeout=timeout,
             check=True,
             encoding="utf-8",
-            shell=shell,
+            shell=shell,  # nosec B602
         ),
         command,
         env,
@@ -274,3 +274,16 @@ def read_json(file_path, default=None):
             if not isinstance(e, FileNotFoundError):
                 log.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
             return default
+
+
+def validate_subprocess_argument(argument):
+    # As for https://www.gnu.org/software/bash/manual/bash.html#Lists
+    # we want to exclude ‘;’, ‘&’, ‘&&’, ‘||’, ‘|’ or newline from the argument
+    forbidden_patterns = [";", "&", "|", "\n"]
+    if any(map(argument.__contains__, forbidden_patterns)):
+        raise Exception(f"Value of argument {argument} contains at least a forbidden pattern")
+
+
+def validate_absolute_path(path):
+    if not os.path.isabs(path):
+        raise Exception(f"The path {path} is not a valid absolute path")
