@@ -161,8 +161,47 @@ class TestClustermgtdConfig:
                     "health_check_timeout": 10,
                 },
             ),
+            (
+                "no_console_output_enabled.conf",
+                {
+                    # basic configs
+                    "cluster_name": "hit",
+                    "region": "us-east-2",
+                    "_boto3_config": {"retries": {"max_attempts": 1, "mode": "standard"}},
+                    "loop_time": 60,
+                    "disable_all_cluster_management": False,
+                    "heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
+                    "logging_config": os.path.join(
+                        os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_clustermgtd_logging.conf"
+                    ),
+                    "dynamodb_table": "table-name",
+                    # launch configs
+                    "update_node_address": True,
+                    "launch_max_batch_size": 500,
+                    # terminate configs
+                    "terminate_max_batch_size": 1000,
+                    "node_replacement_timeout": 1800,
+                    "terminate_drain_nodes": True,
+                    "terminate_down_nodes": True,
+                    "orphaned_instance_timeout": 120,
+                    # health check configs
+                    "disable_ec2_health_check": False,
+                    "disable_scheduled_event_health_check": False,
+                    "disable_all_health_checks": False,
+                    "health_check_timeout": 180,
+                    "protected_failure_count": 10,
+                    "insufficient_capacity_timeout": 600,
+                    # Compute console logging configs
+                    "compute_console_logging_enabled": True,
+                    "compute_console_logging_max_sample_size": 1,
+                    "compute_console_wait_time": 300,
+                    # Task executor configs
+                    "worker_pool_size": 5,
+                    "worker_pool_max_backlog": 100,
+                },
+            ),
         ],
-        ids=["default", "all_options", "health_check"],
+        ids=["default", "all_options", "health_check", "no_console_output_enabled"],
     )
     def test_config_parsing(self, config_file, expected_attributes, test_datadir, mocker):
         mocker.patch(

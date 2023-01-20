@@ -294,10 +294,14 @@ class ClustermgtdConfig:
 
     def _get_compute_console_output_config(self, config):
         """Get config options related to logging console output from compute nodes."""
-        self.compute_console_logging_enabled = config.getboolean(
-            "clustermgtd",
-            "compute_console_logging_enabled",
-            fallback=self.DEFAULTS.get("compute_console_logging_enabled"),
+        self.compute_console_logging_enabled = (
+            config.getboolean(
+                "clustermgtd",
+                "compute_console_logging_enabled",
+                fallback=self.DEFAULTS.get("compute_console_logging_enabled"),
+            )
+            if config.get("clustermgtd", "compute_console_logging_enabled", fallback=None)
+            else True
         )
         self.compute_console_logging_max_sample_size = config.getint(
             "clustermgtd",
