@@ -364,10 +364,10 @@ def _parse_nodes_info(slurm_node_info):
         "Reason": "reason",
     }
 
-    node_info = slurm_node_info.split("######")
+    node_info = slurm_node_info.split("######\n")
     slurm_nodes = []
     for node in node_info:
-        lines = node.strip().splitlines()
+        lines = node.splitlines()
         kwargs = {}
         for line in lines:
             key, value = line.split("=")

@@ -118,13 +118,13 @@ def test_is_static_node(nodename, expected_is_static):
                 "NodeHostName=multiple-dy-c5xlarge-5\n"
                 "State=IDLE+CLOUD+POWER\n"
                 # missing partitions
-                "######"
+                "######\n"
                 "NodeName=test-no-partition\n"
                 "NodeAddr=test-no-partition\n"
                 "NodeHostName=test-no-partition\n"
                 "State=IDLE+CLOUD+POWER\n"
                 # missing partitions
-                "######"
+                "######\n"
             ),
             [
                 StaticNode("multiple-st-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
@@ -135,7 +135,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
                     "multiple",
-                    "some reason",
+                    "some reason ",
                 ),
                 DynamicNode(
                     "multiple-dy-c5xlarge-4",
@@ -143,7 +143,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "multiple-dy-c5xlarge-4",
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
-                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes ",
                 ),
                 DynamicNode(
                     "multiple-dy-c5xlarge-5",
