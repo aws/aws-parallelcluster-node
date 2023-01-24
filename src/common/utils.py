@@ -250,11 +250,13 @@ def convert_range_to_list(node_range):
     )
 
 
-def time_is_up(initial_time, current_time, grace_time):
+def time_is_up(initial_time: datetime, current_time: datetime, grace_time: int):
     """Check if timeout is exceeded."""
     # Localize datetime objects to UTC if not previously localized
     # All timestamps used in this function should be already localized
     # Assume timestamp was taken from system local time if there is no localization info
+    if initial_time is None:
+        return True
     if not initial_time.tzinfo:
         logging.warning(
             "Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.", initial_time

@@ -50,6 +50,12 @@ from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
             90 * 60,
             False,
         ),
+        (
+            None,
+            datetime(2020, 1, 24, 23, 42, 12),
+            180,
+            True,
+        ),
     ],
 )
 def test_time_is_up(initial_time, current_time, grace_time, expected_result):
