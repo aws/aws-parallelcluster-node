@@ -12,6 +12,7 @@ from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
+from datetime import datetime
 from common.schedulers.slurm_commands import (
     SCONTROL,
     SINFO,
@@ -83,60 +84,75 @@ def test_is_static_node(nodename, expected_is_static):
 
 
 @pytest.mark.parametrize(
-    "node_info, expected_parsed_nodes_output",
+    "node_info, expected_parsed_nodes_output, invalid_name",
     [
         (
-            (
-                "NodeName=multiple-st-c5xlarge-1\n"
-                "NodeAddr=172.31.10.155\n"
-                "NodeHostName=172-31-10-155\n"
-                "State=MIXED+CLOUD\n"
-                "Partitions=multiple\n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-2\n"
-                "NodeAddr=172.31.7.218\n"
-                "NodeHostName=172-31-7-218\n"
-                "State=IDLE+CLOUD+POWER\n"
-                "Partitions=multiple\n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-3\n"
-                "NodeAddr=multiple-dy-c5xlarge-3\n"
-                "NodeHostName=multiple-dy-c5xlarge-3\n"
-                "State=IDLE+CLOUD+POWER\n"
-                "Partitions=multiple\n"
-                "Reason=some reason \n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-4\n"
-                "NodeAddr=multiple-dy-c5xlarge-4\n"
-                "NodeHostName=multiple-dy-c5xlarge-4\n"
-                "State=IDLE+CLOUD+POWER\n"
-                "Partitions=multiple,multiple2\n"
-                "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes \n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-5\n"
-                "NodeAddr=multiple-dy-c5xlarge-5\n"
-                "NodeHostName=multiple-dy-c5xlarge-5\n"
-                "State=IDLE+CLOUD+POWER\n"
-                # missing partitions
-                "######\n"
-                "NodeName=test-no-partition\n"
-                "NodeAddr=test-no-partition\n"
-                "NodeHostName=test-no-partition\n"
-                "State=IDLE+CLOUD+POWER\n"
-                # missing partitions
-                "######\n"
-            ),
+            "NodeName=multiple-st-c5xlarge-1\n"
+            "NodeAddr=172.31.10.155\n"
+            "NodeHostName=172-31-10-155\n"
+            "State=MIXED+CLOUD\n"
+            "Partitions=multiple\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "######\n"
+            "NodeName=multiple-dy-c5xlarge-2\n"
+            "NodeAddr=172.31.7.218\n"
+            "NodeHostName=172-31-7-218\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=multiple\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "######\n",
             [
-                StaticNode("multiple-st-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
-                DynamicNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER", "multiple"),
+                StaticNode(
+                    "multiple-st-c5xlarge-1",
+                    "172.31.10.155",
+                    "172-31-10-155",
+                    "MIXED+CLOUD",
+                    "multiple",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
+                ),
+                DynamicNode(
+                    "multiple-dy-c5xlarge-2",
+                    "172.31.7.218",
+                    "172-31-7-218",
+                    "IDLE+CLOUD+POWER",
+                    "multiple",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
+                ),
+            ],
+            False,
+        ),
+        (
+            "NodeName=multiple-dy-c5xlarge-3\n"
+            "NodeAddr=multiple-dy-c5xlarge-3\n"
+            "NodeHostName=multiple-dy-c5xlarge-3\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=multiple\n"
+            "Reason=some reason  \n"
+            "SlurmdStartTime=None\n"
+            "######\n",
+            [
                 DynamicNode(
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
                     "multiple",
-                    "some reason ",
+                    "some reason  ",
+                    slurmdstarttime=None,
                 ),
+            ],
+            False,
+        ),
+        (
+            "NodeName=multiple-dy-c5xlarge-4\n"
+            "NodeAddr=multiple-dy-c5xlarge-4\n"
+            "NodeHostName=multiple-dy-c5xlarge-4\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=multiple,multiple2\n"
+            "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes \n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "######\n",
+            [
                 DynamicNode(
                     "multiple-dy-c5xlarge-4",
                     "multiple-dy-c5xlarge-4",
@@ -144,21 +160,45 @@ def test_is_static_node(nodename, expected_is_static):
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
                     "(Code:InsufficientInstanceCapacity)Failure when resuming nodes ",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
                 ),
+            ],
+            False,
+        ),
+        (
+            "NodeName=multiple-dy-c5xlarge-5\n"
+            "NodeAddr=multiple-dy-c5xlarge-5\n"
+            "NodeHostName=multiple-dy-c5xlarge-5\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            # missing partitions
+            "######\n"
+            # Invalid node name
+            "NodeName=test-no-partition\n"
+            "NodeAddr=test-no-partition\n"
+            "NodeHostName=test-no-partition\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            # missing partitions
+            "######\n",
+            [
                 DynamicNode(
                     "multiple-dy-c5xlarge-5",
                     "multiple-dy-c5xlarge-5",
                     "multiple-dy-c5xlarge-5",
                     "IDLE+CLOUD+POWER",
                     None,
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
                 ),
             ],
+            True,
         )
     ],
 )
-def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
+def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name, caplog):
     assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
-    assert_that(caplog.text).contains("Ignoring node test-no-partition because it has an invalid name")
+    if invalid_name:
+        assert_that(caplog.text).contains("Ignoring node test-no-partition because it has an invalid name")
 
 
 @pytest.mark.parametrize(

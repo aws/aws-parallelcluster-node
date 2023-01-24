@@ -82,6 +82,7 @@ class SlurmPartition:
 
 
 class SlurmNode(metaclass=ABCMeta):
+    slurmdstarttime: datetime
     SLURM_SCONTROL_COMPLETING_STATE = "COMPLETING"
     SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", SLURM_SCONTROL_COMPLETING_STATE}
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
@@ -108,7 +109,7 @@ class SlurmNode(metaclass=ABCMeta):
         "SpotMaxPriceTooLow",
     }
 
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None):
         """Initialize slurm node with attributes."""
         self.name = name
         self.nodeaddr = nodeaddr
@@ -118,6 +119,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.partitions = partitions.strip().split(",") if partitions else None
         self.reason = reason
         self.instance = instance
+        self.slurmdstarttime = slurmdstarttime
         self.is_static_nodes_in_replacement = False
         self.is_being_replaced = False
         self._is_replacement_timeout = False
@@ -305,9 +307,9 @@ class SlurmNode(metaclass=ABCMeta):
 
 
 class StaticNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance)
+        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
@@ -397,9 +399,9 @@ class StaticNode(SlurmNode):
 
 
 class DynamicNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
+    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance)
+        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""

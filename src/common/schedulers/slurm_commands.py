@@ -14,15 +14,18 @@ import os
 import re
 
 from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
+from datetime import datetime
 from retrying import retry
 from slurm_plugin.slurm_resources import (
     DynamicNode,
     InvalidNodenameError,
     PartitionStatus,
     SlurmPartition,
+    SlurmNode,
     StaticNode,
     parse_nodename,
 )
+from typing import List
 
 log = logging.getLogger(__name__)
 
@@ -249,7 +252,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     show_node_info_command = (
         f'{SCONTROL} show nodes {nodes} | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
         'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
-        '(Partitions=\\S+)|(Reason=.+) |(######)"'
+        '(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.+) |(######)"'
     )
     nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec B604
 
@@ -324,7 +327,7 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
     return ",".join(nodes)
 
 
-def _parse_nodes_info(slurm_node_info):
+def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
     # awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
@@ -362,6 +365,7 @@ def _parse_nodes_info(slurm_node_info):
         "State": "state",
         "Partitions": "partitions",
         "Reason": "reason",
+        "SlurmdStartTime": "slurmdstarttime",
     }
 
     node_info = slurm_node_info.split("######\n")
@@ -371,6 +375,11 @@ def _parse_nodes_info(slurm_node_info):
         kwargs = {}
         for line in lines:
             key, value = line.split("=")
+            if key == "SlurmdStartTime":
+                if value != "None":
+                    value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+                else:
+                    value = None
             kwargs[map_slurm_key_to_arg[key]] = value
         if lines:
             try:
