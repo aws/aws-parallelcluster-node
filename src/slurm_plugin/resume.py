@@ -161,8 +161,12 @@ def _resume(arg_nodes, resume_config):
         _handle_failed_nodes(arg_nodes)
         return
     log.info("Launching EC2 instances for the following Slurm nodes: %s", arg_nodes)
-    node_list = [node.name for node in get_nodes_info(arg_nodes)]
-    log.debug("Retrieved nodelist: %s", node_list)
+    node_list = []
+    node_list_with_status = []
+    for node in get_nodes_info(arg_nodes):
+        node_list.append(node.name)
+        node_list_with_status.append((node.name, node.state_string))
+    log.info("Current state of Slurm nodes to resume: %s", node_list_with_status)
 
     instance_manager = InstanceManager(
         resume_config.region,
