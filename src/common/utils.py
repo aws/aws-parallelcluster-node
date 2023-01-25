@@ -64,6 +64,10 @@ def check_command_output(
     """
     Execute shell command and retrieve command output.
 
+    Usage of this function will result in a B604 bandit violation. When building the command string argument, if using
+    an external argument, please validate it using validate_subprocess_argument and/or validate_absolute_path functions
+    based on the argument type.
+
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param raise_on_error: True to raise subprocess.CalledProcessError on errors
@@ -103,6 +107,10 @@ def check_command_output(
 def run_command(command, env=None, raise_on_error=True, execute_as_user=None, log_error=True, timeout=60, shell=False):
     """
     Execute shell command.
+
+    Usage of this function will result in a B604 bandit violation. When building the command string argument, if using
+    an external argument, please validate it using validate_subprocess_argument and/or validate_absolute_path functions
+    based on the argument type.
 
     :param command: command to execute
     :param env: a dictionary containing environment variables
@@ -274,3 +282,39 @@ def read_json(file_path, default=None):
             if not isinstance(e, FileNotFoundError):
                 log.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
             return default
+
+
+def validate_subprocess_argument(argument):
+    """
+    Validate an argument used to build a subprocess command.
+
+    The validation is done forcing the encoding to be the standard
+    Python Unicode / UTF-8 and searching for forbidden patterns.
+
+    :param argument: an argument string to validate
+    :raise: Exception if the argument contains a forbidden pattern
+    :return: True if the argument does not contain forbidden patterns
+    """
+    forbidden_patterns = ["&", "|",  ";",  "$",  ">", "<", "`", "\\", "!", "#", "\n"]
+
+    # Forcing the encoding to be the standard Python Unicode / UTF-8
+    # https://docs.python.org/3/howto/unicode.html
+    # https://docs.python.org/3/library/codecs.html#standard-encodings
+    _argument = (str(argument).encode("utf-8", "ignore")).decode()
+
+    if any(pattern in _argument for pattern in forbidden_patterns):
+        raise Exception("Value of provided argument contains at least a forbidden pattern")
+    return True
+
+
+def validate_absolute_path(path):
+    """
+    Validate if a path string represents is a valid absolute path.
+
+    :param path: path to validate
+    :raise: Exception if the path is not a valid absolute path
+    :return: True if the path is a valid absolute path
+    """
+    if not os.path.isabs(path):
+        raise Exception(f"The path {path} is not a valid absolute path")
+    return True
