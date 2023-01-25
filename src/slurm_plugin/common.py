@@ -99,7 +99,7 @@ def get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):
         check_command_output(
             f"cat {clustermgtd_heartbeat_file_path}",
             timeout=DEFAULT_COMMAND_TIMEOUT,
-            shell=True,  # nosec
+            shell=True,  # nosec B604
         )
         .splitlines()[-1]
         .strip()

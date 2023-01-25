@@ -110,7 +110,8 @@ def update_nodes(
             node_info += f" nodeaddr={addrs}"
         if hostnames:
             node_info += f" nodehostname={hostnames}"
-        run_command(  # nosec
+        # It's safe to use the function affected by B604 since the command is fully built in this code
+        run_command(  # nosec B604
             f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
         )
 
@@ -119,7 +120,7 @@ def update_partitions(partitions, state):
     succeeded_partitions = []
     for partition in partitions:
         try:
-            run_command(  # nosec
+            run_command(  # nosec B604
                 f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True, shell=True
             )
             succeeded_partitions.append(partition)
@@ -238,7 +239,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
         'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
         '(Partitions=\\S+)|(Reason=.+) |(######)"'
     )
-    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec
+    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec B604
 
     return _parse_nodes_info(nodeinfo_str)
 
@@ -246,7 +247,8 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all_nodes=True):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
-    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)  # nosec
+    # It's safe to use the function affected by B604 since the command is fully built in this code
+    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)  # nosec B604
     partitions_info = _parse_partition_name_and_state(partition_info_str)
     return [
         SlurmPartition(
@@ -273,7 +275,7 @@ def _parse_partition_name_and_state(partition_info):
 def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get all nodes in partition."""
     show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N"
-    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec
+    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec B604
 
 
 def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
@@ -283,7 +285,8 @@ def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_G
     if states:
         sinfo_command += f" -t {states}"
     # Every node is print on a separate line
-    return check_command_output(sinfo_command, timeout=command_timeout, shell=True).splitlines()  # nosec
+    # It's safe to use the function affected by B604 since the command is fully built in this code
+    return check_command_output(sinfo_command, timeout=command_timeout, shell=True).splitlines()  # nosec B604
 
 
 def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
