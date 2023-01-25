@@ -73,7 +73,7 @@ class ComputemgtdConfig:
             config_str = check_command_output(
                 f"cat {config_file_path}",
                 timeout=DEFAULT_COMMAND_TIMEOUT,
-                shell=True,  # nosec
+                shell=True,  # nosec B604
             )
             config.read_file(StringIO(config_str))
         except Exception:
