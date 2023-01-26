@@ -24,7 +24,7 @@ from subprocess import CalledProcessError  # nosec B404
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
-from common.utils import check_command_output, run_command, sleep_remaining_loop_time
+from common.utils import check_command_output, run_command, sleep_remaining_loop_time, validate_absolute_path
 from retrying import retry
 from slurm_plugin.common import (
     DEFAULT_COMMAND_TIMEOUT,
@@ -69,6 +69,8 @@ class ComputemgtdConfig:
         log.info("Reading %s", config_file_path)
         config = ConfigParser()
         try:
+            # Validation to sanitize the input argument and make it safe to use the function affected by B604
+            validate_absolute_path(config_file_path)
             # Use subprocess based method to copy shared file to local to prevent hanging when NFS is down
             config_str = check_command_output(
                 f"cat {config_file_path}",

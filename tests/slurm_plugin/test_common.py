@@ -74,7 +74,7 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
         "slurm_plugin.common.check_command_output",
         return_value=f"some_random_stdout\n{time.strftime(TIMESTAMP_FORMAT)}",
     )
-    assert_that(get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
+    assert_that(get_clustermgtd_heartbeat("/some/file/path")).is_equal_to(expected_parsed_time)
 
 
 @pytest.mark.parametrize(

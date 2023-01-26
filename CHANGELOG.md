@@ -8,6 +8,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **ENHANCEMENTS**
 - Add logging of compute node console output to CloudWatch from head node on compute node bootstrap failure.
+- Add validators to prevent malicious string injection while calling the subprocess module.
 
 3.4.1
 ------
