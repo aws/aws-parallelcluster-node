@@ -105,7 +105,7 @@ def test_sleep_remaining_loop_time(mocker, loop_start_time, loop_end_time, loop_
 )
 def test_validate_subprocess_argument(argument, raises_exception):
     if raises_exception:
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             utils.validate_subprocess_argument(argument)
     else:
         assert_that(utils.validate_subprocess_argument(argument)).is_true()
@@ -122,7 +122,7 @@ def test_validate_subprocess_argument(argument, raises_exception):
 )
 def test_validate_absolute_path(argument, raises_exception):
     if raises_exception:
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             utils.validate_absolute_path(argument)
     else:
         assert_that(utils.validate_absolute_path(argument)).is_true()

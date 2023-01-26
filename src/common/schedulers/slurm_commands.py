@@ -13,7 +13,7 @@ import logging
 import os
 import re
 
-from common.utils import check_command_output, grouper, run_command
+from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
 from retrying import retry
 from slurm_plugin.slurm_resources import (
     DynamicNode,
@@ -101,14 +101,19 @@ def update_nodes(
 
     update_cmd = f"{SCONTROL} update"
     if state:
+        validate_subprocess_argument(state)
         update_cmd += f" state={state}"
     if reason:
+        validate_subprocess_argument(reason)
         update_cmd += f' reason="{reason}"'
     for nodenames, addrs, hostnames in batched_node_info:
+        validate_subprocess_argument(nodenames)
         node_info = f"nodename={nodenames}"
         if addrs:
+            validate_subprocess_argument(addrs)
             node_info += f" nodeaddr={addrs}"
         if hostnames:
+            validate_subprocess_argument(hostnames)
             node_info += f" nodehostname={hostnames}"
         # It's safe to use the function affected by B604 since the command is fully built in this code
         run_command(  # nosec B604
@@ -118,8 +123,12 @@ def update_nodes(
 
 def update_partitions(partitions, state):
     succeeded_partitions = []
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_subprocess_argument(state)
     for partition in partitions:
         try:
+            # Validation to sanitize the input argument and make it safe to use the function affected by B604
+            validate_subprocess_argument(partition)
             run_command(  # nosec B604
                 f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True, shell=True
             )
@@ -232,6 +241,9 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 
     Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
     """
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_subprocess_argument(nodes)
+
     # awk is used to replace the \n\n record separator with '######\n'
     # Note: In case the node does not belong to any partition the Partitions field is missing from Slurm output
     show_node_info_command = (
@@ -248,7 +260,9 @@ def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
     # It's safe to use the function affected by B604 since the command is fully built in this code
-    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)  # nosec B604
+    partition_info_str = check_command_output(
+        show_partition_info_command, timeout=command_timeout, shell=True  # nosec B604
+    )
     partitions_info = _parse_partition_name_and_state(partition_info_str)
     return [
         SlurmPartition(
@@ -274,6 +288,9 @@ def _parse_partition_name_and_state(partition_info):
 
 def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get all nodes in partition."""
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_subprocess_argument(partition_name)
+
     show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N"
     return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec B604
 
@@ -281,8 +298,10 @@ def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_CO
 def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     sinfo_command = f"{SINFO} -h -N -o %N"
     if partition_name:
+        validate_subprocess_argument(partition_name)
         sinfo_command += f" -p {partition_name}"
     if states:
+        validate_subprocess_argument(states)
         sinfo_command += f" -t {states}"
     # Every node is print on a separate line
     # It's safe to use the function affected by B604 since the command is fully built in this code

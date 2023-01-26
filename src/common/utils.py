@@ -295,7 +295,7 @@ def validate_subprocess_argument(argument):
     :raise: Exception if the argument contains a forbidden pattern
     :return: True if the argument does not contain forbidden patterns
     """
-    forbidden_patterns = ["&", "|",  ";",  "$",  ">", "<", "`", "\\", "!", "#", "\n"]
+    forbidden_patterns = ["&", "|", ";", "$", ">", "<", "`", "\\", "!", "#", "\n"]
 
     # Forcing the encoding to be the standard Python Unicode / UTF-8
     # https://docs.python.org/3/howto/unicode.html
@@ -303,7 +303,7 @@ def validate_subprocess_argument(argument):
     _argument = (str(argument).encode("utf-8", "ignore")).decode()
 
     if any(pattern in _argument for pattern in forbidden_patterns):
-        raise Exception("Value of provided argument contains at least a forbidden pattern")
+        raise ValueError("Value of provided argument contains at least a forbidden pattern")
     return True
 
 
@@ -316,5 +316,5 @@ def validate_absolute_path(path):
     :return: True if the path is a valid absolute path
     """
     if not os.path.isabs(path):
-        raise Exception(f"The path {path} is not a valid absolute path")
+        raise ValueError(f"The path {path} is not a valid absolute path")
     return True

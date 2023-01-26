@@ -13,10 +13,13 @@ from unittest.mock import call
 import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import (
+    SCONTROL,
     SINFO,
     _batch_node_info,
+    _get_all_partition_nodes,
     _get_slurm_nodes,
     _parse_nodes_info,
+    get_nodes_info,
     is_static_node,
     parse_nodename,
     resume_powering_down_nodes,
@@ -383,7 +386,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
 
 
 @pytest.mark.parametrize(
-    "batch_node_info, state, reason, raise_on_error, run_command_calls",
+    "batch_node_info, state, reason, raise_on_error, run_command_calls, expected_exception",
     [
         (
             [("queue1-st-c5xlarge-1", None, None), ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
@@ -404,6 +407,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                     shell=True,
                 ),
             ],
+            None,
         ),
         (
             [
@@ -429,6 +433,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                     shell=True,
                 ),
             ],
+            None,
         ),
         (
             [
@@ -458,14 +463,69 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
                     shell=True,
                 ),
             ],
+            None,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1 & rm -rf /", None, "hostname-1"),
+            ],
+            "down",
+            "debugging",
+            None,
+            None,
+            ValueError,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1", " & rm -rf /", "hostname-1"),
+            ],
+            "down",
+            "debugging",
+            None,
+            None,
+            ValueError,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1", None, " & rm -rf /"),
+            ],
+            "down",
+            "debugging",
+            None,
+            None,
+            ValueError,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1", None, "hostname-1"),
+            ],
+            " & rm -rf /",
+            "debugging",
+            None,
+            None,
+            ValueError,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1", None, "hostname-1"),
+            ],
+            "down",
+            " & rm -rf /",
+            None,
+            None,
+            ValueError,
         ),
     ],
 )
-def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_command_calls, mocker):
+def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_command_calls, expected_exception, mocker):
     mocker.patch("common.schedulers.slurm_commands._batch_node_info", return_value=batch_node_info, autospec=True)
-    cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
-    update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
-    cmd_mock.assert_has_calls(run_command_calls)
+    if expected_exception is ValueError:
+        with pytest.raises(ValueError):
+            update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+    else:
+        cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
+        update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+        cmd_mock.assert_has_calls(run_command_calls)
 
 
 @pytest.mark.parametrize(
@@ -510,6 +570,24 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
             [],
             [],
         ),
+        (
+            ["part-1", "part-2"],
+            "UP & rm -rf /",
+            [],
+            [],
+            ValueError,
+        ),
+        (
+            ["part-1 & rm -rf /", "part-2"],
+            "UP",
+            [
+                call(
+                    "sudo /opt/slurm/bin/scontrol update partitionname=part-2 state=UP", raise_on_error=True, shell=True
+                ),
+            ],
+            [None, None],
+            ["part-2"],
+        ),
     ],
 )
 def test_update_partitions(
@@ -518,11 +596,15 @@ def test_update_partitions(
     run_command_spy = mocker.patch(
         "common.schedulers.slurm_commands.run_command", side_effect=run_command_side_effects, autospec=True
     )
-    assert_that(update_partitions(partitions, state)).is_equal_to(expected_succeeded_partitions)
-    if run_command_calls:
-        run_command_spy.assert_has_calls(run_command_calls)
+    if expected_succeeded_partitions is ValueError:
+        with pytest.raises(ValueError):
+            update_partitions(partitions, state)
     else:
-        run_command_spy.assert_not_called()
+        assert_that(update_partitions(partitions, state)).is_equal_to(expected_succeeded_partitions)
+        if run_command_calls:
+            run_command_spy.assert_has_calls(run_command_calls)
+        else:
+            run_command_spy.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -637,14 +719,92 @@ def test_resume_powering_down_nodes(mocker):
 
 
 @pytest.mark.parametrize(
-    "states, partition_name, expected_command",
+    "states, partition_name, expected_command, expected_exception",
     [
-        (None, None, f"{SINFO} -h -N -o %N"),
-        ("power_down,powering_down", "test", f"{SINFO} -h -N -o %N -p test -t power_down,powering_down"),
+        (None, None, f"{SINFO} -h -N -o %N", None),
+        ("power_down,powering_down", "test", f"{SINFO} -h -N -o %N -p test -t power_down,powering_down", None),
+        ("power_down,& rm -rf", "test", None, ValueError),
+        ("power_down,powering_down", "test & rm -rf", None, ValueError),
     ],
 )
-def test_get_slurm_nodes(mocker, states, partition_name, expected_command):
-    check_command_output_mocked = mocker.patch("common.schedulers.slurm_commands.check_command_output", autospec=True)
+def test_get_slurm_nodes(mocker, states, partition_name, expected_command, expected_exception):
+    if expected_exception is ValueError:
+        with pytest.raises(ValueError):
+            _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
+    else:
+        check_command_output_mocked = mocker.patch(
+            "common.schedulers.slurm_commands.check_command_output", autospec=True
+        )
 
-    _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
-    check_command_output_mocked.assert_called_with(expected_command, timeout=10, shell=True)
+        _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
+        check_command_output_mocked.assert_called_with(expected_command, timeout=10, shell=True)
+
+
+@pytest.mark.parametrize(
+    "partition_name, cmd_timeout, run_command_call, run_command_side_effect, expected_exception",
+    [
+        (
+            "partition",
+            30,
+            f"{SINFO} -h -p partition -o %N",
+            None,
+            None,
+        ),
+        (
+            "partition & rm -rf /",
+            None,
+            None,
+            None,
+            ValueError,
+        ),
+    ],
+)
+def test_get_all_partition_nodes(
+    partition_name, cmd_timeout, run_command_call, run_command_side_effect, expected_exception, mocker
+):
+    if expected_exception is ValueError:
+        with pytest.raises(ValueError):
+            _get_all_partition_nodes(partition_name, cmd_timeout)
+    else:
+        check_command_output_mocked = mocker.patch(
+            "common.schedulers.slurm_commands.check_command_output",
+            side_effect=run_command_side_effect,
+            autospec=True,
+        )
+        _get_all_partition_nodes(partition_name, cmd_timeout)
+        check_command_output_mocked.assert_called_with(run_command_call, timeout=30, shell=True)
+
+
+@pytest.mark.parametrize(
+    "nodes, cmd_timeout, run_command_call, run_command_side_effect, expected_exception",
+    [
+        (
+            "node1 node2",
+            30,
+            f'{SCONTROL} show nodes node1 node2 | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+            'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
+            '(Partitions=\\S+)|(Reason=.+) |(######)"',
+            None,
+            None,
+        ),
+        (
+            "node1 & rm -rf / node2",
+            None,
+            None,
+            None,
+            ValueError,
+        ),
+    ],
+)
+def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_effect, expected_exception, mocker):
+    if expected_exception is ValueError:
+        with pytest.raises(ValueError):
+            get_nodes_info(nodes, cmd_timeout)
+    else:
+        check_command_output_mocked = mocker.patch(
+            "common.schedulers.slurm_commands.check_command_output",
+            side_effect=run_command_side_effect,
+            autospec=True,
+        )
+        get_nodes_info(nodes, cmd_timeout)
+        check_command_output_mocked.assert_called_with(run_command_call, timeout=30, shell=True)
