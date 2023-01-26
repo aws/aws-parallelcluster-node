@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from common.schedulers.slurm_commands import (
     SCONTROL,
     SINFO,
+    SCONTROL_OUTPUT_AWK_PARSER,
     _batch_node_info,
     _get_all_partition_nodes,
     _get_slurm_nodes,
@@ -32,6 +33,7 @@ from common.schedulers.slurm_commands import (
     update_nodes,
     update_partitions,
 )
+from common.utils import check_command_output
 from slurm_plugin.slurm_resources import DynamicNode, InvalidNodenameError, PartitionStatus, SlurmPartition, StaticNode
 
 
@@ -849,3 +851,41 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
         )
         get_nodes_info(nodes, cmd_timeout)
         check_command_output_mocked.assert_called_with(run_command_call, timeout=30, shell=True)
+
+@pytest.mark.parametrize(
+    "scontrol_output, expected_parsed_output",
+    [
+        (
+            (
+                "NodeName=queue1-st-compute-resource-1-1 Arch=x86_64 CoresPerSocket=1\n"
+                "   CPUAlloc=0 CPUEfctv=2 CPUTot=2 CPULoad=0.03\n"
+                "   AvailableFeatures=static,t2.medium,compute-resource-1\n"
+                "   ActiveFeatures=static,t2.medium,compute-resource-1\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=192.168.123.191 NodeHostName=queue1-st-compute-resource-1-1 Version=22.05.7\n"
+                "   OS=Linux 5.15.0-1028-aws #32~20.04.1-Ubuntu SMP Mon Jan 9 18:02:08 UTC 2023\n"
+                "   RealMemory=3891 AllocMem=0 FreeMem=3018 Sockets=2 Boards=1\n"
+                "   State=DOWN+CLOUD+REBOOT_ISSUED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   NextState=RESUME\n"
+                "   Partitions=queue1\n"
+                "   BootTime=2023-01-26T09:56:30 SlurmdStartTime=2023-01-26T09:57:15\n"
+                "   LastBusyTime=2023-01-26T09:57:15\n"
+                "   CfgTRES=cpu=2,mem=3891M,billing=2\n"
+                "   AllocTRES=\n"
+                "   CapWatts=n/a\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
+                "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]"
+            ),
+            (
+                "NodeName=queue1-st-compute-resource-1-1\nNodeAddr=192.168.123.191\n"
+                "NodeHostName=queue1-st-compute-resource-1-1\nState=DOWN+CLOUD+REBOOT_ISSUED\nPartitions=queue1\n"
+                "SlurmdStartTime=2023-01-26T09:57:15\n"
+                "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n######\n"
+            )
+        )
+    ],
+)
+def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
+    parsed_output = check_command_output(f'echo "{scontrol_output}" | {SCONTROL_OUTPUT_AWK_PARSER}', shell=True)
+    assert_that(parsed_output).is_equal_to(expected_parsed_output)
