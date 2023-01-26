@@ -217,7 +217,7 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if node resume timeout expires."""
         return self.states == self.SLURM_SCONTROL_RESUME_FAILED_STATE
 
-    def is_poweing_up_idle(self):
+    def is_powering_up_idle(self):
         """Check if node is in IDLE# state."""
         return self.SLURM_SCONTROL_IDLE_STATE in self.states and self.is_powering_up()
 
@@ -451,7 +451,7 @@ class DynamicNode(SlurmNode):
     def is_bootstrap_failure(self):
         """Check if a slurm node has boostrap failure."""
         # no backing instance + [working state]# in node state
-        if (self.is_configuring_job() or self.is_poweing_up_idle()) and not self.is_backing_instance_valid(
+        if (self.is_configuring_job() or self.is_powering_up_idle()) and not self.is_backing_instance_valid(
             log_warn_if_unhealthy=False
         ):
             logger.warning(
