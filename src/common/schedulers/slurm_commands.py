@@ -14,7 +14,7 @@ import os
 import re
 
 from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
-from datetime import datetime
+from datetime import datetime, timezone
 from retrying import retry
 from slurm_plugin.slurm_resources import (
     DynamicNode,
@@ -377,7 +377,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
             key, value = line.split("=")
             if key == "SlurmdStartTime":
                 if value != "None":
-                    value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+                    value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
                 else:
                     value = None
             kwargs[map_slurm_key_to_arg[key]] = value

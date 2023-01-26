@@ -968,7 +968,7 @@ class ClusterManager:
             nodes_name_failing_health_check = set()
             nodes_name_recently_rebooted = set()
             for node in nodes_failing_health_check:
-                if time_is_up(node.slurmdstarttime, self._current_time, self._config.health_check_timeout_after_slurmdstarttime):
+                if not node.is_reboot_issued() and time_is_up(node.slurmdstarttime, self._current_time, self._config.health_check_timeout_after_slurmdstarttime):
                     nodes_name_failing_health_check.add(node.name)
                 else:
                     nodes_name_recently_rebooted.add(node.name)
@@ -981,7 +981,7 @@ class ClusterManager:
                 set_nodes_drain(nodes_name_failing_health_check, reason=f"Node failing {health_check_type}")
             if len(nodes_name_recently_rebooted) > 0:
                 log.info(
-                    "Slurmd was recently restarted on these nodes and they were not set to DRAIN: %s",
+                    "These nodes were recently restarted and they were not set to DRAIN: %s",
                     nodes_name_recently_rebooted,
                 )
 

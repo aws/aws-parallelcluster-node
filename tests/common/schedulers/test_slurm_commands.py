@@ -12,7 +12,7 @@ from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
-from datetime import datetime
+from datetime import datetime, timezone
 from common.schedulers.slurm_commands import (
     SCONTROL,
     SINFO,
@@ -108,7 +108,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "172-31-10-155",
                     "MIXED+CLOUD",
                     "multiple",
-                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
                 DynamicNode(
                     "multiple-dy-c5xlarge-2",
@@ -116,7 +116,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "172-31-7-218",
                     "IDLE+CLOUD+POWER",
                     "multiple",
-                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
             ],
             False,
@@ -160,7 +160,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
                     "(Code:InsufficientInstanceCapacity)Failure when resuming nodes ",
-                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
             ],
             False,
@@ -188,7 +188,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "multiple-dy-c5xlarge-5",
                     "IDLE+CLOUD+POWER",
                     None,
-                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7),
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
             ],
             True,
@@ -196,7 +196,8 @@ def test_is_static_node(nodename, expected_is_static):
     ],
 )
 def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name, caplog):
-    assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
+    parsed_node_info = _parse_nodes_info(node_info)
+    assert_that(parsed_node_info).is_equal_to(expected_parsed_nodes_output)
     if invalid_name:
         assert_that(caplog.text).contains("Ignoring node test-no-partition because it has an invalid name")
 
