@@ -8,15 +8,15 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+from datetime import datetime, timezone
 from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
-from datetime import datetime, timezone
 from common.schedulers.slurm_commands import (
     SCONTROL,
-    SINFO,
     SCONTROL_OUTPUT_AWK_PARSER,
+    SINFO,
     _batch_node_info,
     _get_all_partition_nodes,
     _get_slurm_nodes,
@@ -194,7 +194,7 @@ def test_is_static_node(nodename, expected_is_static):
                 ),
             ],
             True,
-        )
+        ),
     ],
 )
 def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name, caplog):
@@ -852,6 +852,7 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
         get_nodes_info(nodes, cmd_timeout)
         check_command_output_mocked.assert_called_with(run_command_call, timeout=30, shell=True)
 
+
 @pytest.mark.parametrize(
     "scontrol_output, expected_parsed_output",
     [
@@ -882,7 +883,7 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
                 "NodeHostName=queue1-st-compute-resource-1-1\nState=DOWN+CLOUD+REBOOT_ISSUED\nPartitions=queue1\n"
                 "SlurmdStartTime=2023-01-26T09:57:15\n"
                 "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n######\n"
-            )
+            ),
         )
     ],
 )

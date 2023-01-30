@@ -109,7 +109,9 @@ class SlurmNode(metaclass=ABCMeta):
         "SpotMaxPriceTooLow",
     }
 
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None):
+    def __init__(
+        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+    ):
         """Initialize slurm node with attributes."""
         self.name = name
         self.nodeaddr = nodeaddr
@@ -307,7 +309,9 @@ class SlurmNode(metaclass=ABCMeta):
 
 
 class StaticNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None):
+    def __init__(
+        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+    ):
         """Initialize slurm node with attributes."""
         super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
 
@@ -399,7 +403,9 @@ class StaticNode(SlurmNode):
 
 
 class DynamicNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None):
+    def __init__(
+        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+    ):
         """Initialize slurm node with attributes."""
         super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
 

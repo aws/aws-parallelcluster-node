@@ -256,7 +256,9 @@ class ClustermgtdConfig:
             "clustermgtd", "health_check_timeout", fallback=self.DEFAULTS.get("health_check_timeout")
         )
         self.health_check_timeout_after_slurmdstarttime = config.getint(
-            "clustermgtd", "health_check_timeout_after_slurmdstarttime", fallback=self.DEFAULTS.get("health_check_timeout_after_slurmdstarttime")
+            "clustermgtd",
+            "health_check_timeout_after_slurmdstarttime",
+            fallback=self.DEFAULTS.get("health_check_timeout_after_slurmdstarttime"),
         )
         self.disable_all_health_checks = config.getboolean(
             "clustermgtd",
@@ -340,6 +342,7 @@ class ClustermgtdConfig:
 
 class ClusterManager:
     """Class for all cluster management related actions."""
+
     _config: ClustermgtdConfig
 
     class HealthCheckTypes(Enum):
@@ -968,7 +971,9 @@ class ClusterManager:
             nodes_name_failing_health_check = set()
             nodes_name_recently_rebooted = set()
             for node in nodes_failing_health_check:
-                if not node.is_reboot_issued() and time_is_up(node.slurmdstarttime, self._current_time, self._config.health_check_timeout_after_slurmdstarttime):
+                if not node.is_reboot_issued() and time_is_up(
+                    node.slurmdstarttime, self._current_time, self._config.health_check_timeout_after_slurmdstarttime
+                ):
                     nodes_name_failing_health_check.add(node.name)
                 else:
                     nodes_name_recently_rebooted.add(node.name)

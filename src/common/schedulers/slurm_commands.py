@@ -12,6 +12,8 @@
 import logging
 import os
 import re
+from datetime import datetime, timezone
+from typing import List
 
 from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
 from datetime import datetime, timezone
@@ -20,12 +22,11 @@ from slurm_plugin.slurm_resources import (
     DynamicNode,
     InvalidNodenameError,
     PartitionStatus,
-    SlurmPartition,
     SlurmNode,
+    SlurmPartition,
     StaticNode,
     parse_nodename,
 )
-from typing import List
 
 log = logging.getLogger(__name__)
 
@@ -59,9 +60,9 @@ SCONTROL = f"sudo {SLURM_BINARIES_DIR}/scontrol"
 SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 
 SCONTROL_OUTPUT_AWK_PARSER = (
-    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | ' +
-    'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|' +
-    '(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)"'
+    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+    + 'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|'
+    + '(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)"'
 )
 
 # Set default timeouts for running different slurm commands.
@@ -255,7 +256,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 
     # awk is used to replace the \n\n record separator with '######\n'
     # Note: In case the node does not belong to any partition the Partitions field is missing from Slurm output
-    show_node_info_command = f'{SCONTROL} show nodes {nodes} | {SCONTROL_OUTPUT_AWK_PARSER}'
+    show_node_info_command = f"{SCONTROL} show nodes {nodes} | {SCONTROL_OUTPUT_AWK_PARSER}"
     nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec B604
 
     return _parse_nodes_info(nodeinfo_str)
