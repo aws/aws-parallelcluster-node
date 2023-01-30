@@ -31,7 +31,7 @@ from common.schedulers.slurm_commands import (
     update_nodes,
     update_partitions,
 )
-from slurm_plugin.slurm_resources import DynamicNode, PartitionStatus, SlurmPartition, StaticNode
+from slurm_plugin.slurm_resources import DynamicNode, InvalidNodenameError, PartitionStatus, SlurmPartition, StaticNode
 
 
 @pytest.mark.parametrize(
@@ -57,7 +57,7 @@ from slurm_plugin.slurm_resources import DynamicNode, PartitionStatus, SlurmPart
 )
 def test_parse_nodename(nodename, expected_queue, expected_node_type, expected_instance_name, expected_failure):
     if expected_failure:
-        with pytest.raises(Exception):
+        with pytest.raises(InvalidNodenameError):
             parse_nodename(nodename)
     else:
         queue_name, node_type, instance_name = parse_nodename(nodename)

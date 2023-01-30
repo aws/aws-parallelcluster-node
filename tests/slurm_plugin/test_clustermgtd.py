@@ -2004,7 +2004,7 @@ class TestComputeFleetStatusManager:
         "desired_status, update_item_response",
         [
             (ComputeFleetStatus.PROTECTED, None),
-            (ComputeFleetStatus.STOPPED, Exception),
+            (ComputeFleetStatus.STOPPED, AttributeError),
         ],
         ids=["success", "exception"],
     )
@@ -2012,9 +2012,9 @@ class TestComputeFleetStatusManager:
         check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
         compute_fleet_status_manager = ComputeFleetStatusManager()
 
-        if update_item_response is Exception:
+        if update_item_response is AttributeError:
             check_command_output_mocked.side_effect = update_item_response
-            with pytest.raises(Exception):
+            with pytest.raises(AttributeError):
                 compute_fleet_status_manager.update_status(desired_status)
         else:
             check_command_output_mocked.return_value = update_item_response

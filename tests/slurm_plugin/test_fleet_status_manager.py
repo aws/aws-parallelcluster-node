@@ -114,19 +114,19 @@ def test_fleet_status_manager(mocker, test_datadir, computefleet_status_data_pat
     ("config_file", "expected_status"),
     [
         ("correct_status.json", ComputeFleetStatus.RUNNING),
-        ("no_status.json", Exception),
-        ("malformed_status.json", Exception),
-        ("wrong_status.json", Exception),
-        (None, Exception),
+        ("no_status.json", ValueError),
+        ("malformed_status.json", FileNotFoundError),
+        ("wrong_status.json", ValueError),
+        (None, TypeError),
     ],
 )
 def test_get_computefleet_status(test_datadir, config_file, expected_status):
-    if expected_status is Exception:
-        with pytest.raises(Exception):
-            _get_computefleet_status(test_datadir / config_file)
-    else:
+    if isinstance(expected_status, ComputeFleetStatus):
         status = _get_computefleet_status(test_datadir / config_file)
         assert_that(status).is_equal_to(expected_status)
+    else:
+        with pytest.raises(expected_status):
+            _get_computefleet_status(test_datadir / config_file)
 
 
 def test_start_partitions(mocker):
