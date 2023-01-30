@@ -91,7 +91,7 @@ def test_read_json(test_datadir, caplog, json_file, default_value, raises_except
     caplog.set_level(logging.INFO)
     json_file_path = str(test_datadir.joinpath(json_file))
     if raises_exception:
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, FileNotFoundError)):
             read_json(json_file_path, default_value)
     else:
         read_json(json_file_path, default_value)
