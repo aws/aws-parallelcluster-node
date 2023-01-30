@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from typing import List
 
 from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
-from datetime import datetime, timezone
 from retrying import retry
 from slurm_plugin.slurm_resources import (
     DynamicNode,

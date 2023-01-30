@@ -824,9 +824,7 @@ def test_get_all_partition_nodes(
         (
             "node1 node2",
             30,
-            f'{SCONTROL} show nodes node1 node2 | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
-            'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
-            '(Partitions=\\S+)|(Reason=.+) |(######)"',
+            f"{SCONTROL} show nodes node1 node2 | {SCONTROL_OUTPUT_AWK_PARSER}",
             None,
             None,
         ),
