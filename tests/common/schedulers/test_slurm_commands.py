@@ -874,7 +874,8 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
                 "   CapWatts=n/a\n"
                 "   CurrentWatts=0 AveWatts=0\n"
                 "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
-                "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]"
+                "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n"
+                "   Comment=some comment \n"
             ),
             (
                 "NodeName=queue1-st-compute-resource-1-1\nNodeAddr=192.168.123.191\n"

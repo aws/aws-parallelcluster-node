@@ -60,8 +60,8 @@ SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 
 SCONTROL_OUTPUT_AWK_PARSER = (
     'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
-    + 'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|'
-    + '(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)"'
+    + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)'"
 )
 
 # Set default timeouts for running different slurm commands.
@@ -332,13 +332,14 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
 def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
-    # awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
-    # |(NodeHostName=\S+)|(State=\S+)|(Partitions=\S+)|(Reason=.+) |(######)"
+    # | awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
+    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(Reason=.*)|(######)"
     # NodeName=compute-dy-c5xlarge-1
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-1
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=some reason
     # ######
     # NodeName=compute-dy-c5xlarge-2
@@ -346,6 +347,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     # NodeHostName=compute-dy-c5xlarge-2
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes
     # ######
     # NodeName=compute-dy-c5xlarge-3
@@ -353,11 +355,13 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     # NodeHostName=compute-dy-c5xlarge-3
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # ######
     # NodeName=compute-dy-c5xlarge-50001
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-50001
     # State=IDLE+CLOUD+POWER
+    # SlurmdStartTime=None
     # ######
 
     map_slurm_key_to_arg = {

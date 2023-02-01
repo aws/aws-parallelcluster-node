@@ -82,7 +82,6 @@ class SlurmPartition:
 
 
 class SlurmNode(metaclass=ABCMeta):
-    slurmdstarttime: datetime
     SLURM_SCONTROL_COMPLETING_STATE = "COMPLETING"
     SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", SLURM_SCONTROL_COMPLETING_STATE}
     SLURM_SCONTROL_IDLE_STATE = "IDLE"
@@ -110,7 +109,15 @@ class SlurmNode(metaclass=ABCMeta):
     }
 
     def __init__(
-        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+        self,
+        name,
+        nodeaddr,
+        nodehostname,
+        state,
+        partitions=None,
+        reason=None,
+        instance=None,
+        slurmdstarttime: datetime = None,
     ):
         """Initialize slurm node with attributes."""
         self.name = name
