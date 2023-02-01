@@ -971,6 +971,10 @@ class ClusterManager:
             nodes_name_failing_health_check = set()
             nodes_name_recently_rebooted = set()
             for node in nodes_failing_health_check:
+                # Do not consider nodes failing health checks as unhealthy if:
+                # 1. the node is still rebooting, OR
+                # 2. slurmd was recently restarted (less than health_check_timeout_after_slurmdstarttime seconds ago).
+                # In the implementation the logic is reversed to exploit the `and` in the if clause
                 if not node.is_reboot_issued() and time_is_up(
                     node.slurmdstarttime, self._current_time, self._config.health_check_timeout_after_slurmdstarttime
                 ):
@@ -986,7 +990,7 @@ class ClusterManager:
                 set_nodes_drain(nodes_name_failing_health_check, reason=f"Node failing {health_check_type}")
             if len(nodes_name_recently_rebooted) > 0:
                 log.info(
-                    "These nodes were recently restarted and they were not set to DRAIN: %s",
+                    "These nodes were recently rebooted and they were not set to DRAIN: %s",
                     nodes_name_recently_rebooted,
                 )
 

@@ -151,7 +151,7 @@ def test_is_static_node(nodename, expected_is_static):
             "NodeHostName=multiple-dy-c5xlarge-4\n"
             "State=IDLE+CLOUD+POWER\n"
             "Partitions=multiple,multiple2\n"
-            "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes \n"
+            "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]\n"
             "SlurmdStartTime=2023-01-23T17:57:07\n"
             "######\n",
             [
@@ -161,7 +161,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "multiple-dy-c5xlarge-4",
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
-                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes ",
+                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                     slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
             ],
@@ -875,6 +875,26 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
                 "   CurrentWatts=0 AveWatts=0\n"
                 "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
                 "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n"
+                "   Comment=some comment \n\n"
+                "NodeName=queue1-st-compute-resource-1-2 Arch=x86_64 CoresPerSocket=1\n"
+                "   CPUAlloc=0 CPUEfctv=2 CPUTot=2 CPULoad=0.03\n"
+                "   AvailableFeatures=static,t2.medium,compute-resource-1\n"
+                "   ActiveFeatures=static,t2.medium,compute-resource-1\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=192.168.123.192 NodeHostName=queue1-st-compute-resource-1-2 Version=22.05.7\n"
+                "   OS=Linux 5.15.0-1028-aws #32~20.04.1-Ubuntu SMP Mon Jan 9 18:02:08 UTC 2023\n"
+                "   RealMemory=3891 AllocMem=0 FreeMem=3018 Sockets=2 Boards=1\n"
+                "   State=DOWN+CLOUD+REBOOT_ISSUED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   NextState=RESUME\n"
+                "   Partitions=queue1\n"
+                "   BootTime=2023-01-26T09:56:30 SlurmdStartTime=2023-01-26T09:57:16\n"
+                "   LastBusyTime=2023-01-26T09:57:15\n"
+                "   CfgTRES=cpu=2,mem=3891M,billing=2\n"
+                "   AllocTRES=\n"
+                "   CapWatts=n/a\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
+                "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:40]\n"
                 "   Comment=some comment \n"
             ),
             (
@@ -882,6 +902,10 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
                 "NodeHostName=queue1-st-compute-resource-1-1\nState=DOWN+CLOUD+REBOOT_ISSUED\nPartitions=queue1\n"
                 "SlurmdStartTime=2023-01-26T09:57:15\n"
                 "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n######\n"
+                "NodeName=queue1-st-compute-resource-1-2\nNodeAddr=192.168.123.192\n"
+                "NodeHostName=queue1-st-compute-resource-1-2\nState=DOWN+CLOUD+REBOOT_ISSUED\nPartitions=queue1\n"
+                "SlurmdStartTime=2023-01-26T09:57:16\n"
+                "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:40]\n######\n"
             ),
         )
     ],
