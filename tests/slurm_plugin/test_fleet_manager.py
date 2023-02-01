@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import pytest
 from assertpy import assert_that
 from botocore.exceptions import ClientError
-from slurm_plugin.fleet_manager import Ec2CreateFleetManager, Ec2RunInstancesManager, FleetManagerFactory
+from slurm_plugin.fleet_manager import Ec2CreateFleetManager, EC2Instance, Ec2RunInstancesManager, FleetManagerFactory
 
 from tests.common import FLEET_CONFIG, MockedBoto3Request
 
@@ -732,3 +732,71 @@ class TestCreateFleetManager:
         else:
             complete_instances, partial_instance_ids = fleet_manager._get_instances_info(instance_ids)
             assert_that(expected_result).is_equal_to((complete_instances, partial_instance_ids))
+
+    @pytest.mark.parametrize(
+        ("instance_ids", "mocked_boto3_request", "expected_result"),
+        [
+            (
+                ["i-12345"],
+                [
+                    MockedBoto3Request(
+                        method="describe_instances",
+                        response={
+                            "Reservations": [
+                                {
+                                    "Instances": [
+                                        {
+                                            "InstanceId": "i-12345",
+                                            "PrivateIpAddress": "ip-2",
+                                            "PrivateDnsName": "hostname",
+                                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 1,
+                                                    },
+                                                    "PrivateIpAddress": "ip-1",
+                                                },
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 1,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-3",
+                                                },
+                                            ],
+                                        },
+                                    ]
+                                }
+                            ]
+                        },
+                        expected_params={"InstanceIds": ["i-12345"]},
+                        generate_error=False,
+                    ),
+                ],
+                "ip-3",
+            )
+        ],
+    )
+    def test_from_describe_instance_data(
+        self,
+        boto3_stubber,
+        mocker,
+        instance_ids,
+        mocked_boto3_request,
+        expected_result,
+    ):
+        # patch boto3 call
+        mocker.patch("time.sleep")
+        ec2_client = boto3_stubber("ec2", mocked_boto3_request)
+        instance_info = ec2_client.describe_instances(InstanceIds=instance_ids)["Reservations"][0]["Instances"][0]
+        instance_description = EC2Instance.from_describe_instance_data(instance_info)
+        assert_that(expected_result).is_equal_to(instance_description.private_ip)

@@ -47,12 +47,15 @@ class EC2Instance:
     @staticmethod
     def from_describe_instance_data(instance_info):
         try:
-            return EC2Instance(
-                instance_info["InstanceId"],
-                instance_info["PrivateIpAddress"],
-                instance_info["PrivateDnsName"].split(".")[0],
-                instance_info["LaunchTime"],
-            )
+            for network_interface in instance_info["NetworkInterfaces"]:
+                attachment = network_interface["Attachment"]
+                if attachment["DeviceIndex"] == 0 and attachment["NetworkCardIndex"] == 0:
+                    return EC2Instance(
+                        instance_info["InstanceId"],
+                        network_interface["PrivateIpAddress"],
+                        instance_info["PrivateDnsName"].split(".")[0],
+                        instance_info["LaunchTime"],
+                    )
         except KeyError as e:
             logger.error("Unable to retrieve EC2 instance info: %s", e)
             raise e
