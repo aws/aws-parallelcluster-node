@@ -420,12 +420,30 @@ class TestCreateFleetManager:
                                             "PrivateIpAddress": "ip-2",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                            ],
                                         },
                                         {
                                             "InstanceId": "i-23456",
                                             "PrivateIpAddress": "ip-3",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-3",
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -441,12 +459,30 @@ class TestCreateFleetManager:
                         "PrivateIpAddress": "ip-2",
                         "PrivateDnsName": "hostname",
                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        "NetworkInterfaces": [
+                            {
+                                "Attachment": {
+                                    "DeviceIndex": 0,
+                                    "NetworkCardIndex": 0,
+                                },
+                                "PrivateIpAddress": "ip-2",
+                            },
+                        ],
                     },
                     {
                         "InstanceId": "i-23456",
                         "PrivateIpAddress": "ip-3",
                         "PrivateDnsName": "hostname",
                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        "NetworkInterfaces": [
+                            {
+                                "Attachment": {
+                                    "DeviceIndex": 0,
+                                    "NetworkCardIndex": 0,
+                                },
+                                "PrivateIpAddress": "ip-3",
+                            },
+                        ],
                     },
                 ],
             ),
@@ -476,6 +512,15 @@ class TestCreateFleetManager:
                                             "PrivateIpAddress": "ip-2",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -491,6 +536,15 @@ class TestCreateFleetManager:
                         "PrivateIpAddress": "ip-2",
                         "PrivateDnsName": "hostname",
                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        "NetworkInterfaces": [
+                            {
+                                "Attachment": {
+                                    "DeviceIndex": 0,
+                                    "NetworkCardIndex": 0,
+                                },
+                                "PrivateIpAddress": "ip-2",
+                            },
+                        ],
                     }
                 ],
             ),
@@ -534,6 +588,15 @@ class TestCreateFleetManager:
                                             "PrivateIpAddress": "ip-2",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -552,6 +615,15 @@ class TestCreateFleetManager:
                             "PrivateIpAddress": "ip-2",
                             "PrivateDnsName": "hostname",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-2",
+                                },
+                            ],
                         },
                     ],
                     [],
@@ -571,12 +643,29 @@ class TestCreateFleetManager:
                                             # no private dns and address info
                                             "InstanceId": "i-12345",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                },
+                                            ],
                                         },
                                         {
                                             "InstanceId": "i-23456",
                                             "PrivateIpAddress": "ip-3",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-3",
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -596,6 +685,15 @@ class TestCreateFleetManager:
                                             "PrivateIpAddress": "ip-2",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -614,12 +712,30 @@ class TestCreateFleetManager:
                             "PrivateIpAddress": "ip-3",
                             "PrivateDnsName": "hostname",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-3",
+                                },
+                            ],
                         },
                         {
                             "InstanceId": "i-12345",
                             "PrivateIpAddress": "ip-2",
                             "PrivateDnsName": "hostname",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-2",
+                                },
+                            ],
                         },
                     ],
                     [],
@@ -639,12 +755,29 @@ class TestCreateFleetManager:
                                             # no private dns and address info
                                             "InstanceId": "i-12345",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                },
+                                            ],
                                         },
                                         {
                                             "InstanceId": "i-23456",
                                             "PrivateIpAddress": "ip-3",
                                             "PrivateDnsName": "hostname",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-3",
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -666,6 +799,14 @@ class TestCreateFleetManager:
                                             # no private dns and address info
                                             "InstanceId": "i-12345",
                                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                },
+                                            ],
                                         },
                                     ]
                                 }
@@ -684,6 +825,15 @@ class TestCreateFleetManager:
                             "PrivateIpAddress": "ip-3",
                             "PrivateDnsName": "hostname",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-3",
+                                },
+                            ],
                         },
                     ],
                     ["i-12345"],

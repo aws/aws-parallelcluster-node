@@ -101,6 +101,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -112,6 +121,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.2",
                                 "PrivateDnsName": "ip-1-0-0-2",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -123,6 +141,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
                             },
                             {
                                 "InstanceId": "i-45678",
@@ -130,6 +157,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
                             },
                         ]
                     },
@@ -178,6 +214,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -190,6 +235,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
                             },
                             {
                                 "InstanceId": "i-45678",
@@ -197,6 +251,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
                             },
                         ]
                     },
@@ -235,6 +298,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -269,6 +341,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -313,6 +394,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -325,6 +415,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -337,6 +436,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -381,6 +489,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -419,6 +536,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             },
                             {
                                 "InstanceId": "i-22222",
@@ -426,6 +552,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.2",
                                 "PrivateDnsName": "ip-1-0-0-2",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
                             },
                             {
                                 "InstanceId": "i-33333",
@@ -433,6 +568,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
                             },
                         ]
                     },
@@ -478,6 +622,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.1",
                                 "PrivateDnsName": "ip-1-0-0-1",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -489,6 +642,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.2",
                                 "PrivateDnsName": "ip-1-0-0-2",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -500,6 +662,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.5",
                                 "PrivateDnsName": "ip-1-0-0-5",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.5",
+                                    },
+                                ],
                             }
                         ]
                     },
@@ -511,6 +682,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.3",
                                 "PrivateDnsName": "ip-1-0-0-3",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
                             },
                             {
                                 "InstanceId": "i-45678",
@@ -518,6 +698,15 @@ class TestInstanceManager:
                                 "PrivateIpAddress": "ip.1.0.0.4",
                                 "PrivateDnsName": "ip-1-0-0-4",
                                 "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
                             },
                         ]
                     },
