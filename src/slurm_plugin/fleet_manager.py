@@ -422,6 +422,7 @@ def run_instances(region, boto3_config, run_instances_kwargs):
     try:
         from slurm_plugin.overrides import run_instances
 
+        logger.info("Launching instances with run_instances override API. Parameters: %s", run_instances_kwargs)
         return run_instances(region=region, boto3_config=boto3_config, **run_instances_kwargs)
     except ImportError:
         logger.info("Launching instances with run_instances API. Parameters: %s", run_instances_kwargs)
@@ -438,6 +439,7 @@ def create_fleet(region, boto3_config, create_fleet_kwargs):
     try:
         from slurm_plugin.overrides import create_fleet
 
+        logger.info("Launching instances with create_fleet override API. Parameters: %s", create_fleet_kwargs)
         return create_fleet(region=region, boto3_config=boto3_config, **create_fleet_kwargs)
     except ImportError:
         logger.info("Launching instances with create_fleet API. Parameters: %s", create_fleet_kwargs)
