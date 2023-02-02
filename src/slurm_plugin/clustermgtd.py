@@ -990,7 +990,7 @@ class ClusterManager:
                 set_nodes_drain(nodes_name_failing_health_check, reason=f"Node failing {health_check_type}")
             if len(nodes_name_recently_rebooted) > 0:
                 log.info(
-                    "These nodes were recently rebooted and they were not set to DRAIN: %s",
+                    "Ignoring health check failure due to reboot for nodes: %s",
                     nodes_name_recently_rebooted,
                 )
 
