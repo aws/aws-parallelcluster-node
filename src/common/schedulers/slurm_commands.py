@@ -12,6 +12,8 @@
 import logging
 import os
 import re
+from datetime import datetime, timezone
+from typing import List
 
 from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
 from retrying import retry
@@ -19,6 +21,7 @@ from slurm_plugin.slurm_resources import (
     DynamicNode,
     InvalidNodenameError,
     PartitionStatus,
+    SlurmNode,
     SlurmPartition,
     StaticNode,
     parse_nodename,
@@ -54,6 +57,12 @@ SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).
 SLURM_BINARIES_DIR = os.environ.get("SLURM_BINARIES_DIR", "/opt/slurm/bin")
 SCONTROL = f"sudo {SLURM_BINARIES_DIR}/scontrol"
 SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
+
+SCONTROL_OUTPUT_AWK_PARSER = (
+    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+    + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)'"
+)
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
@@ -246,11 +255,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 
     # awk is used to replace the \n\n record separator with '######\n'
     # Note: In case the node does not belong to any partition the Partitions field is missing from Slurm output
-    show_node_info_command = (
-        f'{SCONTROL} show nodes {nodes} | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
-        'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
-        '(Partitions=\\S+)|(Reason=.+) |(######)"'
-    )
+    show_node_info_command = f"{SCONTROL} show nodes {nodes} | {SCONTROL_OUTPUT_AWK_PARSER}"
     nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec B604
 
     return _parse_nodes_info(nodeinfo_str)
@@ -324,16 +329,17 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
     return ",".join(nodes)
 
 
-def _parse_nodes_info(slurm_node_info):
+def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
-    # awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
-    # |(NodeHostName=\S+)|(State=\S+)|(Partitions=\S+)|(Reason=.+) |(######)"
+    # | awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
+    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(Reason=.*)|(######)"
     # NodeName=compute-dy-c5xlarge-1
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-1
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=some reason
     # ######
     # NodeName=compute-dy-c5xlarge-2
@@ -341,6 +347,7 @@ def _parse_nodes_info(slurm_node_info):
     # NodeHostName=compute-dy-c5xlarge-2
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes
     # ######
     # NodeName=compute-dy-c5xlarge-3
@@ -348,11 +355,13 @@ def _parse_nodes_info(slurm_node_info):
     # NodeHostName=compute-dy-c5xlarge-3
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # ######
     # NodeName=compute-dy-c5xlarge-50001
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-50001
     # State=IDLE+CLOUD+POWER
+    # SlurmdStartTime=None
     # ######
 
     map_slurm_key_to_arg = {
@@ -362,15 +371,21 @@ def _parse_nodes_info(slurm_node_info):
         "State": "state",
         "Partitions": "partitions",
         "Reason": "reason",
+        "SlurmdStartTime": "slurmdstarttime",
     }
 
-    node_info = slurm_node_info.split("######")
+    node_info = slurm_node_info.split("######\n")
     slurm_nodes = []
     for node in node_info:
-        lines = node.strip().splitlines()
+        lines = node.splitlines()
         kwargs = {}
         for line in lines:
             key, value = line.split("=")
+            if key == "SlurmdStartTime":
+                if value != "None":
+                    value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
+                else:
+                    value = None
             kwargs[map_slurm_key_to_arg[key]] = value
         if lines:
             try:
