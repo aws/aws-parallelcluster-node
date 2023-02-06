@@ -8,7 +8,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **CHANGES**
 - Consider dynamic nodes with INVALID_REG flag as bootstrap failure towards the Slurm protected mode.
-  - Static nodes failing the Slurm registration are already treated as a bootstrap failure after the `node_replacement_timeout`.
+- Static nodes failing the Slurm registration are already treated as a bootstrap failure after the `node_replacement_timeout`.
 
 3.5.0
 ------
@@ -18,7 +18,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Add validators to prevent malicious string injection while calling the subprocess module.
 
 **BUG FIXES**
-- Fix an issue in clustermgtd that caused compute nodes rebooted via Slurm to be replaced if the EC2 instance status checks fail.
+- Fix an issue in clustermgtd that caused compute nodes rebooted via Slurm to be treated as unhealthy if the EC2 instance status checks fail.
 
 3.4.1
 ------
