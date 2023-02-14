@@ -8,12 +8,14 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+from datetime import datetime, timezone
 from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import (
     SCONTROL,
+    SCONTROL_OUTPUT_AWK_PARSER,
     SINFO,
     _batch_node_info,
     _get_all_partition_nodes,
@@ -31,6 +33,7 @@ from common.schedulers.slurm_commands import (
     update_nodes,
     update_partitions,
 )
+from common.utils import check_command_output
 from slurm_plugin.slurm_resources import DynamicNode, InvalidNodenameError, PartitionStatus, SlurmPartition, StaticNode
 
 
@@ -83,82 +86,122 @@ def test_is_static_node(nodename, expected_is_static):
 
 
 @pytest.mark.parametrize(
-    "node_info, expected_parsed_nodes_output",
+    "node_info, expected_parsed_nodes_output, invalid_name",
     [
         (
-            (
-                "NodeName=multiple-st-c5xlarge-1\n"
-                "NodeAddr=172.31.10.155\n"
-                "NodeHostName=172-31-10-155\n"
-                "State=MIXED+CLOUD\n"
-                "Partitions=multiple\n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-2\n"
-                "NodeAddr=172.31.7.218\n"
-                "NodeHostName=172-31-7-218\n"
-                "State=IDLE+CLOUD+POWER\n"
-                "Partitions=multiple\n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-3\n"
-                "NodeAddr=multiple-dy-c5xlarge-3\n"
-                "NodeHostName=multiple-dy-c5xlarge-3\n"
-                "State=IDLE+CLOUD+POWER\n"
-                "Partitions=multiple\n"
-                "Reason=some reason \n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-4\n"
-                "NodeAddr=multiple-dy-c5xlarge-4\n"
-                "NodeHostName=multiple-dy-c5xlarge-4\n"
-                "State=IDLE+CLOUD+POWER\n"
-                "Partitions=multiple,multiple2\n"
-                "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes \n"
-                "######\n"
-                "NodeName=multiple-dy-c5xlarge-5\n"
-                "NodeAddr=multiple-dy-c5xlarge-5\n"
-                "NodeHostName=multiple-dy-c5xlarge-5\n"
-                "State=IDLE+CLOUD+POWER\n"
-                # missing partitions
-                "######"
-                "NodeName=test-no-partition\n"
-                "NodeAddr=test-no-partition\n"
-                "NodeHostName=test-no-partition\n"
-                "State=IDLE+CLOUD+POWER\n"
-                # missing partitions
-                "######"
-            ),
+            "NodeName=multiple-st-c5xlarge-1\n"
+            "NodeAddr=172.31.10.155\n"
+            "NodeHostName=172-31-10-155\n"
+            "State=MIXED+CLOUD\n"
+            "Partitions=multiple\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "######\n"
+            "NodeName=multiple-dy-c5xlarge-2\n"
+            "NodeAddr=172.31.7.218\n"
+            "NodeHostName=172-31-7-218\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=multiple\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "######\n",
             [
-                StaticNode("multiple-st-c5xlarge-1", "172.31.10.155", "172-31-10-155", "MIXED+CLOUD", "multiple"),
-                DynamicNode("multiple-dy-c5xlarge-2", "172.31.7.218", "172-31-7-218", "IDLE+CLOUD+POWER", "multiple"),
+                StaticNode(
+                    "multiple-st-c5xlarge-1",
+                    "172.31.10.155",
+                    "172-31-10-155",
+                    "MIXED+CLOUD",
+                    "multiple",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
+                ),
+                DynamicNode(
+                    "multiple-dy-c5xlarge-2",
+                    "172.31.7.218",
+                    "172-31-7-218",
+                    "IDLE+CLOUD+POWER",
+                    "multiple",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
+                ),
+            ],
+            False,
+        ),
+        (
+            "NodeName=multiple-dy-c5xlarge-3\n"
+            "NodeAddr=multiple-dy-c5xlarge-3\n"
+            "NodeHostName=multiple-dy-c5xlarge-3\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=multiple\n"
+            "Reason=some reason  \n"
+            "SlurmdStartTime=None\n"
+            "######\n",
+            [
                 DynamicNode(
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
                     "multiple",
-                    "some reason",
+                    "some reason  ",
+                    slurmdstarttime=None,
                 ),
+            ],
+            False,
+        ),
+        (
+            "NodeName=multiple-dy-c5xlarge-4\n"
+            "NodeAddr=multiple-dy-c5xlarge-4\n"
+            "NodeHostName=multiple-dy-c5xlarge-4\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=multiple,multiple2\n"
+            "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "######\n",
+            [
                 DynamicNode(
                     "multiple-dy-c5xlarge-4",
                     "multiple-dy-c5xlarge-4",
                     "multiple-dy-c5xlarge-4",
                     "IDLE+CLOUD+POWER",
                     "multiple,multiple2",
-                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
+            ],
+            False,
+        ),
+        (
+            "NodeName=multiple-dy-c5xlarge-5\n"
+            "NodeAddr=multiple-dy-c5xlarge-5\n"
+            "NodeHostName=multiple-dy-c5xlarge-5\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            # missing partitions
+            "######\n"
+            # Invalid node name
+            "NodeName=test-no-partition\n"
+            "NodeAddr=test-no-partition\n"
+            "NodeHostName=test-no-partition\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            # missing partitions
+            "######\n",
+            [
                 DynamicNode(
                     "multiple-dy-c5xlarge-5",
                     "multiple-dy-c5xlarge-5",
                     "multiple-dy-c5xlarge-5",
                     "IDLE+CLOUD+POWER",
                     None,
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
                 ),
             ],
-        )
+            True,
+        ),
     ],
 )
-def test_parse_nodes_info(node_info, expected_parsed_nodes_output, caplog):
-    assert_that(_parse_nodes_info(node_info)).is_equal_to(expected_parsed_nodes_output)
-    assert_that(caplog.text).contains("Ignoring node test-no-partition because it has an invalid name")
+def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name, caplog):
+    parsed_node_info = _parse_nodes_info(node_info)
+    assert_that(parsed_node_info).is_equal_to(expected_parsed_nodes_output)
+    if invalid_name:
+        assert_that(caplog.text).contains("Ignoring node test-no-partition because it has an invalid name")
 
 
 @pytest.mark.parametrize(
@@ -781,9 +824,7 @@ def test_get_all_partition_nodes(
         (
             "node1 node2",
             30,
-            f'{SCONTROL} show nodes node1 node2 | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
-            'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
-            '(Partitions=\\S+)|(Reason=.+) |(######)"',
+            f"{SCONTROL} show nodes node1 node2 | {SCONTROL_OUTPUT_AWK_PARSER}",
             None,
             None,
         ),
@@ -808,3 +849,67 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
         )
         get_nodes_info(nodes, cmd_timeout)
         check_command_output_mocked.assert_called_with(run_command_call, timeout=30, shell=True)
+
+
+@pytest.mark.parametrize(
+    "scontrol_output, expected_parsed_output",
+    [
+        (
+            (
+                "NodeName=queue1-st-compute-resource-1-1 Arch=x86_64 CoresPerSocket=1\n"
+                "   CPUAlloc=0 CPUEfctv=2 CPUTot=2 CPULoad=0.03\n"
+                "   AvailableFeatures=static,t2.medium,compute-resource-1\n"
+                "   ActiveFeatures=static,t2.medium,compute-resource-1\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=192.168.123.191 NodeHostName=queue1-st-compute-resource-1-1 Version=22.05.7\n"
+                "   OS=Linux 5.15.0-1028-aws #32~20.04.1-Ubuntu SMP Mon Jan 9 18:02:08 UTC 2023\n"
+                "   RealMemory=3891 AllocMem=0 FreeMem=3018 Sockets=2 Boards=1\n"
+                "   State=DOWN+CLOUD+REBOOT_ISSUED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   NextState=RESUME\n"
+                "   Partitions=queue1\n"
+                "   BootTime=2023-01-26T09:56:30 SlurmdStartTime=2023-01-26T09:57:15\n"
+                "   LastBusyTime=2023-01-26T09:57:15\n"
+                "   CfgTRES=cpu=2,mem=3891M,billing=2\n"
+                "   AllocTRES=\n"
+                "   CapWatts=n/a\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
+                "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n"
+                "   Comment=some comment \n\n"
+                "NodeName=queue1-st-compute-resource-1-2 Arch=x86_64 CoresPerSocket=1\n"
+                "   CPUAlloc=0 CPUEfctv=2 CPUTot=2 CPULoad=0.03\n"
+                "   AvailableFeatures=static,t2.medium,compute-resource-1\n"
+                "   ActiveFeatures=static,t2.medium,compute-resource-1\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=192.168.123.192 NodeHostName=queue1-st-compute-resource-1-2 Version=22.05.7\n"
+                "   OS=Linux 5.15.0-1028-aws #32~20.04.1-Ubuntu SMP Mon Jan 9 18:02:08 UTC 2023\n"
+                "   RealMemory=3891 AllocMem=0 FreeMem=3018 Sockets=2 Boards=1\n"
+                "   State=DOWN+CLOUD+REBOOT_ISSUED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   NextState=RESUME\n"
+                "   Partitions=queue1\n"
+                "   BootTime=2023-01-26T09:56:30 SlurmdStartTime=2023-01-26T09:57:16\n"
+                "   LastBusyTime=2023-01-26T09:57:15\n"
+                "   CfgTRES=cpu=2,mem=3891M,billing=2\n"
+                "   AllocTRES=\n"
+                "   CapWatts=n/a\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
+                "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:40]\n"
+                "   Comment=some comment \n"
+            ),
+            (
+                "NodeName=queue1-st-compute-resource-1-1\nNodeAddr=192.168.123.191\n"
+                "NodeHostName=queue1-st-compute-resource-1-1\nState=DOWN+CLOUD+REBOOT_ISSUED\nPartitions=queue1\n"
+                "SlurmdStartTime=2023-01-26T09:57:15\n"
+                "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:39]\n######\n"
+                "NodeName=queue1-st-compute-resource-1-2\nNodeAddr=192.168.123.192\n"
+                "NodeHostName=queue1-st-compute-resource-1-2\nState=DOWN+CLOUD+REBOOT_ISSUED\nPartitions=queue1\n"
+                "SlurmdStartTime=2023-01-26T09:57:16\n"
+                "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:40]\n######\n"
+            ),
+        )
+    ],
+)
+def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
+    parsed_output = check_command_output(f'echo "{scontrol_output}" | {SCONTROL_OUTPUT_AWK_PARSER}', shell=True)
+    assert_that(parsed_output).is_equal_to(expected_parsed_output)
