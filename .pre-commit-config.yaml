@@ -1,5 +1,5 @@
 repos:
-  - repo: git://github.com/pre-commit/pre-commit-hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
@@ -30,11 +30,6 @@ repos:
     hooks:
       - id: isort
         args: ['-rc', '-w 120']
-
-  - repo: https://github.com/asottile/seed-isort-config
-    rev: v2.2.0
-    hooks:
-      - id: seed-isort-config
 
   - repo: https://github.com/ambv/black
     rev: 23.1.0
