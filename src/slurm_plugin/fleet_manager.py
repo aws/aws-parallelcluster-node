@@ -47,15 +47,17 @@ class EC2Instance:
     @staticmethod
     def from_describe_instance_data(instance_info):
         try:
+            private_ip = instance_info["PrivateIpAddress"]
             for network_interface in instance_info["NetworkInterfaces"]:
                 attachment = network_interface["Attachment"]
                 if attachment["DeviceIndex"] == 0 and attachment["NetworkCardIndex"] == 0:
-                    return EC2Instance(
-                        instance_info["InstanceId"],
-                        network_interface["PrivateIpAddress"],
-                        instance_info["PrivateDnsName"].split(".")[0],
-                        instance_info["LaunchTime"],
-                    )
+                    private_ip = network_interface["PrivateIpAddress"]
+            return EC2Instance(
+                instance_info["InstanceId"],
+                private_ip,
+                instance_info["PrivateDnsName"].split(".")[0],
+                instance_info["LaunchTime"],
+            )
         except KeyError as e:
             logger.error("Unable to retrieve EC2 instance info: %s", e)
             raise e
@@ -71,15 +73,15 @@ class FleetManagerException(Exception):
 class FleetManagerFactory:
     @staticmethod
     def get_manager(
-        cluster_name,
-        region,
-        boto3_config,
-        fleet_config,
-        queue,
-        compute_resource,
-        all_or_nothing,
-        run_instances_overrides,
-        create_fleet_overrides,
+            cluster_name,
+            region,
+            boto3_config,
+            fleet_config,
+            queue,
+            compute_resource,
+            all_or_nothing,
+            run_instances_overrides,
+            create_fleet_overrides,
     ):
         try:
             queue_config = fleet_config[queue]
@@ -129,15 +131,15 @@ class FleetManager(ABC):
 
     @abstractmethod
     def __init__(
-        self,
-        cluster_name,
-        region,
-        boto3_config,
-        queue,
-        compute_resource,
-        compute_resource_config,
-        all_or_nothing,
-        launch_overrides,
+            self,
+            cluster_name,
+            region,
+            boto3_config,
+            queue,
+            compute_resource,
+            compute_resource_config,
+            all_or_nothing,
+            launch_overrides,
     ):
         self._cluster_name = cluster_name
         self._region = region
@@ -173,15 +175,15 @@ class Ec2RunInstancesManager(FleetManager):
     """Manager to create EC2 instances fleet using EC2 run_instances API."""
 
     def __init__(
-        self,
-        cluster_name,
-        region,
-        boto3_config,
-        queue,
-        compute_resource,
-        compute_resource_config,
-        all_or_nothing,
-        launch_overrides,
+            self,
+            cluster_name,
+            region,
+            boto3_config,
+            queue,
+            compute_resource,
+            compute_resource_config,
+            all_or_nothing,
+            launch_overrides,
     ):
         super().__init__(
             cluster_name,
@@ -225,15 +227,15 @@ class Ec2CreateFleetManager(FleetManager):
     """Manager to create EC2 instances fleet using create_fleet API."""
 
     def __init__(
-        self,
-        cluster_name,
-        region,
-        boto3_config,
-        queue,
-        compute_resource,
-        compute_resource_config,
-        all_or_nothing,
-        launch_overrides,
+            self,
+            cluster_name,
+            region,
+            boto3_config,
+            queue,
+            compute_resource,
+            compute_resource_config,
+            all_or_nothing,
+            launch_overrides,
     ):
         super().__init__(
             cluster_name,
