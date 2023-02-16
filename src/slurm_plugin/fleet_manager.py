@@ -73,15 +73,15 @@ class FleetManagerException(Exception):
 class FleetManagerFactory:
     @staticmethod
     def get_manager(
-            cluster_name,
-            region,
-            boto3_config,
-            fleet_config,
-            queue,
-            compute_resource,
-            all_or_nothing,
-            run_instances_overrides,
-            create_fleet_overrides,
+        cluster_name,
+        region,
+        boto3_config,
+        fleet_config,
+        queue,
+        compute_resource,
+        all_or_nothing,
+        run_instances_overrides,
+        create_fleet_overrides,
     ):
         try:
             queue_config = fleet_config[queue]
@@ -131,15 +131,15 @@ class FleetManager(ABC):
 
     @abstractmethod
     def __init__(
-            self,
-            cluster_name,
-            region,
-            boto3_config,
-            queue,
-            compute_resource,
-            compute_resource_config,
-            all_or_nothing,
-            launch_overrides,
+        self,
+        cluster_name,
+        region,
+        boto3_config,
+        queue,
+        compute_resource,
+        compute_resource_config,
+        all_or_nothing,
+        launch_overrides,
     ):
         self._cluster_name = cluster_name
         self._region = region
@@ -175,15 +175,15 @@ class Ec2RunInstancesManager(FleetManager):
     """Manager to create EC2 instances fleet using EC2 run_instances API."""
 
     def __init__(
-            self,
-            cluster_name,
-            region,
-            boto3_config,
-            queue,
-            compute_resource,
-            compute_resource_config,
-            all_or_nothing,
-            launch_overrides,
+        self,
+        cluster_name,
+        region,
+        boto3_config,
+        queue,
+        compute_resource,
+        compute_resource_config,
+        all_or_nothing,
+        launch_overrides,
     ):
         super().__init__(
             cluster_name,
@@ -227,15 +227,15 @@ class Ec2CreateFleetManager(FleetManager):
     """Manager to create EC2 instances fleet using create_fleet API."""
 
     def __init__(
-            self,
-            cluster_name,
-            region,
-            boto3_config,
-            queue,
-            compute_resource,
-            compute_resource_config,
-            all_or_nothing,
-            launch_overrides,
+        self,
+        cluster_name,
+        region,
+        boto3_config,
+        queue,
+        compute_resource,
+        compute_resource_config,
+        all_or_nothing,
+        launch_overrides,
     ):
         super().__init__(
             cluster_name,
