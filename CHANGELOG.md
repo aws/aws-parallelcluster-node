@@ -3,13 +3,16 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.5.1
+------
+
 3.5.0
 ------
 
 **ENHANCEMENTS**
 - Add logging of compute node console output to CloudWatch from head node on compute node bootstrap failure.
 - Add validators to prevent malicious string injection while calling the subprocess module.
-  
+
 **BUG FIXES**
 - Fix an issue in clustermgtd that caused compute nodes rebooted via Slurm to be replaced if the EC2 instance status checks fail.
 
