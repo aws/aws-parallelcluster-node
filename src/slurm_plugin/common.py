@@ -135,3 +135,12 @@ def is_clustermgtd_heartbeat_valid(current_time, clustermgtd_timeout, clustermgt
     except Exception as e:
         logger.error("Unable to retrieve clustermgtd heartbeat with exception: %s", e)
         return False
+
+
+def get_private_ip(instance_info):
+    private_ip = instance_info["PrivateIpAddress"]
+    for network_interface in instance_info["NetworkInterfaces"]:
+        attachment = network_interface["Attachment"]
+        if attachment["DeviceIndex"] == 0 and attachment["NetworkCardIndex"] == 0:
+            private_ip = network_interface["PrivateIpAddress"]
+    return private_ip

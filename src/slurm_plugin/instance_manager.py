@@ -23,7 +23,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
-from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count
+from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count, get_private_ip
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
@@ -342,7 +342,7 @@ class InstanceManager:
                 instances.append(
                     EC2Instance(
                         instance_info["InstanceId"],
-                        instance_info["PrivateIpAddress"],
+                        get_private_ip(instance_info),
                         instance_info["PrivateDnsName"].split(".")[0],
                         instance_info["LaunchTime"],
                     )

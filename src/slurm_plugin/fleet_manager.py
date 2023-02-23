@@ -16,6 +16,8 @@ from abc import ABC, abstractmethod
 import boto3
 from botocore.exceptions import ClientError
 
+from slurm_plugin.common import get_private_ip
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,11 +49,7 @@ class EC2Instance:
     @staticmethod
     def from_describe_instance_data(instance_info):
         try:
-            private_ip = instance_info["PrivateIpAddress"]
-            for network_interface in instance_info["NetworkInterfaces"]:
-                attachment = network_interface["Attachment"]
-                if attachment["DeviceIndex"] == 0 and attachment["NetworkCardIndex"] == 0:
-                    private_ip = network_interface["PrivateIpAddress"]
+            private_ip = get_private_ip(instance_info)
             return EC2Instance(
                 instance_info["InstanceId"],
                 private_ip,
