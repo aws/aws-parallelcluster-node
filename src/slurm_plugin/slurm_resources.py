@@ -325,7 +325,7 @@ class StaticNode(SlurmNode):
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         return (
-            self._is_static_node_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
+            self._is_static_node_ip_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_state_healthy(
                 terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
@@ -365,7 +365,7 @@ class StaticNode(SlurmNode):
                 return False
         return True
 
-    def _is_static_node_configuration_valid(self, log_warn_if_unhealthy=True):
+    def _is_static_node_ip_configuration_valid(self, log_warn_if_unhealthy=True):
         """Check if static node is configured with a private IP."""
         if not self.is_nodeaddr_set():
             if log_warn_if_unhealthy:

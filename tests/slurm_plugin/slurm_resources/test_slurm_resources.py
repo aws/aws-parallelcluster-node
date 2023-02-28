@@ -1021,8 +1021,8 @@ def test_slurm_node_needs_reset_when_inactive(node, expected_result):
     ],
     ids=["static_addr_not_set", "static_valid"],
 )
-def test_is_static_node_configuration_valid(node, expected_result):
-    assert_that(node._is_static_node_configuration_valid()).is_equal_to(expected_result)
+def test_is_static_node_ip_configuration_valid(node, expected_result):
+    assert_that(node._is_static_node_ip_configuration_valid()).is_equal_to(expected_result)
 
 
 @pytest.mark.parametrize(
