@@ -144,6 +144,33 @@ def test_slurm_node_is_rebooting(node, expected_output):
 @pytest.mark.parametrize(
     "node, expected_output",
     [
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD", "queue1"),
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+INVALID_REG", "queue1"),
+            True,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD", "queue1"),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "DOWN+CLOUD+DRAIN+INVALID_REG+POWERING_DOWN", "queue1"
+            ),
+            True,
+        ),
+    ],
+)
+def test_slurm_node_is_invalid_slurm_registration(node, expected_output):
+    assert_that(node.is_invalid_slurm_registration()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "somestate", "queue1"), False),
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+DOWN+POWERING_UP", "queue1"), True),
         (
@@ -761,6 +788,39 @@ def test_slurm_node_is_state_healthy(
             False,
             True,
         ),
+        # Dynamic node that has just failed the Slurm registration and has not yet been processed by clustermgtd
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN+INVALID_REG", "queue1"),
+            None,
+            False,
+            False,
+            "Node bootstrap error: Node queue1-dy-c5xlarge-1(ip-1) failed to register to the Slurm management daemon, "
+            "node state: IDLE+CLOUD+DRAIN+INVALID_REG",
+            False,
+            True,
+        ),
+        # Dynamic node that failed the Slurm registration and was powered down by clustermgtd
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN+INVALID_REG+POWER_DOWN", "queue1"
+            ),
+            None,
+            False,
+            False,
+            None,
+            False,
+            False,
+        ),
+        # Dynamic node that failed the Slurm registration, was powered down by clustermgtd and is still powering down
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+DRAIN+INVALID_REG+POWERING_DOWN", "queue1"),
+            None,
+            False,
+            False,
+            None,
+            False,
+            False,
+        ),
     ],
     ids=[
         "static_self_terminate",
@@ -777,6 +837,9 @@ def test_slurm_node_is_state_healthy(
         "dynamic_fail_health_check",
         "dynamic_pcluster_stop",
         "idle_powering_up",
+        "dynamic_node_failed_registration",
+        "dynamic_node_failed_registration_power_down",
+        "dynamic_node_failed_registration_powering_down",
     ],
 )
 def test_slurm_node_is_bootstrap_failure(
