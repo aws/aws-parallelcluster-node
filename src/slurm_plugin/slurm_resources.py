@@ -98,6 +98,7 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
+    SLURM_SCONTROL_INVALID_REGISTRATION_STATE = "INVALID_REG"
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -245,6 +246,10 @@ class SlurmNode(metaclass=ABCMeta):
             cond = True
         return cond
 
+    def is_invalid_slurm_registration(self):
+        """Check if a slurm node has failed registration with the Slurm management daemon."""
+        return self.SLURM_SCONTROL_INVALID_REGISTRATION_STATE in self.states
+
     @abstractmethod
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
@@ -325,7 +330,7 @@ class StaticNode(SlurmNode):
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         return (
-            self._is_static_node_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
+            self._is_static_node_ip_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_state_healthy(
                 terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
@@ -365,7 +370,7 @@ class StaticNode(SlurmNode):
                 return False
         return True
 
-    def _is_static_node_configuration_valid(self, log_warn_if_unhealthy=True):
+    def _is_static_node_ip_configuration_valid(self, log_warn_if_unhealthy=True):
         """Check if static node is configured with a private IP."""
         if not self.is_nodeaddr_set():
             if log_warn_if_unhealthy:
@@ -466,6 +471,17 @@ class DynamicNode(SlurmNode):
         elif self.is_failing_health_check and self.is_powering_up():
             logger.warning(
                 "Node bootstrap error: Node %s failed during bootstrap when performing health check, node state: %s",
+                self,
+                self.state_string,
+            )
+            return True
+        # Consider the invalid registration as a bootstrap failure event, but only the first time it is registered.
+        # After this, clustermgtd will mark the node as unhealthy and power it down.
+        # This does not clear the INVALID_REG flag immediately: this will happen only when the node is fully powered
+        # down. Therefore we exclude the nodes that are still pending powering down from this check.
+        elif self.is_invalid_slurm_registration() and not (self.is_power_down() or self.is_powering_down()):
+            logger.warning(
+                "Node bootstrap error: Node %s failed to register to the Slurm management daemon, node state: %s",
                 self,
                 self.state_string,
             )
