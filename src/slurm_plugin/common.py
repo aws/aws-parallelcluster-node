@@ -8,12 +8,14 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
-
+import collections
 import functools
+import json
 import logging
+import sys
+import traceback
 from concurrent.futures import Future
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Optional, Protocol, TypedDict
 
 from common.utils import check_command_output, time_is_up, validate_absolute_path
@@ -135,3 +137,66 @@ def is_clustermgtd_heartbeat_valid(current_time, clustermgtd_timeout, clustermgt
     except Exception as e:
         logger.error("Unable to retrieve clustermgtd heartbeat with exception: %s", e)
         return False
+
+
+event_to_log_level_mapping = {
+    "CRITICAL": logging.CRITICAL,
+    "FATAL": logging.CRITICAL,
+    "ERROR": logging.ERROR,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "INFO": logging.INFO,
+    "DEBUG": logging.DEBUG,
+    "NOTSET": logging.NOTSET,
+}
+
+log_to_event_level_mapping = {
+    logging.CRITICAL: "CRITICAL",
+    logging.ERROR: "ERROR",
+    logging.WARNING: "WARNING",
+    logging.INFO: "INFO",
+    logging.DEBUG: "DEBUG",
+    logging.NOTSET: "NOTSET",
+}
+
+
+def event_publisher(event_logger, cluster_name, node_role, component, instance_id, **global_args):
+    def emit_event(event_level, message, event_type, timestamp=None, event_supplier=None, **kwargs):
+        log_level = (
+            event_to_log_level_mapping.get(event_level, logging.NOTSET) if isinstance(event_level, str) else event_level
+        )
+
+        if event_logger.isEnabledFor(log_level):
+            event_level = log_to_event_level_mapping.get(log_level, "NOTSET")
+            now = timestamp if timestamp else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            if not event_supplier:
+                event_supplier = [kwargs]
+            for details in event_supplier:
+                try:
+                    event = collections.ChainMap(
+                        details,
+                        kwargs,
+                        {
+                            "datetime": now,
+                            "version": 0,
+                            "cluster-name": cluster_name,
+                            "node-role": node_role,
+                            "component": component,
+                            "level": event_level,
+                            "instance-id": instance_id,
+                            "event-type": event_type,
+                            "message": message,
+                            "detail": {},
+                        },
+                        global_args,
+                    )
+
+                    event_logger.log(log_level, "%s", json.dumps(dict(event)))
+                except Exception as e:
+                    logger.error("Failed to publish event: %s\n%s", e, traceback.format_exception(*sys.exc_info()))
+
+    return emit_event
+
+
+def event_publisher_noop(*args, **kwargs):
+    pass
