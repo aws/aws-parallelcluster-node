@@ -39,7 +39,8 @@ from common.schedulers.slurm_commands import (
 from common.time_utils import seconds
 from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up, wait_remaining_time
 from retrying import retry
-from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
+from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
+from slurm_plugin.common import TIMESTAMP_FORMAT, event_publisher, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
@@ -59,6 +60,7 @@ CONSOLE_OUTPUT_WAIT_TIME = 5 * 60
 MAXIMUM_TASK_BACKLOG = 100
 log = logging.getLogger(__name__)
 compute_logger = log.getChild("console_output")
+event_logger = log.getChild("events")
 
 
 class ComputeFleetStatus(Enum):
@@ -193,6 +195,7 @@ class ClustermgtdConfig:
         self.dynamodb_table = config.get("clustermgtd", "dynamodb_table")
         self.head_node_private_ip = config.get("clustermgtd", "head_node_private_ip")
         self.head_node_hostname = config.get("clustermgtd", "head_node_hostname")
+        self.head_node_instance_id = config.get("clustermgtd", "instance_id", fallback="unknown")
 
         # Configure boto3 to retry 1 times by default
         self._boto3_retry = config.getint("clustermgtd", "boto3_retry", fallback=self.DEFAULTS.get("max_retry"))
@@ -376,6 +379,7 @@ class ClusterManager:
         self._instance_manager = None
         self._task_executor = None
         self._console_logger = None
+        self._event_publisher = None
         self.set_config(config)
 
     def set_config(self, config: ClustermgtdConfig):
@@ -394,6 +398,11 @@ class ClusterManager:
             self._task_executor = self._initialize_executor(config)
 
             self._config = config
+            self._event_publisher = ClusterEventPublisher(
+                event_publisher(
+                    event_logger, config.cluster_name, "HeadNode", "clustermgtd", config.head_node_instance_id
+                )
+            )
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
             self._console_logger = self._initialize_console_logger(config)
@@ -507,6 +516,7 @@ class ClusterManager:
                 except ClusterManager.EC2InstancesInfoUnavailable:
                     log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
                     return
+
                 log.debug("Current cluster instances in EC2: %s", cluster_instances)
                 partitions = list(partitions_name_map.values())
                 self._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
@@ -751,6 +761,7 @@ class ClusterManager:
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
+
         log.info("Setting unhealthy dynamic nodes to down and power_down.")
         set_nodes_power_down([node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed")
 
@@ -816,7 +827,9 @@ class ClusterManager:
             )
         log.info("Launching new instances for unhealthy static nodes")
         self._instance_manager.add_instances_for_nodes(
-            node_list, self._config.launch_max_batch_size, self._config.update_node_address
+            node_list,
+            self._config.launch_max_batch_size,
+            self._config.update_node_address,
         )
         # Add launched nodes to list of nodes being replaced, excluding any nodes that failed to launch
         failed_nodes = set().union(*self._instance_manager.failed_nodes.values())
@@ -825,6 +838,13 @@ class ClusterManager:
         log.info(
             "After node maintenance, following nodes are currently in replacement: %s",
             print_with_count(self._static_nodes_in_replacement),
+        )
+
+        self._event_publisher.publish_unhealthy_static_node_events(
+            unhealthy_static_nodes,
+            instances_to_terminate,
+            self._static_nodes_in_replacement,
+            self._instance_manager.failed_nodes,
         )
 
     @log_exception(log, "maintaining slurm nodes", catch_exception=Exception, raise_on_error=False)
@@ -842,22 +862,29 @@ class ClusterManager:
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
+
         self._handle_powering_down_nodes(active_nodes)
+
         (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,
             ice_compute_resources_and_nodes_map,
         ) = self._find_unhealthy_slurm_nodes(active_nodes)
+
         if unhealthy_dynamic_nodes:
             log.info("Found the following unhealthy dynamic nodes: %s", print_with_count(unhealthy_dynamic_nodes))
             self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
+
         if unhealthy_static_nodes:
             log.info("Found the following unhealthy static nodes: %s", print_with_count(unhealthy_static_nodes))
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes)
+
         if self._is_protected_mode_enabled():
             self._handle_protected_mode_process(active_nodes, partitions_name_map)
+
         if self._config.disable_nodes_on_insufficient_capacity:
             self._handle_ice_nodes(ice_compute_resources_and_nodes_map, compute_resource_nodes_map)
+
         self._handle_failed_health_check_nodes_in_replacement(active_nodes)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
@@ -882,6 +909,7 @@ class ClusterManager:
         # Place partitions into inactive
         log.info("Placing bootstrap failure partitions to INACTIVE: %s", partitions_to_disable)
         update_partitions(partitions_to_disable, PartitionStatus.INACTIVE)
+
         # Change compute fleet status to protected
         if not ComputeFleetStatus.is_protected(self._compute_fleet_status):
             log.warning(
@@ -1179,7 +1207,8 @@ class ClusterManager:
         if nodes_to_down:
             for error_code, node_list in nodes_to_down.items():
                 set_nodes_down(
-                    node_list, reason=f"(Code:{error_code})Temporarily disabling node due to insufficient capacity"
+                    node_list,
+                    reason=f"(Code:{error_code})Temporarily disabling node due to insufficient capacity",
                 )
 
     def _find_insufficient_capacity_timeout_expired_compute_resources(
@@ -1199,7 +1228,7 @@ class ClusterManager:
     def _reset_insufficient_capacity_timeout_expired_nodes(
         self,
         timeout_expired_cr: Dict[str, Dict[str, ComputeResourceFailureEvent]],
-        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, ComputeResourceFailureEvent]],
+        ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]],
     ):
         """Reset nodes in the compute resource which insufficient_capacity_timeout expired."""
         logging.info(
