@@ -1017,7 +1017,8 @@ def test_handle_powering_down_nodes(
             1,
             [
                 r"Failed to launch instances due to limited EC2 capacity for following nodes: .*",
-                r'{"datetime": ".*", "version": 0, "cluster-name": "hit-test", "node-role": "HeadNode", '
+                r'{"datetime": ".*", "version": 0, "scheduler": "slurm", "cluster-name": "hit-test", '
+                + r'"node-role": "HeadNode", '
                 + r'"component": "clustermgtd", "level": "WARNING", "instance-id": "i-instance-id", '
                 + r'"event-type": "node-launch-failure-count", "message": ".*", '
                 + r'"detail": {'

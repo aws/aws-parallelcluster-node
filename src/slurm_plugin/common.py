@@ -179,6 +179,7 @@ def event_publisher(event_logger, cluster_name, node_role, component, instance_i
                         {
                             "datetime": now,
                             "version": 0,
+                            "scheduler": "slurm",
                             "cluster-name": cluster_name,
                             "node-role": node_role,
                             "component": component,

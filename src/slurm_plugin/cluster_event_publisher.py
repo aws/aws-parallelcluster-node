@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, Iterable, List
 
 from slurm_plugin.common import log_exception
-from slurm_plugin.slurm_resources import SlurmNode
+from slurm_plugin.slurm_resources import SlurmNode, StaticNode
 
 logger = logging.getLogger(__name__)
 
@@ -41,28 +41,9 @@ class ClusterEventPublisher:
     def publish_unhealthy_static_node_events(
         self,
         unhealthy_static_nodes: List[SlurmNode],
-        instances_to_terminate: List[str],
         nodes_in_replacement: Iterable[str],
         failed_nodes: Dict[str, List[str]],
     ):
-        def terminated_instances_supplier():
-            terminated_instances = [node for node in unhealthy_static_nodes if node.instance]
-            yield {
-                "detail": {
-                    "count": len(instances_to_terminate),
-                    "nodes": [
-                        {
-                            "name": node.name,
-                            "id": node.instance.id,
-                            "ip": node.instance.private_ip,
-                            "error-code": node.error_code,
-                            "reason": node.reason,
-                        }
-                        for node in self._limit_list(terminated_instances)
-                    ],
-                }
-            }
-
         timestamp = ClusterEventPublisher.timestamp()
 
         nodes_in_replacement = list(nodes_in_replacement)
@@ -75,34 +56,20 @@ class ClusterEventPublisher:
             event_supplier=self._get_launch_failure_details(failed_nodes),
         )
 
-        for error_code, failed_node_list in failed_nodes.items():
-            self.publish_event(
-                "DEBUG",
-                "After node maintenance, node failed replacement",
-                event_type="node-launch-failure",
-                timestamp=timestamp,
-                event_supplier=(
-                    {
-                        "detail": {
-                            "node": _describe_node(node),
-                            "error-code": error_code,
-                            "failure-type": ClusterEventPublisher._get_failure_type_from_error_code(error_code),
-                        }
-                    }
-                    for node in unhealthy_static_nodes
-                    if node.name in failed_node_list
-                ),
-            )
+        self.publish_event(
+            "DEBUG",
+            "After node maintenance, node failed replacement",
+            event_type="node-launch-failure",
+            timestamp=timestamp,
+            event_supplier=self._failed_node_supplier(unhealthy_static_nodes, failed_nodes),
+        )
 
         self.publish_event(
             "DEGUG",
             "Number of static nodes failing scheduler health check",
             event_type="static-node-health-check-failure-count",
             timestamp=timestamp,
-            detail={
-                "count": len(unhealthy_static_nodes),
-                "nodes": [{"name": node.name} for node in self._limit_list(unhealthy_static_nodes)],
-            },
+            event_supplier=self._unhealthy_node_count_supplier(unhealthy_static_nodes),
         )
 
         self.publish_event(
@@ -110,17 +77,17 @@ class ClusterEventPublisher:
             "Static node failing scheduler health check",
             event_type="static-node-health-check-failure",
             timestamp=timestamp,
-            event_supplier=(
-                {"detail": {"node": _describe_node(node)}} for node in self._limit_list(unhealthy_static_nodes)
-            ),
+            event_supplier=self._unhealthy_node_supplier(unhealthy_static_nodes),
         )
 
         self.publish_event(
-            "DEBUG" if instances_to_terminate else "DEBUG",
-            "Terminated instances backing unhealthy nodes",
+            "DEBUG",
+            "Number of instances terminated due to backing unhealthy static nodes",
             event_type="static-node-instance-terminate-count",
             timestamp=timestamp,
-            event_supplier=terminated_instances_supplier(),
+            event_supplier=self._terminated_instances_supplier(
+                (node for node in unhealthy_static_nodes if node.instance)
+            ),
         )
 
         self.publish_event(
@@ -128,10 +95,7 @@ class ClusterEventPublisher:
             "After node maintenance, nodes currently in replacement",
             event_type="static-nodes-in-replacement-count",
             timestamp=timestamp,
-            detail={
-                "count": len(nodes_in_replacement),
-                "nodes": [{"name": node_name} for node_name in self._limit_list(nodes_in_replacement)],
-            },
+            event_supplier=self._node_count_in_replacement_supplier(nodes_in_replacement),
         )
 
         self.publish_event(
@@ -139,15 +103,82 @@ class ClusterEventPublisher:
             "After node maintenance, node currently in replacement",
             event_type="static-node-in-replacement",
             timestamp=timestamp,
-            event_supplier=(
-                {
-                    "detail": {
-                        "node": _describe_node(node),
-                    }
-                }
-                for node in unhealthy_static_nodes
-                if node.name in nodes_in_replacement
+            event_supplier=self._node_in_replacement_supplier(
+                (node for node in unhealthy_static_nodes if node.name in nodes_in_replacement)
             ),
+        )
+
+    @log_exception(logger, "publish_nodes_failing_health_check_events", catch_exception=Exception, raise_on_error=False)
+    def publish_nodes_failing_health_check_events(
+        self, health_check_type: any, node_names_failing_health_check: Iterable[str]
+    ):
+        def detail_supplier():
+            yield {
+                "detail": {
+                    "health-check-type": str(health_check_type),
+                    "count": len(node_names_failing_health_check),
+                    "nodes": [{"name": node_name} for node_name in self._limit_list(node_names_failing_health_check)],
+                }
+            }
+
+        timestamp = ClusterEventPublisher.timestamp()
+
+        node_names_failing_health_check = list(node_names_failing_health_check)
+
+        self.publish_event(
+            "WARNING" if node_names_failing_health_check else "DEBUG",
+            f"Number of nodes failing health check {health_check_type}",
+            "nodes-failing-health-check-count",
+            timestamp=timestamp,
+            event_supplier=detail_supplier(),
+        )
+
+    @log_exception(logger, "publish_unhealthy_node_events", catch_exception=Exception, raise_on_error=False)
+    def publish_unhealthy_node_events(self, unhealthy_nodes: List[SlurmNode]):
+        def detail_supplier():
+            # Only report invalid backing instances if the node did not fail to bootstrap - bootstrap
+            # errors are reported elsewhere
+            yield {
+                "detail": {
+                    "count": len(invalid_backing_instance_nodes),
+                    "nodes": [{"name": node.name} for node in self._limit_list(invalid_backing_instance_nodes)],
+                }
+            }
+
+        timestamp = ClusterEventPublisher.timestamp()
+
+        invalid_backing_instance_nodes = [
+            node
+            for node in unhealthy_nodes
+            if not node.is_backing_instance_valid(log_warn_if_unhealthy=False) and not node.is_bootstrap_failure()
+        ]
+
+        self.publish_event(
+            "WARNING" if invalid_backing_instance_nodes else "DEBUG",
+            "Number of nodes without a valid backing instance",
+            "invalid-backing-instance-count",
+            timestamp=timestamp,
+            event_supplier=detail_supplier(),
+        )
+
+    @log_exception(logger, "publish_bootstrap_failure_events", catch_exception=Exception, raise_on_error=False)
+    def publish_bootstrap_failure_events(self, bootstrap_failure_nodes: List[SlurmNode]):
+        def detail_supplier():
+            yield {
+                "detail": {
+                    "count": len(bootstrap_failure_nodes),
+                    "nodes": [{"name": node.name} for node in self._limit_list(bootstrap_failure_nodes)],
+                }
+            }
+
+        timestamp = ClusterEventPublisher.timestamp()
+
+        self.publish_event(
+            "WARNING" if bootstrap_failure_nodes else "DEBUG",
+            "Number of nodes that failed to bootstrap",
+            "bootstrap-failure-count",
+            timestamp=timestamp,
+            event_supplier=detail_supplier(),
         )
 
     # Slurm Resume Events
@@ -196,6 +227,64 @@ class ClusterEventPublisher:
     def _limit_list(self, source_list: List) -> List:
         return source_list[: self._max_list_size] if self._max_list_size else source_list
 
+    def _terminated_instances_supplier(self, terminated_instances):
+        terminated_instances = list(terminated_instances)
+        yield {
+            "detail": {
+                "count": len(terminated_instances),
+                "nodes": [
+                    {
+                        "name": node.name,
+                        "id": node.instance.id,
+                        "ip": node.instance.private_ip,
+                        "error-code": node.error_code,
+                        "reason": node.reason,
+                    }
+                    for node in self._limit_list(terminated_instances)
+                ],
+            }
+        }
+
+    def _node_count_in_replacement_supplier(self, nodes_in_replacement):
+        yield {
+            "detail": {
+                "count": len(nodes_in_replacement),
+                "nodes": [{"name": node_name} for node_name in self._limit_list(nodes_in_replacement)],
+            }
+        }
+
+    def _node_in_replacement_supplier(self, nodes_in_replacement):
+        for node in nodes_in_replacement:
+            yield {
+                "detail": {
+                    "node": _describe_node(node),
+                }
+            }
+
+    def _unhealthy_node_count_supplier(self, unhealthy_static_nodes):
+        yield {
+            "detail": {
+                "count": len(unhealthy_static_nodes),
+                "nodes": [{"name": node.name} for node in self._limit_list(unhealthy_static_nodes)],
+            }
+        }
+
+    def _unhealthy_node_supplier(self, unhealthy_static_nodes):
+        for node in self._limit_list(unhealthy_static_nodes):
+            yield {"detail": {"node": _describe_node(node)}}
+
+    def _failed_node_supplier(self, unhealthy_static_nodes, failed_nodes):
+        for error_code, failed_node_list in failed_nodes.items():
+            for node in unhealthy_static_nodes:
+                if node.name in failed_node_list:
+                    yield {
+                        "detail": {
+                            "node": _describe_node(node),
+                            "error-code": error_code,
+                            "failure-type": ClusterEventPublisher._get_failure_type_from_error_code(error_code),
+                        }
+                    }
+
     @staticmethod
     def _flatten_failed_launch_nodes(failed_nodes: Dict[str, List[str]]):
         for error_code, nodes in failed_nodes.items():
@@ -218,6 +307,7 @@ def _describe_node(node: SlurmNode):
     return (
         {
             "name": node.name,
+            "type": "static" if isinstance(node, StaticNode) else "dynamic",
             "address": node.nodeaddr,
             "hostname": node.nodehostname,
             "state-string": node.state_string,

@@ -3,6 +3,7 @@ from typing import Dict, List
 import pytest
 from assertpy import assert_that
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
+from slurm_plugin.clustermgtd import ClusterManager
 from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.slurm_resources import StaticNode
 
@@ -291,6 +292,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                     "node-launch-failure": {
                         "node": {
                             "name": "queue2-dy-c5large-9",
+                            "type": "static",
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
@@ -315,6 +317,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                     "static-node-health-check-failure": {
                         "node": {
                             "name": "queue2-dy-c5large-9",
+                            "type": "static",
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
@@ -351,6 +354,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                     "static-node-in-replacement": {
                         "node": {
                             "name": "queue2-dy-c5large-9",
+                            "type": "static",
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
@@ -404,10 +408,172 @@ def test_publish_unhealthy_static_node_events(test_nodes, expected_details, leve
     # Run test
     event_publisher.publish_unhealthy_static_node_events(
         test_nodes,
-        [node.instance.id for node in test_nodes if node.instance],
         nodes_in_replacement,
         failed_nodes,
     )
+
+    # Assert calls
+    assert_that(received_events).is_length(len(expected_details))
+    for received_event, expected_detail in zip(received_events, expected_details):
+        assert_that(received_event).is_equal_to(expected_detail)
+
+
+@pytest.mark.parametrize(
+    "health_check_type, failed_nodes, expected_details, level_filter",
+    [
+        (
+            ClusterManager.HealthCheckTypes.ec2_health,
+            [
+                "node-a-1",
+                "node-a-2",
+            ],
+            [
+                {
+                    "nodes-failing-health-check-count": {
+                        "health-check-type": "ec2_health_check",
+                        "count": 2,
+                        "nodes": [{"name": "node-a-1"}, {"name": "node-a-2"}],
+                    }
+                }
+            ],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+    ],
+)
+def test_publish_nodes_failing_health_check_events(health_check_type, failed_nodes, expected_details, level_filter):
+    received_events = []
+    event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
+
+    # Run test
+    event_publisher.publish_nodes_failing_health_check_events(health_check_type, failed_nodes)
+
+    # Assert calls
+    assert_that(received_events).is_length(len(expected_details))
+    for received_event, expected_detail in zip(received_events, expected_details):
+        assert_that(received_event).is_equal_to(expected_detail)
+
+
+@pytest.mark.parametrize(
+    "failed_nodes, expected_details, level_filter",
+    [
+        (
+            [
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-1",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-2",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    True,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-3",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+            ],
+            [
+                {
+                    "invalid-backing-instance-count": {
+                        "count": 2,
+                        "nodes": [{"name": "queue2-dy-c5large-1"}, {"name": "queue2-dy-c5large-3"}],
+                    }
+                }
+            ],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+    ],
+)
+def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_filter):
+    received_events = []
+    event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
+
+    bad_nodes = []
+    for node, bootstrap_failure in failed_nodes:
+        node.is_static_nodes_in_replacement = bootstrap_failure
+        bad_nodes.append(node)
+
+    # Run test
+    event_publisher.publish_unhealthy_node_events(bad_nodes)
+
+    # Assert calls
+    assert_that(received_events).is_length(len(expected_details))
+    for received_event, expected_detail in zip(received_events, expected_details):
+        assert_that(received_event).is_equal_to(expected_detail)
+
+
+@pytest.mark.parametrize(
+    "failed_nodes, expected_details, level_filter",
+    [
+        (
+            [
+                StaticNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                StaticNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                StaticNode(
+                    "queue2-dy-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+            ],
+            [
+                {
+                    "bootstrap-failure-count": {
+                        "count": 3,
+                        "nodes": [
+                            {"name": "queue2-dy-c5large-1"},
+                            {"name": "queue2-dy-c5large-2"},
+                            {"name": "queue2-dy-c5large-3"},
+                        ],
+                    }
+                }
+            ],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+    ],
+)
+def test_publish_bootstrap_failure_events(failed_nodes, expected_details, level_filter):
+    received_events = []
+    event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
+
+    # Run test
+    event_publisher.publish_bootstrap_failure_events(failed_nodes)
 
     # Assert calls
     assert_that(received_events).is_length(len(expected_details))

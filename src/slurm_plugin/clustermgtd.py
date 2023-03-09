@@ -516,7 +516,6 @@ class ClusterManager:
                 except ClusterManager.EC2InstancesInfoUnavailable:
                     log.error("Unable to get instances info from EC2, no other action can be performed. Sleeping...")
                     return
-
                 log.debug("Current cluster instances in EC2: %s", cluster_instances)
                 partitions = list(partitions_name_map.values())
                 self._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
@@ -717,8 +716,11 @@ class ClusterManager:
         unhealthy_static_nodes = []
         unhealthy_dynamic_nodes = []
         ice_compute_resources_and_nodes_map = {}
+        all_unhealthy_nodes = []
         for node in slurm_nodes:
             if not node.is_healthy(self._config.terminate_drain_nodes, self._config.terminate_down_nodes):
+                all_unhealthy_nodes.append(node)
+
                 if isinstance(node, StaticNode):
                     unhealthy_static_nodes.append(node)
                 elif self._config.disable_nodes_on_insufficient_capacity and node.is_ice():
@@ -727,6 +729,7 @@ class ClusterManager:
                     ).append(node)
                 else:
                     unhealthy_dynamic_nodes.append(node)
+        self._event_publisher.publish_unhealthy_node_events(all_unhealthy_nodes)
         return (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,
@@ -761,7 +764,6 @@ class ClusterManager:
             self._instance_manager.delete_instances(
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
-
         log.info("Setting unhealthy dynamic nodes to down and power_down.")
         set_nodes_power_down([node.name for node in unhealthy_dynamic_nodes], reason="Scheduler health check failed")
 
@@ -842,7 +844,6 @@ class ClusterManager:
 
         self._event_publisher.publish_unhealthy_static_node_events(
             unhealthy_static_nodes,
-            instances_to_terminate,
             self._static_nodes_in_replacement,
             self._instance_manager.failed_nodes,
         )
@@ -862,29 +863,22 @@ class ClusterManager:
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
-
         self._handle_powering_down_nodes(active_nodes)
-
         (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,
             ice_compute_resources_and_nodes_map,
         ) = self._find_unhealthy_slurm_nodes(active_nodes)
-
         if unhealthy_dynamic_nodes:
             log.info("Found the following unhealthy dynamic nodes: %s", print_with_count(unhealthy_dynamic_nodes))
             self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
-
         if unhealthy_static_nodes:
             log.info("Found the following unhealthy static nodes: %s", print_with_count(unhealthy_static_nodes))
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes)
-
         if self._is_protected_mode_enabled():
             self._handle_protected_mode_process(active_nodes, partitions_name_map)
-
         if self._config.disable_nodes_on_insufficient_capacity:
             self._handle_ice_nodes(ice_compute_resources_and_nodes_map, compute_resource_nodes_map)
-
         self._handle_failed_health_check_nodes_in_replacement(active_nodes)
 
     @log_exception(log, "terminating orphaned instances", catch_exception=Exception, raise_on_error=False)
@@ -909,7 +903,6 @@ class ClusterManager:
         # Place partitions into inactive
         log.info("Placing bootstrap failure partitions to INACTIVE: %s", partitions_to_disable)
         update_partitions(partitions_to_disable, PartitionStatus.INACTIVE)
-
         # Change compute fleet status to protected
         if not ComputeFleetStatus.is_protected(self._compute_fleet_status):
             log.warning(
@@ -939,6 +932,7 @@ class ClusterManager:
             log.warning("Found the following bootstrap failure nodes: %s", print_with_count(bootstrap_failure_nodes))
             # Increase the partition failure count and add failed nodes to the set of bootstrap failure nodes.
             self._increase_partitions_protected_failure_count(bootstrap_failure_nodes)
+        self._event_publisher.publish_bootstrap_failure_events(bootstrap_failure_nodes)
 
     def _is_protected_mode_enabled(self):
         """When protected_failure_count is set to -1, disable protected mode."""
@@ -995,9 +989,9 @@ class ClusterManager:
 
     def _handle_nodes_failing_health_check(self, nodes_failing_health_check: List[SlurmNode], health_check_type: str):
         # Place unhealthy node into drain, this operation is idempotent
+        nodes_name_failing_health_check = set()
+        nodes_name_recently_rebooted = set()
         if nodes_failing_health_check:
-            nodes_name_failing_health_check = set()
-            nodes_name_recently_rebooted = set()
             for node in nodes_failing_health_check:
                 # Do not consider nodes failing health checks as unhealthy if:
                 # 1. the node is still rebooting, OR
@@ -1021,6 +1015,9 @@ class ClusterManager:
                     "Ignoring health check failure due to reboot for nodes: %s",
                     nodes_name_recently_rebooted,
                 )
+        self._event_publisher.publish_nodes_failing_health_check_events(
+            health_check_type, nodes_name_failing_health_check
+        )
 
     def _handle_failed_health_check_nodes_in_replacement(self, active_nodes):
         failed_health_check_nodes_in_replacement = []
