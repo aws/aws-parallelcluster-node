@@ -124,7 +124,7 @@ class SlurmResumeConfig:
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
         self.logging_config = config.get("slurm_resume", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
-        self.head_node_instance_id = config.get("slurm_resume", "instance_id")
+        self.head_node_instance_id = config.get("slurm_resume", "instance_id", fallback="unknown")
 
         log.info(self.__repr__())
 

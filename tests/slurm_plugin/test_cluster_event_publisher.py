@@ -5,7 +5,7 @@ from assertpy import assert_that
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.clustermgtd import ClusterManager
 from slurm_plugin.fleet_manager import EC2Instance
-from slurm_plugin.slurm_resources import StaticNode
+from slurm_plugin.slurm_resources import DynamicNode, StaticNode
 
 
 def event_handler(received_events: List[Dict], level_filter: List[str] = None):
@@ -495,8 +495,12 @@ def test_publish_nodes_failing_health_check_events(health_check_type, failed_nod
             [
                 {
                     "invalid-backing-instance-count": {
-                        "count": 2,
-                        "nodes": [{"name": "queue2-dy-c5large-1"}, {"name": "queue2-dy-c5large-3"}],
+                        "count": 3,
+                        "nodes": [
+                            {"name": "queue2-dy-c5large-1"},
+                            {"name": "queue2-dy-c5large-2"},
+                            {"name": "queue2-dy-c5large-3"},
+                        ],
                     }
                 }
             ],
@@ -523,11 +527,58 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
 
 
 @pytest.mark.parametrize(
-    "failed_nodes, expected_details, level_filter",
+    "failed_nodes, replacement_timeouts, expected_details, level_filter",
     [
         (
             [
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
                 StaticNode(
+                    "queue2-st-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+            ],
+            [False, True, False, False],
+            [
+                {
+                    "protected-mode-error-count": {
+                        "count": 2,
+                        "static-replacement-timeout-errors": {"count": 1, "nodes": [{"name": "queue2-st-c5large-2"}]},
+                        "dynamic-resume-timeout-errors": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-1"}]},
+                    }
+                }
+            ],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+        (
+            [
+                DynamicNode(
                     "queue2-dy-c5large-1",
                     "nodeip",
                     "nodehostname",
@@ -536,7 +587,7 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                 ),
                 StaticNode(
-                    "queue2-dy-c5large-2",
+                    "queue2-st-c5large-2",
                     "nodeip",
                     "nodehostname",
                     "DOWN+CLOUD",
@@ -544,7 +595,15 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                 ),
                 StaticNode(
-                    "queue2-dy-c5large-3",
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-4",
                     "nodeip",
                     "nodehostname",
                     "DOWN+CLOUD",
@@ -552,25 +611,70 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                 ),
             ],
+            [False, False, False, False],
+            [],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+        (
+            [
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                StaticNode(
+                    "queue2-st-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+            ],
+            [False, False, False, False],
             [
                 {
                     "bootstrap-failure-count": {
-                        "count": 3,
+                        "count": 4,
                         "nodes": [
                             {"name": "queue2-dy-c5large-1"},
-                            {"name": "queue2-dy-c5large-2"},
-                            {"name": "queue2-dy-c5large-3"},
+                            {"name": "queue2-st-c5large-2"},
+                            {"name": "queue2-st-c5large-3"},
+                            {"name": "queue2-dy-c5large-4"},
                         ],
                     }
                 }
             ],
-            ["ERROR", "WARNING", "INFO"],
+            [],
         ),
     ],
+    ids=["Show only protect mode errors", "No event when no protect mode errors", "Debug output"],
 )
-def test_publish_bootstrap_failure_events(failed_nodes, expected_details, level_filter):
+def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, expected_details, level_filter):
     received_events = []
     event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
+
+    for node, is_timeout in zip(failed_nodes, replacement_timeouts):
+        node._is_replacement_timeout = is_timeout
 
     # Run test
     event_publisher.publish_bootstrap_failure_events(failed_nodes)

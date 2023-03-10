@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, Iterable, List
 
 from slurm_plugin.common import log_exception
-from slurm_plugin.slurm_resources import SlurmNode, StaticNode
+from slurm_plugin.slurm_resources import DynamicNode, SlurmNode, StaticNode
 
 logger = logging.getLogger(__name__)
 
@@ -113,20 +113,20 @@ class ClusterEventPublisher:
         self, health_check_type: any, node_names_failing_health_check: Iterable[str]
     ):
         def detail_supplier():
-            yield {
-                "detail": {
-                    "health-check-type": str(health_check_type),
-                    "count": len(node_names_failing_health_check),
-                    "nodes": [{"name": node_name} for node_name in self._limit_list(node_names_failing_health_check)],
+            node_names = list(node_names_failing_health_check)
+            if node_names_failing_health_check:
+                yield {
+                    "detail": {
+                        "health-check-type": str(health_check_type),
+                        "count": len(node_names_failing_health_check),
+                        "nodes": [{"name": node_name} for node_name in self._limit_list(node_names)],
+                    }
                 }
-            }
 
         timestamp = ClusterEventPublisher.timestamp()
 
-        node_names_failing_health_check = list(node_names_failing_health_check)
-
         self.publish_event(
-            "WARNING" if node_names_failing_health_check else "DEBUG",
+            "WARNING",
             f"Number of nodes failing health check {health_check_type}",
             "nodes-failing-health-check-count",
             timestamp=timestamp,
@@ -136,25 +136,21 @@ class ClusterEventPublisher:
     @log_exception(logger, "publish_unhealthy_node_events", catch_exception=Exception, raise_on_error=False)
     def publish_unhealthy_node_events(self, unhealthy_nodes: List[SlurmNode]):
         def detail_supplier():
-            # Only report invalid backing instances if the node did not fail to bootstrap - bootstrap
-            # errors are reported elsewhere
-            yield {
-                "detail": {
-                    "count": len(invalid_backing_instance_nodes),
-                    "nodes": [{"name": node.name} for node in self._limit_list(invalid_backing_instance_nodes)],
+            invalid_backing_instance_nodes = [
+                node for node in unhealthy_nodes if not node.is_backing_instance_valid(log_warn_if_unhealthy=False)
+            ]
+            if invalid_backing_instance_nodes:
+                yield {
+                    "detail": {
+                        "count": len(invalid_backing_instance_nodes),
+                        "nodes": self._generate_node_name_list(invalid_backing_instance_nodes),
+                    }
                 }
-            }
 
         timestamp = ClusterEventPublisher.timestamp()
 
-        invalid_backing_instance_nodes = [
-            node
-            for node in unhealthy_nodes
-            if not node.is_backing_instance_valid(log_warn_if_unhealthy=False) and not node.is_bootstrap_failure()
-        ]
-
         self.publish_event(
-            "WARNING" if invalid_backing_instance_nodes else "DEBUG",
+            "WARNING",
             "Number of nodes without a valid backing instance",
             "invalid-backing-instance-count",
             timestamp=timestamp,
@@ -163,22 +159,58 @@ class ClusterEventPublisher:
 
     @log_exception(logger, "publish_bootstrap_failure_events", catch_exception=Exception, raise_on_error=False)
     def publish_bootstrap_failure_events(self, bootstrap_failure_nodes: List[SlurmNode]):
-        def detail_supplier():
-            yield {
-                "detail": {
-                    "count": len(bootstrap_failure_nodes),
-                    "nodes": [{"name": node.name} for node in self._limit_list(bootstrap_failure_nodes)],
+        def dynamic_node_filter(node: SlurmNode) -> bool:
+            return isinstance(node, DynamicNode) and node.is_resume_failed() and node.is_nodeaddr_set()
+
+        def static_node_filter(node: SlurmNode) -> bool:
+            return isinstance(node, StaticNode) and node._is_replacement_timeout
+
+        def protected_node_list(filter: Callable[[SlurmNode], bool]):
+            return [node for node in bootstrap_failure_nodes if filter(node)]
+
+        def protected_mode_error_count_supplier():
+            dynamic_nodes = protected_node_list(dynamic_node_filter)
+            static_nodes = protected_node_list(static_node_filter)
+            if dynamic_nodes or static_nodes:
+                yield {
+                    "detail": {
+                        "count": len(dynamic_nodes) + len(static_nodes),
+                        "static-replacement-timeout-errors": {
+                            "count": len(static_nodes),
+                            "nodes": self._generate_node_name_list(static_nodes),
+                        },
+                        "dynamic-resume-timeout-errors": {
+                            "count": len(static_nodes),
+                            "nodes": self._generate_node_name_list(dynamic_nodes),
+                        },
+                    }
                 }
-            }
+
+        def bootstrap_failure_supplier():
+            if bootstrap_failure_nodes:
+                yield {
+                    "detail": {
+                        "count": len(bootstrap_failure_nodes),
+                        "nodes": self._generate_node_name_list(bootstrap_failure_nodes),
+                    }
+                }
 
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(
-            "WARNING" if bootstrap_failure_nodes else "DEBUG",
+            "WARNING",
+            "Number of nodes that failed to bootstrap",
+            "protected-mode-error-count",
+            timestamp=timestamp,
+            event_supplier=protected_mode_error_count_supplier(),
+        )
+
+        self.publish_event(
+            "DEBUG",
             "Number of nodes that failed to bootstrap",
             "bootstrap-failure-count",
             timestamp=timestamp,
-            event_supplier=detail_supplier(),
+            event_supplier=bootstrap_failure_supplier(),
         )
 
     # Slurm Resume Events
@@ -227,6 +259,9 @@ class ClusterEventPublisher:
     def _limit_list(self, source_list: List) -> List:
         return source_list[: self._max_list_size] if self._max_list_size else source_list
 
+    def _generate_node_name_list(self, node_list):
+        return [{"name": node.name} for node in self._limit_list(node_list)]
+
     def _terminated_instances_supplier(self, terminated_instances):
         terminated_instances = list(terminated_instances)
         yield {
@@ -265,7 +300,7 @@ class ClusterEventPublisher:
         yield {
             "detail": {
                 "count": len(unhealthy_static_nodes),
-                "nodes": [{"name": node.name} for node in self._limit_list(unhealthy_static_nodes)],
+                "nodes": self._generate_node_name_list(unhealthy_static_nodes),
             }
         }
 
