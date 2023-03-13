@@ -6,8 +6,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.5.1
 ------
 
-**CHANGES**
-- There were no changes for this version.
+**BUG FIXES**
+- Fix for compute_console_output log file being truncated at every clustermgtd iteration.
 
 3.5.0
 ------
