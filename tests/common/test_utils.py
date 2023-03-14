@@ -91,3 +91,38 @@ def test_sleep_remaining_loop_time(mocker, loop_start_time, loop_end_time, loop_
     elif expected_sleep_time == 0:
         sleep_mock.assert_not_called()
     datetime_now_mock.now.assert_called_with(tz=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "argument,raises_exception",
+    [
+        ("standard parameter name", False),
+        ("my/parameter", False),
+        ("execute this & then this", True),
+        ("redirect | my output", True),
+        ("execute\nmultiline", True),
+    ],
+)
+def test_validate_subprocess_argument(argument, raises_exception):
+    if raises_exception:
+        with pytest.raises(ValueError):
+            utils.validate_subprocess_argument(argument)
+    else:
+        assert_that(utils.validate_subprocess_argument(argument)).is_true()
+
+
+@pytest.mark.parametrize(
+    "argument,raises_exception",
+    [
+        ("/usr/my_path", False),
+        ("./my_path", True),
+        ("my_path", True),
+        (".my_path", True),
+    ],
+)
+def test_validate_absolute_path(argument, raises_exception):
+    if raises_exception:
+        with pytest.raises(ValueError):
+            utils.validate_absolute_path(argument)
+    else:
+        assert_that(utils.validate_absolute_path(argument)).is_true()

@@ -633,20 +633,20 @@ def test_perform_health_check_actions(
     [
         (
             ClusterManager.HealthCheckTypes.scheduled_event,
-            [True, False, True, False],
-            [False, True, False, True],
+            [True, False, True, False, True, True, True],
+            [False, True, False, True, False, False, False],
             {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-4"},
         ),
         (
             ClusterManager.HealthCheckTypes.ec2_health,
-            [True, False, True, False],
-            [False, True, True, False],
-            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3"},
+            [True, False, True, False, True, True, True],
+            [False, True, True, False, False, False, False],
+            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-7"},
         ),
         (
             ClusterManager.HealthCheckTypes.ec2_health,
-            [False, False, False, False],
-            [False, True, False, True],
+            [False, False, False, False, False, False, False],
+            [False, True, False, True, False, True, True],
             {},
         ),
     ],
@@ -662,12 +662,24 @@ def test_handle_health_check(
     expected_failed_nodes,
     mocker,
 ):
-    # Define variable that will be used for all tests
+    # Define variables that will be used for all tests
+    mocker_current_time = datetime(2023, 1, 23, 18, 00, 0).astimezone(tz=timezone.utc)
     health_state_1 = EC2InstanceHealthState("id-1", "some_state", "some_status", "some_status", "some_event")
     health_state_2 = EC2InstanceHealthState("id-2", "some_state", "some_status", "some_status", "some_event")
     health_state_3 = EC2InstanceHealthState("id-3", "some_state", "some_status", "some_status", "some_event")
     health_state_4 = EC2InstanceHealthState("id-4", "some_state", "some_status", "some_status", "some_event")
-    placeholder_states = [health_state_1, health_state_2, health_state_3, health_state_4]
+    health_state_5 = EC2InstanceHealthState("id-5", "some_state", "some_status", "some_status", "some_event")
+    health_state_6 = EC2InstanceHealthState("id-6", "some_state", "some_status", "some_status", "some_event")
+    health_state_7 = EC2InstanceHealthState("id-7", "some_state", "some_status", "some_status", "some_event")
+    placeholder_states = [
+        health_state_1,
+        health_state_2,
+        health_state_3,
+        health_state_4,
+        health_state_5,
+        health_state_6,
+        health_state_7,
+    ]
     instance_id_to_active_node_map = {
         "id-1": StaticNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
         "id-2": DynamicNode(
@@ -675,6 +687,33 @@ def test_handle_health_check(
         ),
         "id-3": StaticNode("queue1-st-c5xlarge-3", "ip-3", "host-3", "ALLOCATED+CLOUD", "queue1"),
         "id-4": StaticNode("queue1-st-c5xlarge-4", "ip-4", "host-4", "ALLOCATED+CLOUD", "queue1"),
+        # This node is still rebooting, so it's not drained due to EC2 health checks failing
+        "id-5": StaticNode(
+            "queue1-st-c5xlarge-5",
+            "ip-5",
+            "host-5",
+            "DOWN+CLOUD+REBOOT_ISSUED",
+            "queue1",
+            slurmdstarttime=datetime(2023, 1, 23, 17, 56, 0).astimezone(tz=timezone.utc),
+        ),
+        # This node was rebooted very recently, so it's not drained due to EC2 health checks failing
+        "id-6": StaticNode(
+            "queue1-st-c5xlarge-6",
+            "ip-6",
+            "host-6",
+            "IDLE+CLOUD",
+            "queue1",
+            slurmdstarttime=datetime(2023, 1, 23, 17, 59, 0).astimezone(tz=timezone.utc),
+        ),
+        # This node was rebooted a long time ago, so it can be drained due to EC2 health checks failing
+        "id-7": StaticNode(
+            "queue1-st-c5xlarge-7",
+            "ip-7",
+            "host-7",
+            "IDLE+CLOUD",
+            "queue1",
+            slurmdstarttime=datetime(2023, 1, 23, 17, 56, 0).astimezone(tz=timezone.utc),
+        ),
     }
     mock_ec2_health_check = mocker.patch(
         "slurm_plugin.slurm_resources.EC2InstanceHealthState.fail_ec2_health_check",
@@ -686,11 +725,14 @@ def test_handle_health_check(
     )
     # Setup mocking
     mock_sync_config = SimpleNamespace(
-        health_check_timeout=10, protected_failure_count=2, insufficient_capacity_timeout=600
+        health_check_timeout=10,
+        health_check_timeout_after_slurmdstarttime=180,
+        protected_failure_count=2,
+        insufficient_capacity_timeout=600,
     )
 
     cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._current_time = "some_current_time"
+    cluster_manager._current_time = mocker_current_time
     drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", autospec=True)
 
     # Run tests
@@ -701,8 +743,8 @@ def test_handle_health_check(
     else:
         mock_ec2_health_check.assert_has_calls(
             [
-                call("some_current_time", 10),
-                call("some_current_time", 10),
+                call(mocker_current_time, 10),
+                call(mocker_current_time, 10),
             ]
         ),
     if expected_failed_nodes:
@@ -749,7 +791,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "hostname",
                     "IDLE+CLOUD",
                     "queue1",
-                    "(Code:ServiceUnavailable)Failure when resuming nodes",
+                    "(Code:ServiceUnavailable)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-2",
@@ -772,7 +814,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "hostname",
                     "IDLE+CLOUD",
                     "queue1",
-                    "(Code:Exception)Failure when resuming nodes",
+                    "(Code:Exception)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-2",
@@ -780,7 +822,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "hostname",
                     "IDLE+CLOUD",
                     "queue1",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-3",
@@ -788,7 +830,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "hostname",
                     "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue1",
-                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-4",
@@ -796,7 +838,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "hostname",
                     "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue1",
-                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue1-dy-c5xlarge-5",
@@ -804,7 +846,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "hostname",
                     "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
                     "queue1",
-                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes",
+                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
             ],
             [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None, None, None, None],
@@ -1146,7 +1188,7 @@ def test_handle_unhealthy_static_nodes(
                     "hostname",
                     "IDLE+CLOUD",
                     "queue",
-                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes",
+                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),  # ice dynamic node does not belong to unhealthy node when enable fast capacity failover
             ],
             [
@@ -1171,7 +1213,7 @@ def test_handle_unhealthy_static_nodes(
                             "hostname",
                             "IDLE+CLOUD",
                             "queue",
-                            "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes",
+                            "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         )
                     ]
                 }
@@ -1191,7 +1233,7 @@ def test_handle_unhealthy_static_nodes(
                     "hostname",
                     "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue",
-                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes",
+                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),  # unhealthy dynamic
                 StaticNode(
                     "queue2-st-c5xlarge-1", "ip-4", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
@@ -2043,7 +2085,7 @@ class TestComputeFleetStatusManager:
         "desired_status, update_item_response",
         [
             (ComputeFleetStatus.PROTECTED, None),
-            (ComputeFleetStatus.STOPPED, Exception),
+            (ComputeFleetStatus.STOPPED, AttributeError),
         ],
         ids=["success", "exception"],
     )
@@ -2051,9 +2093,9 @@ class TestComputeFleetStatusManager:
         check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
         compute_fleet_status_manager = ComputeFleetStatusManager()
 
-        if update_item_response is Exception:
+        if update_item_response is AttributeError:
             check_command_output_mocked.side_effect = update_item_response
-            with pytest.raises(Exception):
+            with pytest.raises(AttributeError):
                 compute_fleet_status_manager.update_status(desired_status)
         else:
             check_command_output_mocked.return_value = update_item_response
@@ -2662,7 +2704,8 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),  # unhealthy ice node
                         DynamicNode(
                             "queue1-dy-c5xlarge-3",
@@ -2670,7 +2713,7 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),  # unhealthy ice node
                     ],
                     "c4xlarge": [
@@ -2687,7 +2730,7 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "queue2-dy-c5large-1",
                             "IDLE+CLOUD+POWERED_DOWN",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),  # powered down ice node
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -2704,7 +2747,8 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),  # unhealthy ice node
                     ],
                 },
@@ -2718,7 +2762,8 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),  # unhealthy ice node
                         DynamicNode(
                             "queue1-dy-c5xlarge-3",
@@ -2726,7 +2771,7 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),  # unhealthy ice node
                     ],
                 },
@@ -2738,7 +2783,8 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),  # unhealthy ice node
                     ],
                 },
@@ -2820,7 +2866,8 @@ def test_handle_ice_nodes(
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -2832,7 +2879,7 @@ def test_handle_ice_nodes(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -2840,7 +2887,8 @@ def test_handle_ice_nodes(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -2869,7 +2917,8 @@ def test_handle_ice_nodes(
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -2881,7 +2930,7 @@ def test_handle_ice_nodes(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -2889,7 +2938,8 @@ def test_handle_ice_nodes(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -2970,7 +3020,8 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -2982,7 +3033,7 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -2990,7 +3041,8 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -3031,7 +3083,8 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -3043,7 +3096,7 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -3051,7 +3104,8 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -3063,7 +3117,7 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),
                         DynamicNode(
                             "queue3-dy-c5large-2",
@@ -3071,7 +3125,8 @@ def test_update_insufficient_capacity_compute_resources(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ],
                 },
@@ -3171,7 +3226,7 @@ def test_reset_timeout_expired_compute_resources(
                             "queue2-dy-c5large-1",
                             "IDLE+CLOUD+POWERED_DOWN",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),  # powered down ice node
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -3275,7 +3330,7 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "COMPLETING+DRAIN",
                     "queue1",
-                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue2-dy-c5large-1",
@@ -3283,7 +3338,7 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue2-dy-c5large-2",
@@ -3291,7 +3346,8 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
-                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                    "[root@2023-01-31T21:24:55]",
                 ),
             ],
             [
@@ -3319,7 +3375,8 @@ def test_set_ice_compute_resources_to_down(
                             "nodehostname",
                             "COMPLETING+DRAIN",
                             "queue1",
-                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ]
                 },
@@ -3331,7 +3388,7 @@ def test_set_ice_compute_resources_to_down(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                         ),
                         DynamicNode(
                             "queue2-dy-c5large-2",
@@ -3339,7 +3396,8 @@ def test_set_ice_compute_resources_to_down(
                             "nodehostname",
                             "DOWN+CLOUD",
                             "queue2",
-                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
                         ),
                     ]
                 },
@@ -3384,7 +3442,7 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "COMPLETING+DRAIN",
                     "queue1",
-                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue2-dy-c5large-1",
@@ -3392,7 +3450,7 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue2-dy-c5large-2",
@@ -3400,7 +3458,8 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
-                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                    "[root@2023-01-31T21:24:55]",
                 ),
             ],
             [
@@ -3418,7 +3477,7 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "COMPLETING+DRAIN",
                     "queue1",
-                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue2-dy-c5large-1",
@@ -3426,7 +3485,7 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
                 DynamicNode(
                     "queue2-dy-c5large-2",
@@ -3434,7 +3493,8 @@ def test_set_ice_compute_resources_to_down(
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
-                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                    "[root@2023-01-31T21:24:55]",
                 ),
             ],
             [

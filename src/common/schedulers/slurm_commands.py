@@ -12,13 +12,16 @@
 import logging
 import os
 import re
+from datetime import datetime, timezone
+from typing import List
 
-from common.utils import check_command_output, grouper, run_command
+from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
 from retrying import retry
 from slurm_plugin.slurm_resources import (
     DynamicNode,
     InvalidNodenameError,
     PartitionStatus,
+    SlurmNode,
     SlurmPartition,
     StaticNode,
     parse_nodename,
@@ -54,6 +57,12 @@ SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).
 SLURM_BINARIES_DIR = os.environ.get("SLURM_BINARIES_DIR", "/opt/slurm/bin")
 SCONTROL = f"sudo {SLURM_BINARIES_DIR}/scontrol"
 SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
+
+SCONTROL_OUTPUT_AWK_PARSER = (
+    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+    + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)'"
+)
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
@@ -101,25 +110,35 @@ def update_nodes(
 
     update_cmd = f"{SCONTROL} update"
     if state:
+        validate_subprocess_argument(state)
         update_cmd += f" state={state}"
     if reason:
+        validate_subprocess_argument(reason)
         update_cmd += f' reason="{reason}"'
     for nodenames, addrs, hostnames in batched_node_info:
+        validate_subprocess_argument(nodenames)
         node_info = f"nodename={nodenames}"
         if addrs:
+            validate_subprocess_argument(addrs)
             node_info += f" nodeaddr={addrs}"
         if hostnames:
+            validate_subprocess_argument(hostnames)
             node_info += f" nodehostname={hostnames}"
-        run_command(  # nosec
+        # It's safe to use the function affected by B604 since the command is fully built in this code
+        run_command(  # nosec B604
             f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
         )
 
 
 def update_partitions(partitions, state):
     succeeded_partitions = []
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_subprocess_argument(state)
     for partition in partitions:
         try:
-            run_command(  # nosec
+            # Validation to sanitize the input argument and make it safe to use the function affected by B604
+            validate_subprocess_argument(partition)
+            run_command(  # nosec B604
                 f"{SCONTROL} update partitionname={partition} state={state}", raise_on_error=True, shell=True
             )
             succeeded_partitions.append(partition)
@@ -231,14 +250,13 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 
     Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
     """
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_subprocess_argument(nodes)
+
     # awk is used to replace the \n\n record separator with '######\n'
     # Note: In case the node does not belong to any partition the Partitions field is missing from Slurm output
-    show_node_info_command = (
-        f'{SCONTROL} show nodes {nodes} | awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
-        'grep -oP "^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(State=\\S+)|'
-        '(Partitions=\\S+)|(Reason=.+) |(######)"'
-    )
-    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec
+    show_node_info_command = f"{SCONTROL} show nodes {nodes} | {SCONTROL_OUTPUT_AWK_PARSER}"
+    nodeinfo_str = check_command_output(show_node_info_command, timeout=command_timeout, shell=True)  # nosec B604
 
     return _parse_nodes_info(nodeinfo_str)
 
@@ -246,7 +264,10 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all_nodes=True):
     """Retrieve slurm partition info from scontrol."""
     show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
-    partition_info_str = check_command_output(show_partition_info_command, timeout=command_timeout, shell=True)  # nosec
+    # It's safe to use the function affected by B604 since the command is fully built in this code
+    partition_info_str = check_command_output(
+        show_partition_info_command, timeout=command_timeout, shell=True  # nosec B604
+    )
     partitions_info = _parse_partition_name_and_state(partition_info_str)
     return [
         SlurmPartition(
@@ -272,18 +293,24 @@ def _parse_partition_name_and_state(partition_info):
 
 def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """Get all nodes in partition."""
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_subprocess_argument(partition_name)
+
     show_all_nodes_command = f"{SINFO} -h -p {partition_name} -o %N"
-    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec
+    return check_command_output(show_all_nodes_command, timeout=command_timeout, shell=True).strip()  # nosec B604
 
 
 def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     sinfo_command = f"{SINFO} -h -N -o %N"
     if partition_name:
+        validate_subprocess_argument(partition_name)
         sinfo_command += f" -p {partition_name}"
     if states:
+        validate_subprocess_argument(states)
         sinfo_command += f" -t {states}"
     # Every node is print on a separate line
-    return check_command_output(sinfo_command, timeout=command_timeout, shell=True).splitlines()  # nosec
+    # It's safe to use the function affected by B604 since the command is fully built in this code
+    return check_command_output(sinfo_command, timeout=command_timeout, shell=True).splitlines()  # nosec B604
 
 
 def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
@@ -302,16 +329,17 @@ def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAN
     return ",".join(nodes)
 
 
-def _parse_nodes_info(slurm_node_info):
+def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
-    # awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
-    # |(NodeHostName=\S+)|(State=\S+)|(Partitions=\S+)|(Reason=.+) |(######)"
+    # | awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
+    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(Reason=.*)|(######)"
     # NodeName=compute-dy-c5xlarge-1
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-1
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=some reason
     # ######
     # NodeName=compute-dy-c5xlarge-2
@@ -319,6 +347,7 @@ def _parse_nodes_info(slurm_node_info):
     # NodeHostName=compute-dy-c5xlarge-2
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes
     # ######
     # NodeName=compute-dy-c5xlarge-3
@@ -326,11 +355,13 @@ def _parse_nodes_info(slurm_node_info):
     # NodeHostName=compute-dy-c5xlarge-3
     # State=IDLE+CLOUD+POWER
     # Partitions=compute,compute2
+    # SlurmdStartTime=2023-01-26T09:57:15
     # ######
     # NodeName=compute-dy-c5xlarge-50001
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-50001
     # State=IDLE+CLOUD+POWER
+    # SlurmdStartTime=None
     # ######
 
     map_slurm_key_to_arg = {
@@ -340,15 +371,21 @@ def _parse_nodes_info(slurm_node_info):
         "State": "state",
         "Partitions": "partitions",
         "Reason": "reason",
+        "SlurmdStartTime": "slurmdstarttime",
     }
 
-    node_info = slurm_node_info.split("######")
+    node_info = slurm_node_info.split("######\n")
     slurm_nodes = []
     for node in node_info:
-        lines = node.strip().splitlines()
+        lines = node.splitlines()
         kwargs = {}
         for line in lines:
             key, value = line.split("=")
+            if key == "SlurmdStartTime":
+                if value != "None":
+                    value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
+                else:
+                    value = None
             kwargs[map_slurm_key_to_arg[key]] = value
         if lines:
             try:

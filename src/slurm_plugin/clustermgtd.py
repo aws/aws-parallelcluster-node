@@ -49,6 +49,7 @@ from slurm_plugin.slurm_resources import (
     EC2InstanceHealthState,
     PartitionStatus,
     SlurmNode,
+    SlurmPartition,
     StaticNode,
 )
 from slurm_plugin.task_executor import TaskExecutor
@@ -149,6 +150,7 @@ class ClustermgtdConfig:
         "disable_scheduled_event_health_check": False,
         "disable_all_cluster_management": False,
         "health_check_timeout": 180,
+        "health_check_timeout_after_slurmdstarttime": 180,
         # DNS domain configs
         "hosted_zone": None,
         "dns_domain": None,
@@ -253,6 +255,11 @@ class ClustermgtdConfig:
         self.health_check_timeout = config.getint(
             "clustermgtd", "health_check_timeout", fallback=self.DEFAULTS.get("health_check_timeout")
         )
+        self.health_check_timeout_after_slurmdstarttime = config.getint(
+            "clustermgtd",
+            "health_check_timeout_after_slurmdstarttime",
+            fallback=self.DEFAULTS.get("health_check_timeout_after_slurmdstarttime"),
+        )
         self.disable_all_health_checks = config.getboolean(
             "clustermgtd",
             "disable_all_health_checks",
@@ -340,6 +347,8 @@ class ClustermgtdConfig:
 class ClusterManager:
     """Class for all cluster management related actions."""
 
+    _config: ClustermgtdConfig
+
     class HealthCheckTypes(Enum):
         """Enum for health check types."""
 
@@ -373,7 +382,7 @@ class ClusterManager:
         self._console_logger = None
         self.set_config(config)
 
-    def set_config(self, config):
+    def set_config(self, config: ClustermgtdConfig):
         if self._config != config:
             log.info("Applying new clustermgtd config: %s", config)
 
@@ -612,7 +621,7 @@ class ClusterManager:
         self._instance_manager.terminate_all_compute_nodes(self._config.terminate_max_batch_size)
 
     @log_exception(log, "performing health check action", catch_exception=Exception, raise_on_error=False)
-    def _perform_health_check_actions(self, partitions):
+    def _perform_health_check_actions(self, partitions: List[SlurmPartition]):
         """Run health check actions."""
         log.info("Performing instance health check actions")
         instance_id_to_active_node_map = ClusterManager.get_instance_id_to_active_node_map(partitions)
@@ -960,17 +969,34 @@ class ClusterManager:
                 "command to re-enable the fleet."
             )
 
-    @staticmethod
-    def _handle_nodes_failing_health_check(nodes_failing_health_check, health_check_type):
+    def _handle_nodes_failing_health_check(self, nodes_failing_health_check: List[SlurmNode], health_check_type: str):
         # Place unhealthy node into drain, this operation is idempotent
         if nodes_failing_health_check:
-            nodes_name_failing_health_check = {node.name for node in nodes_failing_health_check}
-            log.warning(
-                "Setting nodes failing health check type %s to DRAIN: %s",
-                health_check_type,
-                nodes_name_failing_health_check,
-            )
-            set_nodes_drain(nodes_name_failing_health_check, reason=f"Node failing {health_check_type}")
+            nodes_name_failing_health_check = set()
+            nodes_name_recently_rebooted = set()
+            for node in nodes_failing_health_check:
+                # Do not consider nodes failing health checks as unhealthy if:
+                # 1. the node is still rebooting, OR
+                # 2. slurmd was recently restarted (less than health_check_timeout_after_slurmdstarttime seconds ago).
+                # In the implementation the logic is reversed to exploit the `and` in the if clause
+                if not node.is_reboot_issued() and time_is_up(
+                    node.slurmdstarttime, self._current_time, self._config.health_check_timeout_after_slurmdstarttime
+                ):
+                    nodes_name_failing_health_check.add(node.name)
+                else:
+                    nodes_name_recently_rebooted.add(node.name)
+            if len(nodes_name_failing_health_check) > 0:
+                log.warning(
+                    "Setting nodes failing health check type %s to DRAIN: %s",
+                    health_check_type,
+                    nodes_name_failing_health_check,
+                )
+                set_nodes_drain(nodes_name_failing_health_check, reason=f"Node failing {health_check_type}")
+            if len(nodes_name_recently_rebooted) > 0:
+                log.info(
+                    "Ignoring health check failure due to reboot for nodes: %s",
+                    nodes_name_recently_rebooted,
+                )
 
     def _handle_failed_health_check_nodes_in_replacement(self, active_nodes):
         failed_health_check_nodes_in_replacement = []
@@ -1036,7 +1062,7 @@ class ClusterManager:
                     instance.slurm_node = slurm_node
 
     @staticmethod
-    def get_instance_id_to_active_node_map(partitions):
+    def get_instance_id_to_active_node_map(partitions: List[SlurmPartition]) -> Dict:
         instance_id_to_active_node_map = {}
         for partition in partitions:
             if not partition.is_inactive():

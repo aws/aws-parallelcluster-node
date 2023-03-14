@@ -95,10 +95,10 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         # all_or_nothing_batch without ice error
         (
             [
-                SimpleNamespace(name="queue1-dy-c5xlarge-1"),
-                SimpleNamespace(name="queue1-dy-c5xlarge-2"),
-                SimpleNamespace(name="queue1-st-c5xlarge-1"),
-                SimpleNamespace(name="queue1-st-c5xlarge-2"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
             True,
@@ -153,10 +153,10 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         # all_or_nothing_batch with ice error
         (
             [
-                SimpleNamespace(name="queue1-dy-c5xlarge-1"),
-                SimpleNamespace(name="queue1-dy-c5xlarge-2"),
-                SimpleNamespace(name="queue1-st-c5xlarge-1"),
-                SimpleNamespace(name="queue1-st-c5xlarge-2"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
             True,
@@ -211,10 +211,10 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         # best_effort without ice error
         (
             [
-                SimpleNamespace(name="queue1-dy-c5xlarge-1"),
-                SimpleNamespace(name="queue1-dy-c5xlarge-2"),
-                SimpleNamespace(name="queue1-st-c5xlarge-1"),
-                SimpleNamespace(name="queue1-st-c5xlarge-2"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
             False,
@@ -250,10 +250,10 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         # best_effort wit ice error
         (
             [
-                SimpleNamespace(name="queue1-dy-c5xlarge-1"),
-                SimpleNamespace(name="queue1-dy-c5xlarge-2"),
-                SimpleNamespace(name="queue1-st-c5xlarge-1"),
-                SimpleNamespace(name="queue1-st-c5xlarge-2"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
             False,

@@ -64,6 +64,10 @@ def check_command_output(
     """
     Execute shell command and retrieve command output.
 
+    Usage of this function will result in a B604 bandit violation. When building the command string argument, if using
+    an external argument, please validate it using validate_subprocess_argument and/or validate_absolute_path functions
+    based on the argument type.
+
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param raise_on_error: True to raise subprocess.CalledProcessError on errors
@@ -74,11 +78,11 @@ def check_command_output(
     """
     if isinstance(command, str) and not shell:
         command = shlex.split(command)
-    # A nosec comment is appended to the following line in order to disable the B602 check.
+    # A nosec B602 comment is appended to the following line in order to disable the B602 check.
     # This check is disabled for the following reasons:
     # - Some callers (e.g., common slurm commands) require the use of `shell=True`.
-    # - All values passed as the command arg are constructed from known inputs.
-    result = _run_command(  # nosec
+    # - All values passed as the command arg are constructed from known inputs and are properly validated.
+    result = _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
@@ -88,7 +92,7 @@ def check_command_output(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
-            shell=shell,
+            shell=shell,  # nosec B602
         ),
         command,
         env,
@@ -104,6 +108,10 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     Execute shell command.
 
+    Usage of this function will result in a B604 bandit violation. When building the command string argument, if using
+    an external argument, please validate it using validate_subprocess_argument and/or validate_absolute_path functions
+    based on the argument type.
+
     :param command: command to execute
     :param env: a dictionary containing environment variables
     :param raise_on_error: True to raise subprocess.CalledProcessError on errors
@@ -112,11 +120,11 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
     """
     if isinstance(command, str) and not shell:
         command = shlex.split(command)
-    # A nosec comment is appended to the following line in order to disable the B602 check.
+    # A nosec B602 comment is appended to the following line in order to disable the B602 check.
     # This check is disabled for the following reasons:
     # - Some callers (e.g., common slurm commands) require the use of `shell=True`.
-    # - All values passed as the command arg are constructed from known inputs.
-    _run_command(  # nosec
+    # - All values passed as the command arg are constructed from known inputs and are properly validated.
+    _run_command(
         lambda _command, _env, _preexec_fn: subprocess.run(
             _command,
             env=_env,
@@ -124,7 +132,7 @@ def run_command(command, env=None, raise_on_error=True, execute_as_user=None, lo
             timeout=timeout,
             check=True,
             encoding="utf-8",
-            shell=shell,
+            shell=shell,  # nosec B602
         ),
         command,
         env,
@@ -242,11 +250,13 @@ def convert_range_to_list(node_range):
     )
 
 
-def time_is_up(initial_time, current_time, grace_time):
+def time_is_up(initial_time: datetime, current_time: datetime, grace_time: float):
     """Check if timeout is exceeded."""
     # Localize datetime objects to UTC if not previously localized
     # All timestamps used in this function should be already localized
     # Assume timestamp was taken from system local time if there is no localization info
+    if initial_time is None:
+        return True
     if not initial_time.tzinfo:
         logging.warning(
             "Timestamp %s is not localized. Please double check that this is expected, localizing to UTC.", initial_time
@@ -274,3 +284,39 @@ def read_json(file_path, default=None):
             if not isinstance(e, FileNotFoundError):
                 log.info("Unable to read file '%s' due to an exception: %s. Using default: %s", file_path, e, default)
             return default
+
+
+def validate_subprocess_argument(argument):
+    """
+    Validate an argument used to build a subprocess command.
+
+    The validation is done forcing the encoding to be the standard
+    Python Unicode / UTF-8 and searching for forbidden patterns.
+
+    :param argument: an argument string to validate
+    :raise: Exception if the argument contains a forbidden pattern
+    :return: True if the argument does not contain forbidden patterns
+    """
+    forbidden_patterns = ["&", "|", ";", "$", ">", "<", "`", "\\", "!", "#", "\n"]
+
+    # Forcing the encoding to be the standard Python Unicode / UTF-8
+    # https://docs.python.org/3/howto/unicode.html
+    # https://docs.python.org/3/library/codecs.html#standard-encodings
+    _argument = (str(argument).encode("utf-8", "ignore")).decode()
+
+    if any(pattern in _argument for pattern in forbidden_patterns):
+        raise ValueError("Value of provided argument contains at least a forbidden pattern")
+    return True
+
+
+def validate_absolute_path(path):
+    """
+    Validate if a path string represents is a valid absolute path.
+
+    :param path: path to validate
+    :raise: Exception if the path is not a valid absolute path
+    :return: True if the path is a valid absolute path
+    """
+    if not os.path.isabs(path):
+        raise ValueError(f"The path {path} is not a valid absolute path")
+    return True

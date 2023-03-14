@@ -98,6 +98,7 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
+    SLURM_SCONTROL_INVALID_REGISTRATION_STATE = "INVALID_REG"
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -108,7 +109,17 @@ class SlurmNode(metaclass=ABCMeta):
         "SpotMaxPriceTooLow",
     }
 
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
+    def __init__(
+        self,
+        name,
+        nodeaddr,
+        nodehostname,
+        state,
+        partitions=None,
+        reason=None,
+        instance=None,
+        slurmdstarttime: datetime = None,
+    ):
         """Initialize slurm node with attributes."""
         self.name = name
         self.nodeaddr = nodeaddr
@@ -118,6 +129,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.partitions = partitions.strip().split(",") if partitions else None
         self.reason = reason
         self.instance = instance
+        self.slurmdstarttime = slurmdstarttime
         self.is_static_nodes_in_replacement = False
         self.is_being_replaced = False
         self._is_replacement_timeout = False
@@ -205,7 +217,7 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if node resume timeout expires."""
         return self.states == self.SLURM_SCONTROL_RESUME_FAILED_STATE
 
-    def is_poweing_up_idle(self):
+    def is_powering_up_idle(self):
         """Check if node is in IDLE# state."""
         return self.SLURM_SCONTROL_IDLE_STATE in self.states and self.is_powering_up()
 
@@ -233,6 +245,10 @@ class SlurmNode(metaclass=ABCMeta):
             )
             cond = True
         return cond
+
+    def is_invalid_slurm_registration(self):
+        """Check if a slurm node has failed registration with the Slurm management daemon."""
+        return self.SLURM_SCONTROL_INVALID_REGISTRATION_STATE in self.states
 
     @abstractmethod
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
@@ -305,14 +321,16 @@ class SlurmNode(metaclass=ABCMeta):
 
 
 class StaticNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
+    def __init__(
+        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+    ):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance)
+        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         return (
-            self._is_static_node_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
+            self._is_static_node_ip_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_state_healthy(
                 terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
@@ -352,7 +370,7 @@ class StaticNode(SlurmNode):
                 return False
         return True
 
-    def _is_static_node_configuration_valid(self, log_warn_if_unhealthy=True):
+    def _is_static_node_ip_configuration_valid(self, log_warn_if_unhealthy=True):
         """Check if static node is configured with a private IP."""
         if not self.is_nodeaddr_set():
             if log_warn_if_unhealthy:
@@ -397,9 +415,11 @@ class StaticNode(SlurmNode):
 
 
 class DynamicNode(SlurmNode):
-    def __init__(self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None):
+    def __init__(
+        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+    ):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance)
+        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
@@ -431,7 +451,7 @@ class DynamicNode(SlurmNode):
     def is_bootstrap_failure(self):
         """Check if a slurm node has boostrap failure."""
         # no backing instance + [working state]# in node state
-        if (self.is_configuring_job() or self.is_poweing_up_idle()) and not self.is_backing_instance_valid(
+        if (self.is_configuring_job() or self.is_powering_up_idle()) and not self.is_backing_instance_valid(
             log_warn_if_unhealthy=False
         ):
             logger.warning(
@@ -451,6 +471,17 @@ class DynamicNode(SlurmNode):
         elif self.is_failing_health_check and self.is_powering_up():
             logger.warning(
                 "Node bootstrap error: Node %s failed during bootstrap when performing health check, node state: %s",
+                self,
+                self.state_string,
+            )
+            return True
+        # Consider the invalid registration as a bootstrap failure event, but only the first time it is registered.
+        # After this, clustermgtd will mark the node as unhealthy and power it down.
+        # This does not clear the INVALID_REG flag immediately: this will happen only when the node is fully powered
+        # down. Therefore we exclude the nodes that are still pending powering down from this check.
+        elif self.is_invalid_slurm_registration() and not (self.is_power_down() or self.is_powering_down()):
+            logger.warning(
+                "Node bootstrap error: Node %s failed to register to the Slurm management daemon, node state: %s",
                 self,
                 self.state_string,
             )

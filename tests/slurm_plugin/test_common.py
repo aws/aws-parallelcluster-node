@@ -50,6 +50,12 @@ from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
             90 * 60,
             False,
         ),
+        (
+            None,
+            datetime(2020, 1, 24, 23, 42, 12),
+            180,
+            True,
+        ),
     ],
 )
 def test_time_is_up(initial_time, current_time, grace_time, expected_result):
@@ -74,7 +80,7 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
         "slurm_plugin.common.check_command_output",
         return_value=f"some_random_stdout\n{time.strftime(TIMESTAMP_FORMAT)}",
     )
-    assert_that(get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
+    assert_that(get_clustermgtd_heartbeat("/some/file/path")).is_equal_to(expected_parsed_time)
 
 
 @pytest.mark.parametrize(
@@ -91,7 +97,7 @@ def test_read_json(test_datadir, caplog, json_file, default_value, raises_except
     caplog.set_level(logging.INFO)
     json_file_path = str(test_datadir.joinpath(json_file))
     if raises_exception:
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, FileNotFoundError)):
             read_json(json_file_path, default_value)
     else:
         read_json(json_file_path, default_value)
