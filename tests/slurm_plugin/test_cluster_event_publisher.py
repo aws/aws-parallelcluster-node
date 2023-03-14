@@ -1,3 +1,18 @@
+# Copyright 2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the
+# License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+
+import json
+import logging
+from types import SimpleNamespace
 from typing import Dict, List
 
 import pytest
@@ -10,6 +25,7 @@ from slurm_plugin.slurm_resources import DynamicNode, StaticNode
 
 def event_handler(received_events: List[Dict], level_filter: List[str] = None):
     def _handler(level, message, event_type, *args, detail=None, **kwargs):
+        level = level if isinstance(level, str) else logging.getLevelName(level)
         if not level_filter or level in level_filter:
             if detail:
                 received_events.append({event_type: detail})
@@ -18,6 +34,523 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                 received_events.append({event_type: event.get("detail", None)})
 
     return _handler
+
+
+@pytest.mark.parametrize(
+    "log_level, base_args, events, expected_events",
+    [
+        (
+            logging.INFO,
+            {"a-setting": "value-a"},
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "a-setting": "value-b",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                )
+            ],
+            [
+                {
+                    "a-setting": "value-b",
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                },
+            ],
+        ),
+        (
+            logging.INFO,
+            {"a-setting": "value-a"},
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "a-setting": "value-b",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                ),
+                (
+                    "DEBUG",
+                    "debug-message",
+                    "debug-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "a-setting": "value-b",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                ),
+            ],
+            [
+                {
+                    "a-setting": "value-b",
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                },
+            ],
+        ),
+        (
+            logging.INFO,
+            {"a-setting": "value-a", "b-setting": "global-b-setting"},
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "a-setting": "value-b",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                )
+            ],
+            [
+                {
+                    "a-setting": "value-b",
+                    "b-setting": "global-b-setting",
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                },
+            ],
+        ),
+        (
+            logging.INFO,
+            {"a-setting": "value-a"},
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "a-setting": "value-b",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                ),
+                (
+                    "DEBUG",
+                    "debug-message",
+                    "debug-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "a-setting": "value-b",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                ),
+                (
+                    "WARNING",
+                    "warning-message",
+                    "warning-event",
+                    {
+                        "datetime": "a-date-and-time",
+                        "detail": {
+                            "a-detail": "detail-a",
+                        },
+                    },
+                ),
+            ],
+            [
+                {
+                    "a-setting": "value-b",
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                },
+                {
+                    "a-setting": "value-a",
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "WARNING",
+                    "instance-id": "instance_id",
+                    "event-type": "warning-event",
+                    "message": "warning-message",
+                    "detail": {"a-detail": "detail-a"},
+                },
+            ],
+        ),
+    ],
+    ids=[
+        "event overrides global",
+        "info level filters debug events",
+        "global value is set when not overridden",
+        "info level does not filter warning events",
+    ],
+)
+def test_event_publisher(log_level, base_args, events, expected_events):
+    received_events = []
+
+    def log_handler(level, format_string, value):
+        received_events.append([level, value])
+
+    metric_logger = SimpleNamespace()
+    metric_logger.isEnabledFor = lambda level: level >= log_level
+    metric_logger.log = log_handler
+
+    publisher = ClusterEventPublisher.create(
+        metric_logger, "cluster", "HeadNode", "component", "instance_id", **base_args
+    )
+
+    # Run test
+    for event in events:
+        publisher.publish_event(event[0], event[1], event[2], **event[3])
+
+    # Assert calls
+    assert_that(received_events).is_length(len(expected_events))
+    for actual, expected in zip(received_events, expected_events):
+        assert_that(actual[0]).is_greater_than_or_equal_to(log_level)
+        actual_json = json.loads(actual[1])
+        assert_that(actual_json).is_equal_to(expected)
+
+
+@pytest.mark.parametrize(
+    "log_level, events, expected_events, expected_supplied_count",
+    [
+        (
+            logging.INFO,
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    [
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                    ],
+                ),
+            ],
+            [
+                {
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                    "a_setting": "value-b",
+                    "b_setting": "b-kwargs-setting",
+                },
+            ],
+            1,
+        ),
+        (
+            logging.INFO,
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    [
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                    ],
+                ),
+            ],
+            [
+                {
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                    "a_setting": "value-b",
+                    "b_setting": "b-kwargs-setting",
+                },
+                {
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                    "a_setting": "value-b",
+                    "b_setting": "b-kwargs-setting",
+                },
+            ],
+            2,
+        ),
+        (
+            logging.INFO,
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    [
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                    ],
+                ),
+                (
+                    "DEBUG",
+                    "debug-message",
+                    "debug-event",
+                    [
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "debug-value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "debug-value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                    ],
+                ),
+            ],
+            [
+                {
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                    "a_setting": "value-b",
+                    "b_setting": "b-kwargs-setting",
+                },
+                {
+                    "datetime": "a-date-and-time",
+                    "version": 0,
+                    "scheduler": "slurm",
+                    "cluster-name": "cluster",
+                    "node-role": "HeadNode",
+                    "component": "component",
+                    "level": "INFO",
+                    "instance-id": "instance_id",
+                    "event-type": "info-event",
+                    "message": "info-message",
+                    "detail": {"a-detail": "detail-a"},
+                    "a_setting": "value-b",
+                    "b_setting": "b-kwargs-setting",
+                },
+            ],
+            2,
+        ),
+        (
+            logging.WARNING,
+            [
+                (
+                    "INFO",
+                    "info-message",
+                    "info-event",
+                    [
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                    ],
+                ),
+                (
+                    "DEBUG",
+                    "debug-message",
+                    "debug-event",
+                    [
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "debug-value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                        {
+                            "datetime": "a-date-and-time",
+                            "a_setting": "debug-value-b",
+                            "detail": {
+                                "a-detail": "detail-a",
+                            },
+                        },
+                    ],
+                ),
+            ],
+            [],
+            0,
+        ),
+    ],
+    ids=[
+        "1 supplied event generates 1 log message",
+        "2 supplied events generates 2 log messages",
+        "info level does not call debug level suppliers",
+        "warning level does not call info/debug supplier",
+    ],
+)
+def test_event_publisher_with_event_supplier(log_level, events, expected_events, expected_supplied_count):
+    received_events = []
+    events_supplied = 0
+
+    def log_handler(level, format_string, value):
+        received_events.append(value)
+
+    def event_supplier(events_to_supply):
+        nonlocal events_supplied
+        for supplied_event in events_to_supply:
+            yield supplied_event
+            events_supplied += 1
+
+    metric_logger = SimpleNamespace()
+    metric_logger.isEnabledFor = lambda level: level >= log_level
+    metric_logger.log = log_handler
+
+    publisher = ClusterEventPublisher.create(metric_logger, "cluster", "HeadNode", "component", "instance_id")
+
+    for event in events:
+        publisher.publish_event(
+            event[0],
+            event[1],
+            event[2],
+            event_supplier=event_supplier(event[3]),
+            a_setting="a-kwargs-setting",
+            b_setting="b-kwargs-setting",
+        )
+
+    assert_that(events_supplied).is_equal_to(expected_supplied_count)
+
+    assert_that(received_events).is_length(len(expected_events))
+    for actual, expected in zip(received_events, expected_events):
+        actual_json = json.loads(actual)
+        assert_that(actual_json).is_equal_to(expected)
+
+
+def test_event_publisher_swallows_exceptions(caplog):
+    handler_called = False
+
+    def log_handler(level, format_string, value):
+        nonlocal handler_called
+        handler_called = True
+        raise Exception("hello")
+
+    metric_logger = SimpleNamespace()
+    metric_logger.isEnabledFor = lambda level: True
+    metric_logger.log = log_handler
+
+    publisher = ClusterEventPublisher.create(metric_logger, "cluster", "HeadNode", "component", "instance_id")
+
+    publisher.publish_event(logging.INFO, "hello", "event-type", detail={"hello": "goodbye"})
+
+    assert_that(handler_called).is_true()
+
+    assert_that(caplog.records).is_length(1)
 
 
 @pytest.mark.parametrize(
@@ -564,13 +1097,17 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                 ),
             ],
-            [False, True, False, False],
+            [True, True, False, False],
             [
                 {
                     "protected-mode-error-count": {
-                        "count": 2,
+                        "count": 4,
                         "static-replacement-timeout-errors": {"count": 1, "nodes": [{"name": "queue2-st-c5large-2"}]},
                         "dynamic-resume-timeout-errors": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-1"}]},
+                        "other-bootstrap-errors": {
+                            "count": 2,
+                            "nodes": [{"name": "queue2-st-c5large-3"}, {"name": "queue2-dy-c5large-4"}],
+                        },
                     }
                 }
             ],
@@ -612,69 +1149,59 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
                 ),
             ],
             [False, False, False, False],
+            [
+                {
+                    "protected-mode-error-count": {
+                        "count": 4,
+                        "static-replacement-timeout-errors": {"count": 0, "nodes": []},
+                        "dynamic-resume-timeout-errors": {"count": 0, "nodes": []},
+                        "other-bootstrap-errors": {
+                            "count": 4,
+                            "nodes": [
+                                {"name": "queue2-dy-c5large-1"},
+                                {"name": "queue2-st-c5large-2"},
+                                {"name": "queue2-st-c5large-3"},
+                                {"name": "queue2-dy-c5large-4"},
+                            ],
+                        },
+                    }
+                }
+            ],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+        (
+            [],
+            [],
             [],
             ["ERROR", "WARNING", "INFO"],
         ),
         (
-            [
-                DynamicNode(
-                    "queue2-dy-c5large-1",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
-                ),
-                StaticNode(
-                    "queue2-st-c5large-2",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
-                ),
-                StaticNode(
-                    "queue2-st-c5large-3",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
-                ),
-                DynamicNode(
-                    "queue2-dy-c5large-4",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
-                ),
-            ],
-            [False, False, False, False],
+            [],
+            [],
             [
                 {
-                    "bootstrap-failure-count": {
-                        "count": 4,
-                        "nodes": [
-                            {"name": "queue2-dy-c5large-1"},
-                            {"name": "queue2-st-c5large-2"},
-                            {"name": "queue2-st-c5large-3"},
-                            {"name": "queue2-dy-c5large-4"},
-                        ],
+                    "protected-mode-error-count": {
+                        "count": 0,
+                        "static-replacement-timeout-errors": {"count": 0, "nodes": []},
+                        "dynamic-resume-timeout-errors": {"count": 0, "nodes": []},
+                        "other-bootstrap-errors": {"count": 0, "nodes": []},
                     }
                 }
             ],
             [],
         ),
     ],
-    ids=["Show only protect mode errors", "No event when no protect mode errors", "Debug output"],
+    ids=["With protect mode errors", "No protect mode errors", "No Errors", "No Errors debug output"],
 )
 def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, expected_details, level_filter):
     received_events = []
     event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
 
+    def define_bootstrap_timeout(is_failure):
+        return lambda *args: is_failure
+
     for node, is_timeout in zip(failed_nodes, replacement_timeouts):
-        node._is_replacement_timeout = is_timeout
+        node.is_bootstrap_timeout = define_bootstrap_timeout(is_timeout)
 
     # Run test
     event_publisher.publish_bootstrap_failure_events(failed_nodes)

@@ -1,4 +1,20 @@
+# Copyright 2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the
+# License. A copy of the License is located at
+#
+# http://aws.amazon.com/apache2.0/
+#
+# or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
+# OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
+# limitations under the License.
+
+import json
 import logging
+import sys
+import traceback
+from collections import ChainMap
 from datetime import datetime, timezone
 from typing import Callable, Dict, Iterable, List
 
@@ -7,25 +23,30 @@ from slurm_plugin.slurm_resources import DynamicNode, SlurmNode, StaticNode
 
 logger = logging.getLogger(__name__)
 
-LAUNCH_FAILURE_GROUPING = {}
-for failure in [*SlurmNode.EC2_ICE_ERROR_CODES, "LimitedInstanceCapacity"]:
-    LAUNCH_FAILURE_GROUPING.update({failure: "ice-failures"})
+_LAUNCH_FAILURE_GROUPING = {
+    **{failure: "ice-failures" for failure in [*SlurmNode.EC2_ICE_ERROR_CODES, "LimitedInstanceCapacity"]},
+    **{failure: "vcpu-limit-failures" for failure in ["VcpuLimitExceeded"]},
+    **{failure: "volume-limit-failures" for failure in ["VolumeLimitExceeded", "InsufficientVolumeCapacity"]},
+    **{failure: "custom-ami-errors" for failure in ["InvalidBlockDeviceMapping"]},
+    **{failure: "iam-policy-errors" for failure in ["UnauthorizedOperation", "AccessDeniedException"]},
+}
 
-for failure in ["VcpuLimitExceeded"]:
-    LAUNCH_FAILURE_GROUPING.update({failure: "vcpu-limit-failures"})
-
-for failure in ["VolumeLimitExceeded", "InsufficientVolumeCapacity"]:
-    LAUNCH_FAILURE_GROUPING.update({failure: "volume-limit-failures"})
-
-for failure in ["InvalidBlockDeviceMapping"]:
-    LAUNCH_FAILURE_GROUPING.update({failure: "custom-ami-errors"})
-
-for failure in ["UnauthorizedOperation", "AccessDeniedException"]:
-    LAUNCH_FAILURE_GROUPING.update({failure: "iam-policy-errors"})
+_EVENT_TO_LOG_LEVEL_MAPPING = {
+    "CRITICAL": logging.CRITICAL,
+    "FATAL": logging.CRITICAL,
+    "ERROR": logging.ERROR,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "INFO": logging.INFO,
+    "DEBUG": logging.DEBUG,
+    "NOTSET": logging.NOTSET,
+}
 
 
 class ClusterEventPublisher:
-    def __init__(self, event_publisher: Callable, max_list_size=100):
+    """Class for generating structured log events for cluster."""
+
+    def __init__(self, event_publisher: Callable = lambda *args, **kwargs: None, max_list_size=100):
         self._publish_event = event_publisher
         self._max_list_size = max_list_size
 
@@ -36,6 +57,13 @@ class ClusterEventPublisher:
     @staticmethod
     def timestamp():
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+    @staticmethod
+    def create(event_logger, cluster_name, node_role, component, instance_id, max_list_size=100, **global_args):
+        publiser = ClusterEventPublisher._get_event_publisher(
+            event_logger, cluster_name, node_role, component, instance_id, **global_args
+        )
+        return ClusterEventPublisher(publiser, max_list_size)
 
     @log_exception(logger, "publish_unhealthy_static_node_events", catch_exception=Exception, raise_on_error=False)
     def publish_unhealthy_static_node_events(
@@ -49,7 +77,7 @@ class ClusterEventPublisher:
         nodes_in_replacement = list(nodes_in_replacement)
 
         self.publish_event(
-            "WARNING" if failed_nodes else "DEBUG",
+            logging.WARNING if failed_nodes else logging.DEBUG,
             "Number of static nodes that failed replacement after node maintenance",
             event_type="node-launch-failure-count",
             timestamp=timestamp,
@@ -57,7 +85,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEBUG",
+            logging.DEBUG,
             "After node maintenance, node failed replacement",
             event_type="node-launch-failure",
             timestamp=timestamp,
@@ -65,7 +93,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEGUG",
+            logging.DEBUG,
             "Number of static nodes failing scheduler health check",
             event_type="static-node-health-check-failure-count",
             timestamp=timestamp,
@@ -73,7 +101,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEBUG",
+            logging.DEBUG,
             "Static node failing scheduler health check",
             event_type="static-node-health-check-failure",
             timestamp=timestamp,
@@ -81,7 +109,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEBUG",
+            logging.DEBUG,
             "Number of instances terminated due to backing unhealthy static nodes",
             event_type="static-node-instance-terminate-count",
             timestamp=timestamp,
@@ -91,7 +119,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEBUG",
+            logging.DEBUG,
             "After node maintenance, nodes currently in replacement",
             event_type="static-nodes-in-replacement-count",
             timestamp=timestamp,
@@ -99,7 +127,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEBUG",
+            logging.DEBUG,
             "After node maintenance, node currently in replacement",
             event_type="static-node-in-replacement",
             timestamp=timestamp,
@@ -126,7 +154,7 @@ class ClusterEventPublisher:
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(
-            "WARNING",
+            logging.WARNING,
             f"Number of nodes failing health check {health_check_type}",
             "nodes-failing-health-check-count",
             timestamp=timestamp,
@@ -150,7 +178,7 @@ class ClusterEventPublisher:
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(
-            "WARNING",
+            logging.WARNING if unhealthy_nodes else logging.DEBUG,
             "Number of nodes without a valid backing instance",
             "invalid-backing-instance-count",
             timestamp=timestamp,
@@ -159,66 +187,23 @@ class ClusterEventPublisher:
 
     @log_exception(logger, "publish_bootstrap_failure_events", catch_exception=Exception, raise_on_error=False)
     def publish_bootstrap_failure_events(self, bootstrap_failure_nodes: List[SlurmNode]):
-        def dynamic_node_filter(node: SlurmNode) -> bool:
-            return isinstance(node, DynamicNode) and node.is_resume_failed() and node.is_nodeaddr_set()
-
-        def static_node_filter(node: SlurmNode) -> bool:
-            return isinstance(node, StaticNode) and node._is_replacement_timeout
-
-        def protected_node_list(filter: Callable[[SlurmNode], bool]):
-            return [node for node in bootstrap_failure_nodes if filter(node)]
-
-        def protected_mode_error_count_supplier():
-            dynamic_nodes = protected_node_list(dynamic_node_filter)
-            static_nodes = protected_node_list(static_node_filter)
-            if dynamic_nodes or static_nodes:
-                yield {
-                    "detail": {
-                        "count": len(dynamic_nodes) + len(static_nodes),
-                        "static-replacement-timeout-errors": {
-                            "count": len(static_nodes),
-                            "nodes": self._generate_node_name_list(static_nodes),
-                        },
-                        "dynamic-resume-timeout-errors": {
-                            "count": len(static_nodes),
-                            "nodes": self._generate_node_name_list(dynamic_nodes),
-                        },
-                    }
-                }
-
-        def bootstrap_failure_supplier():
-            if bootstrap_failure_nodes:
-                yield {
-                    "detail": {
-                        "count": len(bootstrap_failure_nodes),
-                        "nodes": self._generate_node_name_list(bootstrap_failure_nodes),
-                    }
-                }
-
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(
-            "WARNING",
+            logging.WARNING if bootstrap_failure_nodes else logging.DEBUG,
             "Number of nodes that failed to bootstrap",
             "protected-mode-error-count",
             timestamp=timestamp,
-            event_supplier=protected_mode_error_count_supplier(),
-        )
-
-        self.publish_event(
-            "DEBUG",
-            "Number of nodes that failed to bootstrap",
-            "bootstrap-failure-count",
-            timestamp=timestamp,
-            event_supplier=bootstrap_failure_supplier(),
+            event_supplier=self._protected_mode_error_count_supplier(bootstrap_failure_nodes),
         )
 
     # Slurm Resume Events
     @log_exception(logger, "publish_node_launch_events", catch_exception=Exception, raise_on_error=False)
     def publish_node_launch_events(self, failed_nodes: Dict[str, List[str]]):
         timestamp = ClusterEventPublisher.timestamp()
+
         self.publish_event(
-            "WARNING" if failed_nodes else "DEBUG",
+            logging.WARNING if failed_nodes else logging.DEBUG,
             "Number of nodes that failed to launch",
             event_type="node-launch-failure-count",
             timestamp=timestamp,
@@ -226,7 +211,7 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            "DEBUG",
+            logging.DEBUG,
             "Setting failed node to DOWN state",
             event_type="node-launch-failure",
             timestamp=timestamp,
@@ -235,7 +220,7 @@ class ClusterEventPublisher:
 
     def _get_launch_failure_details(self, failed_nodes: Dict[str, List[str]]) -> Dict:
         detail_map = {"other-failures": {"count": 0}}
-        for failure_type in LAUNCH_FAILURE_GROUPING.values():
+        for failure_type in _LAUNCH_FAILURE_GROUPING.values():
             detail_map.setdefault(failure_type, {"count": 0})
 
         total_failures = 0
@@ -292,7 +277,7 @@ class ClusterEventPublisher:
         for node in nodes_in_replacement:
             yield {
                 "detail": {
-                    "node": _describe_node(node),
+                    "node": ClusterEventPublisher._describe_node(node),
                 }
             }
 
@@ -306,7 +291,7 @@ class ClusterEventPublisher:
 
     def _unhealthy_node_supplier(self, unhealthy_static_nodes):
         for node in self._limit_list(unhealthy_static_nodes):
-            yield {"detail": {"node": _describe_node(node)}}
+            yield {"detail": {"node": ClusterEventPublisher._describe_node(node)}}
 
     def _failed_node_supplier(self, unhealthy_static_nodes, failed_nodes):
         for error_code, failed_node_list in failed_nodes.items():
@@ -314,11 +299,38 @@ class ClusterEventPublisher:
                 if node.name in failed_node_list:
                     yield {
                         "detail": {
-                            "node": _describe_node(node),
+                            "node": ClusterEventPublisher._describe_node(node),
                             "error-code": error_code,
                             "failure-type": ClusterEventPublisher._get_failure_type_from_error_code(error_code),
                         }
                     }
+
+    def _protected_mode_error_count_supplier(self, bootstrap_failure_nodes):
+        dynamic_nodes = []
+        static_nodes = []
+        other_nodes = []
+        for node in bootstrap_failure_nodes:
+            if node.is_bootstrap_timeout():
+                (dynamic_nodes if isinstance(node, DynamicNode) else static_nodes).append(node)
+            else:
+                other_nodes.append(node)
+        yield {
+            "detail": {
+                "count": len(dynamic_nodes) + len(static_nodes) + len(other_nodes),
+                "static-replacement-timeout-errors": {
+                    "count": len(static_nodes),
+                    "nodes": self._generate_node_name_list(static_nodes),
+                },
+                "dynamic-resume-timeout-errors": {
+                    "count": len(static_nodes),
+                    "nodes": self._generate_node_name_list(dynamic_nodes),
+                },
+                "other-bootstrap-errors": {
+                    "count": len(other_nodes),
+                    "nodes": self._generate_node_name_list(other_nodes),
+                },
+            }
+        }
 
     @staticmethod
     def _flatten_failed_launch_nodes(failed_nodes: Dict[str, List[str]]):
@@ -334,38 +346,81 @@ class ClusterEventPublisher:
 
     @staticmethod
     def _get_failure_type_from_error_code(error_code: str) -> str:
-        return LAUNCH_FAILURE_GROUPING.get(error_code, "other-failures")
+        return _LAUNCH_FAILURE_GROUPING.get(error_code, "other-failures")
 
+    @staticmethod
+    def _get_event_publisher(event_logger, cluster_name, node_role, component, instance_id, **global_args):
+        def map_event_level(event_level):
+            return (
+                _EVENT_TO_LOG_LEVEL_MAPPING.get(event_level, logging.NOTSET)
+                if isinstance(event_level, str)
+                else event_level
+            )
 
-def _describe_node(node: SlurmNode):
-    node_states = list(node.state_string.split("+"))
-    return (
-        {
-            "name": node.name,
-            "type": "static" if isinstance(node, StaticNode) else "dynamic",
-            "address": node.nodeaddr,
-            "hostname": node.nodehostname,
-            "state-string": node.state_string,
-            "state": node_states[0] if node.states else None,
-            "state-flags": node_states[1:],
-            "instance": _describe_instance(node.instance) if node.instance else None,
-            "partitions": list(node.partitions),
-            "queue-name": node.queue_name,
-            "compute-resource": node.compute_resource_name,
-        }
-        if node
-        else None
-    )
+        def emit_event(event_level, message, event_type, timestamp=None, event_supplier=None, **kwargs):
+            log_level = map_event_level(event_level)
+            if event_logger.isEnabledFor(log_level):
+                event_level = logging.getLevelName(log_level)
+                now = timestamp if timestamp else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+                if not event_supplier:
+                    event_supplier = [kwargs]
+                for details in event_supplier:
+                    try:
+                        event = ChainMap(
+                            details,
+                            kwargs,
+                            {
+                                "datetime": now,
+                                "version": 0,
+                                "scheduler": "slurm",
+                                "cluster-name": cluster_name,
+                                "node-role": node_role,
+                                "component": component,
+                                "level": event_level,
+                                "instance-id": instance_id,
+                                "event-type": event_type,
+                                "message": message,
+                                "detail": {},
+                            },
+                            global_args,
+                        )
 
+                        event_logger.log(log_level, "%s", json.dumps(dict(event)))
+                    except Exception as e:
+                        logger.error("Failed to publish event: %s\n%s", e, traceback.format_exception(*sys.exc_info()))
 
-def _describe_instance(instance):
-    return (
-        {
-            "id": instance.id,
-            "private-ip": instance.private_ip,
-            "hostname": instance.hostname,
-            "launch-time": instance.launch_time,
-        }
-        if instance
-        else None
-    )
+        return emit_event
+
+    @staticmethod
+    def _describe_node(node: SlurmNode):
+        node_states = list(node.state_string.split("+"))
+        return (
+            {
+                "name": node.name,
+                "type": "static" if isinstance(node, StaticNode) else "dynamic",
+                "address": node.nodeaddr,
+                "hostname": node.nodehostname,
+                "state-string": node.state_string,
+                "state": node_states[0] if node.states else None,
+                "state-flags": node_states[1:],
+                "instance": ClusterEventPublisher._describe_instance(node.instance) if node.instance else None,
+                "partitions": list(node.partitions),
+                "queue-name": node.queue_name,
+                "compute-resource": node.compute_resource_name,
+            }
+            if node
+            else None
+        )
+
+    @staticmethod
+    def _describe_instance(instance):
+        return (
+            {
+                "id": instance.id,
+                "private-ip": instance.private_ip,
+                "hostname": instance.hostname,
+                "launch-time": instance.launch_time,
+            }
+            if instance
+            else None
+        )

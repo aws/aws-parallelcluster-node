@@ -267,6 +267,11 @@ class SlurmNode(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def is_bootstrap_timeout(self):
+        """Check if slurm node timed out while waiting for backing instance to bootstrap."""
+        pass
+
+    @abstractmethod
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         pass
@@ -393,7 +398,7 @@ class StaticNode(SlurmNode):
             )
             return True
             # Replacement timeout expires for node in replacement
-        elif self._is_replacement_timeout:
+        elif self.is_bootstrap_timeout():
             logger.warning(
                 "Node bootstrap error: Replacement timeout expires for node %s in replacement, node state %s:",
                 self,
@@ -408,6 +413,10 @@ class StaticNode(SlurmNode):
             )
             return True
         return False
+
+    def is_bootstrap_timeout(self):
+        """Check if slurm node timed out waiting for backing instance to bootstrap."""
+        return self._is_replacement_timeout
 
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""
@@ -461,7 +470,7 @@ class DynamicNode(SlurmNode):
             )
             return True
         # Dynamic node in DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING state
-        elif self.is_resume_failed() and self.is_nodeaddr_set():
+        elif self.is_bootstrap_timeout():
             # We need to check if nodeaddr is set to avoid counting powering up nodes as bootstrap failure nodes during
             # cluster start/stop.
             logger.warning(
@@ -487,6 +496,10 @@ class DynamicNode(SlurmNode):
             )
             return True
         return False
+
+    def is_bootstrap_timeout(self):
+        """Check if slurm node timed out waiting for backing instance to bootstrap."""
+        return self.is_resume_failed() and self.is_nodeaddr_set()
 
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""
