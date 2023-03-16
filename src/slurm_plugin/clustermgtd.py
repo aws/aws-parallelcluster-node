@@ -398,7 +398,7 @@ class ClusterManager:
             self._task_executor = self._initialize_executor(config)
 
             self._config = config
-            self._event_publisher = ClusterEventPublisher.create(
+            self._event_publisher = ClusterEventPublisher.create_with_default_publisher(
                 event_logger, config.cluster_name, "HeadNode", "clustermgtd", config.head_node_instance_id
             )
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
@@ -843,6 +843,7 @@ class ClusterManager:
         self._event_publisher.publish_unhealthy_static_node_events(
             unhealthy_static_nodes,
             self._static_nodes_in_replacement,
+            launched_nodes,
             self._instance_manager.failed_nodes,
         )
 

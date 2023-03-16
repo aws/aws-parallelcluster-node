@@ -44,7 +44,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
             {"a-setting": "value-a"},
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     {
@@ -78,7 +78,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
             {"a-setting": "value-a"},
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     {
@@ -90,7 +90,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                     },
                 ),
                 (
-                    "DEBUG",
+                    logging.DEBUG,
                     "debug-message",
                     "debug-event",
                     {
@@ -124,7 +124,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
             {"a-setting": "value-a", "b-setting": "global-b-setting"},
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     {
@@ -159,7 +159,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
             {"a-setting": "value-a"},
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     {
@@ -171,7 +171,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                     },
                 ),
                 (
-                    "DEBUG",
+                    logging.DEBUG,
                     "debug-message",
                     "debug-event",
                     {
@@ -183,7 +183,7 @@ def event_handler(received_events: List[Dict], level_filter: List[str] = None):
                     },
                 ),
                 (
-                    "WARNING",
+                    logging.WARNING,
                     "warning-message",
                     "warning-event",
                     {
@@ -243,7 +243,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
     metric_logger.isEnabledFor = lambda level: level >= log_level
     metric_logger.log = log_handler
 
-    publisher = ClusterEventPublisher.create(
+    publisher = ClusterEventPublisher.create_with_default_publisher(
         metric_logger, "cluster", "HeadNode", "component", "instance_id", **base_args
     )
 
@@ -266,7 +266,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
             logging.INFO,
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     [
@@ -303,7 +303,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
             logging.INFO,
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     [
@@ -362,7 +362,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
             logging.INFO,
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     [
@@ -383,7 +383,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
                     ],
                 ),
                 (
-                    "DEBUG",
+                    logging.DEBUG,
                     "debug-message",
                     "debug-event",
                     [
@@ -442,7 +442,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
             logging.WARNING,
             [
                 (
-                    "INFO",
+                    logging.INFO,
                     "info-message",
                     "info-event",
                     [
@@ -463,7 +463,7 @@ def test_event_publisher(log_level, base_args, events, expected_events):
                     ],
                 ),
                 (
-                    "DEBUG",
+                    logging.DEBUG,
                     "debug-message",
                     "debug-event",
                     [
@@ -512,7 +512,9 @@ def test_event_publisher_with_event_supplier(log_level, events, expected_events,
     metric_logger.isEnabledFor = lambda level: level >= log_level
     metric_logger.log = log_handler
 
-    publisher = ClusterEventPublisher.create(metric_logger, "cluster", "HeadNode", "component", "instance_id")
+    publisher = ClusterEventPublisher.create_with_default_publisher(
+        metric_logger, "cluster", "HeadNode", "component", "instance_id"
+    )
 
     for event in events:
         publisher.publish_event(
@@ -544,7 +546,9 @@ def test_event_publisher_swallows_exceptions(caplog):
     metric_logger.isEnabledFor = lambda level: True
     metric_logger.log = log_handler
 
-    publisher = ClusterEventPublisher.create(metric_logger, "cluster", "HeadNode", "component", "instance_id")
+    publisher = ClusterEventPublisher.create_with_default_publisher(
+        metric_logger, "cluster", "HeadNode", "component", "instance_id"
+    )
 
     publisher.publish_event(logging.INFO, "hello", "event-type", detail={"hello": "goodbye"})
 
@@ -801,12 +805,19 @@ def test_event_publisher_swallows_exceptions(caplog):
         (
             [
                 StaticNode(
-                    "queue2-dy-c5large-9",
+                    "queue2-dy-c5large-1",
                     "nodeip",
                     "nodehostname",
                     "DOWN+CLOUD",
                     "queue2",
                     "(Code:InsufficientVolumeCapacity)Error",
+                ),
+                StaticNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
                 ),
             ],
             [
@@ -815,7 +826,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                         "other-failures": {"count": 0},
                         "ice-failures": {"count": 0},
                         "vcpu-limit-failures": {"count": 0},
-                        "volume-limit-failures": {"count": 1, "InsufficientVolumeCapacity": ["queue2-dy-c5large-9"]},
+                        "volume-limit-failures": {"count": 1, "InsufficientVolumeCapacity": ["queue2-dy-c5large-1"]},
                         "custom-ami-errors": {"count": 0},
                         "iam-policy-errors": {"count": 0},
                         "total": 1,
@@ -824,7 +835,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                 {
                     "node-launch-failure": {
                         "node": {
-                            "name": "queue2-dy-c5large-9",
+                            "name": "queue2-dy-c5large-1",
                             "type": "static",
                             "address": "nodeip",
                             "hostname": "nodehostname",
@@ -845,11 +856,16 @@ def test_event_publisher_swallows_exceptions(caplog):
                         "failure-type": "volume-limit-failures",
                     }
                 },
-                {"static-node-health-check-failure-count": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-9"}]}},
+                {
+                    "static-node-health-check-failure-count": {
+                        "count": 2,
+                        "nodes": [{"name": "queue2-dy-c5large-1"}, {"name": "queue2-dy-c5large-2"}],
+                    }
+                },
                 {
                     "static-node-health-check-failure": {
                         "node": {
-                            "name": "queue2-dy-c5large-9",
+                            "name": "queue2-dy-c5large-1",
                             "type": "static",
                             "address": "nodeip",
                             "hostname": "nodehostname",
@@ -860,6 +876,28 @@ def test_event_publisher_swallows_exceptions(caplog):
                                 "id": "i-id-0",
                                 "private-ip": "1.2.3.0",
                                 "hostname": "host-0",
+                                "launch-time": "sometime",
+                            },
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                        }
+                    }
+                },
+                {
+                    "static-node-health-check-failure": {
+                        "node": {
+                            "name": "queue2-dy-c5large-2",
+                            "type": "static",
+                            "address": "nodeip",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": {
+                                "id": "i-id-1",
+                                "private-ip": "1.2.3.1",
+                                "hostname": "host-1",
                                 "launch-time": "sometime",
                             },
                             "partitions": ["queue2"],
@@ -870,41 +908,32 @@ def test_event_publisher_swallows_exceptions(caplog):
                 },
                 {
                     "static-node-instance-terminate-count": {
-                        "count": 1,
+                        "count": 2,
                         "nodes": [
                             {
-                                "name": "queue2-dy-c5large-9",
+                                "name": "queue2-dy-c5large-1",
                                 "id": "i-id-0",
                                 "ip": "1.2.3.0",
                                 "error-code": "InsufficientVolumeCapacity",
                                 "reason": "(Code:InsufficientVolumeCapacity)Error",
-                            }
+                            },
+                            {
+                                "name": "queue2-dy-c5large-2",
+                                "id": "i-id-1",
+                                "ip": "1.2.3.1",
+                                "error-code": None,
+                                "reason": None,
+                            },
                         ],
                     }
                 },
-                {"static-nodes-in-replacement-count": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-9"}]}},
                 {
-                    "static-node-in-replacement": {
-                        "node": {
-                            "name": "queue2-dy-c5large-9",
-                            "type": "static",
-                            "address": "nodeip",
-                            "hostname": "nodehostname",
-                            "state-string": "DOWN+CLOUD",
-                            "state": "DOWN",
-                            "state-flags": ["CLOUD"],
-                            "instance": {
-                                "id": "i-id-0",
-                                "private-ip": "1.2.3.0",
-                                "hostname": "host-0",
-                                "launch-time": "sometime",
-                            },
-                            "partitions": ["queue2"],
-                            "queue-name": "queue2",
-                            "compute-resource": "c5large",
-                        }
+                    "static-nodes-in-replacement-count": {
+                        "count": 2,
+                        "nodes": [{"name": "queue2-dy-c5large-1"}, {"name": "queue2-dy-c5large-2"}],
                     }
                 },
+                {"static-node-launched-count": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-2"}]}},
             ],
             [],
             2,
@@ -934,14 +963,18 @@ def test_publish_unhealthy_static_node_events(test_nodes, expected_details, leve
     # Make sure non-lists work
     nodes_in_replacement = (node.name for node in test_nodes)
     failed_nodes = {}
+    launched_nodes = []
     for node in test_nodes:
         if node.error_code:
             failed_nodes.setdefault(node.error_code, []).append(node.name)
+        else:
+            launched_nodes.append(node.name)
 
     # Run test
     event_publisher.publish_unhealthy_static_node_events(
         test_nodes,
         nodes_in_replacement,
+        launched_nodes,
         failed_nodes,
     )
 
@@ -1024,30 +1057,138 @@ def test_publish_nodes_failing_health_check_events(health_check_type, failed_nod
                     ),
                     False,
                 ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-4",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD+NOT_RESPONDING",
+                        "queue2",
+                        "Not responding [slurm@2023-03-15T22:18:00]",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-5",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD+NOT_RESPONDING",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-6",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "Not responding [slurm@2023-03-15T22:18:00]",
+                    ),
+                    False,
+                ),
             ],
             [
-                {
-                    "invalid-backing-instance-count": {
-                        "count": 3,
-                        "nodes": [
-                            {"name": "queue2-dy-c5large-1"},
-                            {"name": "queue2-dy-c5large-2"},
-                            {"name": "queue2-dy-c5large-3"},
-                        ],
-                    }
-                }
+                {"invalid-backing-instance-count": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-2"}]}},
+                {"node-not-responding-down-count": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-4"}]}},
             ],
             ["ERROR", "WARNING", "INFO"],
         ),
+        (
+            [
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-1",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-2",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-3",
+                        "",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+            ],
+            [],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+        (
+            [
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-1",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-2",
+                        "nodeip",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+                (
+                    StaticNode(
+                        "queue2-dy-c5large-3",
+                        "",
+                        "nodehostname",
+                        "DOWN+CLOUD",
+                        "queue2",
+                        "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    ),
+                    False,
+                ),
+            ],
+            [
+                {"invalid-backing-instance-count": {"count": 0, "nodes": []}},
+                {"node-not-responding-down-count": {"count": 0, "nodes": []}},
+            ],
+            [],
+        ),
     ],
+    ids=["has invalid backing instances", "no invalid backing instances", "debug output"],
 )
 def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_filter):
     received_events = []
     event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
 
     bad_nodes = []
-    for node, bootstrap_failure in failed_nodes:
-        node.is_static_nodes_in_replacement = bootstrap_failure
+    for node, invalid_backing_instance in failed_nodes:
+        if not invalid_backing_instance:
+            node.nodeaddr = node.name
         bad_nodes.append(node)
 
     # Run test

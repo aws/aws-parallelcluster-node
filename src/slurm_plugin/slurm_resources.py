@@ -94,11 +94,14 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
+    SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_STATE = {"DOWN", "CLOUD", "NOT_RESPONDING"}
     # Due to a bug in Slurm a powered down node can enter IDLE+CLOUD+POWER_DOWN+POWERED_DOWN state
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
     SLURM_SCONTROL_INVALID_REGISTRATION_STATE = "INVALID_REG"
+
+    SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_REASON = re.compile(r"Not responding \[slurm@.+\]")
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -216,6 +219,15 @@ class SlurmNode(metaclass=ABCMeta):
     def is_resume_failed(self):
         """Check if node resume timeout expires."""
         return self.states == self.SLURM_SCONTROL_RESUME_FAILED_STATE
+
+    def is_down_not_responding(self):
+        """Check if node was set to down by Slurm because it was not responding."""
+        return (
+            self.states == self.SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_STATE
+            and self.SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_REASON.match(self.reason)
+            if self.reason
+            else False
+        )
 
     def is_powering_up_idle(self):
         """Check if node is in IDLE# state."""

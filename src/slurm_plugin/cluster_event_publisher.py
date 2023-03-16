@@ -31,17 +31,6 @@ _LAUNCH_FAILURE_GROUPING = {
     **{failure: "iam-policy-errors" for failure in ["UnauthorizedOperation", "AccessDeniedException"]},
 }
 
-_EVENT_TO_LOG_LEVEL_MAPPING = {
-    "CRITICAL": logging.CRITICAL,
-    "FATAL": logging.CRITICAL,
-    "ERROR": logging.ERROR,
-    "WARNING": logging.WARNING,
-    "WARN": logging.WARNING,
-    "INFO": logging.INFO,
-    "DEBUG": logging.DEBUG,
-    "NOTSET": logging.NOTSET,
-}
-
 
 class ClusterEventPublisher:
     """Class for generating structured log events for cluster."""
@@ -59,7 +48,10 @@ class ClusterEventPublisher:
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
     @staticmethod
-    def create(event_logger, cluster_name, node_role, component, instance_id, max_list_size=100, **global_args):
+    def create_with_default_publisher(
+        event_logger, cluster_name, node_role, component, instance_id, max_list_size=100, **global_args
+    ):
+        """Create an instance of CreateEventPublisher with the standard event publisher."""
         publiser = ClusterEventPublisher._get_event_publisher(
             event_logger, cluster_name, node_role, component, instance_id, **global_args
         )
@@ -70,15 +62,17 @@ class ClusterEventPublisher:
         self,
         unhealthy_static_nodes: List[SlurmNode],
         nodes_in_replacement: Iterable[str],
+        launched_nodes: Iterable[str],
         failed_nodes: Dict[str, List[str]],
     ):
+        """Publish events for unhealthy static nodes."""
         timestamp = ClusterEventPublisher.timestamp()
 
         nodes_in_replacement = list(nodes_in_replacement)
 
         self.publish_event(
             logging.WARNING if failed_nodes else logging.DEBUG,
-            "Number of static nodes that failed replacement after node maintenance",
+            "Number of static nodes that failed to launch a backing instance after node maintenance",
             event_type="node-launch-failure-count",
             timestamp=timestamp,
             event_supplier=self._get_launch_failure_details(failed_nodes),
@@ -86,7 +80,7 @@ class ClusterEventPublisher:
 
         self.publish_event(
             logging.DEBUG,
-            "After node maintenance, node failed replacement",
+            "After node maintenance, node failed to launch a backing instance",
             event_type="node-launch-failure",
             timestamp=timestamp,
             event_supplier=self._failed_node_supplier(unhealthy_static_nodes, failed_nodes),
@@ -128,18 +122,18 @@ class ClusterEventPublisher:
 
         self.publish_event(
             logging.DEBUG,
-            "After node maintenance, node currently in replacement",
-            event_type="static-node-in-replacement",
+            "Number of static nodes that successfully launched after node mainenance",
+            event_type="static-node-launched-count",
             timestamp=timestamp,
-            event_supplier=self._node_in_replacement_supplier(
-                (node for node in unhealthy_static_nodes if node.name in nodes_in_replacement)
-            ),
+            event_supplier=self._launched_node_count_supplier(launched_nodes),
         )
 
     @log_exception(logger, "publish_nodes_failing_health_check_events", catch_exception=Exception, raise_on_error=False)
     def publish_nodes_failing_health_check_events(
         self, health_check_type: any, node_names_failing_health_check: Iterable[str]
     ):
+        """Publish events for nodes failing `health_check_type`."""
+
         def detail_supplier():
             node_names = list(node_names_failing_health_check)
             if node_names_failing_health_check:
@@ -163,30 +157,41 @@ class ClusterEventPublisher:
 
     @log_exception(logger, "publish_unhealthy_node_events", catch_exception=Exception, raise_on_error=False)
     def publish_unhealthy_node_events(self, unhealthy_nodes: List[SlurmNode]):
-        def detail_supplier():
-            invalid_backing_instance_nodes = [
-                node for node in unhealthy_nodes if not node.is_backing_instance_valid(log_warn_if_unhealthy=False)
-            ]
-            if invalid_backing_instance_nodes:
-                yield {
-                    "detail": {
-                        "count": len(invalid_backing_instance_nodes),
-                        "nodes": self._generate_node_name_list(invalid_backing_instance_nodes),
-                    }
+        """Publish events for unhealthy nodes without a backing instance and for nodes that are not responding."""
+
+        def detail_supplier(node_list):
+            yield {
+                "detail": {
+                    "count": len(node_list),
+                    "nodes": self._generate_node_name_list(node_list),
                 }
+            }
 
         timestamp = ClusterEventPublisher.timestamp()
 
+        nodes_with_invalid_backing_instance = [
+            node for node in unhealthy_nodes if not node.is_backing_instance_valid(log_warn_if_unhealthy=False)
+        ]
         self.publish_event(
-            logging.WARNING if unhealthy_nodes else logging.DEBUG,
+            logging.WARNING if nodes_with_invalid_backing_instance else logging.DEBUG,
             "Number of nodes without a valid backing instance",
             "invalid-backing-instance-count",
             timestamp=timestamp,
-            event_supplier=detail_supplier(),
+            event_supplier=detail_supplier(nodes_with_invalid_backing_instance),
+        )
+
+        nodes_not_responding = [node for node in unhealthy_nodes if node.is_down_not_responding()]
+        self.publish_event(
+            logging.WARNING if nodes_not_responding else logging.DEBUG,
+            "Number of nodes set to DOWN because they are not responding",
+            "node-not-responding-down-count",
+            timestamp=timestamp,
+            event_supplier=detail_supplier(nodes_not_responding),
         )
 
     @log_exception(logger, "publish_bootstrap_failure_events", catch_exception=Exception, raise_on_error=False)
     def publish_bootstrap_failure_events(self, bootstrap_failure_nodes: List[SlurmNode]):
+        """Publish events for nodes failing to bootstrap."""
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(
@@ -200,6 +205,7 @@ class ClusterEventPublisher:
     # Slurm Resume Events
     @log_exception(logger, "publish_node_launch_events", catch_exception=Exception, raise_on_error=False)
     def publish_node_launch_events(self, failed_nodes: Dict[str, List[str]]):
+        """Publish events for nodes that failed to launch from slurm_resume."""
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(
@@ -219,6 +225,11 @@ class ClusterEventPublisher:
         )
 
     def _get_launch_failure_details(self, failed_nodes: Dict[str, List[str]]) -> Dict:
+        """
+        Build a dictionary based on failure category (e.g. ice-failure).
+
+        The elements contain the the number of nodes and the of node names in that category.
+        """
         detail_map = {"other-failures": {"count": 0}}
         for failure_type in _LAUNCH_FAILURE_GROUPING.values():
             detail_map.setdefault(failure_type, {"count": 0})
@@ -242,6 +253,7 @@ class ClusterEventPublisher:
         }
 
     def _limit_list(self, source_list: List) -> List:
+        """Limit lists of nodes to _max_list_size."""
         return source_list[: self._max_list_size] if self._max_list_size else source_list
 
     def _generate_node_name_list(self, node_list):
@@ -273,13 +285,14 @@ class ClusterEventPublisher:
             }
         }
 
-    def _node_in_replacement_supplier(self, nodes_in_replacement):
-        for node in nodes_in_replacement:
-            yield {
-                "detail": {
-                    "node": ClusterEventPublisher._describe_node(node),
-                }
+    def _launched_node_count_supplier(self, launched_nodes):
+        launched_nodes = list(launched_nodes)
+        yield {
+            "detail": {
+                "count": len(launched_nodes),
+                "nodes": [{"name": node_name} for node_name in self._limit_list(launched_nodes)],
             }
+        }
 
     def _unhealthy_node_count_supplier(self, unhealthy_static_nodes):
         yield {
@@ -350,17 +363,8 @@ class ClusterEventPublisher:
 
     @staticmethod
     def _get_event_publisher(event_logger, cluster_name, node_role, component, instance_id, **global_args):
-        def map_event_level(event_level):
-            return (
-                _EVENT_TO_LOG_LEVEL_MAPPING.get(event_level, logging.NOTSET)
-                if isinstance(event_level, str)
-                else event_level
-            )
-
         def emit_event(event_level, message, event_type, timestamp=None, event_supplier=None, **kwargs):
-            log_level = map_event_level(event_level)
-            if event_logger.isEnabledFor(log_level):
-                event_level = logging.getLevelName(log_level)
+            if event_logger.isEnabledFor(event_level):
                 now = timestamp if timestamp else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
                 if not event_supplier:
                     event_supplier = [kwargs]
@@ -376,7 +380,7 @@ class ClusterEventPublisher:
                                 "cluster-name": cluster_name,
                                 "node-role": node_role,
                                 "component": component,
-                                "level": event_level,
+                                "level": logging.getLevelName(event_level),
                                 "instance-id": instance_id,
                                 "event-type": event_type,
                                 "message": message,
@@ -385,7 +389,7 @@ class ClusterEventPublisher:
                             global_args,
                         )
 
-                        event_logger.log(log_level, "%s", json.dumps(dict(event)))
+                        event_logger.log(event_level, "%s", json.dumps(dict(event)))
                     except Exception as e:
                         logger.error("Failed to publish event: %s\n%s", e, traceback.format_exception(*sys.exc_info()))
 

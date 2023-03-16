@@ -203,14 +203,14 @@ def _resume(arg_nodes, resume_config):
         for error_code, node_list in instance_manager.failed_nodes.items():
             _handle_failed_nodes(node_list, reason=f"(Code:{error_code})Failure when resuming nodes")
 
-        _event_publisher = ClusterEventPublisher.create(
+        event_publisher = ClusterEventPublisher.create_with_default_publisher(
             event_logger,
             resume_config.cluster_name,
             "HeadNode",
             "slurm-resume",
             resume_config.head_node_instance_id,
         )
-        _event_publisher.publish_node_launch_events(instance_manager.failed_nodes)
+        event_publisher.publish_node_launch_events(instance_manager.failed_nodes)
 
 
 def main():
