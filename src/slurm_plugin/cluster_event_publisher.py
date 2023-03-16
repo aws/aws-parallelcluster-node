@@ -51,7 +51,7 @@ class ClusterEventPublisher:
     def create_with_default_publisher(
         event_logger, cluster_name, node_role, component, instance_id, max_list_size=100, **global_args
     ):
-        """Create an instance of CreateEventPublisher with the standard event publisher."""
+        """Create an instance of ClusterEventPublisher with the standard event publisher."""
         publiser = ClusterEventPublisher._get_event_publisher(
             event_logger, cluster_name, node_role, component, instance_id, **global_args
         )
@@ -68,15 +68,14 @@ class ClusterEventPublisher:
         """Publish events for unhealthy static nodes."""
         timestamp = ClusterEventPublisher.timestamp()
 
-        nodes_in_replacement = list(nodes_in_replacement)
-
-        self.publish_event(
-            logging.WARNING if failed_nodes else logging.DEBUG,
-            "Number of static nodes that failed to launch a backing instance after node maintenance",
-            event_type="node-launch-failure-count",
-            timestamp=timestamp,
-            event_supplier=self._get_launch_failure_details(failed_nodes),
-        )
+        for count, error_detail in self._generate_launch_failure_details(failed_nodes):
+            self.publish_event(
+                logging.WARNING if count else logging.DEBUG,
+                "Number of static nodes that failed to launch a backing instance after node maintenance",
+                event_type="node-launch-failure-count",
+                timestamp=timestamp,
+                detail=error_detail,
+            )
 
         self.publish_event(
             logging.DEBUG,
@@ -91,7 +90,7 @@ class ClusterEventPublisher:
             "Number of static nodes failing scheduler health check",
             event_type="static-node-health-check-failure-count",
             timestamp=timestamp,
-            event_supplier=self._unhealthy_node_count_supplier(unhealthy_static_nodes),
+            event_supplier=self._node_list_and_count_supplier(unhealthy_static_nodes),
         )
 
         self.publish_event(
@@ -117,7 +116,7 @@ class ClusterEventPublisher:
             "After node maintenance, nodes currently in replacement",
             event_type="static-nodes-in-replacement-count",
             timestamp=timestamp,
-            event_supplier=self._node_count_in_replacement_supplier(nodes_in_replacement),
+            event_supplier=self._node_list_and_count_supplier(nodes_in_replacement),
         )
 
         self.publish_event(
@@ -125,7 +124,7 @@ class ClusterEventPublisher:
             "Number of static nodes that successfully launched after node mainenance",
             event_type="static-node-launched-count",
             timestamp=timestamp,
-            event_supplier=self._launched_node_count_supplier(launched_nodes),
+            event_supplier=self._node_list_and_count_supplier(launched_nodes),
         )
 
     @log_exception(logger, "publish_nodes_failing_health_check_events", catch_exception=Exception, raise_on_error=False)
@@ -134,39 +133,29 @@ class ClusterEventPublisher:
     ):
         """Publish events for nodes failing `health_check_type`."""
 
-        def detail_supplier():
-            node_names = list(node_names_failing_health_check)
-            if node_names_failing_health_check:
-                yield {
-                    "detail": {
-                        "health-check-type": str(health_check_type),
-                        "count": len(node_names_failing_health_check),
-                        "nodes": [{"name": node_name} for node_name in self._limit_list(node_names)],
-                    }
+        def detail_supplier(node_names):
+            yield {
+                "detail": {
+                    "failure-type": str(health_check_type),
+                    "count": len(node_names),
+                    "nodes": self._generate_node_name_list(node_names),
                 }
+            }
 
         timestamp = ClusterEventPublisher.timestamp()
 
+        node_names_failing_health_check = list(node_names_failing_health_check)
         self.publish_event(
-            logging.WARNING,
+            logging.WARNING if node_names_failing_health_check else logging.DEBUG,
             f"Number of nodes failing health check {health_check_type}",
             "nodes-failing-health-check-count",
             timestamp=timestamp,
-            event_supplier=detail_supplier(),
+            event_supplier=detail_supplier(node_names_failing_health_check),
         )
 
     @log_exception(logger, "publish_unhealthy_node_events", catch_exception=Exception, raise_on_error=False)
     def publish_unhealthy_node_events(self, unhealthy_nodes: List[SlurmNode]):
         """Publish events for unhealthy nodes without a backing instance and for nodes that are not responding."""
-
-        def detail_supplier(node_list):
-            yield {
-                "detail": {
-                    "count": len(node_list),
-                    "nodes": self._generate_node_name_list(node_list),
-                }
-            }
-
         timestamp = ClusterEventPublisher.timestamp()
 
         nodes_with_invalid_backing_instance = [
@@ -177,7 +166,7 @@ class ClusterEventPublisher:
             "Number of nodes without a valid backing instance",
             "invalid-backing-instance-count",
             timestamp=timestamp,
-            event_supplier=detail_supplier(nodes_with_invalid_backing_instance),
+            event_supplier=self._node_list_and_count_supplier(nodes_with_invalid_backing_instance),
         )
 
         nodes_not_responding = [node for node in unhealthy_nodes if node.is_down_not_responding()]
@@ -186,7 +175,7 @@ class ClusterEventPublisher:
             "Number of nodes set to DOWN because they are not responding",
             "node-not-responding-down-count",
             timestamp=timestamp,
-            event_supplier=detail_supplier(nodes_not_responding),
+            event_supplier=self._node_list_and_count_supplier(nodes_not_responding),
         )
 
     @log_exception(logger, "publish_bootstrap_failure_events", catch_exception=Exception, raise_on_error=False)
@@ -194,13 +183,14 @@ class ClusterEventPublisher:
         """Publish events for nodes failing to bootstrap."""
         timestamp = ClusterEventPublisher.timestamp()
 
-        self.publish_event(
-            logging.WARNING if bootstrap_failure_nodes else logging.DEBUG,
-            "Number of nodes that failed to bootstrap",
-            "protected-mode-error-count",
-            timestamp=timestamp,
-            event_supplier=self._protected_mode_error_count_supplier(bootstrap_failure_nodes),
-        )
+        for count, detail in self._protected_mode_error_count_supplier(bootstrap_failure_nodes):
+            self.publish_event(
+                logging.WARNING if count else logging.DEBUG,
+                "Number of nodes that failed to bootstrap",
+                "protected-mode-error-count",
+                timestamp=timestamp,
+                detail=detail,
+            )
 
     # Slurm Resume Events
     @log_exception(logger, "publish_node_launch_events", catch_exception=Exception, raise_on_error=False)
@@ -208,13 +198,14 @@ class ClusterEventPublisher:
         """Publish events for nodes that failed to launch from slurm_resume."""
         timestamp = ClusterEventPublisher.timestamp()
 
-        self.publish_event(
-            logging.WARNING if failed_nodes else logging.DEBUG,
-            "Number of nodes that failed to launch",
-            event_type="node-launch-failure-count",
-            timestamp=timestamp,
-            event_supplier=self._get_launch_failure_details(failed_nodes),
-        )
+        for count, error_detail in self._generate_launch_failure_details(failed_nodes):
+            self.publish_event(
+                logging.WARNING if count else logging.DEBUG,
+                "Number of nodes that failed to launch",
+                event_type="node-launch-failure-count",
+                timestamp=timestamp,
+                detail=error_detail,
+            )
 
         self.publish_event(
             logging.DEBUG,
@@ -224,40 +215,49 @@ class ClusterEventPublisher:
             event_supplier=self._flatten_failed_launch_nodes(failed_nodes),
         )
 
-    def _get_launch_failure_details(self, failed_nodes: Dict[str, List[str]]) -> Dict:
+    def _generate_launch_failure_details(self, failed_nodes: Dict[str, List[str]]):
         """
         Build a dictionary based on failure category (e.g. ice-failure).
 
         The elements contain the the number of nodes and the of node names in that category.
         """
-        detail_map = {"other-failures": {"count": 0}}
+        detail_map = {"other-failures": {"count": 0, "error-details": {}}}
         for failure_type in _LAUNCH_FAILURE_GROUPING.values():
-            detail_map.setdefault(failure_type, {"count": 0})
+            detail_map.setdefault(failure_type, {"count": 0, "error-details": {}})
 
-        total_failures = 0
         for error_code, nodes in failed_nodes.items():
-            total_failures += len(nodes)
             failure_type = ClusterEventPublisher._get_failure_type_from_error_code(error_code)
             error_entry = detail_map.get(failure_type)
             error_entry.update(
                 {
                     "count": error_entry.get("count") + len(nodes),
-                    error_code: self._limit_list(list(nodes)),
+                }
+            )
+            error_details = error_entry.get("error-details")
+            error_details.update(
+                {
+                    error_code: {
+                        "count": len(nodes),
+                        "nodes": self._generate_node_name_list(list(nodes)),
+                    }
                 }
             )
 
-        detail_map.update({"total": total_failures})
-
-        yield {
-            "detail": detail_map,
-        }
+        for failure_type, detail in detail_map.items():
+            count = detail.get("count", 0)
+            yield count, {
+                "failure-type": failure_type,
+                "count": count,
+                "error-details": detail.get("error-details", None),
+            }
 
     def _limit_list(self, source_list: List) -> List:
         """Limit lists of nodes to _max_list_size."""
-        return source_list[: self._max_list_size] if self._max_list_size else source_list
+        value = source_list[: self._max_list_size] if self._max_list_size else source_list
+        return value
 
     def _generate_node_name_list(self, node_list):
-        return [{"name": node.name} for node in self._limit_list(node_list)]
+        return [{"name": node.name if isinstance(node, SlurmNode) else node} for node in self._limit_list(node_list)]
 
     def _terminated_instances_supplier(self, terminated_instances):
         terminated_instances = list(terminated_instances)
@@ -277,28 +277,12 @@ class ClusterEventPublisher:
             }
         }
 
-    def _node_count_in_replacement_supplier(self, nodes_in_replacement):
+    def _node_list_and_count_supplier(self, node_list):
+        node_list = list(node_list)
         yield {
             "detail": {
-                "count": len(nodes_in_replacement),
-                "nodes": [{"name": node_name} for node_name in self._limit_list(nodes_in_replacement)],
-            }
-        }
-
-    def _launched_node_count_supplier(self, launched_nodes):
-        launched_nodes = list(launched_nodes)
-        yield {
-            "detail": {
-                "count": len(launched_nodes),
-                "nodes": [{"name": node_name} for node_name in self._limit_list(launched_nodes)],
-            }
-        }
-
-    def _unhealthy_node_count_supplier(self, unhealthy_static_nodes):
-        yield {
-            "detail": {
-                "count": len(unhealthy_static_nodes),
-                "nodes": self._generate_node_name_list(unhealthy_static_nodes),
+                "count": len(node_list),
+                "nodes": self._generate_node_name_list(node_list),
             }
         }
 
@@ -327,23 +311,17 @@ class ClusterEventPublisher:
                 (dynamic_nodes if isinstance(node, DynamicNode) else static_nodes).append(node)
             else:
                 other_nodes.append(node)
-        yield {
-            "detail": {
-                "count": len(dynamic_nodes) + len(static_nodes) + len(other_nodes),
-                "static-replacement-timeout-errors": {
-                    "count": len(static_nodes),
-                    "nodes": self._generate_node_name_list(static_nodes),
-                },
-                "dynamic-resume-timeout-errors": {
-                    "count": len(static_nodes),
-                    "nodes": self._generate_node_name_list(dynamic_nodes),
-                },
-                "other-bootstrap-errors": {
-                    "count": len(other_nodes),
-                    "nodes": self._generate_node_name_list(other_nodes),
-                },
+        for error_type, nodes in [
+            ("static-replacement-timeout-error", static_nodes),
+            ("dynamic-resume-timeout-error", dynamic_nodes),
+            ("other-bootstrap-error", other_nodes),
+        ]:
+            count = len(nodes)
+            yield count, {
+                "failure-type": error_type,
+                "count": count,
+                "nodes": self._generate_node_name_list(nodes),
             }
-        }
 
     @staticmethod
     def _flatten_failed_launch_nodes(failed_nodes: Dict[str, List[str]]):

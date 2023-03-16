@@ -644,27 +644,58 @@ def test_event_publisher_swallows_exceptions(caplog):
             [
                 {
                     "node-launch-failure-count": {
-                        "other-failures": {"count": 0},
-                        "ice-failures": {
-                            "count": 3,
-                            "InsufficientReservedInstanceCapacity": ["queue1-dy-c5xlarge-3"],
-                            "InsufficientHostCapacity": ["queue2-dy-c5large-1", "queue2-dy-c5large-2"],
+                        "failure-type": "ice-failures",
+                        "count": 3,
+                        "error-details": {
+                            "InsufficientReservedInstanceCapacity": {
+                                "count": 1,
+                                "nodes": [{"name": "queue1-dy-c5xlarge-3"}],
+                            },
+                            "InsufficientHostCapacity": {
+                                "count": 2,
+                                "nodes": [{"name": "queue2-dy-c5large-1"}, {"name": "queue2-dy-c5large-2"}],
+                            },
                         },
-                        "vcpu-limit-failures": {"count": 1, "VcpuLimitExceeded": ["queue2-dy-c5large-6"]},
-                        "volume-limit-failures": {
-                            "count": 2,
-                            "VolumeLimitExceeded": ["queue2-dy-c5large-8"],
-                            "InsufficientVolumeCapacity": ["queue2-dy-c5large-9"],
-                        },
-                        "custom-ami-errors": {"count": 1, "InvalidBlockDeviceMapping": ["queue2-dy-c5large-4"]},
-                        "iam-policy-errors": {
-                            "count": 2,
-                            "UnauthorizedOperation": ["queue2-dy-c5large-3"],
-                            "AccessDeniedException": ["queue2-dy-c5large-5"],
-                        },
-                        "total": 9,
                     }
-                }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "vcpu-limit-failures",
+                        "count": 1,
+                        "error-details": {
+                            "VcpuLimitExceeded": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-6"}]}
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "volume-limit-failures",
+                        "count": 2,
+                        "error-details": {
+                            "VolumeLimitExceeded": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-8"}]},
+                            "InsufficientVolumeCapacity": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-9"}]},
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "custom-ami-errors",
+                        "count": 1,
+                        "error-details": {
+                            "InvalidBlockDeviceMapping": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-4"}]}
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "iam-policy-errors",
+                        "count": 2,
+                        "error-details": {
+                            "UnauthorizedOperation": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-3"}]},
+                            "AccessDeniedException": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-5"}]},
+                        },
+                    }
+                },
             ],
             ["ERROR", "WARNING", "INFO"],
             None,
@@ -725,77 +756,22 @@ def test_event_publisher_swallows_exceptions(caplog):
                     "queue2",
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                 ),
-                StaticNode(
-                    "queue2-dy-c5large-3",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:UnauthorizedOperation)Error",
-                ),
-                StaticNode(
-                    "queue2-dy-c5large-4",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:InvalidBlockDeviceMapping)Error",
-                ),
-                StaticNode(
-                    "queue2-dy-c5large-5",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:AccessDeniedException)Error",
-                ),
-                StaticNode(
-                    "queue2-dy-c5large-6",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:VcpuLimitExceeded)Error",
-                ),
-                StaticNode(
-                    "queue2-dy-c5large-8",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:VolumeLimitExceeded)Error",
-                ),
-                StaticNode(
-                    "queue2-dy-c5large-9",
-                    "nodeip",
-                    "nodehostname",
-                    "DOWN+CLOUD",
-                    "queue2",
-                    "(Code:InsufficientVolumeCapacity)Error",
-                ),
             ],
             [
                 {
                     "node-launch-failure-count": {
-                        "other-failures": {"count": 0},
-                        "ice-failures": {
-                            "count": 6,
-                            "InsufficientReservedInstanceCapacity": ["queue1-dy-c5xlarge-3"],
-                            "InsufficientHostCapacity": ["queue2-dy-c5large-1", "queue2-dy-c5large-2"],
+                        "failure-type": "ice-failures",
+                        "count": 6,
+                        "error-details": {
+                            "InsufficientReservedInstanceCapacity": {
+                                "count": 1,
+                                "nodes": [{"name": "queue1-dy-c5xlarge-3"}],
+                            },
+                            "InsufficientHostCapacity": {
+                                "count": 5,
+                                "nodes": [{"name": "queue2-dy-c5large-1"}, {"name": "queue2-dy-c5large-2"}],
+                            },
                         },
-                        "vcpu-limit-failures": {"count": 1, "VcpuLimitExceeded": ["queue2-dy-c5large-6"]},
-                        "volume-limit-failures": {
-                            "count": 2,
-                            "VolumeLimitExceeded": ["queue2-dy-c5large-8"],
-                            "InsufficientVolumeCapacity": ["queue2-dy-c5large-9"],
-                        },
-                        "custom-ami-errors": {"count": 1, "InvalidBlockDeviceMapping": ["queue2-dy-c5large-4"]},
-                        "iam-policy-errors": {
-                            "count": 2,
-                            "UnauthorizedOperation": ["queue2-dy-c5large-3"],
-                            "AccessDeniedException": ["queue2-dy-c5large-5"],
-                        },
-                        "total": 12,
                     }
                 }
             ],
@@ -821,17 +797,20 @@ def test_event_publisher_swallows_exceptions(caplog):
                 ),
             ],
             [
+                {"node-launch-failure-count": {"failure-type": "other-failures", "count": 0, "error-details": {}}},
+                {"node-launch-failure-count": {"failure-type": "ice-failures", "count": 0, "error-details": {}}},
+                {"node-launch-failure-count": {"failure-type": "vcpu-limit-failures", "count": 0, "error-details": {}}},
                 {
                     "node-launch-failure-count": {
-                        "other-failures": {"count": 0},
-                        "ice-failures": {"count": 0},
-                        "vcpu-limit-failures": {"count": 0},
-                        "volume-limit-failures": {"count": 1, "InsufficientVolumeCapacity": ["queue2-dy-c5large-1"]},
-                        "custom-ami-errors": {"count": 0},
-                        "iam-policy-errors": {"count": 0},
-                        "total": 1,
+                        "failure-type": "volume-limit-failures",
+                        "count": 1,
+                        "error-details": {
+                            "InsufficientVolumeCapacity": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-1"}]}
+                        },
                     }
                 },
+                {"node-launch-failure-count": {"failure-type": "custom-ami-errors", "count": 0, "error-details": {}}},
+                {"node-launch-failure-count": {"failure-type": "iam-policy-errors", "count": 0, "error-details": {}}},
                 {
                     "node-launch-failure": {
                         "node": {
@@ -996,7 +975,7 @@ def test_publish_unhealthy_static_node_events(test_nodes, expected_details, leve
             [
                 {
                     "nodes-failing-health-check-count": {
-                        "health-check-type": "ec2_health_check",
+                        "failure-type": "ec2_health_check",
                         "count": 2,
                         "nodes": [{"name": "node-a-1"}, {"name": "node-a-2"}],
                     }
@@ -1004,6 +983,23 @@ def test_publish_unhealthy_static_node_events(test_nodes, expected_details, leve
             ],
             ["ERROR", "WARNING", "INFO"],
         ),
+        (
+            ClusterManager.HealthCheckTypes.ec2_health,
+            [],
+            [],
+            ["ERROR", "WARNING", "INFO"],
+        ),
+        (
+            ClusterManager.HealthCheckTypes.ec2_health,
+            [],
+            [{"nodes-failing-health-check-count": {"failure-type": "ec2_health_check", "count": 0, "nodes": []}}],
+            [],
+        ),
+    ],
+    ids=[
+        "health-check-failures",
+        "no-failures",
+        "no-failures-debug",
     ],
 )
 def test_publish_nodes_failing_health_check_events(health_check_type, failed_nodes, expected_details, level_filter):
@@ -1242,15 +1238,25 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
             [
                 {
                     "protected-mode-error-count": {
-                        "count": 4,
-                        "static-replacement-timeout-errors": {"count": 1, "nodes": [{"name": "queue2-st-c5large-2"}]},
-                        "dynamic-resume-timeout-errors": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-1"}]},
-                        "other-bootstrap-errors": {
-                            "count": 2,
-                            "nodes": [{"name": "queue2-st-c5large-3"}, {"name": "queue2-dy-c5large-4"}],
-                        },
+                        "failure-type": "static-replacement-timeout-error",
+                        "count": 1,
+                        "nodes": [{"name": "queue2-st-c5large-2"}],
                     }
-                }
+                },
+                {
+                    "protected-mode-error-count": {
+                        "failure-type": "dynamic-resume-timeout-error",
+                        "count": 1,
+                        "nodes": [{"name": "queue2-dy-c5large-1"}],
+                    }
+                },
+                {
+                    "protected-mode-error-count": {
+                        "failure-type": "other-bootstrap-error",
+                        "count": 2,
+                        "nodes": [{"name": "queue2-st-c5large-3"}, {"name": "queue2-dy-c5large-4"}],
+                    }
+                },
             ],
             ["ERROR", "WARNING", "INFO"],
         ),
@@ -1293,18 +1299,14 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
             [
                 {
                     "protected-mode-error-count": {
+                        "failure-type": "other-bootstrap-error",
                         "count": 4,
-                        "static-replacement-timeout-errors": {"count": 0, "nodes": []},
-                        "dynamic-resume-timeout-errors": {"count": 0, "nodes": []},
-                        "other-bootstrap-errors": {
-                            "count": 4,
-                            "nodes": [
-                                {"name": "queue2-dy-c5large-1"},
-                                {"name": "queue2-st-c5large-2"},
-                                {"name": "queue2-st-c5large-3"},
-                                {"name": "queue2-dy-c5large-4"},
-                            ],
-                        },
+                        "nodes": [
+                            {"name": "queue2-dy-c5large-1"},
+                            {"name": "queue2-st-c5large-2"},
+                            {"name": "queue2-st-c5large-3"},
+                            {"name": "queue2-dy-c5large-4"},
+                        ],
                     }
                 }
             ],
@@ -1317,22 +1319,29 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
             ["ERROR", "WARNING", "INFO"],
         ),
         (
+            [],
             [],
             [],
             [
                 {
                     "protected-mode-error-count": {
+                        "failure-type": "static-replacement-timeout-error",
                         "count": 0,
-                        "static-replacement-timeout-errors": {"count": 0, "nodes": []},
-                        "dynamic-resume-timeout-errors": {"count": 0, "nodes": []},
-                        "other-bootstrap-errors": {"count": 0, "nodes": []},
+                        "nodes": [],
                     }
-                }
+                },
+                {
+                    "protected-mode-error-count": {
+                        "failure-type": "dynamic-resume-timeout-error",
+                        "count": 0,
+                        "nodes": [],
+                    }
+                },
+                {"protected-mode-error-count": {"failure-type": "other-bootstrap-error", "count": 0, "nodes": []}},
             ],
-            [],
         ),
     ],
-    ids=["With protect mode errors", "No protect mode errors", "No Errors", "No Errors debug output"],
+    ids=["With protected mode errors", "No protected mode errors", "No Errors", "No Errors debug output"],
 )
 def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, expected_details, level_filter):
     received_events = []
@@ -1426,39 +1435,92 @@ def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, ex
             [
                 {
                     "node-launch-failure-count": {
-                        "other-failures": {
-                            "count": 5,
-                            "Error1": ["node-a-1", "node-a-2", "node-a-3"],
-                            "Error2": ["node-b-1", "node-b-2"],
+                        "failure-type": "other-failures",
+                        "count": 5,
+                        "error-details": {
+                            "Error1": {
+                                "count": 3,
+                                "nodes": [{"name": "node-a-1"}, {"name": "node-a-2"}, {"name": "node-a-3"}],
+                            },
+                            "Error2": {"count": 2, "nodes": [{"name": "node-b-1"}, {"name": "node-b-2"}]},
                         },
-                        "ice-failures": {
-                            "count": 17,
-                            "InsufficientInstanceCapacity": ["ice-a-1", "ice-a-2", "ice-a-3"],
-                            "InsufficientHostCapacity": ["ice-b-1", "ice-b-2"],
-                            "LimitedInstanceCapacity": ["ice-g-1", "ice-g-2"],
-                            "InsufficientReservedInstanceCapacity": ["ice-c-1", "ice-c-2", "ice-c-3"],
-                            "MaxSpotInstanceCountExceeded": ["ice-d-1", "ice-d-2"],
-                            "Unsupported": ["ice-e-1", "ice-e-2", "ice-e-3"],
-                            "SpotMaxPriceTooLow": ["ice-f-1", "ice-f-2"],
-                        },
-                        "vcpu-limit-failures": {"count": 1, "VcpuLimitExceeded": ["vcpu-g-1"]},
-                        "volume-limit-failures": {
-                            "count": 5,
-                            "VolumeLimitExceeded": ["vle-h-1", "vle-h-2"],
-                            "InsufficientVolumeCapacity": ["ivc-i-1", "ivc-i-2", "ivc-i-3"],
-                        },
-                        "custom-ami-errors": {
-                            "count": 3,
-                            "InvalidBlockDeviceMapping": ["ibdm-j-1", "ibdm-j-2", "ibdm-j-3"],
-                        },
-                        "iam-policy-errors": {
-                            "count": 3,
-                            "UnauthorizedOperation": ["iam-k-1", "iam-k-2"],
-                            "AccessDeniedException": ["iam-l-1"],
-                        },
-                        "total": 34,
                     }
-                }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "ice-failures",
+                        "count": 17,
+                        "error-details": {
+                            "InsufficientInstanceCapacity": {
+                                "count": 3,
+                                "nodes": [{"name": "ice-a-1"}, {"name": "ice-a-2"}, {"name": "ice-a-3"}],
+                            },
+                            "InsufficientHostCapacity": {
+                                "count": 2,
+                                "nodes": [{"name": "ice-b-1"}, {"name": "ice-b-2"}],
+                            },
+                            "LimitedInstanceCapacity": {
+                                "count": 2,
+                                "nodes": [{"name": "ice-g-1"}, {"name": "ice-g-2"}],
+                            },
+                            "InsufficientReservedInstanceCapacity": {
+                                "count": 3,
+                                "nodes": [{"name": "ice-c-1"}, {"name": "ice-c-2"}, {"name": "ice-c-3"}],
+                            },
+                            "MaxSpotInstanceCountExceeded": {
+                                "count": 2,
+                                "nodes": [{"name": "ice-d-1"}, {"name": "ice-d-2"}],
+                            },
+                            "Unsupported": {
+                                "count": 3,
+                                "nodes": [{"name": "ice-e-1"}, {"name": "ice-e-2"}, {"name": "ice-e-3"}],
+                            },
+                            "SpotMaxPriceTooLow": {"count": 2, "nodes": [{"name": "ice-f-1"}, {"name": "ice-f-2"}]},
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "vcpu-limit-failures",
+                        "count": 1,
+                        "error-details": {"VcpuLimitExceeded": {"count": 1, "nodes": [{"name": "vcpu-g-1"}]}},
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "volume-limit-failures",
+                        "count": 5,
+                        "error-details": {
+                            "VolumeLimitExceeded": {"count": 2, "nodes": [{"name": "vle-h-1"}, {"name": "vle-h-2"}]},
+                            "InsufficientVolumeCapacity": {
+                                "count": 3,
+                                "nodes": [{"name": "ivc-i-1"}, {"name": "ivc-i-2"}, {"name": "ivc-i-3"}],
+                            },
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "custom-ami-errors",
+                        "count": 3,
+                        "error-details": {
+                            "InvalidBlockDeviceMapping": {
+                                "count": 3,
+                                "nodes": [{"name": "ibdm-j-1"}, {"name": "ibdm-j-2"}, {"name": "ibdm-j-3"}],
+                            }
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "iam-policy-errors",
+                        "count": 3,
+                        "error-details": {
+                            "UnauthorizedOperation": {"count": 2, "nodes": [{"name": "iam-k-1"}, {"name": "iam-k-2"}]},
+                            "AccessDeniedException": {"count": 1, "nodes": [{"name": "iam-l-1"}]},
+                        },
+                    }
+                },
             ],
             ["ERROR", "WARNING", "INFO"],
         ),
@@ -1474,17 +1536,24 @@ def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, ex
                 ],
             },
             [
+                {"node-launch-failure-count": {"failure-type": "other-failures", "count": 0, "error-details": {}}},
                 {
                     "node-launch-failure-count": {
-                        "other-failures": {"count": 0},
-                        "ice-failures": {"count": 1, "LimitedInstanceCapacity": ["ice-g-1"]},
-                        "vcpu-limit-failures": {"count": 0},
-                        "volume-limit-failures": {"count": 0},
-                        "custom-ami-errors": {"count": 0},
-                        "iam-policy-errors": {"count": 0},
-                        "total": 1,
+                        "failure-type": "ice-failures",
+                        "count": 1,
+                        "error-details": {"LimitedInstanceCapacity": {"count": 1, "nodes": [{"name": "ice-g-1"}]}},
                     }
                 },
+                {"node-launch-failure-count": {"failure-type": "vcpu-limit-failures", "count": 0, "error-details": {}}},
+                {
+                    "node-launch-failure-count": {
+                        "failure-type": "volume-limit-failures",
+                        "count": 0,
+                        "error-details": {},
+                    }
+                },
+                {"node-launch-failure-count": {"failure-type": "custom-ami-errors", "count": 0, "error-details": {}}},
+                {"node-launch-failure-count": {"failure-type": "iam-policy-errors", "count": 0, "error-details": {}}},
                 {
                     "node-launch-failure": {
                         "error-code": "LimitedInstanceCapacity",
@@ -1495,6 +1564,11 @@ def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, ex
             ],
             [],
         ),
+    ],
+    ids=[
+        "all-errors",
+        "no-errors",
+        "debug-level",
     ],
 )
 def test_publish_node_launch_events(failed_nodes, expected_details, level_filter):
