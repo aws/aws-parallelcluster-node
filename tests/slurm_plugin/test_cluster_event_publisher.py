@@ -644,6 +644,16 @@ def test_event_publisher_swallows_exceptions(caplog):
             [
                 {
                     "node-launch-failure-count": {
+                        "failure-type": "other-failures",
+                        "count": 2,
+                        "error-details": {
+                            "InvalidBlockDeviceMapping": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-4"}]},
+                            "AccessDeniedException": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-5"}]},
+                        },
+                    }
+                },
+                {
+                    "node-launch-failure-count": {
                         "failure-type": "ice-failures",
                         "count": 3,
                         "error-details": {
@@ -679,20 +689,10 @@ def test_event_publisher_swallows_exceptions(caplog):
                 },
                 {
                     "node-launch-failure-count": {
-                        "failure-type": "custom-ami-errors",
+                        "failure-type": "iam-policy-errors",
                         "count": 1,
                         "error-details": {
-                            "InvalidBlockDeviceMapping": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-4"}]}
-                        },
-                    }
-                },
-                {
-                    "node-launch-failure-count": {
-                        "failure-type": "iam-policy-errors",
-                        "count": 2,
-                        "error-details": {
-                            "UnauthorizedOperation": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-3"}]},
-                            "AccessDeniedException": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-5"}]},
+                            "UnauthorizedOperation": {"count": 1, "nodes": [{"name": "queue2-dy-c5large-3"}]}
                         },
                     }
                 },
@@ -809,7 +809,6 @@ def test_event_publisher_swallows_exceptions(caplog):
                         },
                     }
                 },
-                {"node-launch-failure-count": {"failure-type": "custom-ami-errors", "count": 0, "error-details": {}}},
                 {"node-launch-failure-count": {"failure-type": "iam-policy-errors", "count": 0, "error-details": {}}},
                 {
                     "node-launch-failure": {
@@ -1436,13 +1435,18 @@ def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, ex
                 {
                     "node-launch-failure-count": {
                         "failure-type": "other-failures",
-                        "count": 5,
+                        "count": 9,
                         "error-details": {
                             "Error1": {
                                 "count": 3,
                                 "nodes": [{"name": "node-a-1"}, {"name": "node-a-2"}, {"name": "node-a-3"}],
                             },
                             "Error2": {"count": 2, "nodes": [{"name": "node-b-1"}, {"name": "node-b-2"}]},
+                            "InvalidBlockDeviceMapping": {
+                                "count": 3,
+                                "nodes": [{"name": "ibdm-j-1"}, {"name": "ibdm-j-2"}, {"name": "ibdm-j-3"}],
+                            },
+                            "AccessDeniedException": {"count": 1, "nodes": [{"name": "iam-l-1"}]},
                         },
                     }
                 },
@@ -1501,23 +1505,10 @@ def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, ex
                 },
                 {
                     "node-launch-failure-count": {
-                        "failure-type": "custom-ami-errors",
-                        "count": 3,
-                        "error-details": {
-                            "InvalidBlockDeviceMapping": {
-                                "count": 3,
-                                "nodes": [{"name": "ibdm-j-1"}, {"name": "ibdm-j-2"}, {"name": "ibdm-j-3"}],
-                            }
-                        },
-                    }
-                },
-                {
-                    "node-launch-failure-count": {
                         "failure-type": "iam-policy-errors",
-                        "count": 3,
+                        "count": 2,
                         "error-details": {
-                            "UnauthorizedOperation": {"count": 2, "nodes": [{"name": "iam-k-1"}, {"name": "iam-k-2"}]},
-                            "AccessDeniedException": {"count": 1, "nodes": [{"name": "iam-l-1"}]},
+                            "UnauthorizedOperation": {"count": 2, "nodes": [{"name": "iam-k-1"}, {"name": "iam-k-2"}]}
                         },
                     }
                 },
@@ -1552,7 +1543,6 @@ def test_publish_bootstrap_failure_events(failed_nodes, replacement_timeouts, ex
                         "error-details": {},
                     }
                 },
-                {"node-launch-failure-count": {"failure-type": "custom-ami-errors", "count": 0, "error-details": {}}},
                 {"node-launch-failure-count": {"failure-type": "iam-policy-errors", "count": 0, "error-details": {}}},
                 {
                     "node-launch-failure": {

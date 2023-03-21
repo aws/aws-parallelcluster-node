@@ -27,8 +27,7 @@ _LAUNCH_FAILURE_GROUPING = {
     **{failure: "ice-failures" for failure in [*SlurmNode.EC2_ICE_ERROR_CODES, "LimitedInstanceCapacity"]},
     **{failure: "vcpu-limit-failures" for failure in ["VcpuLimitExceeded"]},
     **{failure: "volume-limit-failures" for failure in ["VolumeLimitExceeded", "InsufficientVolumeCapacity"]},
-    **{failure: "custom-ami-errors" for failure in ["InvalidBlockDeviceMapping"]},
-    **{failure: "iam-policy-errors" for failure in ["UnauthorizedOperation", "AccessDeniedException"]},
+    **{failure: "iam-policy-errors" for failure in ["UnauthorizedOperation"]},
 }
 
 
