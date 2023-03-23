@@ -20,11 +20,13 @@ from logging.config import fileConfig
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
 from common.utils import read_json
+from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import is_clustermgtd_heartbeat_valid, print_with_count
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
+event_logger = log.getChild("events")
 
 
 class SlurmResumeConfig:
@@ -120,6 +122,7 @@ class SlurmResumeConfig:
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
         self.logging_config = config.get("slurm_resume", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
+        self.head_node_instance_id = config.get("slurm_resume", "instance_id", fallback="unknown")
 
         log.info(self.__repr__())
 
@@ -199,6 +202,15 @@ def _resume(arg_nodes, resume_config):
         )
         for error_code, node_list in instance_manager.failed_nodes.items():
             _handle_failed_nodes(node_list, reason=f"(Code:{error_code})Failure when resuming nodes")
+
+        event_publisher = ClusterEventPublisher.create_with_default_publisher(
+            event_logger,
+            resume_config.cluster_name,
+            "HeadNode",
+            "slurm-resume",
+            resume_config.head_node_instance_id,
+        )
+        event_publisher.publish_node_launch_events(instance_manager.failed_nodes)
 
 
 def main():

@@ -94,11 +94,14 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
+    SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_STATE = {"DOWN", "CLOUD", "NOT_RESPONDING"}
     # Due to a bug in Slurm a powered down node can enter IDLE+CLOUD+POWER_DOWN+POWERED_DOWN state
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
     SLURM_SCONTROL_INVALID_REGISTRATION_STATE = "INVALID_REG"
+
+    SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_REASON = re.compile(r"Not responding \[slurm@.+\]")
 
     EC2_ICE_ERROR_CODES = {
         "InsufficientInstanceCapacity",
@@ -217,6 +220,15 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if node resume timeout expires."""
         return self.states == self.SLURM_SCONTROL_RESUME_FAILED_STATE
 
+    def is_down_not_responding(self):
+        """Check if node was set to down by Slurm because it was not responding."""
+        return (
+            self.states == self.SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_STATE
+            and self.SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_REASON.match(self.reason)
+            if self.reason
+            else False
+        )
+
     def is_powering_up_idle(self):
         """Check if node is in IDLE# state."""
         return self.SLURM_SCONTROL_IDLE_STATE in self.states and self.is_powering_up()
@@ -264,6 +276,11 @@ class SlurmNode(metaclass=ABCMeta):
         Bootstrap error that causes instance to self terminate.
         Bootstrap error that prevents instance from joining cluster but does not cause self termination.
         """
+        pass
+
+    @abstractmethod
+    def is_bootstrap_timeout(self):
+        """Check if slurm node timed out while waiting for backing instance to bootstrap."""
         pass
 
     @abstractmethod
@@ -393,7 +410,7 @@ class StaticNode(SlurmNode):
             )
             return True
             # Replacement timeout expires for node in replacement
-        elif self._is_replacement_timeout:
+        elif self.is_bootstrap_timeout():
             logger.warning(
                 "Node bootstrap error: Replacement timeout expires for node %s in replacement, node state %s:",
                 self,
@@ -408,6 +425,10 @@ class StaticNode(SlurmNode):
             )
             return True
         return False
+
+    def is_bootstrap_timeout(self):
+        """Check if slurm node timed out waiting for backing instance to bootstrap."""
+        return self._is_replacement_timeout
 
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""
@@ -461,7 +482,7 @@ class DynamicNode(SlurmNode):
             )
             return True
         # Dynamic node in DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING state
-        elif self.is_resume_failed() and self.is_nodeaddr_set():
+        elif self.is_bootstrap_timeout():
             # We need to check if nodeaddr is set to avoid counting powering up nodes as bootstrap failure nodes during
             # cluster start/stop.
             logger.warning(
@@ -487,6 +508,10 @@ class DynamicNode(SlurmNode):
             )
             return True
         return False
+
+    def is_bootstrap_timeout(self):
+        """Check if slurm node timed out waiting for backing instance to bootstrap."""
+        return self.is_resume_failed() and self.is_nodeaddr_set()
 
     def needs_reset_when_inactive(self):
         """Check if the node need to be reset if node is inactive."""

@@ -333,6 +333,7 @@ def test_resume_launch(
         hosted_zone=None,
         dns_domain=None,
         use_private_hostname=False,
+        head_node_instance_id="i-headnode",
     )
     mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", autospec=True, return_value=is_heartbeat_valid)
     mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", autospec=True)
