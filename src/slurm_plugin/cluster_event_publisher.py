@@ -534,9 +534,10 @@ class ClusterEventPublisher:
 
         This function also supports layering of event properties through the use of a ChainMap. This way, more specific
         property values can override the more general property values. The priority order from least to most is:
-        global_args, named parameters from the outer function (`_get_event_publisher`), named parameters from the inner
-        function (`callable_event_publisher`), `kwargs` from the inner function (`callable_event_publisher`), and
-        finally, the specific per element values from `event_supplier`, if provided.
+        `global_args`, the `default_properties' dict formed from named parameters from the outer function
+        (`_get_event_publisher`) and the inner function (`callable_event_publisher`), `kwargs` from the inner function
+        (`callable_event_publisher`), and finally, the specific per event property values from `event_supplier`,
+        if provided.
         """
 
         def callable_event_publisher(
