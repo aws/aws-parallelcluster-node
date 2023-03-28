@@ -13,7 +13,7 @@ import logging
 import re
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 from common.utils import time_is_up
@@ -314,6 +314,9 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if the node need to be reset if node is inactive."""
         pass
 
+    def idle_time(self, current_time: datetime) -> timedelta:
+        return current_time - self.lastbusytime if self.lastbusytime else 0
+
     def _parse_error_code(self):
         """Parse RunInstance error code from node reason."""
         if self.reason and self.reason.startswith("(Code:"):
@@ -354,7 +357,15 @@ class StaticNode(SlurmNode):
     ):
         """Initialize slurm node with attributes."""
         super().__init__(
-            name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime, lastbusytime
+            name,
+            nodeaddr,
+            nodehostname,
+            state,
+            partitions,
+            reason,
+            instance,
+            slurmdstarttime,
+            lastbusytime=lastbusytime,
         )
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
@@ -463,7 +474,15 @@ class DynamicNode(SlurmNode):
     ):
         """Initialize slurm node with attributes."""
         super().__init__(
-            name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime, lastbusytime
+            name,
+            nodeaddr,
+            nodehostname,
+            state,
+            partitions,
+            reason,
+            instance,
+            slurmdstarttime,
+            lastbusytime=lastbusytime,
         )
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
