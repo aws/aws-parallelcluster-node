@@ -13,7 +13,7 @@ import logging
 import re
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 
 from common.utils import time_is_up
@@ -314,8 +314,8 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if the node need to be reset if node is inactive."""
         pass
 
-    def idle_time(self, current_time: datetime) -> timedelta:
-        return current_time - self.lastbusytime if self.lastbusytime else 0
+    def idle_time(self, current_time: datetime) -> float:
+        return (current_time - self.lastbusytime).total_seconds() if self.lastbusytime else 0
 
     def _parse_error_code(self):
         """Parse RunInstance error code from node reason."""

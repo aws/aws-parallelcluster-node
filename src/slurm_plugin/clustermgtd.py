@@ -517,7 +517,7 @@ class ClusterManager:
                 log.debug("Current cluster instances in EC2: %s", cluster_instances)
                 partitions = list(partitions_name_map.values())
                 self._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
-                self._event_publisher.publish_compute_node_events(nodes)
+                self._event_publisher.publish_compute_node_events(nodes, cluster_instances)
                 # Handle inactive partition and terminate backing instances
                 self._clean_up_inactive_partition(partitions)
                 # Perform health check actions

@@ -16,7 +16,7 @@ import sys
 import traceback
 from collections import ChainMap
 from datetime import datetime, timezone
-from typing import Callable, Dict, Iterable, List
+from typing import Callable, Dict, Iterable, Iterator, List, Union
 
 from slurm_plugin.common import log_exception
 from slurm_plugin.slurm_resources import DynamicNode, SlurmNode, StaticNode
@@ -34,6 +34,8 @@ _LAUNCH_FAILURE_GROUPING = {
         ]
     },
 }
+
+_IDLE_STATE = {"IDLE"}
 
 NODE_LAUNCH_FAILURE_COUNT = {
     "message": "Number of static nodes that failed to launch a backing instance after node maintenance",
@@ -87,6 +89,14 @@ COMPUTE_NODE_IDLE_TIME = {
     "message": "Longest idle time",
     "event_type": "compute-node-idle-time",
 }
+COMPUTE_NODE_STATE_COUNT = {
+    "message": "Count of nodes by Slurm state",
+    "event_type": "compute-node-state-count",
+}
+CLUSTER_INSTANCE_COUNT = {
+    "message": "Count of EC2 instances backing the cluster compute fleet",
+    "event_type": "cluster-instance-count",
+}
 
 
 class ClusterEventPublisher:
@@ -101,13 +111,12 @@ class ClusterEventPublisher:
         return self._publish_event
 
     @staticmethod
-    def current_time():
-        current_time = datetime.now(timezone.utc)
-        return current_time, current_time.isoformat(timespec="milliseconds")
+    def current_time() -> datetime:
+        return datetime.now(timezone.utc)
 
     @staticmethod
-    def timestamp():
-        return ClusterEventPublisher.current_time()[1]
+    def timestamp() -> str:
+        return ClusterEventPublisher.current_time().isoformat(timespec="milliseconds")
 
     @staticmethod
     def create_with_default_publisher(
@@ -354,32 +363,88 @@ class ClusterEventPublisher:
                 detail=detail,
             )
 
-    # @log_exception(logger, "publish_compute_node_events", catch_exception=Exception, raise_on_error=False)
-    def publish_compute_node_events(self, compute_nodes: List[SlurmNode]):
+    # Example Event
+    # {
+    #     "datetime": "2023-04-03T18:10:13.089+00:00",
+    #     "version": 0,
+    #     "scheduler": "slurm",
+    #     "cluster-name": "integ-tests-9hbu2op3liukbqqz-develop",
+    #     "node-role": "HeadNode",
+    #     "component": "clustermgtd",
+    #     "level": "INFO",
+    #     "instance-id": "i-04886f8b56e5967ee",
+    #     "event-type": "compute-node-idle-time",
+    #     "message": "Longest idle time",
+    #     "detail": {
+    #         "node-type": "dynamic",
+    #         "longest-idle-time": 413.08936,
+    #         "longest-idle-node": {
+    #             "name": "queue-1-dy-compute-a-1",
+    #             "type": "dynamic",
+    #             "address": "192.168.105.39",
+    #             "hostname": "queue-1-dy-compute-a-1",
+    #             "state-string": "IDLE+CLOUD",
+    #             "state": "IDLE",
+    #             "state-flags": [
+    #                 "CLOUD"
+    #             ],
+    #             "instance": {
+    #                 "id": "i-0acb38a67ddf10528",
+    #                 "private-ip": "192.168.105.39",
+    #                 "hostname": "ip-192-168-105-39",
+    #                 "launch-time": "2023-04-03T17:55:55.000+00:00"
+    #             },
+    #             "partitions": [
+    #                 "queue-1"
+    #             ],
+    #             "queue-name": "queue-1",
+    #             "compute-resource": "compute-a",
+    #             "last-busy-time": "2023-04-03T18:03:20.000+00:00",
+    #             "slurm-started-time": "2023-04-03T17:57:48.000+00:00"
+    #         },
+    #         "count": 8
+    #     }
+    # }
+    @log_exception(logger, "publish_compute_node_events", catch_exception=Exception, raise_on_error=False)
+    def publish_compute_node_events(self, compute_nodes: List[SlurmNode], cluster_instances: List[any]):
         """Publish events for compute fleet nodes."""
-        current_time, timestamp = ClusterEventPublisher.current_time()
+        current_time = ClusterEventPublisher.current_time()
+        timestamp = current_time.isoformat(timespec="milliseconds")
 
         static_nodes = []
         dynamic_nodes = []
         for node in compute_nodes:
-            if node.lastbusytime:
+            if self._is_idle_node(node):
                 (static_nodes if isinstance(node, StaticNode) else dynamic_nodes).append(node)
-
-        max_dynamic_node = max(
-            dynamic_nodes, default=None, key=lambda compute_node: compute_node.idle_time(current_time)
-        )
-        max_static_node = max(static_nodes, default=None, key=lambda compute_node: compute_node.idle_time(current_time))
 
         self.publish_event(
             logging.INFO if dynamic_nodes else logging.DEBUG,
             **COMPUTE_NODE_IDLE_TIME,
-            event_supplier=self._idle_node_suppler("dynamic", current_time, max_dynamic_node, dynamic_nodes),
+            timestamp=timestamp,
+            event_supplier=self._idle_node_suppler("dynamic", current_time, dynamic_nodes),
         )
 
         self.publish_event(
-            logging.DEBUG,
+            logging.INFO if static_nodes else logging.DEBUG,
             **COMPUTE_NODE_IDLE_TIME,
-            event_supplier=self._idle_node_suppler("static", current_time, max_static_node, static_nodes),
+            timestamp=timestamp,
+            event_supplier=self._idle_node_suppler("static", current_time, static_nodes),
+        )
+
+        self.publish_event(
+            logging.INFO,
+            **COMPUTE_NODE_STATE_COUNT,
+            timestamp=timestamp,
+            event_supplier=self._node_state_count_supplier(compute_nodes),
+        )
+
+        self.publish_event(
+            logging.INFO if cluster_instances else logging.DEBUG,
+            **CLUSTER_INSTANCE_COUNT,
+            timestamp=timestamp,
+            detail={
+                "count": len(cluster_instances) if cluster_instances else 0,
+            },
         )
 
         self.publish_event(
@@ -434,7 +499,7 @@ class ClusterEventPublisher:
             event_supplier=self._flatten_failed_launch_nodes(failed_nodes),
         )
 
-    def _generate_launch_failure_details(self, failed_nodes: Dict[str, List[str]]):
+    def _generate_launch_failure_details(self, failed_nodes: Dict[str, List[str]]) -> Iterator:
         """
         Build a dictionary based on failure category (e.g. ice-failure).
 
@@ -475,10 +540,10 @@ class ClusterEventPublisher:
         value = source_list[: self._max_list_size] if self._max_list_size else source_list
         return value
 
-    def _generate_node_name_list(self, node_list):
+    def _generate_node_name_list(self, node_list: List[Union[SlurmNode, str]]) -> List[Dict[str, str]]:
         return [{"name": node.name if isinstance(node, SlurmNode) else node} for node in self._limit_list(node_list)]
 
-    def _terminated_instances_supplier(self, terminated_instances):
+    def _terminated_instances_supplier(self, terminated_instances: Iterable[SlurmNode]) -> Iterator:
         terminated_instances = list(terminated_instances)
         yield {
             "detail": {
@@ -496,7 +561,7 @@ class ClusterEventPublisher:
             }
         }
 
-    def _node_list_and_count_supplier(self, node_list):
+    def _node_list_and_count_supplier(self, node_list: Iterable[Union[SlurmNode, str]]) -> Iterator:
         node_list = list(node_list)
         yield {
             "detail": {
@@ -505,12 +570,12 @@ class ClusterEventPublisher:
             }
         }
 
-    def _unhealthy_node_supplier(self, unhealthy_static_nodes):
+    def _unhealthy_node_supplier(self, unhealthy_static_nodes: List[SlurmNode]) -> Iterator:
         for node in self._limit_list(unhealthy_static_nodes):
             yield {"detail": {"node": ClusterEventPublisher._describe_node(node)}}
 
     @staticmethod
-    def _failed_node_supplier(unhealthy_static_nodes, failed_nodes):
+    def _failed_node_supplier(unhealthy_static_nodes: List[SlurmNode], failed_nodes: Dict[str, List[str]]) -> Iterator:
         for error_code, failed_node_list in failed_nodes.items():
             for node in unhealthy_static_nodes:
                 if node.name in failed_node_list:
@@ -522,7 +587,7 @@ class ClusterEventPublisher:
                         }
                     }
 
-    def _protected_mode_error_count_supplier(self, bootstrap_failure_nodes):
+    def _protected_mode_error_count_supplier(self, bootstrap_failure_nodes: List[SlurmNode]) -> Iterator:
         dynamic_nodes = []
         static_nodes = []
         other_nodes = []
@@ -543,21 +608,31 @@ class ClusterEventPublisher:
                 "nodes": self._generate_node_name_list(nodes),
             }
 
-    def _idle_node_suppler(
-        self, node_type: str, current_time: datetime, max_idle_node: SlurmNode, idle_nodes: List[SlurmNode]
-    ):
+    def _node_state_count_supplier(self, node_list: List[SlurmNode]) -> Iterator:
+        node_counts = {}
+        for node in node_list:
+            node_counts[node.state_string] = node_counts.get(node.state_string, 0) + 1
+        for state, count in node_counts.items():
+            yield {
+                "detail": {
+                    "node-state": state,
+                    "count": count,
+                }
+            }
+
+    def _idle_node_suppler(self, node_type: str, current_time: datetime, idle_nodes: List[SlurmNode]):
+        longest_idle_node = max(idle_nodes, key=lambda node: node.idle_time(current_time))
         yield {
             "detail": {
                 "node-type": node_type,
-                "longest-idle-time": max_idle_node.idle_time(current_time).total_seconds() if max_idle_node else 0,
-                "longest-idle-node": self._describe_node(max_idle_node) if max_idle_node else None,
-                "idle-node-count": len(idle_nodes),
-                "idle-nodes": self._generate_node_name_list(idle_nodes),
+                "longest-idle-time": longest_idle_node.idle_time(current_time) if longest_idle_node else 0,
+                "longest-idle-node": self._describe_node(longest_idle_node) if longest_idle_node else None,
+                "count": len(idle_nodes),
             }
         }
 
     @staticmethod
-    def _flatten_failed_launch_nodes(failed_nodes: Dict[str, List[str]]):
+    def _flatten_failed_launch_nodes(failed_nodes: Dict[str, List[str]]) -> Iterator:
         for error_code, nodes in failed_nodes.items():
             for node_name in nodes:
                 yield {
@@ -610,7 +685,7 @@ class ClusterEventPublisher:
             **kwargs
         ) -> None:
             if event_logger.isEnabledFor(event_level):
-                now = timestamp if timestamp else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+                now = timestamp if timestamp else ClusterEventPublisher.timestamp()
                 default_properties = {
                     "datetime": now,
                     "version": 0,
@@ -637,9 +712,20 @@ class ClusterEventPublisher:
 
                         event_logger.log(event_level, "%s", json.dumps(dict(event)))
                     except Exception as e:
-                        logger.error("Failed to publish event: %s\n%s", e, traceback.format_exception(*sys.exc_info()))
+                        extraction = traceback.extract_stack()
+                        logger.error(
+                            "Failed to publish event `%s`: %s\n%s\n%s",
+                            event_type,
+                            e,
+                            "".join(traceback.format_exception(*sys.exc_info())),
+                            "".join(traceback.format_list(extraction)),
+                        )
 
         return callable_event_publisher
+
+    @staticmethod
+    def _is_idle_node(node: SlurmNode) -> bool:
+        return node.instance and node.lastbusytime and _IDLE_STATE.issubset(node.states)
 
     @staticmethod
     def _describe_node(node: SlurmNode):
@@ -653,7 +739,7 @@ class ClusterEventPublisher:
                 "address": node.nodeaddr,
                 "hostname": node.nodehostname,
                 "state-string": node.state_string,
-                "state": node_states[0] if node.states else None,
+                "state": node_states[0] if node_states else None,
                 "state-flags": node_states[1:],
                 "instance": ClusterEventPublisher._describe_instance(node.instance) if node.instance else None,
                 "partitions": list(node.partitions),
@@ -675,7 +761,9 @@ class ClusterEventPublisher:
                 "id": instance.id,
                 "private-ip": instance.private_ip,
                 "hostname": instance.hostname,
-                "launch-time": instance.launch_time,
+                "launch-time": instance.launch_time.isoformat(timespec="milliseconds")
+                if isinstance(instance.launch_time, datetime)
+                else str(instance.launch_time),
             }
             if instance
             else None
