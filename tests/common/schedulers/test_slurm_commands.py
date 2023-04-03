@@ -915,5 +915,7 @@ def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_e
     ],
 )
 def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
+    # This test makes use of grep option -P that is only supported by GNU grep.
+    # So the test is expected to fail on MacOS shipping BSD grep.
     parsed_output = check_command_output(f'echo "{scontrol_output}" | {SCONTROL_OUTPUT_AWK_PARSER}', shell=True)
     assert_that(parsed_output).is_equal_to(expected_parsed_output)
