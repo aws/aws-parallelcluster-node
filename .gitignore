@@ -12,6 +12,8 @@ build/
 .tox/
 .coverage
 coverage.xml
+assets/
+report.html
 
 aws-parallelcluster-node-*.tgz
 aws-parallelcluster-node-*.md5
