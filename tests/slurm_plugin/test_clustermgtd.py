@@ -1671,24 +1671,60 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-1",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-1",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-2",
                                         "PrivateIpAddress": "ip-2",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-2",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-3",
                                         "PrivateIpAddress": "ip-3",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-3",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-4",
                                         "PrivateIpAddress": "ip-4",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-4",
+                                            },
+                                        ],
                                     },
                                     # Return an orphaned instance
                                     {
@@ -1696,6 +1732,15 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-999",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-999",
+                                            },
+                                        ],
                                     },
                                 ]
                             }
@@ -1785,6 +1830,15 @@ def test_manage_cluster(
                             "PrivateIpAddress": "ip-1234",
                             "PrivateDnsName": "hostname-1234",
                             "LaunchTime": datetime(2020, 1, 1, 0, 0, 0),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-1234",
+                                },
+                            ],
                         }
                     ]
                 }
@@ -1852,24 +1906,60 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-1",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-1",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-2",
                                         "PrivateIpAddress": "ip-2",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-2",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-3",
                                         "PrivateIpAddress": "ip-3",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-3",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-4",
                                         "PrivateIpAddress": "ip-4",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-4",
+                                            },
+                                        ],
                                     },
                                     # Return an orphaned instance
                                     {
@@ -1877,6 +1967,15 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-999",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-999",
+                                            },
+                                        ],
                                     },
                                 ]
                             }

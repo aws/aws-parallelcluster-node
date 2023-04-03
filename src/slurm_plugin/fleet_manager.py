@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 
 import boto3
 from botocore.exceptions import ClientError
+from common.ec2_utils import get_private_ip_address
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class EC2Instance:
         try:
             return EC2Instance(
                 instance_info["InstanceId"],
-                instance_info["PrivateIpAddress"],
+                get_private_ip_address(instance_info),
                 instance_info["PrivateDnsName"].split(".")[0],
                 instance_info["LaunchTime"],
             )

@@ -111,6 +111,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.1",
                             "PrivateDnsName": "ip-1-0-0-1",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                },
+                            ],
                         },
                         {
                             "InstanceId": "i-22222",
@@ -118,6 +127,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.2",
                             "PrivateDnsName": "ip-1-0-0-2",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.2",
+                                },
+                            ],
                         },
                         {
                             "InstanceId": "i-33333",
@@ -125,6 +143,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.3",
                             "PrivateDnsName": "ip-1-0-0-3",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.3",
+                                },
+                            ],
                         },
                     ]
                 },
@@ -169,6 +196,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.1",
                             "PrivateDnsName": "ip-1-0-0-1",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                },
+                            ],
                         },
                         {
                             "InstanceId": "i-22222",
@@ -176,6 +212,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.2",
                             "PrivateDnsName": "ip-1-0-0-2",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.2",
+                                },
+                            ],
                         },
                         {
                             "InstanceId": "i-33333",
@@ -183,6 +228,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.3",
                             "PrivateDnsName": "ip-1-0-0-3",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.3",
+                                },
+                            ],
                         },
                     ]
                 },
@@ -227,6 +281,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.1",
                             "PrivateDnsName": "ip-1-0-0-1",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                },
+                            ],
                         },
                     ]
                 },
@@ -266,6 +329,15 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                             "PrivateIpAddress": "ip.1.0.0.1",
                             "PrivateDnsName": "ip-1-0-0-1",
                             "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                },
+                            ],
                         },
                     ]
                 },
