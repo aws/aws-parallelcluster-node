@@ -10,6 +10,9 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Consider dynamic nodes with INVALID_REG flag as bootstrap failure towards the Slurm protected mode.
 - Static nodes failing the Slurm registration are already treated as a bootstrap failure after the `node_replacement_timeout`.
 
+**BUG FIXES**
+- Fix an issue that was causing misalignment of compute nodes IP on multi NICS instances.
+
 3.5.1
 ------
 

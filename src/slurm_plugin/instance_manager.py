@@ -21,6 +21,7 @@ from typing import Iterable
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from common.ec2_utils import get_private_ip_address
 from common.schedulers.slurm_commands import update_nodes
 from common.utils import grouper
 from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count
@@ -342,7 +343,7 @@ class InstanceManager:
                 instances.append(
                     EC2Instance(
                         instance_info["InstanceId"],
-                        instance_info["PrivateIpAddress"],
+                        get_private_ip_address(instance_info),
                         instance_info["PrivateDnsName"].split(".")[0],
                         instance_info["LaunchTime"],
                     )
