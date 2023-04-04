@@ -61,7 +61,7 @@ SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 SCONTROL_OUTPUT_AWK_PARSER = (
     'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
     + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
-    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(Reason=.*)|(######)'"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(Reason=.*)|(######)'"
 )
 
 # Set default timeouts for running different slurm commands.
@@ -333,7 +333,8 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
     # | awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
-    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(Reason=.*)|(######)"
+    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(LastBusyTime=\\S+)|(Reason=.*)\
+    # |(######)"
     # NodeName=compute-dy-c5xlarge-1
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-1
@@ -372,7 +373,10 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
         "Partitions": "partitions",
         "Reason": "reason",
         "SlurmdStartTime": "slurmdstarttime",
+        "LastBusyTime": "lastbusytime",
     }
+
+    date_fields = ["SlurmdStartTime", "LastBusyTime"]
 
     node_info = slurm_node_info.split("######\n")
     slurm_nodes = []
@@ -381,8 +385,8 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
         kwargs = {}
         for line in lines:
             key, value = line.split("=")
-            if key == "SlurmdStartTime":
-                if value != "None":
+            if key in date_fields:
+                if value not in ["None", "Unknown"]:
                     value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
                 else:
                     value = None

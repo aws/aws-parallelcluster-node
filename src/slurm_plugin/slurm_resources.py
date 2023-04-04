@@ -122,6 +122,7 @@ class SlurmNode(metaclass=ABCMeta):
         reason=None,
         instance=None,
         slurmdstarttime: datetime = None,
+        lastbusytime: datetime = None,
     ):
         """Initialize slurm node with attributes."""
         self.name = name
@@ -133,6 +134,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.reason = reason
         self.instance = instance
         self.slurmdstarttime = slurmdstarttime
+        self.lastbusytime = lastbusytime
         self.is_static_nodes_in_replacement = False
         self.is_being_replaced = False
         self._is_replacement_timeout = False
@@ -179,6 +181,14 @@ class SlurmNode(metaclass=ABCMeta):
     def is_powered_down(self):
         """Check if slurm node is in powered down state."""
         return self.SLURM_SCONTROL_POWERED_DOWN_STATE in self.states
+
+    def is_idle(self):
+        """
+        Determine if node as idle.
+
+        A node is idle if it has a backing instance, LastBusyTime has a value from scontrol, and is in IDLE state.
+        """
+        return self.instance and self.lastbusytime and self.SLURM_SCONTROL_IDLE_STATE in self.states
 
     def is_power(self):
         """Check if slurm node is in power state."""
@@ -312,6 +322,9 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if the node need to be reset if node is inactive."""
         pass
 
+    def idle_time(self, current_time: datetime) -> float:
+        return (current_time - self.lastbusytime).total_seconds() if self.lastbusytime else 0
+
     def _parse_error_code(self):
         """Parse RunInstance error code from node reason."""
         if self.reason and self.reason.startswith("(Code:"):
@@ -339,10 +352,29 @@ class SlurmNode(metaclass=ABCMeta):
 
 class StaticNode(SlurmNode):
     def __init__(
-        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+        self,
+        name,
+        nodeaddr,
+        nodehostname,
+        state,
+        partitions=None,
+        reason=None,
+        instance=None,
+        slurmdstarttime=None,
+        lastbusytime=None,
     ):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
+        super().__init__(
+            name,
+            nodeaddr,
+            nodehostname,
+            state,
+            partitions,
+            reason,
+            instance,
+            slurmdstarttime,
+            lastbusytime=lastbusytime,
+        )
 
     def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
@@ -437,10 +469,29 @@ class StaticNode(SlurmNode):
 
 class DynamicNode(SlurmNode):
     def __init__(
-        self, name, nodeaddr, nodehostname, state, partitions=None, reason=None, instance=None, slurmdstarttime=None
+        self,
+        name,
+        nodeaddr,
+        nodehostname,
+        state,
+        partitions=None,
+        reason=None,
+        instance=None,
+        slurmdstarttime=None,
+        lastbusytime=None,
     ):
         """Initialize slurm node with attributes."""
-        super().__init__(name, nodeaddr, nodehostname, state, partitions, reason, instance, slurmdstarttime)
+        super().__init__(
+            name,
+            nodeaddr,
+            nodehostname,
+            state,
+            partitions,
+            reason,
+            instance,
+            slurmdstarttime,
+            lastbusytime=lastbusytime,
+        )
 
     def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""

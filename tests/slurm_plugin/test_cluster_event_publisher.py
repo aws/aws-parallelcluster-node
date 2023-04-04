@@ -12,6 +12,7 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Dict, List
 
@@ -818,6 +819,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientVolumeCapacity)Error",
                             "state": "DOWN",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -829,6 +831,8 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "partitions": ["queue2"],
                             "queue-name": "queue2",
                             "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
                         },
                         "error-code": "InsufficientVolumeCapacity",
                         "failure-type": "volume-limit-failures",
@@ -848,6 +852,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientVolumeCapacity)Error",
                             "state": "DOWN",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -859,6 +864,8 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "partitions": ["queue2"],
                             "queue-name": "queue2",
                             "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
                         }
                     }
                 },
@@ -870,6 +877,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
+                            "state-reason": None,
                             "state": "DOWN",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -881,6 +889,8 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "partitions": ["queue2"],
                             "queue-name": "queue2",
                             "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
                         }
                     }
                 },
@@ -1170,6 +1180,66 @@ def test_publish_nodes_failing_health_check_events(health_check_type, failed_nod
             [
                 {"invalid-backing-instance-count": {"count": 0, "nodes": []}},
                 {"node-not-responding-down-count": {"count": 0, "nodes": []}},
+                {
+                    "unhealthy-node": {
+                        "node": {
+                            "name": "queue2-dy-c5large-1",
+                            "type": "static",
+                            "address": "queue2-dy-c5large-1",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": None,
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
+                        }
+                    }
+                },
+                {
+                    "unhealthy-node": {
+                        "node": {
+                            "name": "queue2-dy-c5large-2",
+                            "type": "static",
+                            "address": "queue2-dy-c5large-2",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": None,
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
+                        }
+                    }
+                },
+                {
+                    "unhealthy-node": {
+                        "node": {
+                            "name": "queue2-dy-c5large-3",
+                            "type": "static",
+                            "address": "queue2-dy-c5large-3",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": None,
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
+                        }
+                    }
+                },
             ],
             [],
         ),
@@ -1567,6 +1637,1073 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
 
     # Run test
     event_publisher.publish_node_launch_events(failed_nodes)
+
+    # Assert calls
+    assert_that(received_events).is_length(len(expected_details))
+    for received_event, expected_detail in zip(received_events, expected_details):
+        assert_that(received_event).is_equal_to(expected_detail)
+
+
+@pytest.mark.parametrize(
+    "compute_nodes, expected_details, level_filter, max_list_size",
+    [
+        (
+            [
+                StaticNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
+                StaticNode("queue-st-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),
+                StaticNode("queue1-st-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    instance=EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERING_DOWN",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:UnauthorizedOperation)Error",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:InvalidBlockDeviceMapping)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-5",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:AccessDeniedException)Error",
+                ),
+                StaticNode(
+                    "queue2-st-c5large-6",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:VcpuLimitExceeded)Error",
+                ),
+                StaticNode(
+                    "queue2-st-c5large-8",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:VolumeLimitExceeded)Error",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-9",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD+NOT_RESPONDING",
+                    "queue2",
+                    "(Code:InsufficientVolumeCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                ),
+            ],
+            [
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERING_DOWN", "count": 1}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD", "count": 3}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN", "count": 1}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+POWERING_DOWN", "count": 1}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+POWERED_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN+CLOUD", "count": 2}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERED_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN+CLOUD+NOT_RESPONDING", "count": 1}},
+                {"cluster-instance-count": {"count": 2}},
+            ],
+            ["ERROR", "WARNING", "INFO"],
+            None,
+        ),
+        (
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue-st-c5xlarge-1",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue1-st-c4xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-4", private_ip="ip-4", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    instance=EC2Instance(
+                        id="id-5", private_ip="ip-5", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-6", private_ip="ip-6", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:UnauthorizedOperation)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-7", private_ip="ip-7", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:InvalidBlockDeviceMapping)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-8", private_ip="ip-8", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-5",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:AccessDeniedException)Error",
+                    instance=EC2Instance(
+                        id="id-9", private_ip="ip-9", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-6",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:VcpuLimitExceeded)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-10", private_ip="ip-10", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-8",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:VolumeLimitExceeded)Error",
+                    instance=EC2Instance(
+                        id="id-11", private_ip="ip-11", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-9",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientVolumeCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-12", private_ip="ip-12", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+            ],
+            [
+                {
+                    "compute-node-idle-time": {
+                        "node-type": "dynamic",
+                        "longest-idle-time": 129540.0,
+                        "longest-idle-node": {
+                            "name": "queue1-dy-c5xlarge-3",
+                            "type": "dynamic",
+                            "address": "nodeip",
+                            "hostname": "nodehostname",
+                            "state-string": "IDLE+CLOUD+POWERING_UP",
+                            "state-reason": "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "state": "IDLE",
+                            "state-flags": ["CLOUD", "POWERING_UP"],
+                            "instance": {
+                                "id": "id-4",
+                                "private-ip": "ip-4",
+                                "hostname": "hostname",
+                                "launch-time": "some_launch_time",
+                            },
+                            "partitions": ["queue1"],
+                            "queue-name": "queue1",
+                            "compute-resource": "c5xlarge",
+                            "last-busy-time": "2023-03-10T11:24:14.000+00:00",
+                            "slurm-started-time": None,
+                        },
+                        "count": 3,
+                    }
+                },
+                {
+                    "compute-node-idle-time": {
+                        "node-type": "static",
+                        "longest-idle-time": 129604.0,
+                        "longest-idle-node": {
+                            "name": "queue2-st-c5large-3",
+                            "type": "static",
+                            "address": "nodeip",
+                            "hostname": "nodehostname",
+                            "state-string": "IDLE+CLOUD",
+                            "state-reason": "(Code:UnauthorizedOperation)Error",
+                            "state": "IDLE",
+                            "state-flags": ["CLOUD"],
+                            "instance": {
+                                "id": "id-7",
+                                "private-ip": "ip-7",
+                                "hostname": "hostname",
+                                "launch-time": "some_launch_time",
+                            },
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": "2023-03-10T11:23:10.000+00:00",
+                            "slurm-started-time": None,
+                        },
+                        "count": 2,
+                    }
+                },
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERING_DOWN", "count": 2}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD", "count": 4}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN", "count": 1}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+POWERED_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN+CLOUD", "count": 2}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERED_UP", "count": 1}},
+                {"cluster-instance-count": {"count": 13}},
+            ],
+            ["ERROR", "WARNING", "INFO"],
+            None,
+        ),
+        (
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue-st-c5xlarge-1",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue1-st-c4xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-4", private_ip="ip-4", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    instance=EC2Instance(
+                        id="id-5", private_ip="ip-5", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-6", private_ip="ip-6", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:UnauthorizedOperation)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-7", private_ip="ip-7", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:InvalidBlockDeviceMapping)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-8", private_ip="ip-8", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-5",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:AccessDeniedException)Error",
+                    instance=EC2Instance(
+                        id="id-9", private_ip="ip-9", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-6",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:VcpuLimitExceeded)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-10", private_ip="ip-10", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-8",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:VolumeLimitExceeded)Error",
+                    instance=EC2Instance(
+                        id="id-11", private_ip="ip-11", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-9",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientVolumeCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-12", private_ip="ip-12", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+            ],
+            [
+                {
+                    "compute-node-idle-time": {
+                        "node-type": "dynamic",
+                        "longest-idle-time": 129540.0,
+                        "longest-idle-node": {
+                            "name": "queue1-dy-c5xlarge-3",
+                            "type": "dynamic",
+                            "address": "nodeip",
+                            "hostname": "nodehostname",
+                            "state-string": "IDLE+CLOUD+POWERING_UP",
+                            "state-reason": "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                            "state": "IDLE",
+                            "state-flags": ["CLOUD", "POWERING_UP"],
+                            "instance": {
+                                "id": "id-4",
+                                "private-ip": "ip-4",
+                                "hostname": "hostname",
+                                "launch-time": "some_launch_time",
+                            },
+                            "partitions": ["queue1"],
+                            "queue-name": "queue1",
+                            "compute-resource": "c5xlarge",
+                            "last-busy-time": "2023-03-10T11:24:14.000+00:00",
+                            "slurm-started-time": None,
+                        },
+                        "count": 3,
+                    }
+                },
+                {
+                    "compute-node-idle-time": {
+                        "node-type": "static",
+                        "longest-idle-time": 129604.0,
+                        "longest-idle-node": {
+                            "name": "queue2-st-c5large-3",
+                            "type": "static",
+                            "address": "nodeip",
+                            "hostname": "nodehostname",
+                            "state-string": "IDLE+CLOUD",
+                            "state-reason": "(Code:UnauthorizedOperation)Error",
+                            "state": "IDLE",
+                            "state-flags": ["CLOUD"],
+                            "instance": {
+                                "id": "id-7",
+                                "private-ip": "ip-7",
+                                "hostname": "hostname",
+                                "launch-time": "some_launch_time",
+                            },
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": "2023-03-10T11:23:10.000+00:00",
+                            "slurm-started-time": None,
+                        },
+                        "count": 2,
+                    }
+                },
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERING_DOWN", "count": 2}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD", "count": 4}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN", "count": 1}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+POWERED_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN+CLOUD", "count": 2}},
+                {"compute-node-state-count": {"node-state": "IDLE+CLOUD+POWERED_UP", "count": 1}},
+                {"cluster-instance-count": {"count": 13}},
+                {
+                    "compute-node-state": {
+                        "name": "queue1-st-c5xlarge-2",
+                        "type": "static",
+                        "address": "ip-2",
+                        "hostname": "hostname",
+                        "state-string": "IDLE+CLOUD+POWERING_DOWN",
+                        "state-reason": None,
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD", "POWERING_DOWN"],
+                        "instance": {
+                            "id": "id-1",
+                            "private-ip": "ip-1",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue1"],
+                        "queue-name": "queue1",
+                        "compute-resource": "c5xlarge",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue-st-c5xlarge-1",
+                        "type": "static",
+                        "address": "ip-3",
+                        "hostname": "hostname",
+                        "state-string": "IDLE+CLOUD",
+                        "state-reason": None,
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD"],
+                        "instance": {
+                            "id": "id-2",
+                            "private-ip": "ip-2",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue"],
+                        "queue-name": "queue",
+                        "compute-resource": "c5xlarge",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue1-dy-c5xlarge-1",
+                        "type": "dynamic",
+                        "address": "ip-1",
+                        "hostname": "hostname",
+                        "state-string": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                        "state-reason": None,
+                        "state": "MIXED",
+                        "state-flags": ["CLOUD", "NOT_RESPONDING", "POWERING_UP"],
+                        "instance": {
+                            "id": "id-2",
+                            "private-ip": "ip-2",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue1"],
+                        "queue-name": "queue1",
+                        "compute-resource": "c5xlarge",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue1-st-c4xlarge-1",
+                        "type": "static",
+                        "address": "ip-1",
+                        "hostname": "hostname",
+                        "state-string": "DOWN",
+                        "state-reason": None,
+                        "state": "DOWN",
+                        "state-flags": [],
+                        "instance": {
+                            "id": "id-3",
+                            "private-ip": "ip-3",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue1"],
+                        "queue-name": "queue1",
+                        "compute-resource": "c4xlarge",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue1-dy-c5xlarge-3",
+                        "type": "dynamic",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "IDLE+CLOUD+POWERING_UP",
+                        "state-reason": "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD", "POWERING_UP"],
+                        "instance": {
+                            "id": "id-4",
+                            "private-ip": "ip-4",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue1"],
+                        "queue-name": "queue1",
+                        "compute-resource": "c5xlarge",
+                        "last-busy-time": "2023-03-10T11:24:14.000+00:00",
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-dy-c5large-1",
+                        "type": "dynamic",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "IDLE+CLOUD",
+                        "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD"],
+                        "instance": {
+                            "id": "id-5",
+                            "private-ip": "ip-5",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-dy-c5large-2",
+                        "type": "dynamic",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "IDLE+CLOUD+POWERING_DOWN",
+                        "state-reason": "(Code:InsufficientHostCapacity)Error",
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD", "POWERING_DOWN"],
+                        "instance": {
+                            "id": "id-6",
+                            "private-ip": "ip-6",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": "2023-03-10T12:23:14.000+00:00",
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-st-c5large-3",
+                        "type": "static",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "IDLE+CLOUD",
+                        "state-reason": "(Code:UnauthorizedOperation)Error",
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD"],
+                        "instance": {
+                            "id": "id-7",
+                            "private-ip": "ip-7",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": "2023-03-10T11:23:10.000+00:00",
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-st-c5large-4",
+                        "type": "static",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "MIXED+CLOUD+POWERED_UP",
+                        "state-reason": "(Code:InvalidBlockDeviceMapping)Error",
+                        "state": "MIXED",
+                        "state-flags": ["CLOUD", "POWERED_UP"],
+                        "instance": {
+                            "id": "id-8",
+                            "private-ip": "ip-8",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": "2023-03-10T21:23:14.000+00:00",
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-dy-c5large-5",
+                        "type": "dynamic",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "DOWN+CLOUD",
+                        "state-reason": "(Code:AccessDeniedException)Error",
+                        "state": "DOWN",
+                        "state-flags": ["CLOUD"],
+                        "instance": {
+                            "id": "id-9",
+                            "private-ip": "ip-9",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-st-c5large-6",
+                        "type": "static",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "IDLE+CLOUD+POWERED_UP",
+                        "state-reason": "(Code:VcpuLimitExceeded)Error",
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD", "POWERED_UP"],
+                        "instance": {
+                            "id": "id-10",
+                            "private-ip": "ip-10",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": "2023-03-10T11:25:14.000+00:00",
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-st-c5large-8",
+                        "type": "static",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "DOWN+CLOUD",
+                        "state-reason": "(Code:VolumeLimitExceeded)Error",
+                        "state": "DOWN",
+                        "state-flags": ["CLOUD"],
+                        "instance": {
+                            "id": "id-11",
+                            "private-ip": "ip-11",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue2-dy-c5large-9",
+                        "type": "dynamic",
+                        "address": "nodeip",
+                        "hostname": "nodehostname",
+                        "state-string": "IDLE+CLOUD",
+                        "state-reason": "(Code:InsufficientVolumeCapacity)Error",
+                        "state": "IDLE",
+                        "state-flags": ["CLOUD"],
+                        "instance": {
+                            "id": "id-12",
+                            "private-ip": "ip-12",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue2"],
+                        "queue-name": "queue2",
+                        "compute-resource": "c5large",
+                        "last-busy-time": "2023-03-11T11:23:14.000+00:00",
+                        "slurm-started-time": None,
+                    }
+                },
+            ],
+            ["ERROR", "WARNING", "INFO", "DEBUG"],
+            None,
+        ),
+        (
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue-st-c5xlarge-1",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue1-st-c4xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-4", private_ip="ip-4", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                    instance=EC2Instance(
+                        id="id-5", private_ip="ip-5", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-6", private_ip="ip-6", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:UnauthorizedOperation)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-7", private_ip="ip-7", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:InvalidBlockDeviceMapping)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-8", private_ip="ip-8", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-5",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:AccessDeniedException)Error",
+                    instance=EC2Instance(
+                        id="id-9", private_ip="ip-9", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-6",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:VcpuLimitExceeded)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-10", private_ip="ip-10", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-8",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:VolumeLimitExceeded)Error",
+                    instance=EC2Instance(
+                        id="id-11", private_ip="ip-11", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-9",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientVolumeCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-12", private_ip="ip-12", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+            ],
+            [],
+            ["ERROR", "WARNING"],
+            None,
+        ),
+    ],
+    ids=[
+        "no-idle-nodes",
+        "some-idle-nodes",
+        "idle-nodes-debug",
+        "nothing-at-warning",
+    ],
+)
+def test_publish_compute_node_events(compute_nodes, expected_details, level_filter, max_list_size, mocker):
+    received_events = []
+    event_publisher = ClusterEventPublisher(
+        event_handler(received_events, level_filter=level_filter), max_list_size=max_list_size
+    )
+    test_time = datetime(year=2023, month=3, day=11, hour=23, minute=23, second=14, tzinfo=timezone.utc)
+
+    # Run test
+    mock_now = mocker.patch(
+        "slurm_plugin.cluster_event_publisher.ClusterEventPublisher.current_time",
+    )
+    mock_now.return_value = test_time
+    cluster_instances = [node.instance for node in compute_nodes if node.instance]
+    event_publisher.publish_compute_node_events(compute_nodes, cluster_instances)
 
     # Assert calls
     assert_that(received_events).is_length(len(expected_details))
