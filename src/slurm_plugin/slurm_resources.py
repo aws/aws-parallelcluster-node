@@ -182,6 +182,14 @@ class SlurmNode(metaclass=ABCMeta):
         """Check if slurm node is in powered down state."""
         return self.SLURM_SCONTROL_POWERED_DOWN_STATE in self.states
 
+    def is_idle(self):
+        """
+        Determine if node as idle.
+
+        A node is idle if it has a backing instance, LastBusyTime has a value from scontrol, and is in IDLE state.
+        """
+        return self.instance and self.lastbusytime and self.SLURM_SCONTROL_IDLE_STATE in self.states
+
     def is_power(self):
         """Check if slurm node is in power state."""
         return self.states in self.SLURM_SCONTROL_POWER_STATES

@@ -819,6 +819,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientVolumeCapacity)Error",
                             "state": "DOWN",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -851,6 +852,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientVolumeCapacity)Error",
                             "state": "DOWN",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -875,6 +877,7 @@ def test_event_publisher_swallows_exceptions(caplog):
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "DOWN+CLOUD",
+                            "state-reason": None,
                             "state": "DOWN",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -1177,6 +1180,66 @@ def test_publish_nodes_failing_health_check_events(health_check_type, failed_nod
             [
                 {"invalid-backing-instance-count": {"count": 0, "nodes": []}},
                 {"node-not-responding-down-count": {"count": 0, "nodes": []}},
+                {
+                    "unhealthy-node": {
+                        "node": {
+                            "name": "queue2-dy-c5large-1",
+                            "type": "static",
+                            "address": "queue2-dy-c5large-1",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": None,
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
+                        }
+                    }
+                },
+                {
+                    "unhealthy-node": {
+                        "node": {
+                            "name": "queue2-dy-c5large-2",
+                            "type": "static",
+                            "address": "queue2-dy-c5large-2",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": None,
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
+                        }
+                    }
+                },
+                {
+                    "unhealthy-node": {
+                        "node": {
+                            "name": "queue2-dy-c5large-3",
+                            "type": "static",
+                            "address": "queue2-dy-c5large-3",
+                            "hostname": "nodehostname",
+                            "state-string": "DOWN+CLOUD",
+                            "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                            "state": "DOWN",
+                            "state-flags": ["CLOUD"],
+                            "instance": None,
+                            "partitions": ["queue2"],
+                            "queue-name": "queue2",
+                            "compute-resource": "c5large",
+                            "last-busy-time": None,
+                            "slurm-started-time": None,
+                        }
+                    }
+                },
             ],
             [],
         ),
@@ -1867,6 +1930,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "IDLE+CLOUD+POWERING_UP",
+                            "state-reason": "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
                             "state": "IDLE",
                             "state-flags": ["CLOUD", "POWERING_UP"],
                             "instance": {
@@ -1894,6 +1958,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "IDLE+CLOUD",
+                            "state-reason": "(Code:UnauthorizedOperation)Error",
                             "state": "IDLE",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -2095,6 +2160,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "IDLE+CLOUD+POWERING_UP",
+                            "state-reason": "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
                             "state": "IDLE",
                             "state-flags": ["CLOUD", "POWERING_UP"],
                             "instance": {
@@ -2122,6 +2188,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                             "address": "nodeip",
                             "hostname": "nodehostname",
                             "state-string": "IDLE+CLOUD",
+                            "state-reason": "(Code:UnauthorizedOperation)Error",
                             "state": "IDLE",
                             "state-flags": ["CLOUD"],
                             "instance": {
@@ -2155,6 +2222,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "ip-2",
                         "hostname": "hostname",
                         "state-string": "IDLE+CLOUD+POWERING_DOWN",
+                        "state-reason": None,
                         "state": "IDLE",
                         "state-flags": ["CLOUD", "POWERING_DOWN"],
                         "instance": {
@@ -2177,6 +2245,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "ip-3",
                         "hostname": "hostname",
                         "state-string": "IDLE+CLOUD",
+                        "state-reason": None,
                         "state": "IDLE",
                         "state-flags": ["CLOUD"],
                         "instance": {
@@ -2199,6 +2268,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "ip-1",
                         "hostname": "hostname",
                         "state-string": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                        "state-reason": None,
                         "state": "MIXED",
                         "state-flags": ["CLOUD", "NOT_RESPONDING", "POWERING_UP"],
                         "instance": {
@@ -2221,6 +2291,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "ip-1",
                         "hostname": "hostname",
                         "state-string": "DOWN",
+                        "state-reason": None,
                         "state": "DOWN",
                         "state-flags": [],
                         "instance": {
@@ -2243,6 +2314,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "IDLE+CLOUD+POWERING_UP",
+                        "state-reason": "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
                         "state": "IDLE",
                         "state-flags": ["CLOUD", "POWERING_UP"],
                         "instance": {
@@ -2265,6 +2337,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "IDLE+CLOUD",
+                        "state-reason": "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                         "state": "IDLE",
                         "state-flags": ["CLOUD"],
                         "instance": {
@@ -2287,6 +2360,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "IDLE+CLOUD+POWERING_DOWN",
+                        "state-reason": "(Code:InsufficientHostCapacity)Error",
                         "state": "IDLE",
                         "state-flags": ["CLOUD", "POWERING_DOWN"],
                         "instance": {
@@ -2309,6 +2383,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "IDLE+CLOUD",
+                        "state-reason": "(Code:UnauthorizedOperation)Error",
                         "state": "IDLE",
                         "state-flags": ["CLOUD"],
                         "instance": {
@@ -2331,6 +2406,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "MIXED+CLOUD+POWERED_UP",
+                        "state-reason": "(Code:InvalidBlockDeviceMapping)Error",
                         "state": "MIXED",
                         "state-flags": ["CLOUD", "POWERED_UP"],
                         "instance": {
@@ -2353,6 +2429,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "DOWN+CLOUD",
+                        "state-reason": "(Code:AccessDeniedException)Error",
                         "state": "DOWN",
                         "state-flags": ["CLOUD"],
                         "instance": {
@@ -2375,6 +2452,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "IDLE+CLOUD+POWERED_UP",
+                        "state-reason": "(Code:VcpuLimitExceeded)Error",
                         "state": "IDLE",
                         "state-flags": ["CLOUD", "POWERED_UP"],
                         "instance": {
@@ -2397,6 +2475,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "DOWN+CLOUD",
+                        "state-reason": "(Code:VolumeLimitExceeded)Error",
                         "state": "DOWN",
                         "state-flags": ["CLOUD"],
                         "instance": {
@@ -2419,6 +2498,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         "address": "nodeip",
                         "hostname": "nodehostname",
                         "state-string": "IDLE+CLOUD",
+                        "state-reason": "(Code:InsufficientVolumeCapacity)Error",
                         "state": "IDLE",
                         "state-flags": ["CLOUD"],
                         "instance": {
