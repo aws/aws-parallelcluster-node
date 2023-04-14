@@ -124,7 +124,7 @@ class SlurmResumeConfig:
         self.logging_config = config.get("slurm_resume", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
         self.head_node_instance_id = config.get("slurm_resume", "instance_id", fallback="unknown")
 
-        log.info(self.__repr__())
+        log.debug(self.__repr__())
 
 
 def _handle_failed_nodes(node_list, reason="Failure when resuming nodes"):
