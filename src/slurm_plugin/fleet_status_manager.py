@@ -77,7 +77,7 @@ class SlurmFleetManagerConfig:
             "slurm_fleet_status_manager", "logging_config", fallback=self.DEFAULTS.get("logging_config")
         )
 
-        log.info(self.__repr__())
+        log.debug(self.__repr__())
 
 
 def _manage_fleet_status_transition(config, computefleet_status_data_path):
