@@ -442,14 +442,14 @@ class ClusterEventPublisher:
         )
 
         self.publish_event(
-            logging.INFO,
+            logging.DEBUG,
             **COMPUTE_NODE_STATE_COUNT,
             timestamp=timestamp,
             event_supplier=self._node_state_count_supplier(compute_nodes),
         )
 
         self.publish_event(
-            logging.INFO if cluster_instances else logging.DEBUG,
+            logging.DEBUG,
             **CLUSTER_INSTANCE_COUNT,
             timestamp=timestamp,
             detail={
