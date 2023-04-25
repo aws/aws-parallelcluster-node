@@ -2499,6 +2499,99 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
         ),
         (
             [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+                StaticNode(
+                    "queue1-st-c4xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                    ),
+                ),
+            ],
+            [
+                {
+                    "compute-node-idle-time": {
+                        "node-type": "dynamic",
+                        "longest-idle-time": 0,
+                        "longest-idle-node": None,
+                        "count": 0,
+                    }
+                },
+                {
+                    "compute-node-idle-time": {
+                        "node-type": "static",
+                        "longest-idle-time": 0,
+                        "longest-idle-node": None,
+                        "count": 0,
+                    }
+                },
+                {"compute-node-state-count": {"node-state": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "count": 1}},
+                {"compute-node-state-count": {"node-state": "DOWN", "count": 1}},
+                {"cluster-instance-count": {"count": 2}},
+                {
+                    "compute-node-state": {
+                        "name": "queue1-dy-c5xlarge-1",
+                        "type": "dynamic",
+                        "address": "ip-1",
+                        "hostname": "hostname",
+                        "state-string": "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                        "state-reason": None,
+                        "state": "MIXED",
+                        "state-flags": ["CLOUD", "NOT_RESPONDING", "POWERING_UP"],
+                        "instance": {
+                            "id": "id-2",
+                            "private-ip": "ip-2",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue1"],
+                        "queue-name": "queue1",
+                        "compute-resource": "c5xlarge",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+                {
+                    "compute-node-state": {
+                        "name": "queue1-st-c4xlarge-1",
+                        "type": "static",
+                        "address": "ip-1",
+                        "hostname": "hostname",
+                        "state-string": "DOWN",
+                        "state-reason": None,
+                        "state": "DOWN",
+                        "state-flags": [],
+                        "instance": {
+                            "id": "id-3",
+                            "private-ip": "ip-3",
+                            "hostname": "hostname",
+                            "launch-time": "some_launch_time",
+                        },
+                        "partitions": ["queue1"],
+                        "queue-name": "queue1",
+                        "compute-resource": "c4xlarge",
+                        "last-busy-time": None,
+                        "slurm-started-time": None,
+                    }
+                },
+            ],
+            [],
+            None,
+        ),
+        (
+            [
                 StaticNode(
                     "queue1-st-c5xlarge-2",
                     "ip-2",
@@ -2666,6 +2759,7 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
         "no-idle-nodes",
         "some-idle-nodes",
         "idle-nodes-debug",
+        "no-idle-nodes-debug",
         "nothing-at-warning",
     ],
 )
