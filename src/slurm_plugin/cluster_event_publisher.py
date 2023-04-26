@@ -631,7 +631,7 @@ class ClusterEventPublisher:
             }
 
     def _idle_node_suppler(self, node_type: str, current_time: datetime, idle_nodes: List[SlurmNode]):
-        longest_idle_node = max(idle_nodes, key=lambda node: node.idle_time(current_time))
+        longest_idle_node = max(idle_nodes, key=lambda node: node.idle_time(current_time)) if idle_nodes else None
         yield {
             "detail": {
                 "node-type": node_type,
