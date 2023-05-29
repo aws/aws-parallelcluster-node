@@ -148,7 +148,7 @@ def _handle_failed_nodes(node_list, reason="Failure when resuming nodes"):
         log.error("Failed to place nodes %s into down with exception: %s", print_with_count(node_list), e)
 
 
-def _resume(arg_nodes, resume_config):
+def _resume(arg_nodes, resume_config, slurm_resume):
     """Launch new EC2 nodes according to nodes requested by slurm."""
     # Check heartbeat
     current_time = datetime.now(tz=timezone.utc)
@@ -172,9 +172,9 @@ def _resume(arg_nodes, resume_config):
     log.info("Current state of Slurm nodes to resume: %s", node_list_with_status)
 
     instance_manager = InstanceManager(
-        resume_config.region,
-        resume_config.cluster_name,
-        resume_config.boto3_config,
+        region=resume_config.region,
+        cluster_name=resume_config.cluster_name,
+        boto3_config=resume_config.boto3_config,
         table_name=resume_config.dynamodb_table,
         hosted_zone=resume_config.hosted_zone,
         dns_domain=resume_config.dns_domain,
@@ -184,6 +184,7 @@ def _resume(arg_nodes, resume_config):
         fleet_config=resume_config.fleet_config,
         run_instances_overrides=resume_config.run_instances_overrides,
         create_fleet_overrides=resume_config.create_fleet_overrides,
+        slurm_resume=slurm_resume,
     )
     instance_manager.add_instances_for_nodes(
         node_list=node_list,
@@ -238,11 +239,19 @@ def main():
                 e,
             )
         log.info("ResumeProgram config: %s", resume_config)
-        _resume(args.nodes, resume_config)
+
+        _resume(args.nodes, resume_config, _get_slurm_resume())
         log.info("ResumeProgram finished.")
     except Exception as e:
         log.exception("Encountered exception when requesting instances for %s: %s", args.nodes, e)
         _handle_failed_nodes(args.nodes)
+
+
+def _get_slurm_resume():
+    slurm_resume = read_json(os.environ.get("SLURM_RESUME_FILE"), default={})
+    log_level = logging.INFO if slurm_resume else logging.ERROR
+    log.log(log_level, "Slurm Resume File content: %s", slurm_resume)
+    return slurm_resume
 
 
 if __name__ == "__main__":

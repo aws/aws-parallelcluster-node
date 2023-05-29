@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 import common.utils as utils
 import pytest
 from assertpy import assert_that
+from common.utils import read_json
 
 
 @pytest.fixture()
@@ -126,3 +127,47 @@ def test_validate_absolute_path(argument, raises_exception):
             utils.validate_absolute_path(argument)
     else:
         assert_that(utils.validate_absolute_path(argument)).is_true()
+
+
+@pytest.mark.parametrize(
+    "raw_input, default, expected_output, expected_exception",
+    [
+        ("", None, None, True),
+        ("", {}, {}, True),
+        ("{}", {}, {}, True),
+        ("malformed", {}, {}, True),
+        ("{malformed}", {}, {}, True),
+        (
+            '{"jobs":[{"extra":null,"job_id":91,"features":null,"nodes_alloc":"q1-dy-c1-3","nodes_resume":"q1-dy-c1-3",'
+            '"oversubscribe":"NO","partition":"q1","reservation":null}],"all_nodes_resume":"q1-dy-c1-3"}',
+            {},
+            {
+                "all_nodes_resume": "q1-dy-c1-3",
+                "jobs": [
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 91,
+                        "nodes_alloc": "q1-dy-c1-3",
+                        "nodes_resume": "q1-dy-c1-3",
+                        "oversubscribe": "NO",
+                        "partition": "q1",
+                        "reservation": None,
+                    }
+                ],
+            },
+            False,
+        ),
+    ],
+)
+def test_read_json(mocker, raw_input, default, expected_output, expected_exception, caplog):
+    if default is not None:
+        mocker.patch("builtins.open", mocker.mock_open(read_data=raw_input))
+        if expected_exception:
+            assert_that(read_json(None, default=default)).is_equal_to(default)
+        else:
+            assert_that(read_json(None, default=default)).is_equal_to(expected_output)
+    else:
+        with pytest.raises(TypeError):
+            read_json(None)
+        assert_that(caplog.text).contains("Unable to read file")
