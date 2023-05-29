@@ -66,6 +66,7 @@ class InstanceManager:
         fleet_config=None,
         run_instances_overrides=None,
         create_fleet_overrides=None,
+        slurm_resume=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -85,6 +86,7 @@ class InstanceManager:
         self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
             resource_name, region_name=region, config=boto3_config
         )
+        self.slurm_resume = slurm_resume
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""

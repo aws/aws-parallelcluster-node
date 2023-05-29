@@ -10,6 +10,7 @@
 # limitations under the License.
 
 
+import logging
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -20,7 +21,7 @@ import pytest
 import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.fleet_manager import EC2Instance
-from slurm_plugin.resume import SlurmResumeConfig, _resume
+from slurm_plugin.resume import SlurmResumeConfig, _get_slurm_resume, _resume
 
 from tests.common import FLEET_CONFIG, LAUNCH_OVERRIDES, client_error
 
@@ -429,7 +430,7 @@ def test_resume_launch(
             side_effect=launched_instances,
         )
 
-    _resume("some_arg_nodes", mock_resume_config)
+    _resume("some_arg_nodes", mock_resume_config, {})
     if not is_heartbeat_valid:
         mock_handle_failed_nodes.assert_called_with("some_arg_nodes")
         mock_update_nodes.assert_not_called()
@@ -449,3 +450,55 @@ def test_resume_launch(
         if expected_assigned_nodes:
             mock_store_hostname.assert_called_with(ANY, expected_assigned_nodes)
             mock_update_dns.assert_called_with(ANY, expected_assigned_nodes)
+
+
+@pytest.mark.parametrize(
+    ("config_file", "expected_slurm_resume"),
+    [
+        (None, {}),
+        ("no_existent", {}),
+        ("malformed.json", {}),
+        (
+            "resume.json",
+            {
+                "all_nodes_resume": "cloud[1-3]",
+                "jobs": [
+                    {
+                        "extra": "An arbitrary string from --extra",
+                        "features": "c1,c2",
+                        "job_id": 140814,
+                        "nodes_alloc": "cloud[1-4]",
+                        "nodes_resume": "cloud[1-3]",
+                        "oversubscribe": "OK",
+                        "partition": "cloud",
+                        "reservation": "resv_1234",
+                    }
+                ],
+            },
+        ),
+    ],
+)
+def test_get_slurm_resume(config_file, expected_slurm_resume, test_datadir, caplog):
+    caplog.set_level(logging.INFO)
+    if config_file:
+        os.environ["SLURM_RESUME_FILE"] = str(test_datadir / config_file)
+    slurm_resume = _get_slurm_resume()
+    assert_that(slurm_resume).is_equal_to(expected_slurm_resume)
+
+    if not expected_slurm_resume:
+        if config_file == "no_existent":
+            assert_that(caplog.records).is_length(1)
+            assert_that(caplog.records[0].levelname).is_equal_to("ERROR")
+            assert_that(caplog.records[0].message).contains(f"Slurm Resume File content: {expected_slurm_resume}")
+        else:
+            assert_that(caplog.records).is_length(2)
+            assert_that(caplog.records[0].levelname).is_equal_to("INFO")
+            assert_that(caplog.records[0].message).contains(
+                f"Unable to read file '{test_datadir / config_file if config_file else config_file}'"
+            )
+            assert_that(caplog.records[1].levelname).is_equal_to("ERROR")
+            assert_that(caplog.records[1].message).contains(f"Slurm Resume File content: {expected_slurm_resume}")
+    else:
+        assert_that(caplog.records).is_length(1)
+        assert_that(caplog.records[0].levelname).is_equal_to("INFO")
+        assert_that(caplog.records[0].message).contains("Slurm Resume File content")
