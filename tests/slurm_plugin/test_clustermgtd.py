@@ -1117,8 +1117,8 @@ def test_handle_unhealthy_static_nodes(
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
     # Mock add_instances_for_nodes but still try to execute original code
-    original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
-    cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
+    original_add_instances = cluster_manager._instance_manager.add_instances
+    cluster_manager._instance_manager.add_instances = mocker.MagicMock(side_effect=original_add_instances)
     reset_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     if set_nodes_down_exception is Exception:
         reset_mock.side_effect = set_nodes_down_exception
@@ -1146,7 +1146,9 @@ def test_handle_unhealthy_static_nodes(
         )
     else:
         cluster_manager._instance_manager.delete_instances.assert_not_called()
-    cluster_manager._instance_manager.add_instances_for_nodes.assert_called_with(add_node_list, 5, True)
+    cluster_manager._instance_manager.add_instances.assert_called_with(
+        node_list=add_node_list, launch_batch_size=5, update_node_address=True
+    )
     assert_that(caplog.records).is_length(len(expected_warnings))
     for actual, expected in zip(caplog.records, expected_warnings):
         assert_that(actual.message).matches(expected)

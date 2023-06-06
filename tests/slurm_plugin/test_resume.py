@@ -53,6 +53,7 @@ def boto3_stubber_path():
                 "all_or_nothing_batch": False,
                 "clustermgtd_timeout": 300,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
+                "job_level_scaling": True,
             },
         ),
         (
@@ -70,6 +71,7 @@ def boto3_stubber_path():
                 "all_or_nothing_batch": True,
                 "clustermgtd_timeout": 5,
                 "clustermgtd_heartbeat_file_path": "alternate/clustermgtd_heartbeat",
+                "job_level_scaling": False,
             },
         ),
     ],
@@ -407,6 +409,7 @@ def test_resume_launch(
         dns_domain=None,
         use_private_hostname=False,
         head_node_instance_id="i-headnode",
+        job_level_scaling=True,
     )
     mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", autospec=True, return_value=is_heartbeat_valid)
     mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", autospec=True)
