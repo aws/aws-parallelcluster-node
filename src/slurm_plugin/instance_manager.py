@@ -16,13 +16,13 @@ import logging
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
 import subprocess  # nosec B404
-from typing import Iterable
+from typing import Dict, Iterable, List
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.ec2_utils import get_private_ip_address
-from common.schedulers.slurm_commands import update_nodes
+from common.schedulers.slurm_commands import get_nodes_info, update_nodes
 from common.utils import grouper
 from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
@@ -33,6 +33,8 @@ from slurm_plugin.slurm_resources import (
     EC2InstanceHealthState,
     InvalidNodenameError,
     SlurmNode,
+    SlurmResumeData,
+    SlurmResumeJob,
     parse_nodename,
 )
 
@@ -66,7 +68,6 @@ class InstanceManager:
         fleet_config=None,
         run_instances_overrides=None,
         create_fleet_overrides=None,
-        slurm_resume=None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -86,18 +87,45 @@ class InstanceManager:
         self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
             resource_name, region_name=region, config=boto3_config
         )
-        self.slurm_resume = slurm_resume
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
         self.failed_nodes = {}
 
-    def add_instances_for_nodes(
+    def add_instances(
+        self,
+        node_list,
+        launch_batch_size,
+        update_node_address=True,
+        all_or_nothing_batch=False,
+        job_level_scaling=False,
+        slurm_resume=None,
+    ):
+        # Reset failed_nodes
+        self._clear_failed_nodes()
+
+        if slurm_resume and job_level_scaling:
+            logger.debug("Job Level Scaling using Slurm Resume File")
+            self._add_instances_for_resume_file(
+                slurm_resume=slurm_resume,
+                node_list=node_list,
+                launch_batch_size=launch_batch_size,
+                update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
+            )
+        else:
+            logger.debug("Node Scaling using Slurm Node Resume List")
+            self._add_instances_for_nodes(
+                node_list=node_list,
+                launch_batch_size=launch_batch_size,
+                update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
+            )
+
+    def _add_instances_for_nodes(
         self, node_list, launch_batch_size, update_node_address=True, all_or_nothing_batch=False
     ):
         """Launch requested EC2 instances for nodes."""
-        # Reset failed_nodes
-        self._clear_failed_nodes()
         instances_to_launch = self._parse_requested_instances(node_list)
         for queue, compute_resources in instances_to_launch.items():
             for compute_resource, slurm_node_list in compute_resources.items():
@@ -141,6 +169,25 @@ class InstanceManager:
                             e,
                         )
                         self._update_failed_nodes(set(batch_nodes))
+
+    def _add_instances_for_resume_file(
+        self, slurm_resume, node_list, launch_batch_size, update_node_address=True, all_or_nothing_batch=False
+    ):
+        """Launch requested EC2 instances for resume file."""
+        slurm_resume_data = self._get_slurm_resume_data(slurm_resume, node_list)
+
+        # node scaling for no oversubscribe nodes
+        for job in slurm_resume_data.jobs_no_oversubscribe:
+            logger.debug(f"No Oversubscribe Job info: {job}")
+            self._add_instances_for_nodes(
+                job.nodes_resume, launch_batch_size, update_node_address, all_or_nothing_batch=True
+            )
+
+        # node scaling for oversubscribe nodes
+        if slurm_resume_data.nodes_oversubscribe:
+            self._add_instances_for_nodes(
+                slurm_resume_data.nodes_oversubscribe, launch_batch_size, update_node_address, all_or_nothing_batch
+            )
 
     def _update_slurm_node_addrs(self, slurm_nodes, launched_instances):
         """Update node information in slurm with info from launched EC2 instance."""
@@ -245,6 +292,105 @@ class InstanceManager:
                     HostedZoneId=self._hosted_zone, ChangeBatch={"Changes": list(changes_batch)}
                 )
         logger.info("DNS records update: COMPLETED")
+
+    def _get_slurm_resume_data(self, slurm_resume: Dict[str, any], node_list: List[str]) -> SlurmResumeData:
+        """
+        Get SlurmResumeData object.
+
+        SlurmResumeData object contains the following:
+            * the node list for jobs with oversubscribe != NO
+            * the node list for jobs with oversubscribe == NO
+            * the job list with oversubscribe != NO
+            * the job list with oversubscribe == NO
+
+        Example of Slurm Resume File (ref. https://slurm.schedmd.com/elastic_computing.html):
+        {
+            "all_nodes_resume": "cloud[1-3,7-8]",
+            "jobs": [
+                {
+                    "extra": "An arbitrary string from --extra",
+                    "features": "c1,c2",
+                    "job_id": 140814,
+                    "nodes_alloc": "queue1-st-c5xlarge-[4-5]",
+                    "nodes_resume": "queue1-st-c5xlarge-[1,3]",
+                    "oversubscribe": "OK",
+                    "partition": "cloud",
+                    "reservation": "resv_1234",
+                },
+                {
+                    "extra": None,
+                    "features": "c1,c2",
+                    "job_id": 140815,
+                    "nodes_alloc": "queue2-st-c5xlarge-[1-2]",
+                    "nodes_resume": "queue2-st-c5xlarge-[1-2]",
+                    "oversubscribe": "OK",
+                    "partition": "cloud",
+                    "reservation": None,
+                },
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue2-st-c5xlarge-[7,8]",
+                    "nodes_resume": "queue2-st-c5xlarge-[7,8]",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+            ],
+        }
+        """
+        jobs_no_oversubscribe = []
+        jobs_oversubscribe = []
+        nodes_no_oversubscribe = []
+        nodes_oversubscribe = []
+
+        slurm_resume_jobs = self._parse_slurm_resume(slurm_resume)
+
+        for job in slurm_resume_jobs:
+            if job.is_exclusive():
+                jobs_no_oversubscribe.append(job)
+                nodes_no_oversubscribe.extend(job.nodes_resume)
+            else:
+                jobs_oversubscribe.append(job)
+                nodes_oversubscribe.extend(job.nodes_resume)
+
+        nodes_difference = list(set(node_list) - (set(nodes_oversubscribe) | (set(nodes_no_oversubscribe))))
+        if nodes_difference:
+            logger.warning(
+                "Discarding NodeNames because of mismatch in Slurm Resume File Vs Nodes passed to Resume Program: %s",
+                ", ".join(nodes_difference),
+            )
+            self._update_failed_nodes(set(nodes_difference), "InvalidNodenameError")
+        return SlurmResumeData(
+            nodes_oversubscribe=list(dict.fromkeys(nodes_oversubscribe)),
+            jobs_oversubscribe=jobs_oversubscribe,
+            nodes_no_oversubscribe=nodes_no_oversubscribe,
+            jobs_no_oversubscribe=jobs_no_oversubscribe,
+        )
+
+    def _parse_slurm_resume(self, slurm_resume: Dict[str, any]) -> List[SlurmResumeJob]:
+        slurm_resume_jobs = []
+        for job in slurm_resume.get("jobs", {}):
+            try:
+                slurm_resume_jobs.append(SlurmResumeJob(**job))
+            except InvalidNodenameError:
+                nodes_resume = job.get("nodes_resume", "")
+                nodes_alloc = job.get("nodes_alloc", "")
+                job_id = job.get("job_id", "")
+                logger.warning(
+                    "Discarding NodeNames with invalid format for Job Id (%s): nodes_alloc (%s), nodes_resume (%s)",
+                    job_id,
+                    nodes_alloc,
+                    nodes_resume,
+                )
+                self._update_failed_nodes(
+                    # if NodeNames in nodes_resume cannot be parsed, try to get info directly from Slurm
+                    set([node.name for node in get_nodes_info(nodes_resume)]),
+                    "InvalidNodenameError",
+                )
+
+        return slurm_resume_jobs
 
     def _parse_requested_instances(self, node_list):
         """
