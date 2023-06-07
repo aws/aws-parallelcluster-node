@@ -16,8 +16,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.6.1
 ------
 
-**CHANGES**
-- There were no changes for this version.
+**BUG FIXES**
+- Fix fast insufficient capacity fail-over logic when using Multiple Instance Types and no instances are returned
 
 3.6.0
 ------

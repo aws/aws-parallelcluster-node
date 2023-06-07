@@ -816,7 +816,7 @@ class TestInstanceManager:
                 ["queue1-st-c5xlarge-1"],
                 {},
                 None,
-                {"LimitedInstanceCapacity": {"queue1-st-c5xlarge-1"}},
+                {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-1"}},
                 False,
                 "dns.domain",
             ),
