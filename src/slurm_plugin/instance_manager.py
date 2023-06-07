@@ -216,11 +216,20 @@ class InstanceManager:
                     print_with_count(zip(launched_nodes, launched_instances)),
                 )
             if fail_launch_nodes:
-                logger.warning(
-                    "Failed to launch instances due to limited EC2 capacity for following nodes: %s",
-                    print_with_count(fail_launch_nodes),
-                )
-                self._update_failed_nodes(set(fail_launch_nodes), "LimitedInstanceCapacity")
+                if launched_nodes:
+                    logger.warning(
+                        "Failed to launch instances due to limited EC2 capacity for following nodes: %s",
+                        print_with_count(fail_launch_nodes),
+                    )
+                    self._update_failed_nodes(set(fail_launch_nodes), "LimitedInstanceCapacity")
+                else:
+                    # EC2 Fleet doens't trigger any exception in case of ICEs and may return more than one error
+                    # for each request. So when no instances were launched we force the reason to ICE
+                    logger.error(
+                        "Failed to launch instances due to limited EC2 capacity for following nodes: %s",
+                        print_with_count(fail_launch_nodes),
+                    )
+                    self._update_failed_nodes(set(fail_launch_nodes), "InsufficientInstanceCapacity")
 
             return dict(zip(launched_nodes, launched_instances))
 
