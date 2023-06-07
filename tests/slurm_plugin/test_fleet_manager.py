@@ -219,6 +219,32 @@ class TestEc2RunInstancesManager:
 
 # -------- Ec2CreateFleetManager ------
 
+test_fleet_exception_params = {
+    "LaunchTemplateConfigs": [
+        {
+            "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
+            "Overrides": [
+                {
+                    "InstanceRequirements": {
+                        "VCpuCount": {"Min": 2},
+                        "MemoryMiB": {"Min": 2048},
+                        "AllowedInstanceTypes": ["inf*"],
+                        "AcceleratorManufacturers": ["nvidia"],
+                    }
+                }
+            ],
+        }
+    ],
+    "SpotOptions": {
+        "AllocationStrategy": "capacity-optimized",
+        "SingleInstanceType": False,
+        "SingleAvailabilityZone": True,
+        "MinTargetCapacity": 1,
+    },
+    "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "spot"},
+    "Type": "instant",
+}
+
 test_fleet_spot_params = {
     "LaunchTemplateConfigs": [
         {
@@ -486,6 +512,26 @@ class TestCreateFleetManager:
                     },
                 ],
             ),
+            # create-fleet - exception
+            (
+                test_fleet_exception_params,
+                [
+                    MockedBoto3Request(
+                        method="create_fleet",
+                        response={
+                            "Instances": [],
+                            "Errors": [
+                                {"ErrorCode": "InvalidParameterValue", "ErrorMessage": "Insufficient capacity."}
+                            ],
+                            "ResponseMetadata": {"RequestId": "1234-abcde"},
+                        },
+                        expected_params=test_fleet_exception_params,
+                        generate_error=True,
+                        error_code="InvalidParameterValue",
+                    ),
+                ],
+                [],
+            ),
             # normal - on-demand
             (
                 test_on_demand_params,
@@ -549,7 +595,7 @@ class TestCreateFleetManager:
                 ],
             ),
         ],
-        ids=["fleet_spot", "fleet_ondemand"],
+        ids=["fleet_spot", "fleet_exception", "fleet_ondemand"],
     )
     def test_launch_instances(
         self,
@@ -567,8 +613,13 @@ class TestCreateFleetManager:
             "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", False, {}, {}
         )
 
-        assigned_nodes = fleet_manager._launch_instances(launch_params)
-        assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
+        if mocked_boto3_request[0].generate_error:
+            with pytest.raises(Exception) as e:
+                fleet_manager._launch_instances(launch_params)
+                assert isinstance(e, ClientError)
+        else:
+            assigned_nodes = fleet_manager._launch_instances(launch_params)
+            assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
 
     @pytest.mark.parametrize(
         ("instance_ids", "mocked_boto3_request", "expected_exception", "expected_error", "expected_result"),
