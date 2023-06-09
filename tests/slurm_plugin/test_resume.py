@@ -172,9 +172,30 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 zip(
                     ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
                     [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance(
+                            "i-11111",
+                            "ip.1.0.0.1",
+                            "ip-1-0-0-1",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
+                        EC2Instance(
+                            "i-22222",
+                            "ip.1.0.0.2",
+                            "ip-1-0-0-2",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
+                        EC2Instance(
+                            "i-33333",
+                            "ip.1.0.0.3",
+                            "ip-1-0-0-3",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
                     ],
                 )
             ),
@@ -257,9 +278,30 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 zip(
                     ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
                     [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance(
+                            "i-11111",
+                            "ip.1.0.0.1",
+                            "ip-1-0-0-1",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
+                        EC2Instance(
+                            "i-22222",
+                            "ip.1.0.0.2",
+                            "ip-1-0-0-2",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
+                        EC2Instance(
+                            "i-33333",
+                            "ip.1.0.0.3",
+                            "ip-1-0-0-3",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
                     ],
                 )
             ),
@@ -307,7 +349,14 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 zip(
                     ["queue1-dy-c5xlarge-1"],
                     [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance(
+                            "i-11111",
+                            "ip.1.0.0.1",
+                            "ip-1-0-0-1",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
                     ],
                 )
             ),
@@ -352,7 +401,14 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 zip(
                     ["queue1-dy-c5xlarge-1"],
                     [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance(
+                            "i-11111",
+                            "ip.1.0.0.1",
+                            "ip-1-0-0-1",
+                            datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "c5.xlarge",
+                            None,
+                        ),
                     ],
                 )
             ),

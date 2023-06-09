@@ -2782,3 +2782,429 @@ def test_publish_compute_node_events(compute_nodes, expected_details, level_filt
     assert_that(received_events).is_length(len(expected_details))
     for received_event, expected_detail in zip(received_events, expected_details):
         assert_that(received_event).is_equal_to(expected_detail)
+
+
+@pytest.mark.parametrize(
+    "compute_nodes, expected_details, level_filter, max_list_size",
+    [
+        (
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-1",
+                        private_ip="ip-1",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                StaticNode(
+                    "queue-st-c5xlarge-1",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue",
+                    instance=EC2Instance(
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                StaticNode(
+                    "queue1-st-c4xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN",
+                    "queue1",
+                    instance=EC2Instance(
+                        id="id-3",
+                        private_ip="ip-3",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-4",
+                        private_ip="ip-4",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERING_DOWN",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-6",
+                        private_ip="ip-6",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-3",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:UnauthorizedOperation)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-7",
+                        private_ip="ip-7",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-4",
+                    "nodeip",
+                    "nodehostname",
+                    "MIXED+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:InvalidBlockDeviceMapping)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-8",
+                        private_ip="ip-8",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-5",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:AccessDeniedException)Error",
+                    instance=EC2Instance(
+                        id="id-9",
+                        private_ip="ip-9",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-6",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:VcpuLimitExceeded)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-10",
+                        private_ip="ip-10",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                StaticNode(
+                    "queue2-st-c5large-8",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:VolumeLimitExceeded)Error",
+                    instance=EC2Instance(
+                        id="id-11",
+                        private_ip="ip-11",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-9",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientVolumeCapacity)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-12",
+                        private_ip="ip-12",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                ),
+            ],
+            [
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-1",
+                                "node_name": "queue1-st-c5xlarge-2",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-2",
+                                "node_name": "queue-st-c5xlarge-1",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-2",
+                                "node_name": "queue1-dy-c5xlarge-1",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-3",
+                                "node_name": "queue1-st-c4xlarge-1",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-4",
+                                "node_name": "queue1-dy-c5xlarge-3",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-6",
+                                "node_name": "queue2-dy-c5large-2",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-7",
+                                "node_name": "queue2-st-c5large-3",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-8",
+                                "node_name": "queue2-st-c5large-4",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-9",
+                                "node_name": "queue2-dy-c5large-5",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-10",
+                                "node_name": "queue2-st-c5large-6",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-11",
+                                "node_name": "queue2-st-c5large-8",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+                {
+                    "node-instance-mapping-event": {
+                        "nodes": [
+                            {
+                                "instance_id": "id-12",
+                                "node_name": "queue2-dy-c5large-9",
+                                "instance_type": "instance_type",
+                                "threads_per_core": 2,
+                            }
+                        ]
+                    }
+                },
+            ],
+            [],
+            None,
+        ),
+        (
+            [],
+            [],
+            [],
+            100,
+        ),
+        (
+            [
+                StaticNode(
+                    "queue2-st-c5large-6",
+                    "nodeip",
+                    "nodehostname",
+                    "IDLE+CLOUD+POWERED_UP",
+                    "queue2",
+                    "(Code:VcpuLimitExceeded)Error",
+                    lastbusytime=datetime(
+                        year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
+                    ),
+                    instance=EC2Instance(
+                        id="id-10",
+                        private_ip="ip-10",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        instance_type="instance_type",
+                        threads_per_core=2,
+                    ),
+                )
+            ],
+            [],
+            ["WARNING"],
+            100,
+        ),
+    ],
+    ids=["node_map", "node_map no instance", "Node_map does not log warning"],
+)
+def test_publish_node_mapping_events(compute_nodes, expected_details, level_filter, max_list_size, mocker):
+    received_events = []
+    event_publisher = ClusterEventPublisher(
+        event_handler(received_events, level_filter=level_filter), max_list_size=max_list_size
+    )
+    test_time = datetime(year=2023, month=3, day=11, hour=23, minute=23, second=14, tzinfo=timezone.utc)
+
+    # Run test
+    mock_now = mocker.patch(
+        "slurm_plugin.cluster_event_publisher.ClusterEventPublisher.current_time",
+    )
+    mock_now.return_value = test_time
+
+    event_publisher.publish_node_mapping_events(compute_nodes)
+
+    # Assert calls
+
+    assert_that(received_events).is_length(len(expected_details))
+    for received_event, expected_detail in zip(received_events, expected_details):
+        assert_that(received_event).is_equal_to(expected_detail)
