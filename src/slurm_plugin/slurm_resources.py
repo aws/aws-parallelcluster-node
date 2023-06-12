@@ -15,8 +15,9 @@ from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import List
 
-from common.utils import time_is_up
+from common.utils import convert_range_to_list, time_is_up
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,80 @@ class SlurmPartition:
         if isinstance(other, SlurmPartition):
             return self.__dict__ == other.__dict__
         return False
+
+
+class JobOversubscribe(Enum):
+    YES = "YES"
+    NO = "NO"
+    USER = "USER"
+    MCS = "MCS"
+    OK = "OK"
+
+    @classmethod
+    # Default to OK when Oversubscribe value cannot be parsed
+    def _missing_(cls, value):
+        return cls.OK
+
+    def __str__(self):
+        return str(self.value)
+
+
+@dataclass
+class SlurmJob(metaclass=ABCMeta):
+    job_id: int
+
+
+class SlurmResumeJob(SlurmJob):
+    def __init__(
+        self,
+        job_id,
+        nodes_alloc,
+        nodes_resume,
+        oversubscribe,
+        partition="",
+        reservation="",
+        features="",
+        extra="",
+    ):
+        """Initialize Slurm job with attributes."""
+        super().__init__(
+            job_id,
+        )
+
+        self.nodes_alloc = get_node_list(nodes_alloc)
+        self.nodes_resume = get_node_list(nodes_resume)
+        self.oversubscribe = JobOversubscribe(oversubscribe)
+        self.partition = partition
+        self.reservation = reservation
+        self.features = features
+        self.extra = extra
+
+    def is_exclusive(self):
+        return self.oversubscribe == JobOversubscribe.NO
+
+    def __eq__(self, other):
+        """Compare 2 SlurmJob objects."""
+        if isinstance(other, SlurmJob):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __repr__(self):
+        attrs = ", ".join(["{key}={value}".format(key=key, value=repr(value)) for key, value in self.__dict__.items()])
+        return "{class_name}({attrs})".format(class_name=self.__class__.__name__, attrs=attrs)
+
+    def __str__(self):
+        return f"{self.job_id}"
+
+    def __hash__(self):
+        return hash(self.job_id)
+
+
+@dataclass
+class SlurmResumeData:
+    jobs_no_oversubscribe: List[SlurmResumeJob]
+    jobs_oversubscribe: List[SlurmResumeJob]
+    nodes_no_oversubscribe: List[str]
+    nodes_oversubscribe: List[str]
 
 
 class SlurmNode(metaclass=ABCMeta):
@@ -638,3 +713,34 @@ def parse_nodename(nodename):
 
     queue_name, node_type, compute_resource_name = nodename_capture.groups()
     return queue_name, node_type, compute_resource_name
+
+
+def get_node_list(nodenames):
+    """
+    Convert nodenames to a list of nodes.
+
+    Example input nodenames: "queue1-st-c5xlarge-[1,3,4-5],queue1-st-c5large-20"
+    Example output [queue1-st-c5xlarge-1, queue1-st-c5xlarge-3, queue1-st-c5xlarge-4, queue1-st-c5xlarge-5,
+    queue1-st-c5large-20]
+    """
+    matches = []
+    if type(nodenames) is str:
+        matches = re.findall(r"((([a-z0-9\-]+)-(st|dy)-([a-z0-9\-]+)-)(\[[\d+,-]+\]|\d+))(,|$)", nodenames)
+        # [('queue1-st-c5xlarge-[1,3,4-5]', 'queue1-st-c5xlarge-', 'queue1', 'st', 'c5xlarge', '[1,3,4-5]'),
+        # ('queue1-st-c5large-20', 'queue1-st-c5large-', 'queue1', 'st', 'c5large', '20')]
+    node_list = []
+    if not matches:
+        raise InvalidNodenameError
+    for match in matches:
+        nodename, prefix, _, _, _, nodes, _ = match
+        if "[" not in nodes:
+            # Single nodename
+            node_list.append(nodename)
+        else:
+            # Multiple nodenames
+            try:
+                node_range = convert_range_to_list(nodes.strip("[]"))
+            except ValueError:
+                raise InvalidNodenameError
+            node_list += [prefix + str(n) for n in node_range]
+    return node_list

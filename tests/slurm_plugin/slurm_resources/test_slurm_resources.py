@@ -14,7 +14,15 @@ from datetime import datetime
 import pytest
 from assertpy import assert_that
 from slurm_plugin.fleet_manager import EC2Instance
-from slurm_plugin.slurm_resources import DynamicNode, EC2InstanceHealthState, SlurmPartition, StaticNode
+from slurm_plugin.slurm_resources import (
+    DynamicNode,
+    EC2InstanceHealthState,
+    InvalidNodenameError,
+    SlurmPartition,
+    SlurmResumeJob,
+    StaticNode,
+    get_node_list,
+)
 
 
 @pytest.mark.parametrize(
@@ -642,7 +650,7 @@ def test_partition_is_inactive(nodes, expected_output):
     ],
 )
 def test_slurm_node_is_state_healthy(
-    node, mock_is_node_being_replaced, terminate_drain_nodes, terminate_down_nodes, expected_result, mocker
+    node, mock_is_node_being_replaced, terminate_drain_nodes, terminate_down_nodes, expected_result
 ):
     node.is_being_replaced = mock_is_node_being_replaced
     assert_that(node.is_state_healthy(terminate_drain_nodes, terminate_down_nodes)).is_equal_to(expected_result)
@@ -1194,3 +1202,376 @@ def test_fail_ec2_health_check(instance_health_state, current_time, expected_res
 )
 def test_fail_scheduled_events_health_check(instance_health_state, expected_result):
     assert_that(instance_health_state.fail_scheduled_events_check()).is_equal_to(expected_result)
+
+
+@pytest.mark.parametrize(
+    "nodenames, expected_node_list, expected_exception",
+    [
+        (
+            "queue1-st-c5xlarge-[1,3,4-6],queue1-dy-c5large-20",
+            [
+                "queue1-st-c5xlarge-1",
+                "queue1-st-c5xlarge-3",
+                "queue1-st-c5xlarge-4",
+                "queue1-st-c5xlarge-5",
+                "queue1-st-c5xlarge-6",
+                "queue1-dy-c5large-20",
+            ],
+            False,
+        ),
+        (
+            "queue1-st-c5large-20,queue1-dy-c5xlarge-[1,3,4-6]",
+            [
+                "queue1-st-c5large-20",
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-3",
+                "queue1-dy-c5xlarge-4",
+                "queue1-dy-c5xlarge-5",
+                "queue1-dy-c5xlarge-6",
+            ],
+            False,
+        ),
+        (
+            "q4-dy-c4-1-1,q4-dy-c4-2-1",
+            ["q4-dy-c4-1-1", "q4-dy-c4-2-1"],
+            False,
+        ),
+        (
+            "queue-1-2-dy-c5x-large-1-2-10",
+            ["queue-1-2-dy-c5x-large-1-2-10"],
+            False,
+        ),
+        (
+            "queue-1-broken-c5x-large-1-1",
+            [],
+            True,
+        ),
+        (
+            "queue-1-st-c5x-large-1-broken",
+            [],
+            True,
+        ),
+        (
+            "",
+            [],
+            True,
+        ),
+        (
+            "  ",
+            [],
+            True,
+        ),
+        (
+            "broken",
+            [],
+            True,
+        ),
+        (
+            "-st-c5large-20",
+            [],
+            True,
+        ),
+        (
+            "queue-st-c5large-[20",
+            [],
+            True,
+        ),
+        (
+            "queue-st-c5large-20]",
+            [],
+            True,
+        ),
+        (
+            "--dy-a-[-]",
+            [],
+            True,
+        ),
+        (
+            "--dy-a-[,]",
+            [],
+            True,
+        ),
+    ],
+)
+def test_get_node_list(nodenames, expected_node_list, expected_exception):
+    if expected_exception:
+        with pytest.raises(InvalidNodenameError):
+            get_node_list(nodenames)
+    else:
+        node_list = get_node_list(nodenames)
+        assert_that(node_list).is_equal_to(expected_node_list)
+
+
+class TestSlurmJob:
+    @pytest.mark.parametrize(
+        "job_json, expected_nodes_alloc, expected_nodes_resume, expected_is_exclusive, expected_exception",
+        [
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                    "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4", "queue1-st-c5xlarge-5"],
+                ["queue1-st-c5xlarge-7", "queue1-st-c5xlarge-8"],
+                True,
+                False,
+            ),
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                    "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                    "oversubscribe": "YES",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4", "queue1-st-c5xlarge-5"],
+                ["queue1-st-c5xlarge-7", "queue1-st-c5xlarge-8"],
+                False,
+                False,
+            ),
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                    "nodes_resume": "broken",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                [],
+                [],
+                None,
+                True,
+            ),
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "broken",
+                    "nodes_resume": "queue1-st-c5xlarge-[1,3,4-5]",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                [],
+                [],
+                None,
+                True,
+            ),
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue1-st-c5xlarge-1",
+                    "nodes_resume": "queue1-st-c5xlarge-1",
+                    "oversubscribe": "NOT_FOUND",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                ["queue1-st-c5xlarge-1"],
+                ["queue1-st-c5xlarge-1"],
+                False,
+                False,
+            ),
+        ],
+    )
+    def test_slurm_job(
+        self, job_json, expected_nodes_alloc, expected_nodes_resume, expected_is_exclusive, expected_exception
+    ):
+        if expected_exception:
+            with pytest.raises(InvalidNodenameError):
+                SlurmResumeJob(**job_json)
+        else:
+            job = SlurmResumeJob(**job_json)
+            assert_that(job.nodes_alloc).is_equal_to(expected_nodes_alloc)
+            assert_that(job.nodes_resume).is_equal_to(expected_nodes_resume)
+            assert_that(job.is_exclusive()).is_equal_to(expected_is_exclusive)
+
+    @pytest.mark.parametrize(
+        "jobs_json, expected_equal",
+        [
+            (
+                [
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1-3,4,5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1-3,4,5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                ],
+                True,
+            ),
+            (
+                [
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                    {
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                    },
+                ],
+                False,
+            ),
+            (
+                [
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "OK",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                ],
+                False,
+            ),
+            (
+                [
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140816,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                    {
+                        "extra": None,
+                        "features": None,
+                        "job_id": 140817,
+                        "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                        "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                        "oversubscribe": "NO",
+                        "partition": "cloud_exclusive",
+                        "reservation": None,
+                    },
+                ],
+                False,
+            ),
+        ],
+    )
+    def test_slurm_job_eq(
+        self,
+        jobs_json,
+        expected_equal,
+    ):
+        job_1 = SlurmResumeJob(**jobs_json[0])
+        job_2 = SlurmResumeJob(**jobs_json[1])
+
+        if expected_equal:
+            assert_that(job_1).is_equal_to(job_2)
+        else:
+            assert_that(job_1).is_not_equal_to(job_2)
+
+        assert_that(job_1).is_not_equal_to("140816")
+        assert_that(job_2).is_not_equal_to("140817")
+
+    @pytest.mark.parametrize(
+        "job_json, expected_hash",
+        [
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue1-st-c5xlarge-[1,3,4-5]",
+                    "nodes_resume": "queue1-st-c5xlarge-[7-8]",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                140816,
+            ),
+        ],
+    )
+    def test_slurm_job_hash(
+        self,
+        job_json,
+        expected_hash,
+    ):
+        job = SlurmResumeJob(**job_json)
+        assert_that(hash(job)).is_equal_to(expected_hash)
+
+    @pytest.mark.parametrize(
+        "job_json, expected_repr",
+        [
+            (
+                {
+                    "extra": None,
+                    "features": None,
+                    "job_id": 140816,
+                    "nodes_alloc": "queue1-st-c5xlarge-1",
+                    "nodes_resume": "queue1-st-c5xlarge-1",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                "SlurmResumeJob(job_id=140816, "
+                "nodes_alloc=['queue1-st-c5xlarge-1'], "
+                "nodes_resume=['queue1-st-c5xlarge-1'], "
+                "oversubscribe=<JobOversubscribe.NO: 'NO'>, "
+                "partition='cloud_exclusive', "
+                "reservation=None, "
+                "features=None, "
+                "extra=None)",
+            ),
+        ],
+    )
+    def test_slurm_job_repr(
+        self,
+        job_json,
+        expected_repr,
+    ):
+        job = SlurmResumeJob(**job_json)
+        assert_that(repr(job)).is_equal_to(expected_repr)

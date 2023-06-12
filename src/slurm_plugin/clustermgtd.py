@@ -827,10 +827,10 @@ class ClusterManager:
                 instances_to_terminate, terminate_batch_size=self._config.terminate_max_batch_size
             )
         log.info("Launching new instances for unhealthy static nodes")
-        self._instance_manager.add_instances_for_nodes(
-            node_list,
-            self._config.launch_max_batch_size,
-            self._config.update_node_address,
+        self._instance_manager.add_instances(
+            node_list=node_list,
+            launch_batch_size=self._config.launch_max_batch_size,
+            update_node_address=self._config.update_node_address,
         )
         # Add launched nodes to list of nodes being replaced, excluding any nodes that failed to launch
         failed_nodes = set().union(*self._instance_manager.failed_nodes.values())

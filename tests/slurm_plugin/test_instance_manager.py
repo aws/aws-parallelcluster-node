@@ -10,6 +10,7 @@
 # limitations under the License.
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Iterable
 from unittest.mock import call
@@ -26,6 +27,7 @@ from slurm_plugin.slurm_resources import (
     EC2_SCHEDULED_EVENT_CODES,
     EC2InstanceHealthState,
     SlurmNode,
+    SlurmResumeJob,
     StaticNode,
 )
 
@@ -750,7 +752,7 @@ class TestInstanceManager:
             "override_runinstances",
         ],
     )
-    def test_add_instances(
+    def test_add_instances_for_nodes(
         self,
         boto3_stubber,
         instances_to_launch,
@@ -781,7 +783,7 @@ class TestInstanceManager:
         )
 
         # run test
-        instance_manager.add_instances_for_nodes(
+        instance_manager._add_instances_for_nodes(
             node_list=["placeholder_node_list"],
             launch_batch_size=launch_batch_size,
             update_node_address=update_node_address,
@@ -1853,3 +1855,563 @@ class TestInstanceManager:
         assert_that(ddb_resource.requested_key_count).is_equal_to(expected_node_count)
         assert_that(ddb_resource.call_count).is_equal_to(len(expected_request_counts))
         assert_that(ddb_resource.request_counts).is_equal_to(expected_request_counts)
+
+    @pytest.mark.parametrize(
+        "slurm_resume, expected_job_list_length, expected_discarded_nodes_alloc, expected_discarded_nodes_resume, "
+        "broken_nodenames, expected_failed_nodes",
+        [
+            (
+                {
+                    "all_nodes_resume": "cloud[1-3,7-8]",
+                    "jobs": [
+                        {
+                            "extra": "An arbitrary string from --extra",
+                            "features": "c1,c2",
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[4-5]",
+                            "nodes_resume": "queue1-st-c5xlarge-[1,3]",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": "resv_1234",
+                        },
+                        {
+                            "extra": None,
+                            "features": "c1,c2",
+                            "job_id": 140815,
+                            "nodes_alloc": "queue2-st-c5xlarge-[1-2]",
+                            "nodes_resume": "queue2-st-c5xlarge-[1-2]",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": None,
+                        },
+                        {
+                            "extra": None,
+                            "features": None,
+                            "job_id": 140816,
+                            "nodes_alloc": "queue2-st-c5xlarge-[7,8]",
+                            "nodes_resume": "queue2-st-c5xlarge-[7,8]",
+                            "oversubscribe": "NO",
+                            "partition": "cloud_exclusive",
+                            "reservation": None,
+                        },
+                    ],
+                },
+                3,
+                None,
+                None,
+                None,
+                0,
+            ),
+            (
+                {
+                    "all_nodes_resume": "cloud[1-3,7-8]",
+                    "jobs": [
+                        {
+                            "extra": "An arbitrary string from --extra",
+                            "features": "c1,c2",
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[4-5]",
+                            "nodes_resume": "queue1-st-c5xlarge-[1,3]",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": "resv_1234",
+                        },
+                        {
+                            "extra": None,
+                            "features": "c1,c2",
+                            "job_id": 140815,
+                            "nodes_alloc": "queue2-st-c5xlarge-[1-2]",
+                            "nodes_resume": "broken",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": None,
+                        },
+                    ],
+                },
+                1,
+                "queue2-st-c5xlarge-[1-2]",
+                "broken",
+                [
+                    StaticNode(
+                        "queue-st-large-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                    ),
+                ],
+                1,
+            ),
+            (
+                {
+                    "all_nodes_resume": "cloud[1-3,7-8]",
+                    "jobs": [
+                        {
+                            "extra": "An arbitrary string from --extra",
+                            "features": "c1,c2",
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[4-5]",
+                            "nodes_resume": "queue1-st-c5xlarge-[1,3]",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": "resv_1234",
+                        },
+                        {
+                            "extra": None,
+                            "features": "c1,c2",
+                            "job_id": 140815,
+                            "nodes_alloc": "broken",
+                            "nodes_resume": "queue3-st-c5xlarge-3, queue2-st-c5xlarge-2",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": None,
+                        },
+                    ],
+                },
+                1,
+                "broken",
+                "queue3-st-c5xlarge-3, queue2-st-c5xlarge-2",
+                [
+                    StaticNode(
+                        "queue3-st-c5xlarge-3",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                    ),
+                    StaticNode(
+                        "queue2-st-c5xlarge-2",
+                        "ip-2",
+                        "hostname-2",
+                        "some_state",
+                    ),
+                ],
+                2,
+            ),
+            (
+                {
+                    "all_nodes_resume": "cloud-1",
+                    "jobs": [
+                        {
+                            "extra": "An arbitrary string from --extra",
+                            "features": "c1,c2",
+                            "job_id": 140814,
+                            "nodes_alloc": "broken-1, broken-2",
+                            "nodes_resume": "broken-1, broken-2",
+                            "oversubscribe": "OK",
+                            "partition": "cloud",
+                            "reservation": "resv_1234",
+                        },
+                    ],
+                },
+                0,
+                "broken-1, broken-2",
+                "broken-1, broken-2",
+                [
+                    StaticNode(
+                        "queue2-st-c5xlarge-1",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                    ),
+                    StaticNode(
+                        "queue2-st-c5xlarge-2",
+                        "ip-1",
+                        "hostname-1",
+                        "some_state",
+                    ),
+                ],
+                2,
+            ),
+        ],
+    )
+    def test_parse_slurm_resume(
+        self,
+        slurm_resume,
+        instance_manager,
+        expected_job_list_length,
+        expected_discarded_nodes_alloc,
+        expected_discarded_nodes_resume,
+        broken_nodenames,
+        expected_failed_nodes,
+        mocker,
+        caplog,
+    ):
+        mocker.patch("slurm_plugin.instance_manager.get_nodes_info", return_value=broken_nodenames, autospec=True)
+        slurm_resume_jobs = instance_manager._parse_slurm_resume(slurm_resume)
+        assert_that(len(slurm_resume_jobs)).is_equal_to(expected_job_list_length)
+        if expected_failed_nodes > 0:
+            assert_that(caplog.text).matches(
+                rf"Discarding NodeNames with invalid format for Job Id (.*):"
+                rf" nodes_alloc \({re.escape(expected_discarded_nodes_alloc)}\),"
+                rf" nodes_resume \({re.escape(expected_discarded_nodes_resume)}\)"
+            )
+            assert_that(len(instance_manager.failed_nodes["InvalidNodenameError"])).is_equal_to(expected_failed_nodes)
+        else:
+            assert_that("InvalidNodenameError").is_not_in(instance_manager.failed_nodes)
+
+    @pytest.mark.parametrize(
+        "slurm_resume, node_list, expected_nodes_oversubscribe, expected_jobs_oversubscribe, "
+        "expected_nodes_no_oversubscribe, expected_jobs_no_oversubscribe, expected_nodes_difference",
+        [
+            (
+                {
+                    "all_nodes_resume": "cloud[1-3,7-8]",
+                    "jobs": [
+                        {
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[1-4]",
+                            "nodes_resume": "queue1-st-c5xlarge-[1-3]",
+                            "oversubscribe": "YES",
+                        },
+                        {
+                            "job_id": 140815,
+                            "nodes_alloc": "queue2-st-c5xlarge-[1-3]",
+                            "nodes_resume": "queue2-st-c5xlarge-[1-3]",
+                            "oversubscribe": "NO",
+                        },
+                        {
+                            "job_id": 140816,
+                            "nodes_alloc": "queue3-st-c5xlarge-[7-10]",
+                            "nodes_resume": "queue3-st-c5xlarge-[7-9]",
+                            "oversubscribe": "NO",
+                        },
+                        {
+                            "job_id": 140817,
+                            "nodes_alloc": "broken",
+                            "nodes_resume": "broken",
+                            "oversubscribe": "NO",
+                        },
+                        {
+                            "job_id": 140818,
+                            "nodes_alloc": "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                            "nodes_resume": "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                            "oversubscribe": "UNKNOWN",
+                        },
+                    ],
+                },
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                    "queue2-st-c5xlarge-1",
+                    "queue2-st-c5xlarge-2",
+                    "queue2-st-c5xlarge-3",
+                    "queue3-st-c5xlarge-7",
+                    "queue3-st-c5xlarge-8",
+                    "queue3-st-c5xlarge-9",
+                    "broken",
+                    "queue4-st-c5xlarge-11",
+                ],
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue4-st-c5xlarge-11"],
+                [
+                    SlurmResumeJob(140814, "queue1-st-c5xlarge-[1-4]", "queue1-st-c5xlarge-[1-3]", "YES"),
+                    SlurmResumeJob(
+                        140818,
+                        "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        "OK",
+                    ),
+                ],
+                [
+                    "queue2-st-c5xlarge-1",
+                    "queue2-st-c5xlarge-2",
+                    "queue2-st-c5xlarge-3",
+                    "queue3-st-c5xlarge-7",
+                    "queue3-st-c5xlarge-8",
+                    "queue3-st-c5xlarge-9",
+                ],
+                [
+                    SlurmResumeJob(140815, "queue2-st-c5xlarge-[1-3]", "queue2-st-c5xlarge-[1-3]", "NO"),
+                    SlurmResumeJob(140816, "queue3-st-c5xlarge-[7-10]", "queue3-st-c5xlarge-[7-9]", "NO"),
+                ],
+                ["broken"],
+            ),
+        ],
+    )
+    def test_get_slurm_jobs_and_nodes(
+        self,
+        slurm_resume,
+        node_list,
+        expected_nodes_oversubscribe,
+        expected_jobs_oversubscribe,
+        expected_nodes_no_oversubscribe,
+        expected_jobs_no_oversubscribe,
+        instance_manager,
+        expected_nodes_difference,
+        mocker,
+        caplog,
+    ):
+        mocker.patch("slurm_plugin.instance_manager.get_nodes_info", autospec=True)
+        slurm_resume = instance_manager._get_slurm_resume_data(slurm_resume, node_list)
+        assert_that(slurm_resume.nodes_oversubscribe).contains(*expected_nodes_oversubscribe)
+        assert_that(slurm_resume.jobs_oversubscribe).is_equal_to(expected_jobs_oversubscribe)
+        assert_that(slurm_resume.nodes_no_oversubscribe).contains(*expected_nodes_no_oversubscribe)
+        assert_that(slurm_resume.jobs_no_oversubscribe).is_equal_to(expected_jobs_no_oversubscribe)
+        if expected_nodes_difference:
+            assert_that(caplog.text).contains(
+                "Discarding NodeNames because of mismatch in Slurm Resume File Vs Nodes passed to Resume Program: "
+                f"{', '.join(expected_nodes_difference)}"
+            )
+            assert_that(len(instance_manager.failed_nodes["InvalidNodenameError"])).is_equal_to(
+                len(expected_nodes_difference)
+            )
+        else:
+            assert_that("InvalidNodenameError").is_not_in(instance_manager.failed_nodes)
+
+    @pytest.mark.parametrize(
+        (
+            "slurm_resume",
+            "node_list",
+            "launch_batch_size",
+            "update_node_address",
+            "all_or_nothing_batch",
+            "expected_nodes_oversubscribe",
+            "expected_nodes_no_oversubscribe_list",
+        ),
+        [
+            (
+                {
+                    "all_nodes_resume": "cloud[1-3,7-8]",
+                    "jobs": [
+                        {
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[1-4]",
+                            "nodes_resume": "queue1-st-c5xlarge-[1-3]",
+                            "oversubscribe": "YES",
+                        },
+                        {
+                            "job_id": 140815,
+                            "nodes_alloc": "queue2-st-c5xlarge-[1-3]",
+                            "nodes_resume": "queue2-st-c5xlarge-[1-3]",
+                            "oversubscribe": "NO",
+                        },
+                        {
+                            "job_id": 140816,
+                            "nodes_alloc": "queue3-st-c5xlarge-[7-10]",
+                            "nodes_resume": "queue3-st-c5xlarge-[7-9]",
+                            "oversubscribe": "NO",
+                        },
+                        {
+                            "job_id": 140817,
+                            "nodes_alloc": "broken",
+                            "nodes_resume": "broken",
+                            "oversubscribe": "NO",
+                        },
+                        {
+                            "job_id": 140818,
+                            "nodes_alloc": "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                            "nodes_resume": "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                            "oversubscribe": "UNKNOWN",
+                        },
+                    ],
+                },
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                    "queue2-st-c5xlarge-1",
+                    "queue2-st-c5xlarge-2",
+                    "queue2-st-c5xlarge-3",
+                    "queue3-st-c5xlarge-7",
+                    "queue3-st-c5xlarge-8",
+                    "queue3-st-c5xlarge-9",
+                    "broken",
+                    "queue4-st-c5xlarge-11",
+                ],
+                10,
+                True,
+                False,
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                    "queue4-st-c5xlarge-11",
+                ],
+                [
+                    [
+                        "queue2-st-c5xlarge-1",
+                        "queue2-st-c5xlarge-2",
+                        "queue2-st-c5xlarge-3",
+                    ],
+                    [
+                        "queue3-st-c5xlarge-7",
+                        "queue3-st-c5xlarge-8",
+                        "queue3-st-c5xlarge-9",
+                    ],
+                ],
+            ),
+            (
+                {
+                    "all_nodes_resume": "anything",
+                    "jobs": [
+                        {
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[1-4]",
+                            "nodes_resume": "queue1-st-c5xlarge-[1-3]",
+                            "oversubscribe": "FORCE",
+                        },
+                    ],
+                },
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                ],
+                5,
+                False,
+                False,
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                ],
+                [],
+            ),
+            (
+                {
+                    "all_nodes_resume": "anything",
+                    "jobs": [
+                        {
+                            "job_id": 140814,
+                            "nodes_alloc": "queue1-st-c5xlarge-[1-2]",
+                            "nodes_resume": "queue1-st-c5xlarge-1",
+                            "oversubscribe": "NO",
+                        },
+                    ],
+                },
+                [],
+                8,
+                True,
+                False,
+                [],
+                [
+                    [
+                        "queue1-st-c5xlarge-1",
+                    ],
+                ],
+            ),
+        ],
+    )
+    def test_add_instances_for_resume_file(
+        self,
+        slurm_resume,
+        node_list,
+        launch_batch_size,
+        update_node_address,
+        all_or_nothing_batch,
+        expected_nodes_oversubscribe,
+        expected_nodes_no_oversubscribe_list,
+        instance_manager,
+        mocker,
+    ):
+        mocker.patch("slurm_plugin.instance_manager.get_nodes_info", autospec=True)
+        instance_manager._add_instances_for_nodes = mocker.MagicMock()
+
+        instance_manager._add_instances_for_resume_file(
+            slurm_resume, node_list, launch_batch_size, update_node_address, all_or_nothing_batch
+        )
+
+        for expected_nodes_no_oversubscribe in expected_nodes_no_oversubscribe_list:
+            instance_manager._add_instances_for_nodes.assert_any_call(
+                expected_nodes_no_oversubscribe, launch_batch_size, update_node_address, all_or_nothing_batch=True
+            )
+        if expected_nodes_oversubscribe:
+            instance_manager._add_instances_for_nodes.assert_called_with(
+                expected_nodes_oversubscribe, launch_batch_size, update_node_address, all_or_nothing_batch
+            )
+        call_count = len(expected_nodes_no_oversubscribe_list) + (1 if expected_nodes_oversubscribe else 0)
+        assert_that(instance_manager._add_instances_for_nodes.call_count).is_equal_to(call_count)
+
+    @pytest.mark.parametrize(
+        (
+            "slurm_resume",
+            "node_list",
+            "launch_batch_size",
+            "update_node_address",
+            "all_or_nothing_batch",
+            "job_level_scaling",
+        ),
+        [
+            (
+                {
+                    "jobs": [
+                        {
+                            "job_id": 140817,
+                            "nodes_alloc": "node-1",
+                            "nodes_resume": "node-1",
+                            "oversubscribe": "NO",
+                        },
+                    ],
+                },
+                ["node-1"],
+                10,
+                True,
+                False,
+                True,
+            ),
+            (
+                {
+                    "jobs": [
+                        {
+                            "job_id": 140817,
+                            "nodes_alloc": "node-1",
+                            "nodes_resume": "node-1",
+                            "oversubscribe": "NO",
+                        },
+                    ],
+                },
+                ["node-1"],
+                10,
+                True,
+                False,
+                False,
+            ),
+            (
+                {},
+                ["node-1"],
+                10,
+                True,
+                False,
+                True,
+            ),
+        ],
+    )
+    def test_add_instances(
+        self,
+        slurm_resume,
+        node_list,
+        launch_batch_size,
+        update_node_address,
+        all_or_nothing_batch,
+        job_level_scaling,
+        instance_manager,
+        mocker,
+    ):
+        instance_manager._add_instances_for_resume_file = mocker.MagicMock()
+        instance_manager._add_instances_for_nodes = mocker.MagicMock()
+
+        instance_manager.add_instances(
+            slurm_resume=slurm_resume,
+            node_list=node_list,
+            launch_batch_size=launch_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
+            job_level_scaling=job_level_scaling,
+        )
+
+        assert_that(instance_manager.failed_nodes).is_empty()
+
+        if slurm_resume and job_level_scaling:
+            instance_manager._add_instances_for_resume_file.assert_called_once_with(
+                slurm_resume=slurm_resume,
+                node_list=node_list,
+                launch_batch_size=launch_batch_size,
+                update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
+            )
+        else:
+            instance_manager._add_instances_for_nodes.assert_called_once_with(
+                node_list=node_list,
+                launch_batch_size=launch_batch_size,
+                update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
+            )

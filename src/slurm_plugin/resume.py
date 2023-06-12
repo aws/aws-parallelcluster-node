@@ -44,6 +44,7 @@ class SlurmResumeConfig:
         "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "all_or_nothing_batch": False,
+        "job_level_scaling": True,
     }
 
     def __init__(self, config_file_path):
@@ -82,6 +83,9 @@ class SlurmResumeConfig:
         )
         self.all_or_nothing_batch = config.getboolean(
             "slurm_resume", "all_or_nothing_batch", fallback=self.DEFAULTS.get("all_or_nothing_batch")
+        )
+        self.job_level_scaling = config.getboolean(
+            "slurm_resume", "job_level_scaling", fallback=self.DEFAULTS.get("job_level_scaling")
         )
         fleet_config_file = config.get(
             "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
@@ -184,13 +188,14 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         fleet_config=resume_config.fleet_config,
         run_instances_overrides=resume_config.run_instances_overrides,
         create_fleet_overrides=resume_config.create_fleet_overrides,
-        slurm_resume=slurm_resume,
     )
-    instance_manager.add_instances_for_nodes(
+    instance_manager.add_instances(
+        slurm_resume=slurm_resume,
         node_list=node_list,
         launch_batch_size=resume_config.max_batch_size,
         update_node_address=resume_config.update_node_address,
         all_or_nothing_batch=resume_config.all_or_nothing_batch,
+        job_level_scaling=resume_config.job_level_scaling,
     )
     failed_nodes = set().union(*instance_manager.failed_nodes.values())
     success_nodes = [node for node in node_list if node not in failed_nodes]
