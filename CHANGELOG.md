@@ -12,6 +12,12 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **BUG FIXES**
 
+3.6.1
+------
+
+**CHANGES**
+- There were no changes for this version.
+
 3.6.0
 ------
 
