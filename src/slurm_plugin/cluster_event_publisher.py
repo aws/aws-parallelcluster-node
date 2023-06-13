@@ -531,13 +531,13 @@ class ClusterEventPublisher:
     #                 "instance_id":"i-123",
     #                 "node_name": "string",
     #                 "instance_type": "string",
-    #                 "threads_per_core": "bool"
+    #                 "threads_per_core": "int"
     #             },
     #             {
     #                 "instance_id":"i-456",
     #                 "node_name": "string",
     #                 "instance_type": "string",
-    #                 "threads_per_core": "bool"
+    #                 "threads_per_core": "int"
     #             },
     #         ]
     #     }
