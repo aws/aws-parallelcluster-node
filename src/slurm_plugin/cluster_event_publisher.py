@@ -531,13 +531,13 @@ class ClusterEventPublisher:
     #                 "instance_id":"i-123",
     #                 "node_name": "string",
     #                 "instance_type": "string",
-    #                 "disable_multi_threading": "bool"
+    #                 "threads_per_core": "bool"
     #             },
     #             {
     #                 "instance_id":"i-456",
     #                 "node_name": "string",
     #                 "instance_type": "string",
-    #                 "disable_multi_threading": "bool"
+    #                 "threads_per_core": "bool"
     #             },
     #         ]
     #     }
@@ -642,8 +642,8 @@ class ClusterEventPublisher:
                         }
                     }
 
-    def _nodemapping_supplier(self, node_map: List[SlurmNode]) -> Iterator:
-        for node in node_map:
+    def _nodemapping_supplier(self, nodes: List[SlurmNode]) -> Iterator:
+        for node in nodes:
             yield {
                 "detail": {
                     "nodes": [
