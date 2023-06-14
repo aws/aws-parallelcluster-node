@@ -366,6 +366,7 @@ class ClusterEventPublisher:
     # }
 
     def publish_cluster_in_protected_mode_events(self):
+        """Publish events for the cluster in the PROTECTED mode."""
         timestamp = ClusterEventPublisher.timestamp()
 
         self.publish_event(logging.ERROR, **CLUSTER_IN_PROTECTED_MODE, timestamp=timestamp, detail={})
