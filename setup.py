@@ -29,6 +29,7 @@ console_scripts = [
     "slurm_fleet_status_manager = slurm_plugin.fleet_status_manager:main",
     "clustermgtd = slurm_plugin.clustermgtd:main",
     "computemgtd = slurm_plugin.computemgtd:main",
+    "clusterjobinfomgtd = slurm_plugin.clusterjobinfomgtd:main",
 ]
 version = "3.7.0"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3"]
