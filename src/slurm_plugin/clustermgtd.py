@@ -1123,10 +1123,10 @@ class ClusterManager:
 
     @staticmethod
     def _find_active_nodes(partitions_name_map):
-        active_nodes = []
+        active_nodes = set()
         for partition in partitions_name_map.values():
             if partition.state != "INACTIVE":
-                active_nodes += partition.slurm_nodes
+                active_nodes |= set(partition.slurm_nodes)
         return active_nodes
 
     def _is_node_in_replacement_valid(self, node, check_node_is_valid):
