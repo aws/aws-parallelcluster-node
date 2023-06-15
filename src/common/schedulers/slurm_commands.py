@@ -21,6 +21,7 @@ from slurm_plugin.slurm_resources import (
     DynamicNode,
     InvalidNodenameError,
     PartitionStatus,
+    SlurmJobInfo,
     SlurmNode,
     SlurmPartition,
     StaticNode,
@@ -63,11 +64,18 @@ SCONTROL_OUTPUT_AWK_PARSER = (
     + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
     + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(Reason=.*)|(######)'"
 )
+SCONTROL_SHOW_JOB_OUTPUT_AWK_PARSER = (
+    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+    + "grep -oP '^(JobId=\\S+)|(JobName=\\S+)|(UserId=\\S+)|(Account=\\S+)|(JobState=\\S+)|(RunTime=\\S+)|"
+    + "(StartTime=\\S+)|(EndTime=\\S+)|(Partition=\\S+)|(\\bNodeList=\\S+)|(\\bNodes=\\S+)|"
+    + "(CPU_IDs=\\S+)|(\\bGres=\\S+)|(######)'"
+)
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
 DEFAULT_GET_INFO_COMMAND_TIMEOUT = 30
 DEFAULT_UPDATE_COMMAND_TIMEOUT = 60
+DEFAULT_SHOW_JOBS_COMMAND_TIMEOUT = 60
 
 
 def is_static_node(nodename):
@@ -279,6 +287,17 @@ def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all
     ]
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=30)
+def get_jobs_info(command_timeout=DEFAULT_SHOW_JOBS_COMMAND_TIMEOUT):
+    """Retrieve SlurmJobInfo list from scontrol show jobs."""
+    show_jobs_cmd = f"{SCONTROL} show jobs --details | {SCONTROL_SHOW_JOB_OUTPUT_AWK_PARSER}"
+    try:
+        job_info_string = check_command_output(show_jobs_cmd, timeout=command_timeout, shell=True)  # nosec B604
+        return _parse_job_info(job_info_string)
+    except Exception as e:
+        log.error("Failed to get job information. Check log file %s", e)
+
+
 def resume_powering_down_nodes():
     """Resume nodes that are powering_down so that are set in power state right away."""
     log.info("Resuming powering down nodes.")
@@ -403,3 +422,84 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
                 log.warning("Ignoring node %s because it has an invalid name", kwargs["name"])
 
     return slurm_nodes
+
+
+def _parse_job_info(job_info_string):
+    """Parse job info into job objects."""
+    # Example input
+    # [ec2-user@ip-192-168-9-185 ~]$ sudo /opt/slurm/bin/scontrol show jobs --details | awk 'BEGIN{RS="\n\n";
+    # ORS="######\n";} {print}' | grep -oP '^(JobId=\S+)|(JobName=\S+)|(UserId=\S+)|(Account=\S+)|(JobState=\S+)|
+    # (RunTime=\S+)|(StartTime=\S+)|(EndTime=\S+)|(Partition=\S+)|(\bNodeList=\S+)|(\AllocTRES=\S+)|(\bNodes=\S+)|
+    # (CPU_IDs=\S+)|(\bGres=\S+)|(######)'
+    # JobId=10106
+    # JobName=wrap
+    # UserId=ec2-user(1000)
+    # Account=pcdefault
+    # JobState=RUNNING
+    # RunTime=00:00:20
+    # StartTime=2023-06-22T00:13:20
+    # EndTime=Unknown
+    # Partition=compute
+    # NodeList=compute-dy-defaultcompute-1
+    # Nodes=compute-dy-defaultcompute-1
+    # CPU_IDs=0
+    # ######
+    # JobId=10107
+    # JobName=wrap
+    # UserId=ec2-user(1000)
+    # Account=pcdefault
+    # JobState=CONFIGURING
+    # RunTime=00:00:05
+    # StartTime=2023-06-22T00:13:35
+    # EndTime=Unknown
+    # Partition=compute
+    # NodeList=compute-dy-defaultcompute-[2-3],compute-dy-icequeue-1
+    # Nodes=compute-dy-defaultcompute-[2-3],compute-dy-icequeue-1
+    # CPU_IDs=0
+    ######
+
+    map_job_key_to_arg = {
+        "JobId": "job_id",
+        "JobName": "job_name",
+        "UserId": "user_id",
+        "Account": "account",
+        "JobState": "job_state",
+        "RunTime": "run_time",
+        "StartTime": "start_time",
+        "EndTime": "end_time",
+        "Partition": "partition",
+        "NodeList": "node_list",
+        "Nodes": "nodes",
+        "CPU_IDs": "cpu_ids",
+        "Gres": "gres",
+    }
+
+    date_fields = ["StartTime", "EndTime"]
+    job_info = job_info_string.split("######\n")
+    jobs = []
+    for job in job_info:
+        lines = job.splitlines()
+        kwargs = {}
+        for line in lines:
+            key, value = line.split("=")
+            if key in date_fields:
+                if value not in ["None", "Unknown"]:
+                    value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
+                else:
+                    value = None
+            arg = map_job_key_to_arg[key]
+            if key in ["Nodes", "CPU_IDs", "Gres"]:
+                if arg not in kwargs:
+                    kwargs[arg] = value
+                else:
+                    kwargs[arg] += "\n" + value
+            else:
+                kwargs[map_job_key_to_arg[key]] = value
+        if lines:
+            try:
+                job = SlurmJobInfo(**kwargs)
+                jobs.append(job)
+            except Exception as e:
+                log.error("Unable to pass job info, %s", e)
+
+    return jobs

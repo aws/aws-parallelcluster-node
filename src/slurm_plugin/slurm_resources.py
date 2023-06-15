@@ -699,6 +699,44 @@ class InvalidNodenameError(ValueError):
     pass
 
 
+class SlurmJobInfo:
+    def __init__(
+        self,
+        job_id,
+        job_name,
+        user_id,
+        account,
+        job_state,
+        run_time,
+        start_time,
+        end_time,
+        partition,
+        node_list=None,
+        nodes=None,
+        cpu_ids=None,
+        gres=None,
+    ):
+        self.job_id = job_id
+        self.job_name = job_name
+        self.user_id = user_id
+        self.account = account
+        self.job_state = job_state
+        self.run_time = run_time
+        self.start_time = start_time
+        self.end_time = end_time
+        self.partition = partition
+        self.node_list = node_list
+        self.nodes = nodes.strip().split("\n") if nodes else []
+        self.cpu_ids = cpu_ids.strip().split("\n") if cpu_ids else []
+        self.gres = gres.strip().split("\n") if gres else []
+
+    def __repr__(self):
+        return (
+            f"SlurmJob(Jobid={self.job_id}, job_state={self.job_state}, node_list={self.node_list}, "
+            f"nodes={self.nodes}, cpu_ids={self.cpu_ids}, gres={self.gres})"
+        )
+
+
 @dataclass
 class ComputeResourceFailureEvent:
     timestamp: datetime
