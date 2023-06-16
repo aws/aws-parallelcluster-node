@@ -1316,13 +1316,14 @@ def test_maintain_nodes(
     # Run test
     cluster_manager._maintain_nodes(partitions, {})
     # Check function calls
-    mock_update_replacement.assert_called_with(active_nodes)
+    active_nodes_sorted = sorted(active_nodes, key=str)
+    mock_update_replacement.assert_called_with(active_nodes_sorted)
     mock_handle_dynamic.assert_called_with(expected_unhealthy_dynamic_nodes)
     mock_handle_static.assert_called_with(expected_unhealthy_static_nodes)
-    mock_handle_powering_down_nodes.assert_called_with(active_nodes)
-    mock_handle_failed_health_check_nodes_in_replacement.assert_called_with(active_nodes)
+    mock_handle_powering_down_nodes.assert_called_with(active_nodes_sorted)
+    mock_handle_failed_health_check_nodes_in_replacement.assert_called_with(active_nodes_sorted)
     if _is_protected_mode_enabled:
-        mock_handle_protected_mode_process.assert_called_with(active_nodes, partitions)
+        mock_handle_protected_mode_process.assert_called_with(active_nodes_sorted, partitions)
     else:
         mock_handle_protected_mode_process.assert_not_called()
 
@@ -3731,3 +3732,86 @@ def test_find_unhealthy_slurm_nodes(
     assert_that(unhealthy_dynamic_nodes).is_equal_to(expected_unhealthy_dynamic_nodes)
     assert_that(unhealthy_static_nodes).is_equal_to(expected_unhealthy_static_nodes)
     assert_that(ice_compute_resources_and_nodes_map).is_equal_to(expected_ice_compute_resources_and_nodes_map)
+
+
+@pytest.mark.parametrize(
+    "partitions_name_map, expected_nodelist",
+    [
+        pytest.param(
+            {
+                "queue1": SlurmPartition(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SlurmPartition(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two non-overlapping partitions",
+        ),
+        pytest.param(
+            {
+                "queue1": SlurmPartition(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "custom_partition": SlurmPartition(
+                    name="custom_partition",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two overlapping partitions obtained by creating a custom partition that includes nodes from a "
+            "PC-managed queue",
+        ),
+    ],
+)
+def test_find_active_nodes(partitions_name_map, expected_nodelist):
+    """
+    Unit test for the `ClusterManager._find_active_nodes()` method.
+
+    Some context about the way this test is implemented:
+    - `ClusterManager._find_active_nodes()` may be implemented to return different types of iterables.
+      This test was implemented together with a fix that changed the return type from a list to a set,
+      and it was desirable to have the test compatible with both return types.
+    - The implementation that returned a list caused a duplication of node entities in the returned iterable
+      in case the same node belonged to multiple Slurm partitions (via a customization of the Slurm configuration).
+    - Due to the way we implement the `__hash__()` dunder method for the SlurmNode class, two different
+      SlurmNode objects with the same node name are squashed into the same entity in a set. Therefore
+      we cannot use `set(expected_nodelist)` when trying to test the duplication of the node entities
+      in the iterable returned by `ClusterManager._find_active_nodes()`.
+    - Sets are unordered, so when transforming them into lists we have to sort them to make them comparable with
+      the `expected_nodelist`.
+    """
+    result_nodelist = sorted(list(ClusterManager._find_active_nodes(partitions_name_map)), key=str)
+    assert_that(result_nodelist).is_equal_to(sorted(expected_nodelist, key=str))
