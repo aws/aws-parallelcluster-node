@@ -2999,163 +2999,97 @@ def test_publish_compute_node_events(compute_nodes, expected_details, level_filt
                         private_ip="ip-12",
                         hostname="hostname",
                         launch_time="some_launch_time",
-                        instance_type="instance_type",
-                        threads_per_core=2,
+                        instance_type="t2.micro",
+                        threads_per_core=3,
                     ),
                 ),
             ],
             [
                 {
                     "node-instance-mapping-event": {
-                        "nodes": [
+                        "node_list": [
                             {
                                 "instance_id": "id-1",
                                 "node_name": "queue1-st-c5xlarge-2",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-2",
                                 "node_name": "queue-st-c5xlarge-1",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-2",
                                 "node_name": "queue1-dy-c5xlarge-1",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-3",
                                 "node_name": "queue1-st-c4xlarge-1",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-4",
                                 "node_name": "queue1-dy-c5xlarge-3",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-6",
                                 "node_name": "queue2-dy-c5large-2",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-7",
                                 "node_name": "queue2-st-c5large-3",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-8",
                                 "node_name": "queue2-st-c5large-4",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-9",
                                 "node_name": "queue2-dy-c5large-5",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-10",
                                 "node_name": "queue2-st-c5large-6",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-11",
                                 "node_name": "queue2-st-c5large-8",
                                 "instance_type": "instance_type",
                                 "threads_per_core": 2,
-                            }
-                        ]
-                    }
-                },
-                {
-                    "node-instance-mapping-event": {
-                        "nodes": [
+                            },
                             {
                                 "instance_id": "id-12",
                                 "node_name": "queue2-dy-c5large-9",
-                                "instance_type": "instance_type",
-                                "threads_per_core": 2,
-                            }
+                                "instance_type": "t2.micro",
+                                "threads_per_core": 3,
+                            },
                         ]
                     }
-                },
+                }
             ],
             [],
             None,
         ),
         (
             [],
-            [],
+            [{"node-instance-mapping-event": {"node_list": []}}],
             [],
             100,
         ),
