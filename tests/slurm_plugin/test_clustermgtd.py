@@ -3738,7 +3738,7 @@ def test_find_unhealthy_slurm_nodes(
     [
         pytest.param(
             {
-                "queue1": SlurmPartition(
+                "queue1": SimpleNamespace(
                     name="queue1",
                     nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
                     state="UP",
@@ -3747,7 +3747,7 @@ def test_find_unhealthy_slurm_nodes(
                         StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
                     ],
                 ),
-                "queue2": SlurmPartition(
+                "queue2": SimpleNamespace(
                     name="queue2",
                     nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
                     state="UP",
@@ -3767,7 +3767,7 @@ def test_find_unhealthy_slurm_nodes(
         ),
         pytest.param(
             {
-                "queue1": SlurmPartition(
+                "queue1": SimpleNamespace(
                     name="queue1",
                     nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
                     state="UP",
@@ -3776,7 +3776,7 @@ def test_find_unhealthy_slurm_nodes(
                         StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
                     ],
                 ),
-                "custom_partition": SlurmPartition(
+                "custom_partition": SimpleNamespace(
                     name="custom_partition",
                     nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
                     state="UP",
@@ -3792,6 +3792,62 @@ def test_find_unhealthy_slurm_nodes(
             ],
             id="Two overlapping partitions obtained by creating a custom partition that includes nodes from a "
             "PC-managed queue",
+        ),
+        pytest.param(
+            {},
+            [],
+            id="Empty cluster with no partitions",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two non-overlapping partitions, one active and one inactive",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [],
+            id="Two inactive non-overlapping partitions",
         ),
     ],
 )
