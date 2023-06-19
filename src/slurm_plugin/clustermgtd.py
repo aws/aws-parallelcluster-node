@@ -1127,7 +1127,7 @@ class ClusterManager:
         for partition in partitions_name_map.values():
             if partition.state != "INACTIVE":
                 active_nodes += partition.slurm_nodes
-        return active_nodes
+        return list(dict.fromkeys(active_nodes))
 
     def _is_node_in_replacement_valid(self, node, check_node_is_valid):
         """
