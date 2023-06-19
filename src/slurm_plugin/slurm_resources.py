@@ -15,7 +15,6 @@ from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import List
 
 from common.utils import time_is_up
 
@@ -50,12 +49,12 @@ class PartitionStatus(Enum):
 
 
 class SlurmPartition:
-    def __init__(self, name, nodenames, state, slurm_nodes: List = None):
+    def __init__(self, name, nodenames, state):
         """Initialize slurm partition with attributes."""
         self.name = name
         self.nodenames = nodenames
         self.state = state
-        self.slurm_nodes = slurm_nodes if slurm_nodes else []
+        self.slurm_nodes = []
 
     def is_inactive(self):
         return self.state == "INACTIVE"
