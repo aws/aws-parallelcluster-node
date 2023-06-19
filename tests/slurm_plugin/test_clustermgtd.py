@@ -3731,3 +3731,127 @@ def test_find_unhealthy_slurm_nodes(
     assert_that(unhealthy_dynamic_nodes).is_equal_to(expected_unhealthy_dynamic_nodes)
     assert_that(unhealthy_static_nodes).is_equal_to(expected_unhealthy_static_nodes)
     assert_that(ice_compute_resources_and_nodes_map).is_equal_to(expected_ice_compute_resources_and_nodes_map)
+
+
+@pytest.mark.parametrize(
+    "partitions_name_map, expected_nodelist",
+    [
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two non-overlapping partitions",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "custom_partition": SimpleNamespace(
+                    name="custom_partition",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two overlapping partitions obtained by creating a custom partition that includes nodes from a "
+            "PC-managed queue",
+        ),
+        pytest.param(
+            {},
+            [],
+            id="Empty cluster with no partitions",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two non-overlapping partitions, one active and one inactive",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [],
+            id="Two inactive non-overlapping partitions",
+        ),
+    ],
+)
+def test_find_active_nodes(partitions_name_map, expected_nodelist):
+    """Unit test for the `ClusterManager._find_active_nodes()` method."""
+    result_nodelist = ClusterManager._find_active_nodes(partitions_name_map)
+    assert_that(result_nodelist).is_equal_to(expected_nodelist)

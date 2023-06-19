@@ -16,6 +16,9 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.6.1
 ------
 
+**CHANGES**
+- Avoid duplication of nodes seen by ClusterManager if compute nodes are added to multiple Slurm partitions.
+
 **BUG FIXES**
 - Fix fast insufficient capacity fail-over logic when using Multiple Instance Types and no instances are returned
 
