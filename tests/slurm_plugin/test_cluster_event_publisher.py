@@ -2777,8 +2777,47 @@ def test_publish_compute_node_events(compute_nodes, expected_details, level_filt
     mock_now.return_value = test_time
     cluster_instances = [node.instance for node in compute_nodes if node.instance]
     event_publisher.publish_compute_node_events(compute_nodes, cluster_instances)
-
     # Assert calls
     assert_that(received_events).is_length(len(expected_details))
     for received_event, expected_detail in zip(received_events, expected_details):
         assert_that(received_event).is_equal_to(expected_detail)
+
+
+def test_publish_cluster_in_protected_mode_events(mocker):
+    received_events = []
+
+    def log_handler(level, format_string, value):
+        received_events.append([level, value])
+
+    mock_logger = SimpleNamespace()
+
+    mock_logger.isEnabledFor = lambda level: level == logging.ERROR
+
+    mock_logger.log = log_handler
+
+    publisher = ClusterEventPublisher.create_with_default_publisher(
+        mock_logger, "cluster", "HeadNode", "component", "instance_id"
+    )
+
+    test_time = datetime(year=2023, month=6, day=7, hour=2, minute=6, second=00, tzinfo=timezone.utc)
+
+    mock_timestamp = mocker.patch.object(ClusterEventPublisher, "timestamp")
+
+    mock_timestamp.return_value = test_time.isoformat()
+
+    # Run test
+    publisher.publish_cluster_in_protected_mode_events()
+
+    # Assert calls
+    assert len(received_events) == 1
+    assert received_events[0][0] == logging.ERROR
+    actual_json = json.loads(received_events[0][1])
+    expected_json = {
+        "level": "ERROR",
+        "event-type": "cluster-in-protected-mode",
+        "message": "Cluster has been set to PROTECTED mode due to failures detected in static node provisioning.",
+    }
+    assert actual_json["level"] == expected_json["level"]
+    assert actual_json["event-type"] == expected_json["event-type"]
+    assert actual_json["message"] == expected_json["message"]
+    assert actual_json["datetime"] == "2023-06-07T02:06:00+00:00"

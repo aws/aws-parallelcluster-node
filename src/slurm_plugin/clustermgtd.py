@@ -970,7 +970,6 @@ class ClusterManager:
                     bootstrap_failure_partitions_have_jobs.append(part_name)
                 else:
                     partitions_to_disable.append(part_name)
-
         if bootstrap_failure_partitions_have_jobs:
             log.info(
                 "Bootstrap failure partitions %s currently have jobs running, not disabling them",
@@ -986,6 +985,7 @@ class ClusterManager:
                 "Please investigate the issue and then use 'pcluster update-compute-fleet --status START_REQUESTED' "
                 "command to re-enable the fleet."
             )
+            self._event_publisher.publish_cluster_in_protected_mode_events()
 
     def _handle_nodes_failing_health_check(self, nodes_failing_health_check: List[SlurmNode], health_check_type: str):
         # Place unhealthy node into drain, this operation is idempotent
