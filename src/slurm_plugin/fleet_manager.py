@@ -21,13 +21,15 @@ logger = logging.getLogger(__name__)
 
 
 class EC2Instance:
-    def __init__(self, id, private_ip, hostname, launch_time):
+    def __init__(self, id, private_ip, hostname, launch_time, instance_type=None, threads_per_core=None):
         """Initialize slurm node with attributes."""
         self.id = id
         self.private_ip = private_ip
         self.hostname = hostname
         self.launch_time = launch_time
         self.slurm_node = None
+        self.instance_type = instance_type
+        self.threads_per_core = threads_per_core
 
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
@@ -53,6 +55,8 @@ class EC2Instance:
                 get_private_ip_address(instance_info),
                 instance_info["PrivateDnsName"].split(".")[0],
                 instance_info["LaunchTime"],
+                instance_info.get("InstanceType", None),
+                instance_info.get("CpuOptions", {}).get("ThreadsPerCore", None),
             )
         except KeyError as e:
             logger.error("Unable to retrieve EC2 instance info: %s", e)

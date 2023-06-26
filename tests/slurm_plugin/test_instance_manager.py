@@ -176,20 +176,48 @@ class TestInstanceManager:
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
-                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue1-st-c52xlarge-1"],
-                        [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-23456",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.2xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
                         [
                             EC2Instance(
-                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-34567",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                             EC2Instance(
-                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-45678",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                         ],
                     ),
@@ -270,16 +298,35 @@ class TestInstanceManager:
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
-                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
                         [
                             EC2Instance(
-                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-34567",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                             EC2Instance(
-                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-45678",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                         ],
                     ),
@@ -365,7 +412,16 @@ class TestInstanceManager:
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
-                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     )
                 ],
             ),
@@ -455,15 +511,42 @@ class TestInstanceManager:
                 [
                     call(
                         ["queue1-st-c5xlarge-2"],
-                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue2-st-c5xlarge-1"],
-                        [EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-34567",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue2-dy-c5xlarge-1"],
-                        [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-45678",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     ),
                 ],
             ),
@@ -509,7 +592,16 @@ class TestInstanceManager:
                 [
                     call(
                         ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
-                        [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-45678",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     )
                 ],
             ),
@@ -590,13 +682,28 @@ class TestInstanceManager:
                         ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
                         [
                             EC2Instance(
-                                "i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-11111",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                             EC2Instance(
-                                "i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-22222",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                             EC2Instance(
-                                "i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-33333",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                         ],
                     )
@@ -717,24 +824,61 @@ class TestInstanceManager:
                 [
                     call(
                         ["queue3-st-c5xlarge-2"],
-                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue3-st-c52xlarge-1"],
-                        [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-23456",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.2xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue3-st-p4d24xlarge-1"],
-                        [EC2Instance("i-12346", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                        [
+                            EC2Instance(
+                                "i-12346",
+                                "ip.1.0.0.5",
+                                "ip-1-0-0-5",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "p4d.24xlarge",
+                                None,
+                            )
+                        ],
                     ),
                     call(
                         ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
                         [
                             EC2Instance(
-                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-34567",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                             EC2Instance(
-                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-45678",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "c5.xlarge",
+                                None,
                             ),
                         ],
                     ),

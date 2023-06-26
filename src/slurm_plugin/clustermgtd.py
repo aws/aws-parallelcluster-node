@@ -61,6 +61,7 @@ MAXIMUM_TASK_BACKLOG = 100
 log = logging.getLogger(__name__)
 compute_logger = log.getChild("console_output")
 event_logger = log.getChild("events")
+nodemap_logger = log.getChild("nodemap")
 
 
 class ComputeFleetStatus(Enum):
@@ -401,6 +402,9 @@ class ClusterManager:
             self._event_publisher = ClusterEventPublisher.create_with_default_publisher(
                 event_logger, config.cluster_name, "HeadNode", "clustermgtd", config.head_node_instance_id
             )
+            self._nodemap_publisher = ClusterEventPublisher.create_with_default_publisher(
+                nodemap_logger, config.cluster_name, "HeadNode", "clustermgtd", config.head_node_instance_id
+            )
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
             self._console_logger = self._initialize_console_logger(config)
@@ -518,6 +522,7 @@ class ClusterManager:
                 partitions = list(partitions_name_map.values())
                 self._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
                 self._event_publisher.publish_compute_node_events(nodes, cluster_instances)
+                self._nodemap_publisher.publish_node_mapping_events(nodes)
                 # Handle inactive partition and terminate backing instances
                 self._clean_up_inactive_partition(partitions)
                 # Perform health check actions

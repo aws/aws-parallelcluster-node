@@ -21,7 +21,6 @@ from typing import Dict, Iterable, List
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from common.ec2_utils import get_private_ip_address
 from common.schedulers.slurm_commands import get_nodes_info, update_nodes
 from common.utils import grouper
 from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count
@@ -497,14 +496,7 @@ class InstanceManager:
         instances = []
         for instance_info in filtered_iterator:
             try:
-                instances.append(
-                    EC2Instance(
-                        instance_info["InstanceId"],
-                        get_private_ip_address(instance_info),
-                        instance_info["PrivateDnsName"].split(".")[0],
-                        instance_info["LaunchTime"],
-                    )
-                )
+                instances.append(EC2Instance.from_describe_instance_data(instance_info))
             except Exception as e:
                 logger.warning(
                     "Ignoring instance %s because not all EC2 info are available, exception: %s, message: %s",
