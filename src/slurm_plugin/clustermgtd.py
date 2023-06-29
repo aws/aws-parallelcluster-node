@@ -27,6 +27,7 @@ from typing import Dict, List
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import (
+    PartitionNodelistMapping,
     get_nodes_info,
     get_partition_info,
     reset_nodes,
@@ -380,6 +381,7 @@ class ClusterManager:
         self._task_executor = None
         self._console_logger = None
         self._event_publisher = None
+        self._partition_nodelist_mapping_instance = None
         self.set_config(config)
 
     def set_config(self, config: ClustermgtdConfig):
@@ -493,6 +495,10 @@ class ClusterManager:
                 ComputeFleetStatus.RUNNING,
                 ComputeFleetStatus.PROTECTED,
             }:
+                # Get partition_nodelist_mapping between PC-managed Slurm partitions and PC-managed Slurm nodelists
+                # Initialize PartitionNodelistMapping singleton
+                self._partition_nodelist_mapping_instance = PartitionNodelistMapping.instance()
+
                 # Get node states for nodes in inactive and active partitions
                 # Initialize nodes
                 try:
@@ -739,14 +745,14 @@ class ClusterManager:
         """Keep count of boostrap failures."""
         for node in bootstrap_failure_nodes:
             compute_resource = node.compute_resource_name
-            for p in node.partitions:
-                if p in self._partitions_protected_failure_count_map:
-                    self._partitions_protected_failure_count_map[p][compute_resource] = (
-                        self._partitions_protected_failure_count_map[p].get(compute_resource, 0) + 1
-                    )
-                else:
-                    self._partitions_protected_failure_count_map[p] = {}
-                    self._partitions_protected_failure_count_map[p][compute_resource] = 1
+            queue_name = node.queue_name
+            if queue_name in self._partitions_protected_failure_count_map:
+                self._partitions_protected_failure_count_map[queue_name][compute_resource] = (
+                    self._partitions_protected_failure_count_map[queue_name].get(compute_resource, 0) + 1
+                )
+            else:
+                self._partitions_protected_failure_count_map[queue_name] = {}
+                self._partitions_protected_failure_count_map[queue_name][compute_resource] = 1
 
     @log_exception(log, "maintaining unhealthy dynamic nodes", raise_on_error=False)
     def _handle_unhealthy_dynamic_nodes(self, unhealthy_dynamic_nodes):
@@ -1051,22 +1057,14 @@ class ClusterManager:
     @staticmethod
     def _parse_scheduler_nodes_data(nodes):
         try:
-            ignored_nodes = []
             compute_resource_nodes_map = {}
             partitions_name_map = ClusterManager._get_partition_info_with_retry()
             log.debug("Partitions: %s", partitions_name_map)
             for node in nodes:
-                if not node.partitions or any(p not in partitions_name_map for p in node.partitions):
-                    # ignore nodes not belonging to any partition
-                    ignored_nodes.append(node)
-                else:
-                    for p in node.partitions:
-                        partitions_name_map[p].slurm_nodes.append(node)
-                    compute_resource_nodes_map.setdefault(node.queue_name, {}).setdefault(
-                        node.compute_resource_name, []
-                    ).append(node)
-            if ignored_nodes:
-                log.warning("Ignoring following nodes because they do not belong to any partition: %s", ignored_nodes)
+                partitions_name_map[node.queue_name].slurm_nodes.append(node)
+                compute_resource_nodes_map.setdefault(node.queue_name, {}).setdefault(
+                    node.compute_resource_name, []
+                ).append(node)
             return partitions_name_map, compute_resource_nodes_map
         except Exception as e:
             log.error("Failed when getting partition/node states from scheduler with exception %s", e)

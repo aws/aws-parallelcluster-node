@@ -9,11 +9,12 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import re
 from datetime import datetime, timezone
-from typing import List
+from typing import Dict, List
 
 from common.utils import check_command_output, grouper, run_command, validate_subprocess_argument
 from retrying import retry
@@ -55,6 +56,7 @@ _SQUEUE_FIELDS = [
 ]
 SQUEUE_FIELD_STRING = ",".join([field + ":{size}" for field in _SQUEUE_FIELDS]).format(size=SQUEUE_FIELD_SIZE)
 SLURM_BINARIES_DIR = os.environ.get("SLURM_BINARIES_DIR", "/opt/slurm/bin")
+SLURM_CONF_DIR = os.path.join(os.path.split(SLURM_BINARIES_DIR)[0], "etc")
 SCONTROL = f"sudo {SLURM_BINARIES_DIR}/scontrol"
 SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 
@@ -68,6 +70,48 @@ SCONTROL_OUTPUT_AWK_PARSER = (
 # These timeouts might be needed when running on large scale
 DEFAULT_GET_INFO_COMMAND_TIMEOUT = 30
 DEFAULT_UPDATE_COMMAND_TIMEOUT = 60
+
+
+class PartitionNodelistMapping:
+    """
+    Singleton class to represent the partition-nodelist mapping between PC-managed partitions and PC-managed nodes.
+
+    The information contained in this singleton is used to make sure ParallelCluster only handles partitions and nodes
+    it is supposed to manage (via Slurm commands).
+    """
+
+    partition_nodelist_mapping: Dict[str, str]
+    _instance = None
+
+    def __init__(self):
+        self.partition_nodelist_mapping = {}
+
+    def get_partition_nodelist_mapping(self):
+        """Retrieve partition-nodelist mapping from JSON file."""
+        if not self.partition_nodelist_mapping:
+            partition_nodelist_json = os.path.join(
+                SLURM_CONF_DIR,
+                "pcluster/parallelcluster_partition_nodelist_mapping.json",
+            )
+            with open(partition_nodelist_json, "r", encoding="utf-8") as file:
+                self.partition_nodelist_mapping = json.load(file)
+        return self.partition_nodelist_mapping
+
+    def get_partitions(self):
+        """Retrieve partitions from JSON file."""
+        return self.get_partition_nodelist_mapping().keys()
+
+    @staticmethod
+    def instance():
+        """Return the singleton PartitionNodelistMapping instance."""
+        if not PartitionNodelistMapping._instance:
+            PartitionNodelistMapping._instance = PartitionNodelistMapping()
+        return PartitionNodelistMapping._instance
+
+    @staticmethod
+    def reset():
+        """Reset the instance to clear all caches."""
+        PartitionNodelistMapping._instance = None
 
 
 def is_static_node(nodename):
@@ -249,7 +293,16 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     Retrieve SlurmNode list from slurm nodelist notation.
 
     Sample slurm nodelist notation: queue1-dy-c5_xlarge-[1-3],queue2-st-t2_micro-5.
+    If no nodes argument is provided, this function considers only nodes in partitions managed by ParallelCluster.
+    It is responsibility of the caller to pass a nodes argument with only nodes in partitions managed by
+    ParallelCluster.
+
+    TODO: we can consider building a filter to be used in case a nodes argument is passed, in order to exclude nodes
+     not managed by ParallelCluster.
     """
+    if nodes == "":
+        nodes = _get_all_partition_nodes(",".join(PartitionNodelistMapping.instance().get_partitions()))
+
     # Validation to sanitize the input argument and make it safe to use the function affected by B604
     validate_subprocess_argument(nodes)
 
@@ -262,8 +315,17 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
 
 
 def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all_nodes=True):
-    """Retrieve slurm partition info from scontrol."""
-    show_partition_info_command = f'{SCONTROL} show partitions | grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
+    """
+    Retrieve slurm partition info from scontrol.
+
+    This function considers only partitions managed by ParallelCluster.
+    """
+    partitions = list(PartitionNodelistMapping.instance().get_partitions())
+    grep_filter = _get_partition_grep_filter(partitions)
+    show_partition_info_command = (
+        f"{SCONTROL} show partitions -o | grep {grep_filter} "
+        + '| grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
+    )
     # It's safe to use the function affected by B604 since the command is fully built in this code
     partition_info_str = check_command_output(
         show_partition_info_command, timeout=command_timeout, shell=True  # nosec B604
@@ -277,6 +339,13 @@ def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all
         )
         for partition_name, partition_state in partitions_info
     ]
+
+
+def _get_partition_grep_filter(partitions: List[str]) -> str:
+    grep_filter = ""
+    for partition in partitions:
+        grep_filter = " -e ".join([grep_filter, f'"PartitionName={partition}"'])
+    return grep_filter
 
 
 def resume_powering_down_nodes():
@@ -302,9 +371,9 @@ def _get_all_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_CO
 
 def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     sinfo_command = f"{SINFO} -h -N -o %N"
-    if partition_name:
-        validate_subprocess_argument(partition_name)
-        sinfo_command += f" -p {partition_name}"
+    partition_name = partition_name or ",".join(PartitionNodelistMapping.instance().get_partitions())
+    validate_subprocess_argument(partition_name)
+    sinfo_command += f" -p {partition_name}"
     if states:
         validate_subprocess_argument(states)
         sinfo_command += f" -t {states}"
