@@ -17,8 +17,10 @@ from common.schedulers.slurm_commands import (
     SCONTROL,
     SCONTROL_OUTPUT_AWK_PARSER,
     SINFO,
+    PartitionNodelistMapping,
     _batch_node_info,
     _get_all_partition_nodes,
+    _get_partition_grep_filter,
     _get_slurm_nodes,
     _parse_nodes_info,
     get_nodes_info,
@@ -764,15 +766,52 @@ def test_resume_powering_down_nodes(mocker):
 
 
 @pytest.mark.parametrize(
-    "states, partition_name, expected_command, expected_exception",
+    "states, partition_name, partition_nodelist_mapping, expected_command, expected_exception",
     [
-        (None, None, f"{SINFO} -h -N -o %N", None),
-        ("power_down,powering_down", "test", f"{SINFO} -h -N -o %N -p test -t power_down,powering_down", None),
-        ("power_down,& rm -rf", "test", None, ValueError),
-        ("power_down,powering_down", "test & rm -rf", None, ValueError),
+        pytest.param(
+            None,
+            None,
+            {"test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]"},
+            f"{SINFO} -h -N -o %N -p test",
+            None,
+            id="No partition nor state provided",
+        ),
+        pytest.param(
+            "power_down,powering_down",
+            "test",
+            {"test": "test-st-cr1-[1-10]"},
+            f"{SINFO} -h -N -o %N -p test -t power_down,powering_down",
+            None,
+            id="Partition provided",
+        ),
+        pytest.param(
+            "power_down,& rm -rf",
+            "test",
+            {"test": "test-st-cr1-[1-10]"},
+            None,
+            ValueError,
+            id="Bad state provided",
+        ),
+        pytest.param(
+            "power_down,powering_down",
+            "test & rm -rf",
+            {"test": "test-st-cr1-[1-10]"},
+            None,
+            ValueError,
+            id="Bad partition provided",
+        ),
     ],
 )
-def test_get_slurm_nodes(mocker, states, partition_name, expected_command, expected_exception):
+def test_get_slurm_nodes_argument_validation(
+    mocker,
+    states,
+    partition_name,
+    partition_nodelist_mapping,
+    expected_command,
+    expected_exception,
+):
+    mapping_instance = PartitionNodelistMapping.instance()
+    mapping_instance.get_partition_nodelist_mapping = mocker.MagicMock(return_value=partition_nodelist_mapping)
     if expected_exception is ValueError:
         with pytest.raises(ValueError):
             _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
@@ -783,6 +822,63 @@ def test_get_slurm_nodes(mocker, states, partition_name, expected_command, expec
 
         _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
         check_command_output_mocked.assert_called_with(expected_command, timeout=10, shell=True)
+
+
+@pytest.mark.parametrize(
+    "states, partition_name, partition_nodelist_mapping, expected_command",
+    [
+        pytest.param(
+            None,
+            None,
+            {"test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]"},
+            f"{SINFO} -h -N -o %N -p test",
+            id="No partition nor state provided, one PC-managed partition in cluster",
+        ),
+        pytest.param(
+            None,
+            None,
+            {
+                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+            },
+            f"{SINFO} -h -N -o %N -p test,test2",
+            id="No partition nor state provided, two PC-managed partitions in cluster",
+        ),
+        pytest.param(
+            "power_down,powering_down",
+            "test",
+            {
+                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+            },
+            f"{SINFO} -h -N -o %N -p test -t power_down,powering_down",
+            id="First partition provided, two PC-managed partition in cluster",
+        ),
+        pytest.param(
+            "power_down,powering_down",
+            "test2",
+            {
+                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+            },
+            f"{SINFO} -h -N -o %N -p test2 -t power_down,powering_down",
+            id="Second partition provided, two PC-managed partition in cluster",
+        ),
+    ],
+)
+def test_get_slurm_nodes(
+    mocker,
+    states,
+    partition_name,
+    partition_nodelist_mapping,
+    expected_command,
+):
+    """Test for the main functionality of the _get_slurm_nodes() function."""
+    mapping_instance = PartitionNodelistMapping.instance()
+    mapping_instance.get_partition_nodelist_mapping = mocker.MagicMock(return_value=partition_nodelist_mapping)
+    check_command_output_mocked = mocker.patch("common.schedulers.slurm_commands.check_command_output", autospec=True)
+    _get_slurm_nodes(states=states, partition_name=partition_name, command_timeout=10)
+    check_command_output_mocked.assert_called_with(expected_command, timeout=10, shell=True)
 
 
 @pytest.mark.parametrize(
@@ -919,3 +1015,16 @@ def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
     # So the test is expected to fail on MacOS shipping BSD grep.
     parsed_output = check_command_output(f'echo "{scontrol_output}" | {SCONTROL_OUTPUT_AWK_PARSER}', shell=True)
     assert_that(parsed_output).is_equal_to(expected_parsed_output)
+
+
+@pytest.mark.parametrize(
+    "partitions, expected_grep_filter",
+    [
+        pytest.param(
+            ["queue1", "queue2", "queue3"],
+            ' -e "PartitionName=queue1" -e "PartitionName=queue2" -e "PartitionName=queue3"',
+        ),
+    ],
+)
+def test_grep_partition_filter(partitions, expected_grep_filter):
+    assert_that(_get_partition_grep_filter(partitions)).is_equal_to(expected_grep_filter)

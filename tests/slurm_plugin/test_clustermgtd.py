@@ -1475,20 +1475,6 @@ def test_terminate_orphaned_instances(
             False,
             True,
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
-            [
-                StaticNode("inactive-queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "inactive-queue1"),
-                DynamicNode("inactive-queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "inactive-queue1"),
-            ],
-            {
-                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
-            },
-            ComputeFleetStatus.RUNNING,
-            {},
-        ),
-        (
-            False,
-            True,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [],
             {"queue1": SlurmPartition("queue1", "placeholder_nodes", "UP")},
             ComputeFleetStatus.RUNNING,
@@ -1517,7 +1503,6 @@ def test_terminate_orphaned_instances(
         "all_enabled",
         "disable_all",
         "disable_health_check",
-        "no_active",
         "no_node",
         "stopped_enabled",
         "stopped_disabled",
@@ -2345,10 +2330,10 @@ def test_handle_successfully_launched_nodes(
             {},
             {"queue1": {"c5large": 1, "c5xlarge": 1}},
         ),
-        (
-            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1,queue2")],
+        (  # Custom queue is not managed by protected mode
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1,custom_queue1")],
             {},
-            {"queue1": {"c5xlarge": 1}, "queue2": {"c5xlarge": 1}},
+            {"queue1": {"c5xlarge": 1}},
         ),
     ],
 )
