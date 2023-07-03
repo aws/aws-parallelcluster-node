@@ -8,6 +8,7 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+import contextlib
 import copy
 import logging
 import time
@@ -16,6 +17,7 @@ from abc import ABC, abstractmethod
 import boto3
 from botocore.exceptions import ClientError
 from common.ec2_utils import get_private_ip_address
+from common.utils import setup_logging_filter
 
 logger = logging.getLogger(__name__)
 
@@ -154,16 +156,22 @@ class FleetManager(ABC):
     def _launch_instances(self, launch_params):
         pass
 
-    def launch_ec2_instances(self, count):
+    def launch_ec2_instances(self, count, job_id=None):
         """
         Launch EC2 instances.
 
         :raises ClientError in case of failures with Boto3 calls (run_instances, create_fleet, describe_instances)
         :raises FleetManagerException in case of missing required instance type info (e.g. private-ip) after 3 retries.
         """
-        launch_params = self._evaluate_launch_params(count)
-        assigned_nodes = self._launch_instances(launch_params)
-        logger.debug("Launched the following instances: %s", assigned_nodes.get("Instances"))
+        with contextlib.ExitStack() as stack:
+            if job_id:
+                job_id_logging_filter = stack.enter_context(setup_logging_filter(logger, "JobID"))
+                job_id_logging_filter.set_custom_value(job_id)
+
+            launch_params = self._evaluate_launch_params(count)
+            assigned_nodes = self._launch_instances(launch_params)
+            logger.debug("Launched the following instances: %s", assigned_nodes.get("Instances"))
+
         return [EC2Instance.from_describe_instance_data(instance_info) for instance_info in assigned_nodes["Instances"]]
 
 

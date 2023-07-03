@@ -25,7 +25,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from common.ec2_utils import get_private_ip_address
 from common.schedulers.slurm_commands import get_nodes_info, update_nodes
-from common.utils import grouper
+from common.utils import grouper, setup_logging_filter
 from slurm_plugin.common import ComputeInstanceDescriptor, log_exception, print_with_count
 from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
 from slurm_plugin.slurm_resources import (
@@ -647,16 +647,20 @@ class JobLevelScalingInstanceManager(InstanceManager):
             update_node_address: bool,
     ) -> None:
         """Scaling for job list."""
-        for job in job_list:
-            logger.debug(f"No oversubscribe Job info: {job}")
+        # Setup custom logging filter
+        with setup_logging_filter(logger, "JobID") as job_id_logging_filter:
+            for job in job_list:
+                job_id_logging_filter.set_custom_value(job.job_id)
 
-            self._add_instances_for_job(
-                job=job,
-                launch_batch_size=launch_batch_size,
-                update_node_batch_size=update_node_batch_size,
-                update_node_address=update_node_address,
-                all_or_nothing_batch=True,
-            )
+                logger.debug(f"No oversubscribe Job info: {job}")
+
+                self._add_instances_for_job(
+                    job=job,
+                    launch_batch_size=launch_batch_size,
+                    update_node_batch_size=update_node_batch_size,
+                    update_node_address=update_node_address,
+                    all_or_nothing_batch=True,
+                )
 
         self._terminate_unassigned_launched_instances(terminate_batch_size)
 
