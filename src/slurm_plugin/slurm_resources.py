@@ -150,7 +150,8 @@ class SlurmResumeJob(SlurmJob):
 
 @dataclass
 class SlurmResumeData:
-    jobs_no_oversubscribe: List[SlurmResumeJob]
+    jobs_single_node_no_oversubscribe: List[SlurmResumeJob]
+    jobs_multi_node_no_oversubscribe: List[SlurmResumeJob]
     jobs_oversubscribe: List[SlurmResumeJob]
     nodes_no_oversubscribe: List[str]
     nodes_oversubscribe: List[str]

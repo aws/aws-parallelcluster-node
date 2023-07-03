@@ -676,6 +676,36 @@ class JobLevelScalingInstanceManager(InstanceManager):
             )
             self._clear_unused_launched_instances()
 
+    def _scaling_for_jobs_single_node(
+            self,
+            job_list: List[SlurmResumeJob],
+            launch_batch_size: int,
+            update_node_batch_size: int,
+            terminate_batch_size: int,
+            update_node_address: bool,
+    ) -> None:
+        """Scaling for job single node list."""
+        if job_list:
+            if len(job_list) == 1:
+                # call _scaling_for_jobs so that JobID is logged
+                self._scaling_for_jobs(
+                    job_list=job_list,
+                    launch_batch_size=launch_batch_size,
+                    update_node_batch_size=update_node_batch_size,
+                    terminate_batch_size=terminate_batch_size,
+                    update_node_address=update_node_address,
+                )
+            else:
+                # Batch all single node no oversubscribe jobs in a single best-effort EC2 launch request
+                # This to reduce scaling time and save launch API calls
+                single_nodes_no_oversubscribe = [job.nodes_resume[0] for job in job_list]
+                self._scaling_for_nodes(
+                    node_list=single_nodes_no_oversubscribe,
+                    launch_batch_size=launch_batch_size,
+                    update_node_address=update_node_address,
+                    all_or_nothing_batch=False,
+                )
+
     def _scaling_for_nodes(
             self, node_list: List[str], launch_batch_size: int, update_node_address: bool, all_or_nothing_batch: bool
     ) -> None:
@@ -703,6 +733,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
 
         # Node scaling for no oversubscribe nodes
         self._clear_unused_launched_instances()
+
+        self._scaling_for_jobs_single_node(
+            job_list=slurm_resume_data.jobs_single_node_no_oversubscribe,
+            launch_batch_size=launch_batch_size,
+            update_node_batch_size=update_node_batch_size,
+            terminate_batch_size=terminate_batch_size,
+            update_node_address=update_node_address,
+        )
 
         self._scaling_for_jobs(
             job_list=slurm_resume_data.jobs_multi_node_no_oversubscribe,
@@ -768,7 +806,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
             ],
         }
         """
-        jobs_no_oversubscribe = []
+        jobs_single_node_no_oversubscribe = []
+        jobs_multi_node_no_oversubscribe = []
         jobs_oversubscribe = []
         nodes_no_oversubscribe = []
         nodes_oversubscribe = []
@@ -777,7 +816,10 @@ class JobLevelScalingInstanceManager(InstanceManager):
 
         for job in slurm_resume_jobs:
             if job.is_exclusive():
-                jobs_no_oversubscribe.append(job)
+                if len(job.nodes_resume) == 1:
+                    jobs_single_node_no_oversubscribe.append(job)
+                else:
+                    jobs_multi_node_no_oversubscribe.append(job)
                 nodes_no_oversubscribe.extend(job.nodes_resume)
             else:
                 jobs_oversubscribe.append(job)
@@ -794,7 +836,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
             nodes_oversubscribe=list(dict.fromkeys(nodes_oversubscribe)),
             jobs_oversubscribe=jobs_oversubscribe,
             nodes_no_oversubscribe=nodes_no_oversubscribe,
-            jobs_no_oversubscribe=jobs_no_oversubscribe,
+            jobs_single_node_no_oversubscribe=jobs_single_node_no_oversubscribe,
+            jobs_multi_node_no_oversubscribe=jobs_multi_node_no_oversubscribe,
         )
 
     def _parse_slurm_resume(self, slurm_resume: Dict[str, any]) -> List[SlurmResumeJob]:
