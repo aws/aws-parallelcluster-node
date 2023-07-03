@@ -73,7 +73,8 @@ def log_exception(
                 logger.log(log_level, "Failed when %s with exception %s, message: %s", action_desc, type(e).__name__, e)
                 if raise_on_error:
                     if exception_to_raise:
-                        raise exception_to_raise
+                        # preserve exception message if exception to raise is same of actual exception
+                        raise e if isinstance(e, exception_to_raise) else exception_to_raise
                     else:
                         raise
 
