@@ -22,7 +22,7 @@ from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
 from common.utils import read_json
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import is_clustermgtd_heartbeat_valid, print_with_count
-from slurm_plugin.instance_manager import InstanceManager
+from slurm_plugin.instance_manager import InstanceManagerFactory
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
@@ -175,7 +175,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         node_list_with_status.append((node.name, node.state_string))
     log.info("Current state of Slurm nodes to resume: %s", node_list_with_status)
 
-    instance_manager = InstanceManager(
+    instance_manager = InstanceManagerFactory.get_manager(
         region=resume_config.region,
         cluster_name=resume_config.cluster_name,
         boto3_config=resume_config.boto3_config,
@@ -188,14 +188,16 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         fleet_config=resume_config.fleet_config,
         run_instances_overrides=resume_config.run_instances_overrides,
         create_fleet_overrides=resume_config.create_fleet_overrides,
+        job_level_scaling=resume_config.job_level_scaling,
     )
     instance_manager.add_instances(
         slurm_resume=slurm_resume,
         node_list=node_list,
-        launch_batch_size=resume_config.max_batch_size,
+        launch_batch_size=resume_config.launch_max_batch_size,
+        update_node_batch_size=resume_config.launch_max_batch_size,
+        terminate_batch_size=resume_config.launch_max_batch_size,
         update_node_address=resume_config.update_node_address,
         all_or_nothing_batch=resume_config.all_or_nothing_batch,
-        job_level_scaling=resume_config.job_level_scaling,
     )
     failed_nodes = set().union(*instance_manager.failed_nodes.values())
     success_nodes = [node for node in node_list if node not in failed_nodes]

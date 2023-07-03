@@ -42,7 +42,7 @@ from retrying import retry
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
-from slurm_plugin.instance_manager import InstanceManager
+from slurm_plugin.instance_manager import InstanceManagerFactory
 from slurm_plugin.slurm_resources import (
     CONFIG_FILE_DIR,
     ComputeResourceFailureEvent,
@@ -413,7 +413,7 @@ class ClusterManager:
     @staticmethod
     def _initialize_instance_manager(config):
         """Initialize instance manager class that will be used to launch/terminate/describe instances."""
-        return InstanceManager(
+        return InstanceManagerFactory.get_manager(
             config.region,
             config.cluster_name,
             config.boto3_config,
