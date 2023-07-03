@@ -1058,7 +1058,6 @@ def test_handle_unhealthy_static_nodes(
     add_node_list,
     mocker,
     caplog,
-    request,
     output_enabled,
     set_nodes_down_exception,
     sample_size,
