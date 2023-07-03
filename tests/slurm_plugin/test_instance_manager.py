@@ -1194,7 +1194,7 @@ class TestInstanceManager:
     def test_parse_requested_instances(
         self, node_list, expected_results, expected_failed_nodes, instance_manager, mocker
     ):
-        assert_that(instance_manager._parse_requested_instances(node_list)).is_equal_to(expected_results)
+        assert_that(instance_manager._parse_requested_nodes(node_list)).is_equal_to(expected_results)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
@@ -2408,10 +2408,1030 @@ class TestInstanceManager:
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
             )
-        else:
-            instance_manager._add_instances_for_nodes.assert_called_once_with(
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                update_node_address=update_node_address,
-                all_or_nothing_batch=all_or_nothing_batch,
+
+    @pytest.mark.parametrize(
+        "queue, compute_resource, slurm_node_list, instances_launched, "
+        "unused_launched_instances, expected_slurm_node_list, expected_instances_launched",
+        [
+            (
+                "q1",
+                "c1",
+                [],
+                {},
+                {},
+                [],
+                {},
+            ),
+            (
+                "q1",
+                "c1",
+                ["q1-st-c1-1"],
+                {},
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                [],
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+            ),
+            (
+                "q1",
+                "c1",
+                ["q1-st-c1-1"],
+                {},
+                {
+                    "q1": {
+                        "c2": [
+                            EC2Instance(
+                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                ["q1-st-c1-1"],
+                {},
+            ),
+            (
+                "q1",
+                "c1",
+                ["q1-st-c1-1", "q1-st-c1-2"],
+                {
+                    "q2": {
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c2": [
+                            EC2Instance(
+                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                ["q1-st-c1-1", "q1-st-c1-2"],
+                {
+                    "q2": {
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+            ),
+        ],
+    )
+    def test_resize_slurm_node_list(
+        self,
+        mocker,
+        instance_manager,
+        queue,
+        compute_resource,
+        slurm_node_list,
+        instances_launched,
+        unused_launched_instances,
+        expected_slurm_node_list,
+        expected_instances_launched,
+    ):
+        if not instances_launched:
+            instances_launched = collections.defaultdict(lambda: collections.defaultdict(list))
+
+        instance_manager.unused_launched_instances = unused_launched_instances
+        new_slurm_node_list = instance_manager._resize_slurm_node_list(
+            queue=queue,
+            compute_resource=compute_resource,
+            slurm_node_list=slurm_node_list,
+            instances_launched=instances_launched,
+        )
+
+        assert_that(new_slurm_node_list).is_equal_to(expected_slurm_node_list)
+        assert_that(instances_launched).is_equal_to(expected_instances_launched)
+
+
+class TestNodeListScalingInstanceManager:
+    @pytest.fixture
+    def instance_manager(self, mocker):
+        instance_manager = InstanceManagerFactory.get_manager(
+            region="us-east-2",
+            cluster_name="hit",
+            boto3_config=botocore.config.Config(),
+            table_name="table_name",
+            head_node_private_ip="head.node.ip",
+            head_node_hostname="head-node-hostname",
+            hosted_zone="hosted_zone",
+            dns_domain="dns.domain",
+            use_private_hostname=False,
+            fleet_config=FLEET_CONFIG,
+            run_instances_overrides={},
+            create_fleet_overrides={},
+            job_level_scaling=False,
+        )
+        table_mock = mocker.patch.object(instance_manager, "_table")
+        table_mock.table_name = "table_name"
+        return instance_manager
+
+    @pytest.mark.parametrize(
+        "node_list, launch_batch_size, update_node_address, all_or_nothing",
+        [
+            (
+                ["queue1-st-c5xlarge-2", "queue2-dy-c5xlarge-10"],
+                10,
+                False,
+                True,
             )
+        ],
+    )
+    def test_add_instances(
+        self, instance_manager, mocker, node_list, launch_batch_size, update_node_address, all_or_nothing
+    ):
+        # patch internal functions
+        instance_manager._add_instances_for_nodes = mocker.MagicMock()
+
+        instance_manager.add_instances(
+            node_list=node_list,
+            launch_batch_size=launch_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing,
+        )
+
+        assert_that(instance_manager.failed_nodes).is_empty()
+        instance_manager._add_instances_for_nodes.assert_called_with(
+            node_list=node_list,
+            launch_batch_size=launch_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing,
+        )
+
+    @pytest.mark.parametrize(
+        (
+            "nodes_to_launch",
+            "launch_batch_size",
+            "update_node_address",
+            "all_or_nothing_batch",
+            "launched_instances",
+            "expected_failed_nodes",
+            "expected_update_nodes_calls",
+            "dns_or_table_exception",
+        ),
+        [
+            # normal
+            (
+                {
+                    "queue1": {
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
+                    },
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                },
+                10,
+                True,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-23456",
+                                "InstanceType": "c5.2xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
+                            },
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
+                            },
+                        ]
+                    },
+                ],
+                {},
+                [
+                    call(
+                        ["queue1-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue1-st-c52xlarge-1"],
+                        [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
+                        [
+                            EC2Instance(
+                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    ),
+                ],
+                None,
+            ),
+            # client_error
+            (
+                {
+                    "queue1": {
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
+                    },
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                },
+                10,
+                True,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    client_error("some_error_code"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
+                            },
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
+                            },
+                        ]
+                    },
+                ],
+                {"some_error_code": {"queue1-st-c52xlarge-1"}},
+                [
+                    call(
+                        ["queue1-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
+                        [
+                            EC2Instance(
+                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    ),
+                ],
+                None,
+            ),
+            # no_update
+            (
+                {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-2"]}},
+                10,
+                False,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                ],
+                {},
+                None,
+                None,
+            ),
+            # batch_size1
+            (
+                {
+                    "queue1": {
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
+                    },
+                    "queue2": {
+                        "c5xlarge": [
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
+                        ],
+                    },
+                },
+                3,
+                True,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    client_error("InsufficientHostCapacity"),
+                    client_error("ServiceUnavailable"),
+                ],
+                {
+                    "InsufficientHostCapacity": {"queue1-st-c52xlarge-1"},
+                    "ServiceUnavailable": {"queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1", "queue2-st-c5xlarge-2"},
+                },
+                [
+                    call(
+                        ["queue1-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    )
+                ],
+                None,
+            ),
+            # batch_size2
+            (
+                {
+                    "queue1": {
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
+                    },
+                    "queue2": {
+                        "c5xlarge": [
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
+                        ],
+                    },
+                },
+                1,
+                True,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    client_error("InsufficientVolumeCapacity"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    client_error("InternalError"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                ],
+                {"InsufficientVolumeCapacity": {"queue1-st-c52xlarge-1"}, "InternalError": {"queue2-st-c5xlarge-2"}},
+                [
+                    call(
+                        ["queue1-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-st-c5xlarge-1"],
+                        [EC2Instance("i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-dy-c5xlarge-1"],
+                        [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                ],
+                None,
+            ),
+            # partial_launch
+            (
+                {
+                    "queue2": {
+                        "c5xlarge": [
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
+                        ],
+                    },
+                },
+                10,
+                True,
+                False,
+                # Simulate the case that only a part of the requested capacity is launched
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    client_error("LimitedInstanceCapacity"),
+                ],
+                {"LimitedInstanceCapacity": {"queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"}},
+                [
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
+                        [EC2Instance("i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    )
+                ],
+                None,
+            ),
+            # all_or_nothing
+            (
+                {
+                    "queue2": {
+                        "c5xlarge": [
+                            "queue2-st-c5xlarge-1",
+                            "queue2-st-c5xlarge-2",
+                            "queue2-dy-c5xlarge-1",
+                            "queue2-dy-c5xlarge-2",
+                            "queue2-dy-c5xlarge-3",
+                        ],
+                    },
+                },
+                3,
+                True,
+                True,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-11111",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            },
+                            {
+                                "InstanceId": "i-22222",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
+                            },
+                            {
+                                "InstanceId": "i-33333",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
+                            },
+                        ]
+                    },
+                    client_error("InsufficientInstanceCapacity"),
+                ],
+                {"InsufficientInstanceCapacity": {"queue2-dy-c5xlarge-2", "queue2-dy-c5xlarge-3"}},
+                [
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2", "queue2-dy-c5xlarge-1"],
+                        [
+                            EC2Instance(
+                                "i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    )
+                ],
+                None,
+            ),
+            # override_runinstances
+            (
+                {
+                    "queue3": {
+                        "c5xlarge": ["queue3-st-c5xlarge-2"],
+                        "c52xlarge": ["queue3-st-c52xlarge-1"],
+                        "p4d24xlarge": ["queue3-st-p4d24xlarge-1"],
+                    },
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                },
+                10,
+                True,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-23456",
+                                "InstanceType": "c5.2xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12346",
+                                "InstanceType": "p4d.24xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.5",
+                                "PrivateDnsName": "ip-1-0-0-5",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.5",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
+                            },
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
+                            },
+                        ]
+                    },
+                ],
+                {},
+                [
+                    call(
+                        ["queue3-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue3-st-c52xlarge-1"],
+                        [EC2Instance("i-23456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue3-st-p4d24xlarge-1"],
+                        [EC2Instance("i-12346", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
+                        [
+                            EC2Instance(
+                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    ),
+                ],
+                None,
+            ),
+            # launch_exception
+            (
+                {
+                    "queue1": {
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
+                    },
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                },
+                18,
+                True,
+                False,
+                [Exception()],
+                {
+                    "Exception": {
+                        "queue1-st-c5xlarge-2",
+                        "queue1-st-c52xlarge-1",
+                        "queue2-st-c5xlarge-1",
+                        "queue2-dy-c5xlarge-1",
+                    }
+                },
+                [],
+                None,
+            ),
+            # dns_or_table_exception
+            (
+                {
+                    "queue1": {
+                        "c5xlarge": ["queue1-st-c5xlarge-2"],
+                        "c52xlarge": ["queue1-st-c52xlarge-1"],
+                    },
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"]},
+                },
+                18,
+                True,
+                False,
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    client_error("some_error_code"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-34567",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.3",
+                                "PrivateDnsName": "ip-1-0-0-3",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.3",
+                                    },
+                                ],
+                            },
+                            {
+                                "InstanceId": "i-45678",
+                                "InstanceType": "c5.xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.4",
+                                "PrivateDnsName": "ip-1-0-0-4",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.4",
+                                    },
+                                ],
+                            },
+                        ]
+                    },
+                ],
+                {
+                    "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                    "some_error_code": {"queue1-st-c52xlarge-1"},
+                },
+                [
+                    call(
+                        ["queue1-st-c5xlarge-2"],
+                        [EC2Instance("i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                    ),
+                    call(
+                        ["queue2-st-c5xlarge-1", "queue2-dy-c5xlarge-1"],
+                        [
+                            EC2Instance(
+                                "i-34567", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-45678", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    ),
+                ],
+                HostnameDnsStoreError(),
+            ),
+        ],
+        ids=[
+            "normal",
+            "client_error",
+            "no_update",
+            "batch_size1",
+            "batch_size2",
+            "partial_launch",
+            "all_or_nothing",
+            "override_runinstances",
+            "launch_exception",
+            "dns_or_table_exception",
+        ],
+    )
+    def test_add_instances_for_nodes(
+        self,
+        nodes_to_launch,
+        launch_batch_size,
+        update_node_address,
+        all_or_nothing_batch,
+        launched_instances,
+        expected_failed_nodes,
+        expected_update_nodes_calls,
+        dns_or_table_exception,
+        mocker,
+        instance_manager,
+    ):
+        mocker.patch("slurm_plugin.instance_manager.update_nodes")
+
+        # patch internal functions
+        instance_manager._store_assigned_hostnames = mocker.MagicMock(side_effect=dns_or_table_exception)
+        instance_manager._update_dns_hostnames = mocker.MagicMock(side_effect=dns_or_table_exception)
+
+        # Mock _update_slurm_node_addrs_and_failed_nodes but still allow original code to execute
+        original_update_func = instance_manager._update_slurm_node_addrs_and_failed_nodes
+        instance_manager._update_slurm_node_addrs_and_failed_nodes = mocker.MagicMock(side_effect=original_update_func)
+        instance_manager._parse_requested_nodes = mocker.MagicMock(return_value=nodes_to_launch)
+        # patch fleet manager calls
+        mocker.patch.object(
+            slurm_plugin.fleet_manager.Ec2RunInstancesManager,
+            "_launch_instances",
+            side_effect=launched_instances,
+        )
+
+        # run test
+        instance_manager._add_instances_for_nodes(
+            node_list=["placeholder_node_list"],
+            launch_batch_size=launch_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
+        )
+        if expected_update_nodes_calls:
+            instance_manager._update_slurm_node_addrs_and_failed_nodes.assert_has_calls(expected_update_nodes_calls)
+        else:
+            instance_manager._update_slurm_node_addrs_and_failed_nodes.assert_not_called()
+        if expected_failed_nodes:
+            assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+        else:
+            assert_that(instance_manager.failed_nodes).is_empty()
