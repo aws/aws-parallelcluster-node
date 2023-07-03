@@ -1001,3 +1001,36 @@ class TestCreateFleetManager:
         instance_info = ec2_client.describe_instances(InstanceIds=instance_ids)["Reservations"][0]["Instances"][0]
         instance_description = EC2Instance.from_describe_instance_data(instance_info)
         assert_that(expected_result).is_equal_to(instance_description.private_ip)
+
+
+class TestFleetManager:
+    @pytest.mark.parametrize(
+        "count, job_id",
+        [
+            (0, None),
+            (1, None),
+            (1, "1"),
+        ],
+    )
+    def test_launch_ec2_instances(self, mocker, count, job_id):
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
+        )
+
+        # patch internal functions
+        setup_logging_filter = mocker.patch(
+            "slurm_plugin.fleet_manager.setup_logging_filter", return_value=mocker.MagicMock()
+        )
+        fleet_manager._evaluate_launch_params = mocker.MagicMock()
+        fleet_manager._launch_instances = mocker.MagicMock()
+
+        fleet_manager.launch_ec2_instances(count, job_id)
+
+        if not job_id:
+            setup_logging_filter.assert_not_called()
+        else:
+            setup_logging_filter.assert_called_once()
+            setup_logging_filter.return_value.__enter__.return_value.set_custom_value.assert_any_call(job_id)
+
+        fleet_manager._evaluate_launch_params.assert_called_once_with(count)
+        fleet_manager._launch_instances.assert_called_once()

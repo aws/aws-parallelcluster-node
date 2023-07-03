@@ -165,7 +165,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
     # Check heartbeat
     current_time = datetime.now(tz=timezone.utc)
     if not is_clustermgtd_heartbeat_valid(
-            current_time, resume_config.clustermgtd_timeout, resume_config.clustermgtd_heartbeat_file_path
+        current_time, resume_config.clustermgtd_timeout, resume_config.clustermgtd_heartbeat_file_path
     ):
         log.error(
             "No valid clustermgtd heartbeat detected, clustermgtd is down!\n"

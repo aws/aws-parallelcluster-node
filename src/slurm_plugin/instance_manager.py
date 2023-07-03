@@ -59,19 +59,19 @@ class HostnameDnsStoreError(Exception):
 class InstanceManagerFactory:
     @staticmethod
     def get_manager(
-            region: str,
-            cluster_name: str,
-            boto3_config: Config,
-            table_name: str = None,
-            hosted_zone: str = None,
-            dns_domain: str = None,
-            use_private_hostname: bool = False,
-            head_node_private_ip: str = None,
-            head_node_hostname: str = None,
-            fleet_config: Dict[str, any] = None,
-            run_instances_overrides: dict = None,
-            create_fleet_overrides: dict = None,
-            job_level_scaling: bool = False,
+        region: str,
+        cluster_name: str,
+        boto3_config: Config,
+        table_name: str = None,
+        hosted_zone: str = None,
+        dns_domain: str = None,
+        use_private_hostname: bool = False,
+        head_node_private_ip: str = None,
+        head_node_hostname: str = None,
+        fleet_config: Dict[str, any] = None,
+        run_instances_overrides: dict = None,
+        create_fleet_overrides: dict = None,
+        job_level_scaling: bool = False,
     ):
         if job_level_scaling:
             return JobLevelScalingInstanceManager(
@@ -114,19 +114,19 @@ class InstanceManager(ABC):
     """
 
     def __init__(
-            self,
-            region: str,
-            cluster_name: str,
-            boto3_config: Config,
-            table_name: str = None,
-            hosted_zone: str = None,
-            dns_domain: str = None,
-            use_private_hostname: bool = False,
-            head_node_private_ip: str = None,
-            head_node_hostname: str = None,
-            fleet_config: Dict[str, any] = None,
-            run_instances_overrides: dict = None,
-            create_fleet_overrides: dict = None,
+        self,
+        region: str,
+        cluster_name: str,
+        boto3_config: Config,
+        table_name: str = None,
+        hosted_zone: str = None,
+        dns_domain: str = None,
+        use_private_hostname: bool = False,
+        head_node_private_ip: str = None,
+        head_node_hostname: str = None,
+        fleet_config: Dict[str, any] = None,
+        run_instances_overrides: dict = None,
+        create_fleet_overrides: dict = None,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -153,23 +153,23 @@ class InstanceManager(ABC):
 
     @abstractmethod
     def add_instances(
-            self,
-            node_list: List[str],
-            launch_batch_size: int,
-            update_node_address: bool = True,
-            all_or_nothing_batch: bool = False,
-            slurm_resume: Dict[str, any] = None,
-            update_node_batch_size: int = None,
-            terminate_batch_size: int = None,
+        self,
+        node_list: List[str],
+        launch_batch_size: int,
+        update_node_address: bool = True,
+        all_or_nothing_batch: bool = False,
+        slurm_resume: Dict[str, any] = None,
+        update_node_batch_size: int = None,
+        terminate_batch_size: int = None,
     ):
         """Add EC2 instances to Slurm nodes."""
 
     def _add_instances_for_nodes(
-            self,
-            node_list: List[str],
-            launch_batch_size: int,
-            update_node_address: bool = True,
-            all_or_nothing_batch: bool = False,
+        self,
+        node_list: List[str],
+        launch_batch_size: int,
+        update_node_address: bool = True,
+        all_or_nothing_batch: bool = False,
     ):
         """Launch requested EC2 instances for nodes."""
         nodes_to_launch = self._parse_requested_nodes(node_list)
@@ -471,7 +471,7 @@ class InstanceManager(ABC):
         self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
 
     def get_compute_node_instances(
-            self, compute_nodes: Iterable[SlurmNode], max_retrieval_count: int
+        self, compute_nodes: Iterable[SlurmNode], max_retrieval_count: int
     ) -> Iterable[ComputeInstanceDescriptor]:
         """Return an iterable of dicts containing a node name and instance ID for each node in compute_nodes."""
         return InstanceManager._get_instances_for_nodes(
@@ -483,7 +483,7 @@ class InstanceManager(ABC):
 
     @staticmethod
     def _get_instances_for_nodes(
-            compute_nodes, table_name, resource_factory, max_retrieval_count
+        compute_nodes, table_name, resource_factory, max_retrieval_count
     ) -> Iterable[ComputeInstanceDescriptor]:
         # Partition compute_nodes into a list of nodes with an instance ID and a list of nodes without an instance ID.
         nodes_with_instance_id = []
@@ -523,7 +523,7 @@ class InstanceManager(ABC):
 
     @staticmethod
     def _retrieve_instance_ids_from_dynamo(
-            ddb_resource, table_name, compute_nodes, max_retrieval_count
+        ddb_resource, table_name, compute_nodes, max_retrieval_count
     ) -> Iterable[ComputeInstanceDescriptor]:
         node_name_partitions = InstanceManager._partition_nodes(node.get("Name") for node in compute_nodes)
 
@@ -565,19 +565,19 @@ class InstanceManager(ABC):
 
 class JobLevelScalingInstanceManager(InstanceManager):
     def __init__(
-            self,
-            region: str,
-            cluster_name: str,
-            boto3_config: Config,
-            table_name: str = None,
-            hosted_zone: str = None,
-            dns_domain: str = None,
-            use_private_hostname: bool = False,
-            head_node_private_ip: str = None,
-            head_node_hostname: str = None,
-            fleet_config: Dict[str, any] = None,
-            run_instances_overrides: dict = None,
-            create_fleet_overrides: dict = None,
+        self,
+        region: str,
+        cluster_name: str,
+        boto3_config: Config,
+        table_name: str = None,
+        hosted_zone: str = None,
+        dns_domain: str = None,
+        use_private_hostname: bool = False,
+        head_node_private_ip: str = None,
+        head_node_hostname: str = None,
+        fleet_config: Dict[str, any] = None,
+        run_instances_overrides: dict = None,
+        create_fleet_overrides: dict = None,
     ):
         super().__init__(
             region=region,
@@ -600,14 +600,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self.unused_launched_instances = {}
 
     def add_instances(
-            self,
-            node_list: List[str],
-            launch_batch_size: int,
-            update_node_address: bool = True,
-            all_or_nothing_batch: bool = False,
-            slurm_resume: Dict[str, any] = None,
-            update_node_batch_size: int = None,
-            terminate_batch_size: int = None,
+        self,
+        node_list: List[str],
+        launch_batch_size: int,
+        update_node_address: bool = True,
+        all_or_nothing_batch: bool = False,
+        slurm_resume: Dict[str, any] = None,
+        update_node_batch_size: int = None,
+        terminate_batch_size: int = None,
     ):
         """Add EC2 instances to Slurm nodes."""
         # Reset failed nodes pool
@@ -639,12 +639,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
             )
 
     def _scaling_for_jobs(
-            self,
-            job_list: List[SlurmResumeJob],
-            launch_batch_size: int,
-            update_node_batch_size: int,
-            terminate_batch_size: int,
-            update_node_address: bool,
+        self,
+        job_list: List[SlurmResumeJob],
+        launch_batch_size: int,
+        update_node_batch_size: int,
+        terminate_batch_size: int,
+        update_node_address: bool,
     ) -> None:
         """Scaling for job list."""
         # Setup custom logging filter
@@ -681,12 +681,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
             self._clear_unused_launched_instances()
 
     def _scaling_for_jobs_single_node(
-            self,
-            job_list: List[SlurmResumeJob],
-            launch_batch_size: int,
-            update_node_batch_size: int,
-            terminate_batch_size: int,
-            update_node_address: bool,
+        self,
+        job_list: List[SlurmResumeJob],
+        launch_batch_size: int,
+        update_node_batch_size: int,
+        terminate_batch_size: int,
+        update_node_address: bool,
     ) -> None:
         """Scaling for job single node list."""
         if job_list:
@@ -711,7 +711,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 )
 
     def _scaling_for_nodes(
-            self, node_list: List[str], launch_batch_size: int, update_node_address: bool, all_or_nothing_batch: bool
+        self, node_list: List[str], launch_batch_size: int, update_node_address: bool, all_or_nothing_batch: bool
     ) -> None:
         """Scaling for node list."""
         if node_list:
@@ -723,14 +723,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
             )
 
     def _add_instances_for_resume_file(
-            self,
-            slurm_resume: Dict[str, any],
-            node_list: List[str],
-            launch_batch_size: int,
-            update_node_batch_size: int,
-            terminate_batch_size: int,
-            update_node_address: bool = True,
-            all_or_nothing_batch: bool = False,
+        self,
+        slurm_resume: Dict[str, any],
+        node_list: List[str],
+        launch_batch_size: int,
+        update_node_batch_size: int,
+        terminate_batch_size: int,
+        update_node_address: bool = True,
+        all_or_nothing_batch: bool = False,
     ):
         """Launch requested EC2 instances for resume file."""
         slurm_resume_data = self._get_slurm_resume_data(slurm_resume=slurm_resume, node_list=node_list)
@@ -868,12 +868,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
         return slurm_resume_jobs
 
     def _add_instances_for_job(
-            self,
-            job: SlurmResumeJob,
-            launch_batch_size: int,
-            update_node_batch_size: int,
-            update_node_address: bool = True,
-            all_or_nothing_batch: bool = True,
+        self,
+        job: SlurmResumeJob,
+        launch_batch_size: int,
+        update_node_batch_size: int,
+        update_node_address: bool = True,
+        all_or_nothing_batch: bool = True,
     ):
         if all_or_nothing_batch:
             """Launch requested EC2 instances for nodes."""
@@ -950,7 +950,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             logger.error("Best effort job level scaling not implemented")
 
     def _launch_instances_for_job(
-            self, job: SlurmResumeJob, nodes_to_launch: Dict[str, any], launch_batch_size: int, all_or_nothing_batch: bool
+        self, job: SlurmResumeJob, nodes_to_launch: Dict[str, any], launch_batch_size: int, all_or_nothing_batch: bool
     ):
         instances_launched = collections.defaultdict(lambda: collections.defaultdict(list))
         for queue, compute_resources in nodes_to_launch.items():
@@ -1023,7 +1023,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         return instances_launched
 
     def _resize_slurm_node_list(
-            self, queue: str, compute_resource: str, slurm_node_list: List[str], instances_launched: Dict[str, any]
+        self, queue: str, compute_resource: str, slurm_node_list: List[str], instances_launched: Dict[str, any]
     ):
         reusable_instances = self.unused_launched_instances.get(queue, {}).get(compute_resource, [])
         if len(reusable_instances) > 0:
@@ -1042,11 +1042,11 @@ class JobLevelScalingInstanceManager(InstanceManager):
         return slurm_node_list
 
     def _assign_instances_to_nodes(
-            self,
-            update_node_address: bool,
-            nodes_to_launch: Dict[str, any],
-            instances_launched: Dict[str, any],
-            update_node_batch_size: int,
+        self,
+        update_node_address: bool,
+        nodes_to_launch: Dict[str, any],
+        instances_launched: Dict[str, any],
+        update_node_batch_size: int,
     ):
         if update_node_address:
             for queue, compute_resources in nodes_to_launch.items():
@@ -1093,19 +1093,19 @@ class JobLevelScalingInstanceManager(InstanceManager):
 
 class NodeListScalingInstanceManager(InstanceManager):
     def __init__(
-            self,
-            region: str,
-            cluster_name: str,
-            boto3_config: Config,
-            table_name: str = None,
-            hosted_zone: str = None,
-            dns_domain: str = None,
-            use_private_hostname: bool = False,
-            head_node_private_ip: str = None,
-            head_node_hostname: str = None,
-            fleet_config: Dict[str, any] = None,
-            run_instances_overrides: dict = None,
-            create_fleet_overrides: dict = None,
+        self,
+        region: str,
+        cluster_name: str,
+        boto3_config: Config,
+        table_name: str = None,
+        hosted_zone: str = None,
+        dns_domain: str = None,
+        use_private_hostname: bool = False,
+        head_node_private_ip: str = None,
+        head_node_hostname: str = None,
+        fleet_config: Dict[str, any] = None,
+        run_instances_overrides: dict = None,
+        create_fleet_overrides: dict = None,
     ):
         super().__init__(
             region=region,
@@ -1123,14 +1123,14 @@ class NodeListScalingInstanceManager(InstanceManager):
         )
 
     def add_instances(
-            self,
-            node_list: List[str],
-            launch_batch_size: int,
-            update_node_address: bool = True,
-            all_or_nothing_batch: bool = False,
-            slurm_resume: Dict[str, any] = None,
-            update_node_batch_size: int = None,
-            terminate_batch_size: int = None,
+        self,
+        node_list: List[str],
+        launch_batch_size: int,
+        update_node_address: bool = True,
+        all_or_nothing_batch: bool = False,
+        slurm_resume: Dict[str, any] = None,
+        update_node_batch_size: int = None,
+        terminate_batch_size: int = None,
     ):
         """Add EC2 instances to Slurm nodes."""
         # Reset failed_nodes
