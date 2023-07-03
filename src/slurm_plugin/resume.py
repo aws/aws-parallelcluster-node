@@ -32,7 +32,9 @@ event_logger = log.getChild("events")
 class SlurmResumeConfig:
     DEFAULTS = {
         "max_retry": 1,
-        "max_batch_size": 500,
+        "launch_max_batch_size": 500,
+        "update_node_max_batch_size": 500,
+        "terminate_max_batch_size": 1000,
         "update_node_address": True,
         "clustermgtd_timeout": 300,
         "proxy": "NONE",
@@ -75,8 +77,14 @@ class SlurmResumeConfig:
         )
         self.head_node_private_ip = config.get("slurm_resume", "head_node_private_ip")
         self.head_node_hostname = config.get("slurm_resume", "head_node_hostname")
-        self.max_batch_size = config.getint(
-            "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
+        self.launch_max_batch_size = config.getint(
+            "slurm_resume", "launch_max_batch_size", fallback=self.DEFAULTS.get("launch_max_batch_size")
+        )
+        self.update_node_max_batch_size = config.getint(
+            "slurm_resume", "update_node_max_batch_size", fallback=self.DEFAULTS.get("update_node_max_batch_size")
+        )
+        self.terminate_max_batch_size = config.getint(
+            "slurm_resume", "terminate_max_batch_size", fallback=self.DEFAULTS.get("terminate_max_batch_size")
         )
         self.update_node_address = config.getboolean(
             "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
@@ -157,7 +165,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
     # Check heartbeat
     current_time = datetime.now(tz=timezone.utc)
     if not is_clustermgtd_heartbeat_valid(
-        current_time, resume_config.clustermgtd_timeout, resume_config.clustermgtd_heartbeat_file_path
+            current_time, resume_config.clustermgtd_timeout, resume_config.clustermgtd_heartbeat_file_path
     ):
         log.error(
             "No valid clustermgtd heartbeat detected, clustermgtd is down!\n"
@@ -194,8 +202,8 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         slurm_resume=slurm_resume,
         node_list=node_list,
         launch_batch_size=resume_config.launch_max_batch_size,
-        update_node_batch_size=resume_config.launch_max_batch_size,
-        terminate_batch_size=resume_config.launch_max_batch_size,
+        update_node_batch_size=resume_config.update_node_max_batch_size,
+        terminate_batch_size=resume_config.terminate_max_batch_size,
         update_node_address=resume_config.update_node_address,
         all_or_nothing_batch=resume_config.all_or_nothing_batch,
     )
