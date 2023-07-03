@@ -8,6 +8,7 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -171,3 +172,21 @@ def test_read_json(mocker, raw_input, default, expected_output, expected_excepti
         with pytest.raises(TypeError):
             read_json(None)
         assert_that(caplog.text).contains("Unable to read file")
+
+
+def test_custom_filter(caplog):
+    logger = logging.getLogger(__name__)
+    caplog.set_level(logging.INFO)
+
+    logger.info("This is a log")
+    assert_that(caplog.text).matches("This is a log")
+
+    with utils.setup_logging_filter(logger, "CustomField") as custom_log_filter:
+        custom_log_filter.set_custom_value("CustomValue")
+        logger.info("This is a another log")
+        assert_that(caplog.text).matches("CustomField CustomValue - This is a another log")
+
+    caplog.clear()
+    logger.info("This is another log with no filter")
+    assert_that(caplog.text).matches("This is another log with no filter")
+    assert_that(caplog.text).does_not_match("CustomField CustomValue")

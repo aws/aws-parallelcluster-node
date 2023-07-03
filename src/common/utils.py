@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and limitations under the License.
 
 import collections
+import contextlib
 import itertools
 import json
 import logging
@@ -320,3 +321,30 @@ def validate_absolute_path(path):
     if not os.path.isabs(path):
         raise ValueError(f"The path {path} is not a valid absolute path")
     return True
+
+
+@contextlib.contextmanager
+def setup_logging_filter(logger: logging.Logger, custom_field: str):
+    """Set up a custom logging filter and remove it at the end of the context."""
+
+    class CustomFilter(logging.Filter):
+        def __init__(self, custom_field: str):
+            super().__init__()
+            self.field = custom_field
+            self.value = None
+
+        def set_custom_value(self, custom_value: str):
+            self.value = custom_value
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            if self.value:
+                record.msg = f"{self.field} {self.value} - {record.msg}"
+            return True
+
+    custom_filter = CustomFilter(custom_field)
+    logger.addFilter(custom_filter)
+    try:
+        yield custom_filter
+    finally:
+        # Remove the custom log filter
+        logger.removeFilter(custom_filter)
