@@ -10,7 +10,7 @@
 # limitations under the License.
 import os.path
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, List
 from unittest.mock import call, patch
 
 import pytest
@@ -1076,7 +1076,7 @@ def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
         ),
     ],
 )
-def test_grep_partition_filter(partitions, expected_grep_filter):
+def test_grep_partition_filter(partitions: List[str], expected_grep_filter: str):
     assert_that(_get_partition_grep_filter(partitions)).is_equal_to(expected_grep_filter)
 
 
