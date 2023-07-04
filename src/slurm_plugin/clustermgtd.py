@@ -561,7 +561,7 @@ class ClusterManager:
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
     def _get_partition_info_with_retry():
-        return {part.name: part for part in get_partition_info(get_all_nodes=True)}
+        return {part.name: part for part in get_partition_info()}
 
     def _clean_up_inactive_partition(self, partitions):
         """Terminate all other instances associated with nodes in INACTIVE partition directly through EC2."""
