@@ -1,0 +1,4 @@
+{
+    "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+    "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]"
+}
