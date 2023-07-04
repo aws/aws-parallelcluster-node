@@ -1031,19 +1031,41 @@ def test_grep_partition_filter(partitions, expected_grep_filter):
     assert_that(_get_partition_grep_filter(partitions)).is_equal_to(expected_grep_filter)
 
 
-@pytest.mark.parametrize(
-    "expected_partition_nodelist_mapping",
-    [
-        pytest.param(
-            {
-                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
-                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
-            },
-        ),
-    ],
-)
-def test_partition_nodelist_mapping_singleton(test_datadir, expected_partition_nodelist_mapping):
-    mapping_instance = PartitionNodelistMapping.instance()
-    with patch("common.schedulers.slurm_commands.SLURM_CONF_DIR", os.path.join(test_datadir, "slurm_dir/etc")):
-        partition_nodelist_mapping = mapping_instance.get_partition_nodelist_mapping()
-    assert_that(partition_nodelist_mapping).is_equal_to(expected_partition_nodelist_mapping)
+class TestPartitionNodelistMapping:
+    @pytest.mark.parametrize(
+        "expected_partition_nodelist_mapping",
+        [
+            pytest.param(
+                {
+                    "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                    "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+                },
+            ),
+        ],
+    )
+    def test_get_partition_nodelist_mapping(self, test_datadir, expected_partition_nodelist_mapping):
+        mapping_instance = PartitionNodelistMapping.instance()
+        with patch("common.schedulers.slurm_commands.SLURM_CONF_DIR", os.path.join(test_datadir, "slurm_dir/etc")):
+            partition_nodelist_mapping = mapping_instance.get_partition_nodelist_mapping()
+        assert_that(partition_nodelist_mapping).is_equal_to(expected_partition_nodelist_mapping)
+
+    @pytest.mark.parametrize(
+        "expected_partitions",
+        [
+            pytest.param(["test", "test2"]),
+        ],
+    )
+    def test_get_partitions(self, test_datadir, expected_partitions):
+        mapping_instance = PartitionNodelistMapping.instance()
+        with patch("common.schedulers.slurm_commands.SLURM_CONF_DIR", os.path.join(test_datadir, "slurm_dir/etc")):
+            partitions = list(mapping_instance.get_partitions())
+        assert_that(partitions).is_equal_to(expected_partitions)
+
+    def test_get_singleton_instance(self):
+        PartitionNodelistMapping.instance()
+        assert_that(PartitionNodelistMapping._instance).is_not_none()
+
+    def test_reset_singleton_instance(self):
+        mapping_instance = PartitionNodelistMapping.instance()
+        mapping_instance.reset()
+        assert_that(PartitionNodelistMapping._instance).is_none()
