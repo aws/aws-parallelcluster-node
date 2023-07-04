@@ -196,7 +196,7 @@ def update_all_partitions(state, reset_node_addrs_hostname):
     """Update partitions to a state and reset nodesaddr/nodehostname if needed."""
     try:
         # Get all nodes from partition as opposed to ignoring power_down nodes
-        partitions = get_partition_info(get_all_nodes=True)
+        partitions = get_partition_info()
         partition_to_update = []
         for part in partitions:
             if PartitionStatus(part.state) != PartitionStatus(state):
@@ -314,7 +314,7 @@ def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     return _parse_nodes_info(nodeinfo_str)
 
 
-def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all_nodes=True):
+def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
     """
     Retrieve slurm partition info from scontrol.
 
@@ -334,7 +334,7 @@ def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT, get_all
     return [
         SlurmPartition(
             partition_name,
-            _get_all_partition_nodes(partition_name) if get_all_nodes else _get_partition_nodes(partition_name),
+            _get_all_partition_nodes(partition_name),
             partition_state,
         )
         for partition_name, partition_state in partitions_info
@@ -380,22 +380,6 @@ def _get_slurm_nodes(states=None, partition_name=None, command_timeout=DEFAULT_G
     # Every node is print on a separate line
     # It's safe to use the function affected by B604 since the command is fully built in this code
     return check_command_output(sinfo_command, timeout=command_timeout, shell=True).splitlines()  # nosec B604
-
-
-def _get_partition_nodes(partition_name, command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
-    """Get up nodes in a parition by querying sinfo, and filtering out power_down nodes."""
-    all_nodes = _get_slurm_nodes(partition_name=partition_name)
-    power_down_nodes = _get_slurm_nodes(partition_name=partition_name, states="power_down,powering_down")
-    down_nodes = _get_slurm_nodes(partition_name=partition_name, states="down")
-    nodes = []
-    for nodename in all_nodes:
-        # Always try to maintain the following nodes:
-        # Static nodes
-        # Any node in down
-        # Any node not in power_saving mode
-        if "-st-" in nodename or nodename in down_nodes or (nodename not in power_down_nodes and nodename != "n/a"):
-            nodes.append(nodename)
-    return ",".join(nodes)
 
 
 def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
