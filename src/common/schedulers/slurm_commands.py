@@ -86,7 +86,7 @@ class PartitionNodelistMapping:
     def __init__(self):
         self.partition_nodelist_mapping = {}
 
-    def get_partition_nodelist_mapping(self):
+    def get_partition_nodelist_mapping(self) -> Dict[str, str]:
         """Retrieve partition-nodelist mapping from JSON file."""
         if not self.partition_nodelist_mapping:
             partition_nodelist_json = os.path.join(
@@ -97,9 +97,9 @@ class PartitionNodelistMapping:
                 self.partition_nodelist_mapping = json.load(file)
         return self.partition_nodelist_mapping
 
-    def get_partitions(self):
+    def get_partitions(self) -> List[str]:
         """Retrieve partitions from JSON file."""
-        return self.get_partition_nodelist_mapping().keys()
+        return list(self.get_partition_nodelist_mapping().keys())
 
     @staticmethod
     def instance():
