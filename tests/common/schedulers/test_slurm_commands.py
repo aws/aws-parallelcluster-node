@@ -8,8 +8,9 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+import os.path
 from datetime import datetime, timezone
-from unittest.mock import call
+from unittest.mock import call, patch
 
 import pytest
 from assertpy import assert_that
@@ -1028,3 +1029,21 @@ def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
 )
 def test_grep_partition_filter(partitions, expected_grep_filter):
     assert_that(_get_partition_grep_filter(partitions)).is_equal_to(expected_grep_filter)
+
+
+@pytest.mark.parametrize(
+    "expected_partition_nodelist_mapping",
+    [
+        pytest.param(
+            {
+                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+            },
+        ),
+    ],
+)
+def test_partition_nodelist_mapping_singleton(test_datadir, expected_partition_nodelist_mapping):
+    mapping_instance = PartitionNodelistMapping.instance()
+    with patch("common.schedulers.slurm_commands.SLURM_CONF_DIR", os.path.join(test_datadir, "slurm_dir/etc")):
+        partition_nodelist_mapping = mapping_instance.get_partition_nodelist_mapping()
+    assert_that(partition_nodelist_mapping).is_equal_to(expected_partition_nodelist_mapping)
