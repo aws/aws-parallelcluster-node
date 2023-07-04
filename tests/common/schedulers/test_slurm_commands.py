@@ -10,6 +10,7 @@
 # limitations under the License.
 import os.path
 from datetime import datetime, timezone
+from typing import Dict
 from unittest.mock import call, patch
 
 import pytest
@@ -918,6 +919,52 @@ def test_get_all_partition_nodes(
 
 
 @pytest.mark.parametrize(
+    "nodes, cmd_timeout, partition_nodelist_mapping, expected_command",
+    [
+        pytest.param(
+            "node1 node2",
+            30,
+            {
+                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+            },
+            f"{SCONTROL} show nodes node1 node2 | {SCONTROL_OUTPUT_AWK_PARSER}",
+            id="Test with nodes provided by caller",
+        ),
+        pytest.param(
+            "",
+            30,
+            {
+                "test": "test-st-cr1-[1-10],test-dy-cr2-[1-2]",
+                "test2": "test2-st-cr1-[1-10],test2-dy-cr2-[1-2]",
+            },
+            f"{SCONTROL} show nodes test-st-cr1-[1-10],test-dy-cr2-[1-2],test2-st-cr1-[1-10],test2-dy-cr2-[1-2] | "
+            f"{SCONTROL_OUTPUT_AWK_PARSER}",
+            id="Test with nodes not provided by caller. Nodes are retrieved from PC-managed partitions ",
+        ),
+    ],
+)
+def test_get_nodes_info(nodes, cmd_timeout, partition_nodelist_mapping: Dict, expected_command, mocker):
+    # Mock get_partitions() method of the PartitionNodelistMapping singleton used in get_nodes_info()
+    mocker.patch(
+        "common.schedulers.slurm_commands.PartitionNodelistMapping.get_partitions",
+        return_value=list(partition_nodelist_mapping.keys()),
+    )
+    # Mock _get_all_partition_nodes function used in get_nodes_info()
+    mocker.patch(
+        "common.schedulers.slurm_commands._get_all_partition_nodes",
+        return_value=",".join([nodelist for partition, nodelist in partition_nodelist_mapping.items()]),
+    )
+    # Mock check_command_output call performed in get_nodes_info()
+    check_command_output_mocked = mocker.patch(
+        "common.schedulers.slurm_commands.check_command_output",
+        autospec=True,
+    )
+    get_nodes_info(nodes, cmd_timeout)
+    check_command_output_mocked.assert_called_with(expected_command, timeout=cmd_timeout, shell=True)
+
+
+@pytest.mark.parametrize(
     "nodes, cmd_timeout, run_command_call, run_command_side_effect, expected_exception",
     [
         (
@@ -936,7 +983,9 @@ def test_get_all_partition_nodes(
         ),
     ],
 )
-def test_get_nodes_info(nodes, cmd_timeout, run_command_call, run_command_side_effect, expected_exception, mocker):
+def test_get_nodes_info_argument_validation(
+    nodes, cmd_timeout, run_command_call, run_command_side_effect, expected_exception, mocker
+):
     if expected_exception is ValueError:
         with pytest.raises(ValueError):
             get_nodes_info(nodes, cmd_timeout)
