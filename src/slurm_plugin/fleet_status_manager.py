@@ -92,6 +92,8 @@ def _manage_fleet_status_transition(config, computefleet_status_data_path):
 def _start_partitions():
     log.info("Setting slurm partitions to UP and resuming nodes...")
     update_all_partitions(PartitionStatus.UP, reset_node_addrs_hostname=False)
+    # TODO: This function was added due to Slurm ticket 12915. The bug is not reproducible and the ticket was then
+    #  closed. This operation may now be useless: we need to check this.
     resume_powering_down_nodes()
 
 
