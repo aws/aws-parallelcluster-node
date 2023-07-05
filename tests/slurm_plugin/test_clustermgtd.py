@@ -1550,8 +1550,8 @@ def test_manage_cluster(
         cluster_manager, "_compute_fleet_status_manager", spec=ComputeFleetStatusManager
     )
     compute_fleet_status_manager_mock.get_status.return_value = status
-    get_partition_info_with_retry_mock = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._get_partition_info_with_retry", return_value=partitions
+    get_partitions_info_with_retry_mock = mocker.patch(
+        "slurm_plugin.clustermgtd.ClusterManager._get_partitions_info_with_retry", return_value=partitions
     )
 
     write_timestamp_to_file_mock = mocker.patch.object(ClusterManager, "_write_timestamp_to_file", autospec=True)
@@ -1605,7 +1605,7 @@ def test_manage_cluster(
         terminate_orphaned_instances_mock.assert_called_with(cluster_manager, mock_cluster_instances)
 
         assert_that(caplog.text).is_empty()
-        get_partition_info_with_retry_mock.assert_called_once()
+        get_partitions_info_with_retry_mock.assert_called_once()
         update_all_partitions_mock.assert_not_called()
         initialize_instance_manager_mock().terminate_all_compute_nodes.assert_not_called()
     elif status == ComputeFleetStatus.STOPPED:
@@ -1616,7 +1616,7 @@ def test_manage_cluster(
         clean_up_inactive_partition_mock.assert_not_called()
         get_ec2_instances_mock.assert_not_called()
         terminate_orphaned_instances_mock.assert_not_called()
-        get_partition_info_with_retry_mock.assert_not_called()
+        get_partitions_info_with_retry_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(

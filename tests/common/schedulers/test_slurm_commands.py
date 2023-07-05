@@ -746,11 +746,11 @@ def test_update_all_partitions(
     update_partitions_spy = mocker.patch(
         "common.schedulers.slurm_commands.update_partitions", return_value=mock_succeeded_partitions, autospec=True
     )
-    get_partition_info_mocked = mocker.patch(
-        "common.schedulers.slurm_commands.get_partition_info", return_value=mock_partitions, autospec=True
+    get_partitions_info_mocked = mocker.patch(
+        "common.schedulers.slurm_commands.get_partitions_info", return_value=mock_partitions, autospec=True
     )
     assert_that(update_all_partitions(state, reset_node_addrs_hostname=reset_node_info)).is_equal_to(expected_results)
-    get_partition_info_mocked.assert_called()
+    get_partitions_info_mocked.assert_called()
     if expected_reset_nodes_calls:
         set_nodes_power_down_spy.assert_has_calls(expected_reset_nodes_calls)
     else:
