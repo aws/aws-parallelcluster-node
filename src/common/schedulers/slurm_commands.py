@@ -288,7 +288,7 @@ def set_nodes_idle(nodes, reason=None, reset_node_addrs_hostname=False):
         update_nodes(nodes=nodes, state="resume", reason=reason, raise_on_error=False)
 
 
-def get_nodes_info(nodes="", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
+def get_nodes_info(nodes: str = "", command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT) -> List[SlurmNode]:
     """
     Retrieve SlurmNode list from slurm nodelist notation.
 
@@ -350,6 +350,8 @@ def _get_partition_grep_filter(partitions: List[str]) -> str:
 
 def resume_powering_down_nodes():
     """Resume nodes that are powering_down so that are set in power state right away."""
+    # TODO: This function was added due to Slurm ticket 12915. The bug is not reproducible and the ticket was then
+    #  closed. This operation may now be useless: we need to check this.
     log.info("Resuming powering down nodes.")
     powering_down_nodes = _get_slurm_nodes(states="powering_down")
     update_nodes(nodes=powering_down_nodes, state="resume", raise_on_error=False)
