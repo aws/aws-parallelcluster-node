@@ -886,6 +886,13 @@ class JobLevelScalingInstanceManager(InstanceManager):
             #   queue_2: {cr_3: [nodes_5]}
             # }
 
+            parsed_requested_node = []
+            for compute_resources in nodes_to_launch.values():
+                for node_list in compute_resources.values():
+                    parsed_requested_node.extend(node_list)
+            # parsed requested node, e.g.
+            # [nodes_1, nodes_2, nodes_3, nodes_4, nodes_5]
+
             instances_launched = self._launch_instances_for_job(
                 job=job,
                 nodes_to_launch=nodes_to_launch,
@@ -902,17 +909,13 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 len(instance_list)
                 for compute_resources in instances_launched.values()
                 for instance_list in compute_resources.values()
-            ) == sum(
-                len(node_list)
-                for compute_resources in nodes_to_launch.values()
-                for node_list in compute_resources.values()
-            ):
+            ) == len(parsed_requested_node):
                 # All requested capacity for the Job has been launched
                 # Assign launched EC2 instances to the requested Slurm nodes
                 try:
                     logger.info(
                         "Successful launched all instances for nodes %s",
-                        print_with_count(job.nodes_resume),
+                        print_with_count(parsed_requested_node),
                     )
                     self._assign_instances_to_nodes(
                         update_node_address=update_node_address,
@@ -926,7 +929,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     # setting the nodes into DOWN.
                     # EC2 instances not yet assigned, are going to fail during bootstrap,
                     # because no entry in the DynamoDB table would be found
-                    self._update_failed_nodes(set(job.nodes_resume))
+                    self._update_failed_nodes(set(parsed_requested_node))
             elif instances_launched:
                 # Try to reuse partial capacity of already launched EC2 instances
                 logger.info(
@@ -941,10 +944,10 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     ),
                 )
                 self.unused_launched_instances |= instances_launched
-                self._update_failed_nodes(set(job.nodes_resume), "LimitedInstanceCapacity")
+                self._update_failed_nodes(set(parsed_requested_node), "LimitedInstanceCapacity")
             else:
                 # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
-                self._update_failed_nodes(set(job.nodes_resume), "InsufficientInstanceCapacity")
+                self._update_failed_nodes(set(parsed_requested_node), "InsufficientInstanceCapacity")
         else:
             # Not implemented, never goes here
             logger.error("Best effort job level scaling not implemented")
