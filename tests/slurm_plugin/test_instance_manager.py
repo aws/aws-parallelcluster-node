@@ -54,7 +54,7 @@ class TestInstanceManager:
             pass
 
     @pytest.fixture
-    def instance_manager(self, job_level_scaling, mocker):
+    def instance_manager(self, mocker):
         instance_manager = InstanceManagerFactory.get_manager(
             region="us-east-2",
             cluster_name="hit",
@@ -68,17 +68,16 @@ class TestInstanceManager:
             fleet_config=FLEET_CONFIG,
             run_instances_overrides={},
             create_fleet_overrides={},
-            job_level_scaling=job_level_scaling,
+            job_level_scaling=True,
         )
         table_mock = mocker.patch.object(instance_manager, "_table")
         table_mock.table_name = "table_name"
         return instance_manager
 
     @pytest.mark.parametrize(
-        "job_level_scaling, mock_compute_nodes, terminate_batch_size, expected_return_code, expected_instance_ids",
+        "mock_compute_nodes, terminate_batch_size, expected_return_code, expected_instance_ids",
         [
             (
-                True,
                 [
                     [],
                 ],
@@ -87,7 +86,6 @@ class TestInstanceManager:
                 [],
             ),
             (
-                True,
                 [
                     [
                         EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
@@ -98,7 +96,6 @@ class TestInstanceManager:
                 ["i-2"],
             ),
             (
-                True,
                 Exception(),
                 10,
                 False,
@@ -110,7 +107,6 @@ class TestInstanceManager:
         self,
         mocker,
         instance_manager,
-        job_level_scaling,
         mock_compute_nodes,
         terminate_batch_size,
         expected_return_code,
@@ -606,7 +602,7 @@ class TestInstanceManager:
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
-        ("instance_ids_to_name", "batch_size", "mocked_boto3_request", "job_level_scaling"),
+        ("instance_ids_to_terminate", "batch_size", "mocked_boto3_request", "job_level_scaling"),
         [
             # normal
             (
@@ -651,12 +647,18 @@ class TestInstanceManager:
         ids=["normal", "client_error"],
     )
     def test_delete_instances(
-        self, boto3_stubber, instance_ids_to_name, batch_size, mocked_boto3_request, instance_manager, job_level_scaling
+        self,
+        boto3_stubber,
+        instance_ids_to_terminate,
+        batch_size,
+        mocked_boto3_request,
+        instance_manager,
+        job_level_scaling,
     ):
         # patch boto3 call
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
-        instance_manager.delete_instances(instance_ids_to_name, batch_size)
+        instance_manager.delete_instances(instance_ids_to_terminate, batch_size)
 
     @pytest.mark.parametrize(
         "instance_ids, mocked_boto3_request, expected_parsed_result",
@@ -1294,7 +1296,6 @@ class TestInstanceManager:
             "terminate_batch_size",
             "update_node_address",
             "all_or_nothing_batch",
-            "job_level_scaling",
         ),
         [
             (
@@ -1314,7 +1315,6 @@ class TestInstanceManager:
                 40,
                 True,
                 False,
-                True,
             ),
             (
                 {
@@ -1333,7 +1333,6 @@ class TestInstanceManager:
                 30,
                 True,
                 False,
-                False,
             ),
             (
                 {},
@@ -1343,7 +1342,6 @@ class TestInstanceManager:
                 20,
                 True,
                 False,
-                True,
             ),
             (
                 {},
@@ -1352,7 +1350,6 @@ class TestInstanceManager:
                 40,
                 20,
                 True,
-                False,
                 False,
             ),
         ],
@@ -1366,7 +1363,6 @@ class TestInstanceManager:
         terminate_batch_size,
         update_node_address,
         all_or_nothing_batch,
-        job_level_scaling,
         instance_manager,
         mocker,
     ):
@@ -1384,10 +1380,9 @@ class TestInstanceManager:
         )
 
         assert_that(instance_manager.failed_nodes).is_empty()
-        if job_level_scaling:
-            assert_that(instance_manager.unused_launched_instances).is_empty()
 
-        if slurm_resume and job_level_scaling:
+        if slurm_resume:
+            assert_that(instance_manager.unused_launched_instances).is_empty()
             instance_manager._add_instances_for_resume_file.assert_called_once_with(
                 slurm_resume=slurm_resume,
                 node_list=node_list,
@@ -3094,180 +3089,6 @@ class TestJobLevelScalingInstanceManager:
             instance_manager._add_instances_for_nodes.assert_not_called()
         else:
             instance_manager._add_instances_for_nodes.assert_called_once_with(
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                update_node_address=update_node_address,
-                all_or_nothing_batch=all_or_nothing_batch,
-            )
-
-    @pytest.mark.parametrize(
-        "queue, compute_resource, slurm_node_list, instances_launched, "
-        "unused_launched_instances, expected_slurm_node_list, expected_instances_launched",
-        [
-            (
-                "q1",
-                "c1",
-                [],
-                {},
-                {},
-                [],
-                {},
-            ),
-            (
-                "q1",
-                "c1",
-                ["q1-st-c1-1"],
-                {},
-                {
-                    "q1": {
-                        "c1": [
-                            EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-                [],
-                {
-                    "q1": {
-                        "c1": [
-                            EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-            ),
-            (
-                "q1",
-                "c1",
-                ["q1-st-c1-1"],
-                {},
-                {
-                    "q1": {
-                        "c2": [
-                            EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-                ["q1-st-c1-1"],
-                {},
-            ),
-            (
-                "q1",
-                "c1",
-                ["q1-st-c1-1", "q1-st-c1-2"],
-                {
-                    "q2": {
-                        "c2": [
-                            EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-                {
-                    "q1": {
-                        "c2": [
-                            EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-                ["q1-st-c1-1", "q1-st-c1-2"],
-                {
-                    "q2": {
-                        "c2": [
-                            EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-            ),
-        ],
-    )
-    def test_resize_slurm_node_list(
-        self,
-        mocker,
-        instance_manager,
-        queue,
-        compute_resource,
-        slurm_node_list,
-        instances_launched,
-        unused_launched_instances,
-        expected_slurm_node_list,
-        expected_instances_launched,
-    ):
-        if not instances_launched:
-            instances_launched = collections.defaultdict(lambda: collections.defaultdict(list))
-
-        instance_manager.unused_launched_instances = unused_launched_instances
-        new_slurm_node_list = instance_manager._resize_slurm_node_list(
-            queue=queue,
-            compute_resource=compute_resource,
-            slurm_node_list=slurm_node_list,
-            instances_launched=instances_launched,
-        )
-
-        assert_that(new_slurm_node_list).is_equal_to(expected_slurm_node_list)
-        assert_that(instances_launched).is_equal_to(expected_instances_launched)
-
-
-class TestNodeListScalingInstanceManager:
-    @pytest.fixture
-    def instance_manager(self, mocker):
-        instance_manager = InstanceManagerFactory.get_manager(
-            region="us-east-2",
-            cluster_name="hit",
-            boto3_config=botocore.config.Config(),
-            table_name="table_name",
-            head_node_private_ip="head.node.ip",
-            head_node_hostname="head-node-hostname",
-            hosted_zone="hosted_zone",
-            dns_domain="dns.domain",
-            use_private_hostname=False,
-            fleet_config=FLEET_CONFIG,
-            run_instances_overrides={},
-            create_fleet_overrides={},
-            job_level_scaling=False,
-        )
-        table_mock = mocker.patch.object(instance_manager, "_table")
-        table_mock.table_name = "table_name"
-        return instance_manager
-
-    @pytest.mark.parametrize(
-        "node_list, launch_batch_size, update_node_address, all_or_nothing",
-        [
-            (
-                ["queue1-st-c5xlarge-2", "queue2-dy-c5xlarge-10"],
-                10,
-                False,
-                True,
-            )
-        ],
-    )
-    def test_add_instances(
-        self, instance_manager, mocker, node_list, launch_batch_size, update_node_address, all_or_nothing
-    ):
-        # patch internal functions
-        instance_manager._add_instances_for_nodes = mocker.MagicMock()
-
-        instance_manager.add_instances(
-            node_list=node_list,
-            launch_batch_size=launch_batch_size,
-            update_node_address=update_node_address,
-            all_or_nothing_batch=all_or_nothing,
-        )
-
-        assert_that(instance_manager.failed_nodes).is_empty()
-
-        if slurm_resume and job_level_scaling:
-            instance_manager._add_instances_for_resume_file.assert_called_once_with(
-                slurm_resume=slurm_resume,
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
                 update_node_address=update_node_address,

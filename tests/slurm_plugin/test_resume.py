@@ -658,7 +658,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         "job level scaling + empty resume file + best_effort with ICE error",
     ],
 )
-def test_resume_node_list_scaling(
+def test_resume_launch(
     mock_node_lists,
     batch_size,
     all_or_nothing_batch,
