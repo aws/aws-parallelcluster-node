@@ -323,8 +323,7 @@ def get_partitions_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT) -> Lis
     partitions = list(PartitionNodelistMapping.instance().get_partitions())
     grep_filter = _get_partition_grep_filter(partitions)
     show_partition_info_command = (
-        f"{SCONTROL} show partitions -o | grep {grep_filter} "
-        + '| grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
+        f"{SCONTROL} show partitions -o {grep_filter} " + '| grep -oP "^PartitionName=\\K(\\S+)| State=\\K(\\S+)"'
     )
     # It's safe to use the function affected by B604 since the command is fully built in this code
     partition_info_str = check_command_output(
@@ -343,8 +342,10 @@ def get_partitions_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT) -> Lis
 
 def _get_partition_grep_filter(partitions: List[str]) -> str:
     grep_filter = ""
-    for partition in partitions:
-        grep_filter = " -e ".join([grep_filter, f'"PartitionName={partition}"'])
+    if partitions:
+        grep_filter += " | grep"
+        for partition in partitions:
+            grep_filter += f' -e "PartitionName={partition}"'
     return grep_filter
 
 

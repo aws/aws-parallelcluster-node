@@ -1072,8 +1072,10 @@ def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
     [
         pytest.param(
             ["queue1", "queue2", "queue3"],
-            ' -e "PartitionName=queue1" -e "PartitionName=queue2" -e "PartitionName=queue3"',
+            ' | grep -e "PartitionName=queue1" -e "PartitionName=queue2" -e "PartitionName=queue3"',
+            id="Regular list of partitions",
         ),
+        pytest.param([], "", id="Empty list of partitions (it should not be possible as of 3.7.0)"),
     ],
 )
 def test_grep_partition_filter(partitions: List[str], expected_grep_filter: str):
