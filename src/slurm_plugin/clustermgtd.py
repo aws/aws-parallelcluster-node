@@ -29,7 +29,7 @@ from botocore.config import Config
 from common.schedulers.slurm_commands import (
     PartitionNodelistMapping,
     get_nodes_info,
-    get_partition_info,
+    get_partitions_info,
     reset_nodes,
     set_nodes_down,
     set_nodes_drain,
@@ -560,8 +560,8 @@ class ClusterManager:
 
     @staticmethod
     @retry(stop_max_attempt_number=2, wait_fixed=1000)
-    def _get_partition_info_with_retry():
-        return {part.name: part for part in get_partition_info()}
+    def _get_partitions_info_with_retry() -> Dict[str, SlurmPartition]:
+        return {part.name: part for part in get_partitions_info()}
 
     def _clean_up_inactive_partition(self, partitions):
         """Terminate all other instances associated with nodes in INACTIVE partition directly through EC2."""
@@ -1058,7 +1058,7 @@ class ClusterManager:
     def _parse_scheduler_nodes_data(nodes):
         try:
             compute_resource_nodes_map = {}
-            partitions_name_map = ClusterManager._get_partition_info_with_retry()
+            partitions_name_map = ClusterManager._get_partitions_info_with_retry()
             log.debug("Partitions: %s", partitions_name_map)
             for node in nodes:
                 partitions_name_map[node.queue_name].slurm_nodes.append(node)

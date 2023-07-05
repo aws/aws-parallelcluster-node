@@ -196,7 +196,7 @@ def update_all_partitions(state, reset_node_addrs_hostname):
     """Update partitions to a state and reset nodesaddr/nodehostname if needed."""
     try:
         # Get all nodes from partition as opposed to ignoring power_down nodes
-        partitions = get_partition_info()
+        partitions = get_partitions_info()
         partition_to_update = []
         for part in partitions:
             if PartitionStatus(part.state) != PartitionStatus(state):
@@ -314,7 +314,7 @@ def get_nodes_info(nodes: str = "", command_timeout=DEFAULT_GET_INFO_COMMAND_TIM
     return _parse_nodes_info(nodeinfo_str)
 
 
-def get_partition_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT):
+def get_partitions_info(command_timeout=DEFAULT_GET_INFO_COMMAND_TIMEOUT) -> List[SlurmPartition]:
     """
     Retrieve slurm partition info from scontrol.
 
