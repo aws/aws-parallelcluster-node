@@ -622,7 +622,7 @@ class TestCreateFleetManager:
             assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
 
     @pytest.mark.parametrize(
-        ("instance_ids", "mocked_boto3_request", "expected_exception", "expected_error", "expected_result"),
+        ("instance_ids", "mocked_boto3_request", "expected_result"),
         [
             # normal - on-demand
             (
@@ -657,8 +657,6 @@ class TestCreateFleetManager:
                         generate_error=False,
                     ),
                 ],
-                False,
-                None,
                 (
                     [
                         {
@@ -754,8 +752,6 @@ class TestCreateFleetManager:
                         generate_error=False,
                     ),
                 ],
-                False,
-                None,
                 (
                     [
                         {
@@ -838,7 +834,7 @@ class TestCreateFleetManager:
                         generate_error=False,
                     ),
                 ]
-                + 2
+                + 3
                 * [
                     MockedBoto3Request(
                         method="describe_instances",
@@ -867,8 +863,6 @@ class TestCreateFleetManager:
                         generate_error=False,
                     ),
                 ],
-                False,
-                "Unable to retrieve instance info for instances: ['i-12345']",
                 (
                     [
                         {
@@ -893,7 +887,8 @@ class TestCreateFleetManager:
             # client error
             (
                 ["i-12345"],
-                [
+                4
+                * [
                     MockedBoto3Request(
                         method="describe_instances",
                         response={},
@@ -901,12 +896,88 @@ class TestCreateFleetManager:
                         generate_error=True,
                     ),
                 ],
-                True,
-                "An error occurred .* when calling the DescribeInstances operation",
-                ([], []),
+                ([], ["i-12345"]),
+            ),
+            # transitory client error
+            (
+                ["i-12345"],
+                [
+                    MockedBoto3Request(
+                        method="describe_instances",
+                        response={},
+                        expected_params={"InstanceIds": ["i-12345"]},
+                        generate_error=True,
+                    ),
+                    MockedBoto3Request(
+                        method="describe_instances",
+                        response={},
+                        expected_params={"InstanceIds": ["i-12345"]},
+                        generate_error=True,
+                    ),
+                    MockedBoto3Request(
+                        method="describe_instances",
+                        response={},
+                        expected_params={"InstanceIds": ["i-12345"]},
+                        generate_error=True,
+                    ),
+                    MockedBoto3Request(
+                        method="describe_instances",
+                        response={
+                            "Reservations": [
+                                {
+                                    "Instances": [
+                                        {
+                                            "InstanceId": "i-12345",
+                                            "PrivateIpAddress": "ip-2",
+                                            "PrivateDnsName": "hostname",
+                                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                            ],
+                                        },
+                                    ]
+                                }
+                            ]
+                        },
+                        expected_params={"InstanceIds": ["i-12345"]},
+                        generate_error=False,
+                    ),
+                ],
+                (
+                    [
+                        {
+                            "InstanceId": "i-12345",
+                            "PrivateIpAddress": "ip-2",
+                            "PrivateDnsName": "hostname",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-2",
+                                },
+                            ],
+                        },
+                    ],
+                    [],
+                ),
             ),
         ],
-        ids=["fleet_ondemand", "incomplete_instance_info", "too_many_incomplete_instance_info", "client_error"],
+        ids=[
+            "fleet_ondemand",
+            "incomplete_instance_info",
+            "too_many_incomplete_instance_info",
+            "client_error",
+            "transitory_client_error",
+        ],
     )
     def test_get_instances_info(  # Note: some tests cases are covered by test_launch_instances too.
         self,
@@ -914,8 +985,6 @@ class TestCreateFleetManager:
         mocker,
         instance_ids,
         mocked_boto3_request,
-        expected_exception,
-        expected_error,
         expected_result,
         caplog,
     ):
@@ -927,12 +996,8 @@ class TestCreateFleetManager:
             "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
         )
 
-        if expected_exception:
-            with pytest.raises(ClientError, match=expected_error):
-                fleet_manager._get_instances_info(instance_ids)
-        else:
-            complete_instances, partial_instance_ids = fleet_manager._get_instances_info(instance_ids)
-            assert_that(expected_result).is_equal_to((complete_instances, partial_instance_ids))
+        complete_instances, partial_instance_ids = fleet_manager._get_instances_info(instance_ids)
+        assert_that(expected_result).is_equal_to((complete_instances, partial_instance_ids))
 
     @pytest.mark.parametrize(
         ("instance_ids", "mocked_boto3_request", "expected_result"),

@@ -382,13 +382,15 @@ class Ec2CreateFleetManager(FleetManager):
         instances = []
         partial_instance_ids = instance_ids
 
-        retry = 3
+        retry = 4
+        # Wait for instances to be available in EC2
+        time.sleep(0.1)
         while retry > 0 and partial_instance_ids:
-            # Wait for instances to be available in EC2
-            time.sleep(5)
             complete_instances, partial_instance_ids = self._retrieve_instances_info_from_ec2(partial_instance_ids)
             instances.extend(complete_instances)
             retry = retry - 1
+            if retry > 0:
+                time.sleep(0.3)
 
         return instances, partial_instance_ids
 
@@ -396,25 +398,29 @@ class Ec2CreateFleetManager(FleetManager):
         """
         Retrieve instance info from EC2 by Instance Ids and verify to have required info.
 
-        :raises ClientError in case of boto3 failure
         :return list of instances with complete information and list of IDs for instances with incomplete information
         """
         complete_instances = []
         partial_instance_ids = []
 
         if instance_ids:
-            ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
-            paginator = ec2_client.get_paginator("describe_instances")
-            response_iterator = paginator.paginate(InstanceIds=instance_ids)
-            filtered_iterator = response_iterator.search("Reservations[].Instances[]")
+            try:
+                ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
+                paginator = ec2_client.get_paginator("describe_instances")
+                response_iterator = paginator.paginate(InstanceIds=instance_ids)
+                filtered_iterator = response_iterator.search("Reservations[].Instances[]")
 
-            for instance_info in filtered_iterator:
-                try:
-                    # Try to build EC2Instance objects using all the required fields
-                    EC2Instance.from_describe_instance_data(instance_info)
-                    complete_instances.append(instance_info)
-                except KeyError:
-                    partial_instance_ids.append(instance_info["InstanceId"])
+                for instance_info in filtered_iterator:
+                    try:
+                        # Try to build EC2Instance objects using all the required fields
+                        EC2Instance.from_describe_instance_data(instance_info)
+                        complete_instances.append(instance_info)
+                    except KeyError as e:
+                        logger.debug("Unable to retrieve instance info: %s", e)
+                        partial_instance_ids.append(instance_info["InstanceId"])
+            except ClientError as e:
+                logger.debug("Unable to retrieve instance info: %s", e)
+                partial_instance_ids.extend(instance_ids)
 
         return complete_instances, partial_instance_ids
 
