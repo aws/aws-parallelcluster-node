@@ -1531,6 +1531,7 @@ class TestJobLevelScalingInstanceManager:
             "all_or_nothing_batch",
             "expected_nodes_oversubscribe",
             "expected_jobs_multi_node_no_oversubscribe",
+            "expected_multi_node_no_oversubscribe",
             "expected_jobs_single_node_no_oversubscribe",
         ),
         [
@@ -1608,6 +1609,14 @@ class TestJobLevelScalingInstanceManager:
                         oversubscribe="NO",
                     ),
                 ],
+                [
+                    "queue2-st-c5xlarge-1",
+                    "queue2-st-c5xlarge-2",
+                    "queue2-st-c5xlarge-3",
+                    "queue3-st-c5xlarge-7",
+                    "queue3-st-c5xlarge-8",
+                    "queue3-st-c5xlarge-9",
+                ],
                 [],
             ),
             (
@@ -1639,6 +1648,7 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 [],
                 [],
+                [],
             ),
             (
                 {
@@ -1658,6 +1668,7 @@ class TestJobLevelScalingInstanceManager:
                 38,
                 True,
                 False,
+                [],
                 [],
                 [],
                 [
@@ -1716,6 +1727,7 @@ class TestJobLevelScalingInstanceManager:
                         oversubscribe="NO",
                     ),
                 ],
+                ["queue2-st-c5xlarge-1", "queue2-st-c5xlarge-2"],
                 [
                     SlurmResumeJob(
                         job_id=140814,
@@ -1738,13 +1750,14 @@ class TestJobLevelScalingInstanceManager:
         all_or_nothing_batch,
         expected_nodes_oversubscribe,
         expected_jobs_multi_node_no_oversubscribe,
+        expected_multi_node_no_oversubscribe,
         expected_jobs_single_node_no_oversubscribe,
         instance_manager,
         mocker,
     ):
         mocker.patch("slurm_plugin.instance_manager.get_nodes_info", autospec=True)
         instance_manager._scaling_for_jobs_single_node = mocker.MagicMock()
-        instance_manager._scaling_for_jobs = mocker.MagicMock()
+        instance_manager._scaling_for_jobs_multi_node = mocker.MagicMock()
         instance_manager._scaling_for_nodes = mocker.MagicMock()
 
         instance_manager._add_instances_for_resume_file(
@@ -1764,8 +1777,9 @@ class TestJobLevelScalingInstanceManager:
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
-        instance_manager._scaling_for_jobs.assert_any_call(
+        instance_manager._scaling_for_jobs_multi_node.assert_any_call(
             job_list=expected_jobs_multi_node_no_oversubscribe,
+            node_list=expected_multi_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
             update_node_batch_size=update_node_batch_size,
             terminate_batch_size=terminate_batch_size,
@@ -1779,13 +1793,14 @@ class TestJobLevelScalingInstanceManager:
         )
         assert_that(instance_manager.unused_launched_instances).is_empty()
         assert_that(instance_manager._scaling_for_jobs_single_node.call_count).is_equal_to(1)
-        assert_that(instance_manager._scaling_for_jobs.call_count).is_equal_to(1)
+        assert_that(instance_manager._scaling_for_jobs_multi_node.call_count).is_equal_to(1)
         assert_that(instance_manager._scaling_for_nodes.call_count).is_equal_to(1)
 
     @pytest.mark.parametrize(
         "slurm_resume, node_list, expected_nodes_oversubscribe, expected_jobs_oversubscribe, "
-        "expected_nodes_no_oversubscribe, expected_jobs_single_node_no_oversubscribe, "
-        "expected_jobs_multi_node_no_oversubscribe, expected_nodes_difference",
+        "expected_single_node_no_oversubscribe, expected_multi_node_no_oversubscribe, "
+        "expected_jobs_single_node_no_oversubscribe, expected_jobs_multi_node_no_oversubscribe, "
+        "expected_nodes_difference",
         [
             (
                 {
@@ -1827,6 +1842,12 @@ class TestJobLevelScalingInstanceManager:
                             "nodes_resume": "queue4-st-c5xlarge-1",
                             "oversubscribe": "NO",
                         },
+                        {
+                            "job_id": 140820,
+                            "nodes_alloc": "queue5-st-c5xlarge-[1-2]",
+                            "nodes_resume": "queue5-st-c5xlarge-1",
+                            "oversubscribe": "NO",
+                        },
                     ],
                 },
                 [
@@ -1841,6 +1862,7 @@ class TestJobLevelScalingInstanceManager:
                     "queue3-st-c5xlarge-9",
                     "broken",
                     "queue4-st-c5xlarge-11",
+                    "queue5-st-c5xlarge-1",
                 ],
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue4-st-c5xlarge-11"],
                 [
@@ -1853,6 +1875,9 @@ class TestJobLevelScalingInstanceManager:
                     ),
                 ],
                 [
+                    "queue5-st-c5xlarge-1",
+                ],
+                [
                     "queue2-st-c5xlarge-1",
                     "queue2-st-c5xlarge-2",
                     "queue2-st-c5xlarge-3",
@@ -1862,6 +1887,7 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 [
                     SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
+                    SlurmResumeJob(140820, "queue5-st-c5xlarge-[1-2]", "queue5-st-c5xlarge-1", "NO"),
                 ],
                 [
                     SlurmResumeJob(140815, "queue2-st-c5xlarge-[1-3]", "queue2-st-c5xlarge-[1-3]", "NO"),
@@ -1877,7 +1903,8 @@ class TestJobLevelScalingInstanceManager:
         node_list,
         expected_nodes_oversubscribe,
         expected_jobs_oversubscribe,
-        expected_nodes_no_oversubscribe,
+        expected_single_node_no_oversubscribe,
+        expected_multi_node_no_oversubscribe,
         expected_jobs_single_node_no_oversubscribe,
         expected_jobs_multi_node_no_oversubscribe,
         instance_manager,
@@ -1889,7 +1916,8 @@ class TestJobLevelScalingInstanceManager:
         slurm_resume = instance_manager._get_slurm_resume_data(slurm_resume, node_list)
         assert_that(slurm_resume.nodes_oversubscribe).contains(*expected_nodes_oversubscribe)
         assert_that(slurm_resume.jobs_oversubscribe).is_equal_to(expected_jobs_oversubscribe)
-        assert_that(slurm_resume.nodes_no_oversubscribe).contains(*expected_nodes_no_oversubscribe)
+        assert_that(slurm_resume.single_node_no_oversubscribe).contains(*expected_single_node_no_oversubscribe)
+        assert_that(slurm_resume.multi_node_no_oversubscribe).contains(*expected_multi_node_no_oversubscribe)
         assert_that(slurm_resume.jobs_single_node_no_oversubscribe).is_equal_to(
             expected_jobs_single_node_no_oversubscribe
         )
@@ -2521,7 +2549,7 @@ class TestJobLevelScalingInstanceManager:
         expected_failed_nodes,
     ):
         # patch internal functions
-        instance_manager._launch_instances_for_job = mocker.MagicMock(return_value=mock_instances_launched)
+        instance_manager._launch_instances = mocker.MagicMock(return_value=mock_instances_launched)
         instance_manager._assign_instances_to_nodes = mocker.MagicMock(
             side_effect=expect_assign_instances_to_nodes_failure
         )
@@ -2531,10 +2559,10 @@ class TestJobLevelScalingInstanceManager:
         )
 
         if not all_or_nothing_batch:
-            instance_manager._launch_instances_for_job.assert_not_called()
+            instance_manager._launch_instances.assert_not_called()
             instance_manager._assign_instances_to_nodes.assert_not_called()
         else:
-            instance_manager._launch_instances_for_job.assert_called_once_with(
+            instance_manager._launch_instances.assert_called_once_with(
                 job=job,
                 nodes_to_launch=expected_nodes_to_launch,
                 launch_batch_size=launch_batch_size,
@@ -2782,7 +2810,7 @@ class TestJobLevelScalingInstanceManager:
         )
         instance_manager.unused_launched_instances = unused_launched_instances
 
-        instances_launched = instance_manager._launch_instances_for_job(
+        instances_launched = instance_manager._launch_instances(
             job=job,
             nodes_to_launch=nodes_to_launch,
             launch_batch_size=launch_batch_size,
