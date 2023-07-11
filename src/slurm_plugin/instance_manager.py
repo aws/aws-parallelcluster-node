@@ -775,7 +775,6 @@ class JobLevelScalingInstanceManager(InstanceManager):
 
         self._scaling_for_jobs(
             job_list=job_list,
-            node_list=node_list,
             launch_batch_size=launch_batch_size,
             update_node_batch_size=update_node_batch_size,
             terminate_batch_size=terminate_batch_size,
