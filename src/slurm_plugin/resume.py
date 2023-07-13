@@ -33,7 +33,7 @@ class SlurmResumeConfig:
     DEFAULTS = {
         "max_retry": 1,
         "launch_max_batch_size": 500,
-        "update_node_max_batch_size": 500,
+        "assign_node_max_batch_size": 500,
         "terminate_max_batch_size": 1000,
         "update_node_address": True,
         "clustermgtd_timeout": 300,
@@ -80,8 +80,8 @@ class SlurmResumeConfig:
         self.launch_max_batch_size = config.getint(
             "slurm_resume", "launch_max_batch_size", fallback=self.DEFAULTS.get("launch_max_batch_size")
         )
-        self.update_node_max_batch_size = config.getint(
-            "slurm_resume", "update_node_max_batch_size", fallback=self.DEFAULTS.get("update_node_max_batch_size")
+        self.assign_node_max_batch_size = config.getint(
+            "slurm_resume", "assign_node_max_batch_size", fallback=self.DEFAULTS.get("assign_node_max_batch_size")
         )
         self.terminate_max_batch_size = config.getint(
             "slurm_resume", "terminate_max_batch_size", fallback=self.DEFAULTS.get("terminate_max_batch_size")
@@ -202,7 +202,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         slurm_resume=slurm_resume,
         node_list=node_list,
         launch_batch_size=resume_config.launch_max_batch_size,
-        update_node_batch_size=resume_config.update_node_max_batch_size,
+        assign_node_batch_size=resume_config.assign_node_max_batch_size,
         terminate_batch_size=resume_config.terminate_max_batch_size,
         update_node_address=resume_config.update_node_address,
         all_or_nothing_batch=resume_config.all_or_nothing_batch,

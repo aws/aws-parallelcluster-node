@@ -1292,7 +1292,7 @@ class TestInstanceManager:
             "slurm_resume",
             "node_list",
             "launch_batch_size",
-            "update_node_batch_size",
+            "assign_node_batch_size",
             "terminate_batch_size",
             "update_node_address",
             "all_or_nothing_batch",
@@ -1359,7 +1359,7 @@ class TestInstanceManager:
         slurm_resume,
         node_list,
         launch_batch_size,
-        update_node_batch_size,
+        assign_node_batch_size,
         terminate_batch_size,
         update_node_address,
         all_or_nothing_batch,
@@ -1373,7 +1373,7 @@ class TestInstanceManager:
             slurm_resume=slurm_resume,
             node_list=node_list,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
@@ -1387,7 +1387,7 @@ class TestInstanceManager:
                 slurm_resume=slurm_resume,
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
-                update_node_batch_size=update_node_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
@@ -1426,7 +1426,7 @@ class TestJobLevelScalingInstanceManager:
     @pytest.mark.parametrize(
         (
             "node_list, launch_batch_size, update_node_address, all_or_nothing, slurm_resume, "
-            "update_node_batch_size, terminate_batch_size"
+            "assign_node_batch_size, terminate_batch_size"
         ),
         [
             (
@@ -1476,7 +1476,7 @@ class TestJobLevelScalingInstanceManager:
         update_node_address,
         all_or_nothing,
         slurm_resume,
-        update_node_batch_size,
+        assign_node_batch_size,
         terminate_batch_size,
         caplog,
     ):
@@ -1490,7 +1490,7 @@ class TestJobLevelScalingInstanceManager:
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing,
             slurm_resume=slurm_resume,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
         )
 
@@ -1514,7 +1514,7 @@ class TestJobLevelScalingInstanceManager:
                 slurm_resume=slurm_resume,
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
-                update_node_batch_size=update_node_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing,
@@ -1525,7 +1525,7 @@ class TestJobLevelScalingInstanceManager:
             "slurm_resume",
             "node_list",
             "launch_batch_size",
-            "update_node_batch_size",
+            "assign_node_batch_size",
             "terminate_batch_size",
             "update_node_address",
             "all_or_nothing_batch",
@@ -1744,7 +1744,7 @@ class TestJobLevelScalingInstanceManager:
         slurm_resume,
         node_list,
         launch_batch_size,
-        update_node_batch_size,
+        assign_node_batch_size,
         terminate_batch_size,
         update_node_address,
         all_or_nothing_batch,
@@ -1764,7 +1764,7 @@ class TestJobLevelScalingInstanceManager:
             slurm_resume=slurm_resume,
             node_list=node_list,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
@@ -1773,7 +1773,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager._scaling_for_jobs_single_node.assert_any_call(
             job_list=expected_jobs_single_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -1781,7 +1781,7 @@ class TestJobLevelScalingInstanceManager:
             job_list=expected_jobs_multi_node_no_oversubscribe,
             node_list=expected_multi_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -2128,7 +2128,7 @@ class TestJobLevelScalingInstanceManager:
             assert_that("InvalidNodenameError").is_not_in(instance_manager.failed_nodes)
 
     @pytest.mark.parametrize(
-        "update_node_address, nodes_to_launch, instances_launched, update_node_batch_size, "
+        "update_node_address, nodes_to_launch, instances_launched, assign_node_batch_size, "
         "expected_update_slurm_node_addrs_calls",
         [
             (
@@ -2253,7 +2253,7 @@ class TestJobLevelScalingInstanceManager:
         update_node_address,
         nodes_to_launch,
         instances_launched,
-        update_node_batch_size,
+        assign_node_batch_size,
         expected_update_slurm_node_addrs_calls,
     ):
         # patch internal functions
@@ -2265,7 +2265,7 @@ class TestJobLevelScalingInstanceManager:
             update_node_address=update_node_address,
             nodes_to_launch=nodes_to_launch,
             instances_launched=instances_launched,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
         )
 
         if not update_node_address:
@@ -2379,7 +2379,7 @@ class TestJobLevelScalingInstanceManager:
         assert_that(function_return).is_equal_to(expected_return)
 
     @pytest.mark.parametrize(
-        "job, launch_batch_size, update_node_batch_size, update_node_address, all_or_nothing_batch, "
+        "job, launch_batch_size, assign_node_batch_size, update_node_address, all_or_nothing_batch, "
         "expected_nodes_to_launch, mock_instances_launched, expect_assign_instances_to_nodes_called, "
         "expect_assign_instances_to_nodes_failure, expected_failed_nodes",
         [
@@ -2539,7 +2539,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager,
         job,
         launch_batch_size,
-        update_node_batch_size,
+        assign_node_batch_size,
         update_node_address,
         all_or_nothing_batch,
         expected_nodes_to_launch,
@@ -2555,7 +2555,7 @@ class TestJobLevelScalingInstanceManager:
         )
 
         instance_manager._add_instances_for_job(
-            job, launch_batch_size, update_node_batch_size, update_node_address, all_or_nothing_batch
+            job, launch_batch_size, assign_node_batch_size, update_node_address, all_or_nothing_batch
         )
 
         if not all_or_nothing_batch:
@@ -2821,7 +2821,7 @@ class TestJobLevelScalingInstanceManager:
         assert_that(instance_manager.failed_nodes).is_empty()
 
     @pytest.mark.parametrize(
-        "job_list, launch_batch_size, update_node_batch_size, terminate_batch_size, update_node_address, "
+        "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address, "
         "expected_single_nodes_no_oversubscribe",
         [
             (
@@ -2861,7 +2861,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager,
         job_list,
         launch_batch_size,
-        update_node_batch_size,
+        assign_node_batch_size,
         terminate_batch_size,
         update_node_address,
         expected_single_nodes_no_oversubscribe,
@@ -2873,7 +2873,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager._scaling_for_jobs_single_node(
             job_list=job_list,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -2884,7 +2884,7 @@ class TestJobLevelScalingInstanceManager:
             instance_manager._scaling_for_jobs.assert_called_once_with(
                 job_list=job_list,
                 launch_batch_size=launch_batch_size,
-                update_node_batch_size=update_node_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
             )
@@ -2899,7 +2899,7 @@ class TestJobLevelScalingInstanceManager:
             )
 
     @pytest.mark.parametrize(
-        "job_list, launch_batch_size, update_node_batch_size, terminate_batch_size, " "update_node_address",
+        "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, " "update_node_address",
         [
             ([], 1, 2, 3, True),
             (
@@ -2944,7 +2944,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager,
         job_list,
         launch_batch_size,
-        update_node_batch_size,
+        assign_node_batch_size,
         terminate_batch_size,
         update_node_address,
     ):
@@ -2958,7 +2958,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager._scaling_for_jobs(
             job_list=job_list,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -2970,7 +2970,7 @@ class TestJobLevelScalingInstanceManager:
                 instance_manager._add_instances_for_job.assert_any_call(
                     job=job,
                     launch_batch_size=launch_batch_size,
-                    update_node_batch_size=update_node_batch_size,
+                    assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     all_or_nothing_batch=True,
                 )

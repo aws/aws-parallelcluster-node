@@ -54,7 +54,7 @@ def boto3_stubber_path():
                 "clustermgtd_timeout": 300,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                 "job_level_scaling": True,
-                "update_node_max_batch_size": 500,
+                "assign_node_max_batch_size": 500,
                 "terminate_max_batch_size": 1000,
             },
         ),
@@ -74,7 +74,7 @@ def boto3_stubber_path():
                 "clustermgtd_timeout": 5,
                 "clustermgtd_heartbeat_file_path": "alternate/clustermgtd_heartbeat",
                 "job_level_scaling": False,
-                "update_node_max_batch_size": 400,
+                "assign_node_max_batch_size": 400,
                 "terminate_max_batch_size": 600,
             },
         ),
@@ -692,7 +692,7 @@ def test_resume_launch(
         use_private_hostname=False,
         head_node_instance_id="i-headnode",
         job_level_scaling=job_level_scaling,
-        update_node_max_batch_size=500,
+        assign_node_max_batch_size=500,
         terminate_max_batch_size=1000,
     )
     mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", autospec=True, return_value=is_heartbeat_valid)
