@@ -159,7 +159,7 @@ class InstanceManager(ABC):
         update_node_address: bool = True,
         all_or_nothing_batch: bool = False,
         slurm_resume: Dict[str, any] = None,
-        update_node_batch_size: int = None,
+        assign_node_batch_size: int = None,
         terminate_batch_size: int = None,
     ):
         """Add EC2 instances to Slurm nodes."""
@@ -606,7 +606,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         update_node_address: bool = True,
         all_or_nothing_batch: bool = False,
         slurm_resume: Dict[str, any] = None,
-        update_node_batch_size: int = None,
+        assign_node_batch_size: int = None,
         terminate_batch_size: int = None,
     ):
         """Add EC2 instances to Slurm nodes."""
@@ -621,7 +621,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 slurm_resume=slurm_resume,
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
-                update_node_batch_size=update_node_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
@@ -642,7 +642,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self,
         job_list: List[SlurmResumeJob],
         launch_batch_size: int,
-        update_node_batch_size: int,
+        assign_node_batch_size: int,
         terminate_batch_size: int,
         update_node_address: bool,
     ) -> None:
@@ -657,7 +657,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 self._add_instances_for_job(
                     job=job,
                     launch_batch_size=launch_batch_size,
-                    update_node_batch_size=update_node_batch_size,
+                    assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     all_or_nothing_batch=True,
                 )
@@ -684,7 +684,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self,
         job_list: List[SlurmResumeJob],
         launch_batch_size: int,
-        update_node_batch_size: int,
+        assign_node_batch_size: int,
         terminate_batch_size: int,
         update_node_address: bool,
     ) -> None:
@@ -695,7 +695,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 self._scaling_for_jobs(
                     job_list=job_list,
                     launch_batch_size=launch_batch_size,
-                    update_node_batch_size=update_node_batch_size,
+                    assign_node_batch_size=assign_node_batch_size,
                     terminate_batch_size=terminate_batch_size,
                     update_node_address=update_node_address,
                 )
@@ -727,7 +727,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         slurm_resume: Dict[str, any],
         node_list: List[str],
         launch_batch_size: int,
-        update_node_batch_size: int,
+        assign_node_batch_size: int,
         terminate_batch_size: int,
         update_node_address: bool = True,
         all_or_nothing_batch: bool = False,
@@ -741,7 +741,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self._scaling_for_jobs_single_node(
             job_list=slurm_resume_data.jobs_single_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -750,7 +750,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             job_list=slurm_resume_data.jobs_multi_node_no_oversubscribe,
             node_list=slurm_resume_data.multi_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -764,7 +764,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         )
 
     def _scaling_for_jobs_multi_node(
-        self, job_list, node_list, launch_batch_size, update_node_batch_size, terminate_batch_size, update_node_address
+        self, job_list, node_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address
     ):
         # Optimize job level scaling with preliminary scale-all nodes attempt
         self.unused_launched_instances |= self._launch_instances(
@@ -776,7 +776,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self._scaling_for_jobs(
             job_list=job_list,
             launch_batch_size=launch_batch_size,
-            update_node_batch_size=update_node_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
         )
@@ -896,7 +896,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self,
         job: SlurmResumeJob,
         launch_batch_size: int,
-        update_node_batch_size: int,
+        assign_node_batch_size: int,
         update_node_address: bool = True,
         all_or_nothing_batch: bool = True,
     ):
@@ -946,7 +946,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                         update_node_address=update_node_address,
                         nodes_to_launch=nodes_to_launch,
                         instances_launched=instances_launched,
-                        update_node_batch_size=update_node_batch_size,
+                        assign_node_batch_size=assign_node_batch_size,
                     )
                 except (HostnameDnsStoreError, HostnameTableStoreError):
                     # Failed to assign EC2 instances to nodes
@@ -1078,18 +1078,18 @@ class JobLevelScalingInstanceManager(InstanceManager):
         update_node_address: bool,
         nodes_to_launch: Dict[str, any],
         instances_launched: Dict[str, any],
-        update_node_batch_size: int,
+        assign_node_batch_size: int,
     ):
         if update_node_address:
             for queue, compute_resources in nodes_to_launch.items():
                 for compute_resource, slurm_node_list in compute_resources.items():
                     launched_ec2_instances = instances_launched.get(queue, {}).get(compute_resource, [])
 
-                    for batch in grouper(list(zip(slurm_node_list, launched_ec2_instances)), update_node_batch_size):
+                    for batch in grouper(list(zip(slurm_node_list, launched_ec2_instances)), assign_node_batch_size):
                         batch_nodes, batch_launched_ec2_instances = zip(*batch)
                         assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), batch_launched_ec2_instances)
                         self._store_assigned_hostnames(assigned_nodes)
-                        self._update_dns_hostnames(assigned_nodes, update_node_batch_size)
+                        self._update_dns_hostnames(assigned_nodes, assign_node_batch_size)
 
     def _update_slurm_node_addrs(self, slurm_nodes: List[str], launched_instances: List[EC2Instance]):
         """Update node information in slurm with info from launched EC2 instance."""
@@ -1161,7 +1161,7 @@ class NodeListScalingInstanceManager(InstanceManager):
         update_node_address: bool = True,
         all_or_nothing_batch: bool = False,
         slurm_resume: Dict[str, any] = None,
-        update_node_batch_size: int = None,
+        assign_node_batch_size: int = None,
         terminate_batch_size: int = None,
     ):
         """Add EC2 instances to Slurm nodes."""
