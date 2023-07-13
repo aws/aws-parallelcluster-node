@@ -1032,11 +1032,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
                             #   queue_2: {cr_3: list[EC2Instance]}
                             # }
 
-                            if all_or_nothing_batch and len(launched_ec2_instances) < len(batch_nodes):
-                                # Exit fast if not all the requested capacity can be launched
-                                # Return the EC2 instances launched so far,
+                            if job and all_or_nothing_batch and len(launched_ec2_instances) < len(batch_nodes):
+                                # When launching instances for a specific Job,
+                                # exit fast if not all the requested capacity can be launched,
+                                # returning the EC2 instances launched so far,
                                 # so that they can be eventually allocated to other Slurm nodes
-                                # Handle CreateFleet case, which doesn't fail when no capacity is returned
+                                # This path handle the CreateFleet case, which doesn't fail when no capacity is returned
                                 return instances_launched
                         except (ClientError, Exception) as e:
                             logger.error(
@@ -1044,12 +1045,13 @@ class JobLevelScalingInstanceManager(InstanceManager):
                                 print_with_count(batch_nodes),
                                 e,
                             )
-                            if all_or_nothing_batch:
-                                # Exit fast if not all the requested capacity can be launched
-                                # Return the EC2 instances launched so far,
+                            if job and all_or_nothing_batch:
+                                # When launching instances for a specific Job,
+                                # exit fast if not all the requested capacity can be launched,
+                                # returning the EC2 instances launched so far,
                                 # so that they can be eventually allocated to other Slurm nodes
-                                # Handle RunInstances case, which throw an exc when no capacity is returned
-                                # Handle CreateFleet case when exc is thrown
+                                # This path handle the RunInstances case, which throw an exc when
+                                # no capacity is returned, and handle the CreateFleet case when exc is thrown
                                 return instances_launched
 
         return instances_launched
