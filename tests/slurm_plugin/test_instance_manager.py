@@ -2583,7 +2583,7 @@ class TestJobLevelScalingInstanceManager:
 
     @pytest.mark.parametrize(
         "job, nodes_to_launch, launch_batch_size, unused_launched_instances, launched_instances, "
-        "expected_instances_launched, expected_unused_launched_instances",
+        "expected_instances_launched",
         [
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2621,7 +2621,6 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
-                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2646,7 +2645,6 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
-                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2670,15 +2668,6 @@ class TestJobLevelScalingInstanceManager:
                         "c5xlarge": [
                             EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-                {
-                    "queue4": {
-                        "c5xlarge": [
-                            EC2Instance(
-                                "i-654321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             )
                         ]
                     }
@@ -2720,7 +2709,6 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
-                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-[1-3]", "queue4-st-c5xlarge-[1-2]", "NO"),
@@ -2729,7 +2717,6 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 client_error("some_error_code"),
                 {},
-                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-[1-3]", "queue4-st-c5xlarge-[1-2]", "NO"),
@@ -2737,7 +2724,6 @@ class TestJobLevelScalingInstanceManager:
                 10,
                 {},
                 Exception(),
-                {},
                 {},
             ),
             (
@@ -2786,11 +2772,79 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+            ),
+            (
+                None,
+                {
+                    "queue1": {"c52xlarge": ["queue1-st-c52xlarge-1"]},
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1"]},
+                    "queue3": {"p4d24xlarge": ["queue3-st-p4d24xlarge-1"]},
+                },
+                15,
                 {},
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.2xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                    client_error("some_error_code"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-123456",
+                                "InstanceType": "p4d24xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                ],
+                {
+                    "queue1": {
+                        "c52xlarge": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    },
+                    "queue3": {
+                        "p4d24xlarge": [
+                            EC2Instance(
+                                "i-123456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    },
+                },
             ),
         ],
     )
-    def test_launch_instances_for_job(
+    def test_launch_instances(
         self,
         mocker,
         instance_manager,
@@ -2800,7 +2854,6 @@ class TestJobLevelScalingInstanceManager:
         unused_launched_instances,
         launched_instances,
         expected_instances_launched,
-        expected_unused_launched_instances,
     ):
         # patch fleet manager calls
         mocker.patch.object(
