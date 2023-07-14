@@ -540,12 +540,14 @@ class ClusterEventPublisher:
     #                   "node_name": "queue1-st-c5xlarge-2",
     #                   "instance_type": "t2.micro",
     #                   "threads_per_core": 2,
+    #                   "cpu_usage": 1
     #               },
     #               {
     #                   "instance_id": "id-2",
     #                   "node_name": "queue1-st-c5xlarge-2",
     #                   "instance_type": "t2.micro",
     #                   "threads_per_core": 1,
+    #                   "cpu_usage": 1
     #               },
     #         ]
     #     }
@@ -704,6 +706,7 @@ class ClusterEventPublisher:
                         "node_name": node.name,
                         "instance_type": node.instance.instance_type,
                         "threads_per_core": node.instance.threads_per_core,
+                        "cpu_usage": node.instance.cpu_usage,
                     }
                     for node in nodes
                 ],
