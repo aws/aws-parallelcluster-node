@@ -128,6 +128,47 @@ class TestInstanceManager:
             instance_manager.delete_instances.assert_not_called()
 
     @pytest.mark.parametrize(
+        "initial_failed_nodes, nodeset, errorcode, override, expected_failed_nodes",
+        [
+            (
+                {},
+                {},
+                "",
+                True,
+                {},
+            ),
+            ({}, {"node1", "node2"}, "error", True, {"error": {"node1", "node2"}}),
+            (
+                {"error": {"node1", "node2"}},
+                {"node1"},
+                "another_error",
+                True,
+                {"error": {"node1", "node2"}, "another_error": {"node1"}},
+            ),
+            (
+                {"error": {"node1", "node2"}},
+                {"node1", "node3"},
+                "another_error",
+                False,
+                {"error": {"node1", "node2"}, "another_error": {"node3"}},
+            ),
+        ],
+    )
+    def test_update_failed_nodes(
+        self,
+        instance_manager,
+        initial_failed_nodes,
+        nodeset,
+        errorcode,
+        override,
+        expected_failed_nodes,
+    ):
+        instance_manager.failed_nodes = initial_failed_nodes
+        instance_manager._update_failed_nodes(nodeset, errorcode, override)
+
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+
+    @pytest.mark.parametrize(
         (
             "node_list, launched_nodes, expected_update_nodes_call, "
             "expected_failed_nodes, use_private_hostname, dns_domain, job_level_scaling, "
@@ -2583,7 +2624,7 @@ class TestJobLevelScalingInstanceManager:
 
     @pytest.mark.parametrize(
         "job, nodes_to_launch, launch_batch_size, unused_launched_instances, launched_instances, "
-        "expected_instances_launched",
+        "expected_instances_launched, expected_failed_nodes",
         [
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2621,6 +2662,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2645,6 +2687,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2672,6 +2715,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-[1-3]", "queue4-st-c5xlarge-[1-2]", "NO"),
@@ -2709,6 +2753,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                {},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-[1-3]", "queue4-st-c5xlarge-[1-2]", "NO"),
@@ -2717,6 +2762,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 client_error("some_error_code"),
                 {},
+                {"some_error_code": {"queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2"}},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-[1-3]", "queue4-st-c5xlarge-[1-2]", "NO"),
@@ -2725,6 +2771,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 Exception(),
                 {},
+                {"Exception": {"queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2"}},
             ),
             (
                 SlurmResumeJob(
@@ -2772,6 +2819,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                {"some_error_code": {"queue2-st-c5xlarge-1"}},
             ),
             (
                 None,
@@ -2841,6 +2889,16 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     },
                 },
+                {"some_error_code": {"queue2-st-c5xlarge-1"}},
+            ),
+            (
+                SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
+                {"queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
+                10,
+                {},
+                [{"Instances": []}],
+                {},
+                {"InsufficientInstanceCapacity": {"queue4-st-c5xlarge-1"}},
             ),
         ],
     )
@@ -2854,6 +2912,7 @@ class TestJobLevelScalingInstanceManager:
         unused_launched_instances,
         launched_instances,
         expected_instances_launched,
+        expected_failed_nodes,
     ):
         # patch fleet manager calls
         mocker.patch.object(
@@ -2871,7 +2930,7 @@ class TestJobLevelScalingInstanceManager:
         )
 
         assert_that(instances_launched).is_equal_to(expected_instances_launched)
-        assert_that(instance_manager.failed_nodes).is_empty()
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
         "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address, "
