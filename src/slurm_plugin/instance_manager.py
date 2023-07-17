@@ -1003,44 +1003,13 @@ class JobLevelScalingInstanceManager(InstanceManager):
 
                 if slurm_node_list:
                     logger.info("Launching instances for nodes %s", print_with_count(slurm_node_list))
-                    # Set the number of retries to be the max between the globally configured one and 3.
-                    # This is done to try to avoid launch instances API throttling
-                    # without changing the configured retries for all API calls.
-                    configured_retry = (
-                        self._boto3_config.retries.get("max_attempts", 0) if self._boto3_config.retries else 0
-                    )
-                    boto3_config = self._boto3_config.merge(
-                        Config(retries={"max_attempts": max([configured_retry, 3]), "mode": "standard"})
-                    )
-                    # Each compute resource can be configured to use create_fleet or run_instances
-                    fleet_manager = FleetManagerFactory.get_manager(
-                        cluster_name=self._cluster_name,
-                        region=self._region,
-                        boto3_config=boto3_config,
-                        fleet_config=self._fleet_config,
-                        queue=queue,
-                        compute_resource=compute_resource,
-                        all_or_nothing=all_or_nothing_batch,
-                        run_instances_overrides=self._run_instances_overrides,
-                        create_fleet_overrides=self._create_fleet_overrides,
-                    )
+                    fleet_manager = self._get_fleet_manager(all_or_nothing_batch, compute_resource, queue)
 
                     for batch_nodes in grouper(slurm_node_list, launch_batch_size):
                         try:
-                            launched_ec2_instances = fleet_manager.launch_ec2_instances(
-                                len(batch_nodes), job_id=job.job_id if job else None
+                            launched_ec2_instances = self._launch_ec2_instances(
+                                batch_nodes, compute_resource, fleet_manager, instances_launched, job, queue
                             )
-                            # launched_ec2_instances e.g. list[EC2Instance]
-
-                            if len(launched_ec2_instances) > 0:
-                                instances_launched[queue][compute_resource].extend(launched_ec2_instances)
-                                # instances_launched e.g.
-                                # {
-                                #   queue_1: {cr_1: list[EC2Instance], cr_2: list[EC2Instance],
-                                #   queue_2: {cr_3: list[EC2Instance]}
-                                # }
-                            else:
-                                self._update_failed_nodes(set(batch_nodes), "InsufficientInstanceCapacity")
 
                             if job and all_or_nothing_batch and len(launched_ec2_instances) < len(batch_nodes):
                                 # When launching instances for a specific Job,
@@ -1070,6 +1039,44 @@ class JobLevelScalingInstanceManager(InstanceManager):
                                 return instances_launched
 
         return instances_launched
+
+    def _launch_ec2_instances(self, batch_nodes, compute_resource, fleet_manager, instances_launched, job, queue):
+        launched_ec2_instances = fleet_manager.launch_ec2_instances(
+            len(batch_nodes), job_id=job.job_id if job else None
+        )
+        # launched_ec2_instances e.g. list[EC2Instance]
+        if len(launched_ec2_instances) > 0:
+            instances_launched[queue][compute_resource].extend(launched_ec2_instances)
+            # instances_launched e.g.
+            # {
+            #   queue_1: {cr_1: list[EC2Instance], cr_2: list[EC2Instance],
+            #   queue_2: {cr_3: list[EC2Instance]}
+            # }
+        else:
+            self._update_failed_nodes(set(batch_nodes), "InsufficientInstanceCapacity")
+        return launched_ec2_instances
+
+    def _get_fleet_manager(self, all_or_nothing_batch, compute_resource, queue):
+        # Set the number of retries to be the max between the globally configured one and 3.
+        # This is done to try to avoid launch instances API throttling
+        # without changing the configured retries for all API calls.
+        configured_retry = self._boto3_config.retries.get("max_attempts", 0) if self._boto3_config.retries else 0
+        boto3_config = self._boto3_config.merge(
+            Config(retries={"max_attempts": max([configured_retry, 3]), "mode": "standard"})
+        )
+        # Each compute resource can be configured to use create_fleet or run_instances
+        fleet_manager = FleetManagerFactory.get_manager(
+            cluster_name=self._cluster_name,
+            region=self._region,
+            boto3_config=boto3_config,
+            fleet_config=self._fleet_config,
+            queue=queue,
+            compute_resource=compute_resource,
+            all_or_nothing=all_or_nothing_batch,
+            run_instances_overrides=self._run_instances_overrides,
+            create_fleet_overrides=self._create_fleet_overrides,
+        )
+        return fleet_manager
 
     def _resize_slurm_node_list(
         self, queue: str, compute_resource: str, slurm_node_list: List[str], instances_launched: Dict[str, any]
