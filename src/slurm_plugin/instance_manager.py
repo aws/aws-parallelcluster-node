@@ -466,9 +466,15 @@ class InstanceManager(ABC):
             logger.error("Failed when terminating compute fleet with error %s", e)
             return False
 
-    def _update_failed_nodes(self, nodeset, error_code="Exception"):
+    def _update_failed_nodes(self, nodeset, error_code="Exception", override=True):
         """Update failed nodes dict with error code as key and nodeset value."""
-        self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
+        if not override:
+            # Remove nodes already present in any failed_nodes key so to not override the error_code if already set
+            for nodes in self.failed_nodes.values():
+                if nodes:
+                    nodeset = nodeset.difference(nodes)
+        if nodeset:
+            self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).union(nodeset)
 
     def get_compute_node_instances(
         self, compute_nodes: Iterable[SlurmNode], max_retrieval_count: int
@@ -930,11 +936,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
             #   queue_2: {cr_3: list[EC2Instance]}
             # }
 
-            if sum(
+            number_of_launched_instances = sum(
                 len(instance_list)
                 for compute_resources in instances_launched.values()
                 for instance_list in compute_resources.values()
-            ) == len(parsed_requested_node):
+            )
+            if number_of_launched_instances == len(parsed_requested_node):
                 # All requested capacity for the Job has been launched
                 # Assign launched EC2 instances to the requested Slurm nodes
                 try:
@@ -955,7 +962,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     # EC2 instances not yet assigned, are going to fail during bootstrap,
                     # because no entry in the DynamoDB table would be found
                     self._update_failed_nodes(set(parsed_requested_node))
-            elif instances_launched:
+            elif 0 < number_of_launched_instances < len(parsed_requested_node):
                 # Try to reuse partial capacity of already launched EC2 instances
                 logger.info(
                     "Launched instances that can be reused %s",
@@ -969,10 +976,10 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     ),
                 )
                 self.unused_launched_instances |= instances_launched
-                self._update_failed_nodes(set(parsed_requested_node), "LimitedInstanceCapacity")
+                self._update_failed_nodes(set(parsed_requested_node), "LimitedInstanceCapacity", override=False)
             else:
                 # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
-                self._update_failed_nodes(set(parsed_requested_node), "InsufficientInstanceCapacity")
+                self._update_failed_nodes(set(parsed_requested_node), "InsufficientInstanceCapacity", override=False)
         else:
             # Not implemented, never goes here
             logger.error("Best effort job level scaling not implemented")
@@ -1025,12 +1032,15 @@ class JobLevelScalingInstanceManager(InstanceManager):
                             )
                             # launched_ec2_instances e.g. list[EC2Instance]
 
-                            instances_launched[queue][compute_resource].extend(launched_ec2_instances)
-                            # instances_launched e.g.
-                            # {
-                            #   queue_1: {cr_1: list[EC2Instance], cr_2: list[EC2Instance],
-                            #   queue_2: {cr_3: list[EC2Instance]}
-                            # }
+                            if len(launched_ec2_instances) > 0:
+                                instances_launched[queue][compute_resource].extend(launched_ec2_instances)
+                                # instances_launched e.g.
+                                # {
+                                #   queue_1: {cr_1: list[EC2Instance], cr_2: list[EC2Instance],
+                                #   queue_2: {cr_3: list[EC2Instance]}
+                                # }
+                            else:
+                                self._update_failed_nodes(set(batch_nodes), "InsufficientInstanceCapacity")
 
                             if job and all_or_nothing_batch and len(launched_ec2_instances) < len(batch_nodes):
                                 # When launching instances for a specific Job,
@@ -1045,6 +1055,11 @@ class JobLevelScalingInstanceManager(InstanceManager):
                                 print_with_count(batch_nodes),
                                 e,
                             )
+                            update_failed_nodes_parameters = {"nodeset": set(batch_nodes)}
+                            if isinstance(e, ClientError):
+                                update_failed_nodes_parameters["error_code"] = e.response.get("Error", {}).get("Code")
+                            self._update_failed_nodes(**update_failed_nodes_parameters)
+
                             if job and all_or_nothing_batch:
                                 # When launching instances for a specific Job,
                                 # exit fast if not all the requested capacity can be launched,
