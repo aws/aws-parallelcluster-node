@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class EC2Instance:
     def __init__(
-        self, id, private_ip, hostname, launch_time, instance_type=None, threads_per_core=None, cpu_usage=None
+        self, id, private_ip, hostname, launch_time, instance_type=None, threads_per_core=None, core_count=None
     ):
         """Initialize slurm node with attributes."""
         self.id = id
@@ -32,7 +32,7 @@ class EC2Instance:
         self.slurm_node = None
         self.instance_type = instance_type
         self.threads_per_core = threads_per_core
-        self.cpu_usage = cpu_usage
+        self.cpu_usage = core_count
 
     def __eq__(self, other):
         """Compare 2 SlurmNode objects."""
