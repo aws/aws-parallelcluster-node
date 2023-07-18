@@ -776,7 +776,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self.unused_launched_instances |= self._launch_instances(
             nodes_to_launch=self._parse_requested_nodes(node_list),
             launch_batch_size=launch_batch_size,
-            all_or_nothing_batch=True,
+            all_or_nothing_batch=False,
         )
 
         self._scaling_for_jobs(
