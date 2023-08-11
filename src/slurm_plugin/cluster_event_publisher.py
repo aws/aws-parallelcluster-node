@@ -36,8 +36,12 @@ _LAUNCH_FAILURE_GROUPING = {
 }
 
 
-NODE_LAUNCH_FAILURE_COUNT = {
+STATIC_NODE_LAUNCH_FAILURE_COUNT = {
     "message": "Number of static nodes that failed to launch a backing instance after node maintenance",
+    "event_type": "node-launch-failure-count",
+}
+DYNAMIC_NODE_LAUNCH_FAILURE_COUNT = {
+    "message": "Number of dynamic nodes that failed to launch a backing instance",
     "event_type": "node-launch-failure-count",
 }
 NODE_LAUNCH_FAILURE = {
@@ -192,7 +196,7 @@ class ClusterEventPublisher:
         for count, error_detail in self._generate_launch_failure_details(failed_nodes):
             self.publish_event(
                 logging.WARNING if count else logging.DEBUG,
-                **NODE_LAUNCH_FAILURE_COUNT,
+                **STATIC_NODE_LAUNCH_FAILURE_COUNT,
                 timestamp=timestamp,
                 detail=error_detail,
             )
@@ -497,7 +501,7 @@ class ClusterEventPublisher:
         for count, error_detail in self._generate_launch_failure_details(failed_nodes):
             self.publish_event(
                 logging.WARNING if count else logging.DEBUG,
-                **NODE_LAUNCH_FAILURE_COUNT,
+                **DYNAMIC_NODE_LAUNCH_FAILURE_COUNT,
                 timestamp=timestamp,
                 detail=error_detail,
             )
