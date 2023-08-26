@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 
 import boto3
 from botocore.exceptions import ClientError
-from common.ec2_utils import get_private_ip_address
+from common.ec2_utils import get_private_ip_address_and_dns_name
 from common.utils import setup_logging_filter
 
 logger = logging.getLogger(__name__)
@@ -50,10 +50,11 @@ class EC2Instance:
     @staticmethod
     def from_describe_instance_data(instance_info):
         try:
+            private_ip, private_dns_name = get_private_ip_address_and_dns_name(instance_info)
             return EC2Instance(
                 instance_info["InstanceId"],
-                get_private_ip_address(instance_info),
-                instance_info["PrivateDnsName"].split(".")[0],
+                private_ip,
+                private_dns_name.split(".")[0],
                 instance_info["LaunchTime"],
             )
         except KeyError as e:
