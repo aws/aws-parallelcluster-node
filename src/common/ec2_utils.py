@@ -11,19 +11,21 @@
 # See the License for the specific language governing permissions and limitations under the License.
 
 
-def get_private_ip_address(instance_info):
+def get_private_ip_address_and_dns_name(instance_info):
     """
-    Return the PrivateIpAddress of the EC2 instance.
+    Return the PrivateIpAddress and PrivateDnsName of the EC2 instance.
 
-    The PrivateIpAddress is considered to be the one for the
+    The PrivateIpAddress and PrivateDnsName are considered to be the ones for the
     network interface with DeviceIndex = NetworkCardIndex = 0.
     :param instance_info: the dictionary returned by a EC2:DescribeInstances call.
-    :return: the PrivateIpAddress of the instance.
+    :return: the PrivateIpAddress and PrivateDnsName of the instance.
     """
     private_ip = instance_info["PrivateIpAddress"]
+    private_dns_name = instance_info["PrivateDnsName"]
     for network_interface in instance_info["NetworkInterfaces"]:
         attachment = network_interface["Attachment"]
-        if attachment["DeviceIndex"] == 0 and attachment["NetworkCardIndex"] == 0:
-            private_ip = network_interface["PrivateIpAddress"]
+        if attachment.get("DeviceIndex", -1) == 0 and attachment.get("NetworkCardIndex", -1) == 0:
+            private_ip = network_interface.get("PrivateIpAddress", private_ip)
+            private_dns_name = network_interface.get("PrivateDnsName", private_dns_name)
             break
-    return private_ip
+    return private_ip, private_dns_name

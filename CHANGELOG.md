@@ -13,6 +13,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Make `aws-parallelcluster-node` daemons handle only ParallelCluster-managed Slurm partitions.
 
 **BUG FIXES**
+- Fix an issue that was causing misalignment of compute nodes DNS name on instances with multiple network interfaces,
+  when using `SlurmSettings/Dns/UseEc2Hostnames` equals to `True`.
 
 3.6.1
 ------
