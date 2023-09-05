@@ -72,6 +72,7 @@ class InstanceManagerFactory:
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
         job_level_scaling: bool = False,
+        temp_jls_for_node_sharing: bool = False,
     ):
         if job_level_scaling:
             return JobLevelScalingInstanceManager(
@@ -87,6 +88,7 @@ class InstanceManagerFactory:
                 fleet_config=fleet_config,
                 run_instances_overrides=run_instances_overrides,
                 create_fleet_overrides=create_fleet_overrides,
+                temp_jls_for_node_sharing=temp_jls_for_node_sharing,
             )
         else:
             return NodeListScalingInstanceManager(
@@ -585,6 +587,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         fleet_config: Dict[str, any] = None,
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
+        temp_jls_for_node_sharing: bool = False,
     ):
         super().__init__(
             region=region,
@@ -601,6 +604,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             create_fleet_overrides=create_fleet_overrides,
         )
         self.unused_launched_instances = {}
+        self.temp_jls_for_node_sharing = temp_jls_for_node_sharing
 
     def _clear_unused_launched_instances(self):
         """Clear and reset unused launched instances list."""
@@ -762,13 +766,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
             update_node_address=update_node_address,
         )
 
-        # node scaling for oversubscribe nodes
-        self._scaling_for_nodes(
-            node_list=slurm_resume_data.nodes_oversubscribe,
-            launch_batch_size=launch_batch_size,
-            update_node_address=update_node_address,
-            all_or_nothing_batch=all_or_nothing_batch,
-        )
+        if not self.temp_jls_for_node_sharing:
+            # node scaling for oversubscribe nodes
+            self._scaling_for_nodes(
+                node_list=slurm_resume_data.nodes_oversubscribe,
+                launch_batch_size=launch_batch_size,
+                update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
+            )
 
     def _scaling_for_jobs_multi_node(
         self, job_list, node_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address
