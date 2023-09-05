@@ -769,7 +769,11 @@ class JobLevelScalingInstanceManager(InstanceManager):
         if not self.temp_jls_for_node_sharing:
             # node scaling for oversubscribe nodes
             self._scaling_for_nodes(
-                node_list=slurm_resume_data.nodes_oversubscribe,
+                node_list=list(
+                    dict.fromkeys(
+                        slurm_resume_data.single_node_oversubscribe + slurm_resume_data.multi_node_oversubscribe
+                    )
+                ),
                 launch_batch_size=launch_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
@@ -800,7 +804,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
         SlurmResumeData object contains the following:
             * the node list for jobs with oversubscribe != NO
             * the node list for jobs with oversubscribe == NO
-            * the job list with oversubscribe != NO
+            * the job list with single node allocation with oversubscribe != NO
+            * the job list with multi node allocation with oversubscribe != NO
             * the job list with single node allocation with oversubscribe == NO
             * the job list with multi node allocation with oversubscribe == NO
 
@@ -843,10 +848,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
         """
         jobs_single_node_no_oversubscribe = []
         jobs_multi_node_no_oversubscribe = []
-        jobs_oversubscribe = []
+        jobs_single_node_oversubscribe = []
+        jobs_multi_node_oversubscribe = []
         single_node_no_oversubscribe = []
         multi_node_no_oversubscribe = []
-        nodes_oversubscribe = []
+        single_node_oversubscribe = []
+        multi_node_oversubscribe = []
 
         slurm_resume_jobs = self._parse_slurm_resume(slurm_resume)
 
@@ -859,12 +866,21 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     jobs_multi_node_no_oversubscribe.append(job)
                     multi_node_no_oversubscribe.extend(job.nodes_resume)
             else:
-                jobs_oversubscribe.append(job)
-                nodes_oversubscribe.extend(job.nodes_resume)
+                if len(job.nodes_resume) == 1:
+                    jobs_single_node_oversubscribe.append(job)
+                    single_node_oversubscribe.extend(job.nodes_resume)
+                else:
+                    jobs_multi_node_oversubscribe.append(job)
+                    multi_node_oversubscribe.extend(job.nodes_resume)
 
         nodes_difference = list(
             set(node_list)
-            - (set(nodes_oversubscribe) | set(single_node_no_oversubscribe) | set(multi_node_no_oversubscribe))
+            - (
+                set(single_node_oversubscribe)
+                | set(multi_node_oversubscribe)
+                | set(single_node_no_oversubscribe)
+                | set(multi_node_no_oversubscribe)
+            )
         )
         if nodes_difference:
             logger.warning(
@@ -873,8 +889,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
             )
             self._update_failed_nodes(set(nodes_difference), "InvalidNodenameError")
         return SlurmResumeData(
-            nodes_oversubscribe=list(dict.fromkeys(nodes_oversubscribe)),
-            jobs_oversubscribe=jobs_oversubscribe,
+            # With Oversubscribe
+            single_node_oversubscribe=list(dict.fromkeys(single_node_oversubscribe)),
+            multi_node_oversubscribe=list(dict.fromkeys(multi_node_oversubscribe)),
+            jobs_single_node_oversubscribe=jobs_single_node_oversubscribe,
+            jobs_multi_node_oversubscribe=jobs_multi_node_oversubscribe,
+            # With No Oversubscribe
             single_node_no_oversubscribe=single_node_no_oversubscribe,
             multi_node_no_oversubscribe=multi_node_no_oversubscribe,
             jobs_single_node_no_oversubscribe=jobs_single_node_no_oversubscribe,
