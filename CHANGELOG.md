@@ -9,6 +9,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **ENHANCEMENTS**
 
 **CHANGES**
+- WIP Perform default job-level scaling for all jobs, by reading job information from `SLURM_RESUME_FILE`.
 
 **BUG FIXES**
 
