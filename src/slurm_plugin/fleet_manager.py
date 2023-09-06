@@ -11,6 +11,7 @@
 import contextlib
 import copy
 import logging
+import secrets
 import time
 from abc import ABC, abstractmethod
 
@@ -383,15 +384,16 @@ class Ec2CreateFleetManager(FleetManager):
         instances = []
         partial_instance_ids = instance_ids
 
-        retry = 4
+        retries = 5
+        attempt_count = 0
         # Wait for instances to be available in EC2
         time.sleep(0.1)
-        while retry > 0 and partial_instance_ids:
+        while attempt_count < retries and partial_instance_ids:
             complete_instances, partial_instance_ids = self._retrieve_instances_info_from_ec2(partial_instance_ids)
             instances.extend(complete_instances)
-            retry = retry - 1
-            if retry > 0:
-                time.sleep(0.3)
+            attempt_count += 1
+            if attempt_count < retries:
+                time.sleep(0.3 * 2**attempt_count + (secrets.randbelow(500) / 1000))
 
         return instances, partial_instance_ids
 
