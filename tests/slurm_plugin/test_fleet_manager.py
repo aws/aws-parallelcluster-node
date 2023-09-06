@@ -834,7 +834,7 @@ class TestCreateFleetManager:
                         generate_error=False,
                     ),
                 ]
-                + 3
+                + 4
                 * [
                     MockedBoto3Request(
                         method="describe_instances",
@@ -887,7 +887,7 @@ class TestCreateFleetManager:
             # client error
             (
                 ["i-12345"],
-                4
+                5
                 * [
                     MockedBoto3Request(
                         method="describe_instances",
