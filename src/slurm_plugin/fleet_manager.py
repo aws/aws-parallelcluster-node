@@ -19,6 +19,7 @@ import boto3
 from botocore.exceptions import ClientError
 from common.ec2_utils import get_private_ip_address_and_dns_name
 from common.utils import setup_logging_filter
+from slurm_plugin.common import print_with_count
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,12 @@ class FleetManager(ABC):
 
             launch_params = self._evaluate_launch_params(count)
             assigned_nodes = self._launch_instances(launch_params)
-            logger.debug("Launched the following instances: %s", assigned_nodes.get("Instances"))
+            if len(assigned_nodes.get("Instances")) > 0:
+                logger.info(
+                    "Launched the following instances %s",
+                    print_with_count([instance.get("InstanceId", "") for instance in assigned_nodes.get("Instances")]),
+                )
+                logger.debug("Full launched instances information: %s", assigned_nodes.get("Instances"))
 
         return [EC2Instance.from_describe_instance_data(instance_info) for instance_info in assigned_nodes["Instances"]]
 

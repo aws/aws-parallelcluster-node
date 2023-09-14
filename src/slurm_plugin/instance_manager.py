@@ -55,6 +55,14 @@ class HostnameDnsStoreError(Exception):
     """Raised when error occurs while writing into hostname DNS."""
 
 
+class InstanceToNodeAssignmentError(Exception):
+    """Raised when error occurs while assigning EC2 instance to Slurm node."""
+
+
+class NodeAddrUpdateError(Exception):
+    """Raised when error occurs while updating NodeAddrs in Slurm node."""
+
+
 class InstanceManagerFactory:
     @staticmethod
     def get_manager(
@@ -173,7 +181,7 @@ class InstanceManager(ABC):
         all_or_nothing_batch: bool = False,
     ):
         """Launch requested EC2 instances for nodes."""
-        nodes_to_launch = self._parse_requested_nodes(node_list)
+        nodes_to_launch = self._parse_nodes_resume_list(node_list)
         for queue, compute_resources in nodes_to_launch.items():
             for compute_resource, slurm_node_list in compute_resources.items():
                 logger.info("Launching instances for Slurm nodes %s", print_with_count(slurm_node_list))
@@ -242,7 +250,7 @@ class InstanceManager(ABC):
                     nodehostnames=node_hostnames,
                 )
                 logger.info(
-                    "Nodes are now configured with instances: %s",
+                    "Nodes are now configured with instances %s",
                     print_with_count(zip(launched_nodes, launched_instances)),
                 )
             if fail_launch_nodes:
@@ -341,7 +349,7 @@ class InstanceManager(ABC):
                 )
         logger.info("DNS records update: COMPLETED")
 
-    def _parse_requested_nodes(self, node_list: List[str]) -> defaultdict[str, defaultdict[str, List[str]]]:
+    def _parse_nodes_resume_list(self, node_list: List[str]) -> defaultdict[str, defaultdict[str, List[str]]]:
         """
         Parse out which launch configurations (queue/compute resource) are requested by slurm nodes from NodeName.
 
@@ -669,6 +677,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         assign_node_batch_size: int,
         terminate_batch_size: int,
         update_node_address: bool,
+        all_or_nothing_batch: bool,
     ) -> None:
         """Scaling for job list."""
         # Setup custom logging filter
@@ -683,7 +692,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     launch_batch_size=launch_batch_size,
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
-                    all_or_nothing_batch=True,
+                    all_or_nothing_batch=all_or_nothing_batch,
                 )
 
         self._terminate_unassigned_launched_instances(terminate_batch_size)
@@ -711,6 +720,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         assign_node_batch_size: int,
         terminate_batch_size: int,
         update_node_address: bool,
+        all_or_nothing_batch: bool,
     ) -> None:
         """Scaling for job single node list."""
         if job_list:
@@ -722,6 +732,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     assign_node_batch_size=assign_node_batch_size,
                     terminate_batch_size=terminate_batch_size,
                     update_node_address=update_node_address,
+                    all_or_nothing_batch=all_or_nothing_batch,
                 )
             else:
                 # Batch all single node no oversubscribe jobs in a single best-effort EC2 launch request
@@ -768,6 +779,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
 
         self._scaling_for_jobs_multi_node(
@@ -777,6 +789,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
 
         if not self.temp_jls_for_node_sharing:
@@ -793,15 +806,22 @@ class JobLevelScalingInstanceManager(InstanceManager):
             )
 
     def _scaling_for_jobs_multi_node(
-        self, job_list, node_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address
+        self,
+        job_list,
+        node_list,
+        launch_batch_size,
+        assign_node_batch_size,
+        terminate_batch_size,
+        update_node_address,
+        all_or_nothing_batch: bool,
     ):
         # Optimize job level scaling with preliminary scale-all nodes attempt
         self._update_dict(
             self.unused_launched_instances,
             self._launch_instances(
-                nodes_to_launch=self._parse_requested_nodes(node_list),
+                nodes_to_launch=self._parse_nodes_resume_list(node_list),
                 launch_batch_size=launch_batch_size,
-                all_or_nothing_batch=True,
+                all_or_nothing_batch=all_or_nothing_batch,
             ),
         )
 
@@ -811,6 +831,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
 
     def _get_slurm_resume_data(self, slurm_resume: Dict[str, any], node_list: List[str]) -> SlurmResumeData:
@@ -948,83 +969,147 @@ class JobLevelScalingInstanceManager(InstanceManager):
         update_node_address: bool = True,
         all_or_nothing_batch: bool = True,
     ):
+        """Launch requested EC2 instances for nodes."""
+        logger.info("The nodes_resume list from Slurm Resume File is %s", print_with_count(job.nodes_resume))
+
+        nodes_resume_mapping = self._parse_nodes_resume_list(node_list=job.nodes_resume)
+        # nodes in the resume list, mapped for queues and compute resources, e.g.
+        # {
+        #   queue_1: {cr_1: [nodes_1, nodes_2, nodes_3], cr_2: [nodes_4]},
+        #   queue_2: {cr_3: [nodes_5]}
+        # }
+
+        nodes_resume_list = []
+        for compute_resources in nodes_resume_mapping.values():
+            for node_list in compute_resources.values():
+                nodes_resume_list.extend(node_list)
+        # nodes in the resume flattened list, e.g.
+        # [nodes_1, nodes_2, nodes_3, nodes_4, nodes_5]
+
+        instances_launched = self._launch_instances(
+            job=job,
+            nodes_to_launch=nodes_resume_mapping,
+            launch_batch_size=launch_batch_size,
+            all_or_nothing_batch=all_or_nothing_batch,
+        )
+        # instances launched, e.g.
+        # {
+        #   queue_1: {cr_1: list[EC2Instance], cr_2: list[EC2Instance],
+        #   queue_2: {cr_3: list[EC2Instance]}
+        # }
+
+        successful_launched_nodes = []
+        failed_launch_nodes = []
+        for queue, compute_resources in nodes_resume_mapping.items():
+            for compute_resource, slurm_node_list in compute_resources.items():
+                q_cr_instances_launched_length = len(instances_launched.get(queue, {}).get(compute_resource, []))
+                successful_launched_nodes += slurm_node_list[:q_cr_instances_launched_length]
+                failed_launch_nodes += slurm_node_list[q_cr_instances_launched_length:]
         if all_or_nothing_batch:
-            """Launch requested EC2 instances for nodes."""
-            logger.info("Adding instances for nodes %s", print_with_count(job.nodes_resume))
-
-            nodes_to_launch = self._parse_requested_nodes(node_list=job.nodes_resume)
-            # nodes to launch, e.g.
-            # {
-            #   queue_1: {cr_1: [nodes_1, nodes_2, nodes_3], cr_2: [nodes_4]},
-            #   queue_2: {cr_3: [nodes_5]}
-            # }
-
-            parsed_requested_node = []
-            for compute_resources in nodes_to_launch.values():
-                for node_list in compute_resources.values():
-                    parsed_requested_node.extend(node_list)
-            # parsed requested node, e.g.
-            # [nodes_1, nodes_2, nodes_3, nodes_4, nodes_5]
-
-            instances_launched = self._launch_instances(
-                job=job,
-                nodes_to_launch=nodes_to_launch,
-                launch_batch_size=launch_batch_size,
-                all_or_nothing_batch=all_or_nothing_batch,
+            self.all_or_nothing_node_assignment(
+                assign_node_batch_size=assign_node_batch_size,
+                instances_launched=instances_launched,
+                nodes_resume_list=nodes_resume_list,
+                nodes_resume_mapping=nodes_resume_mapping,
+                successful_launched_nodes=successful_launched_nodes,
+                update_node_address=update_node_address,
             )
-            # instances launched, e.g.
-            # {
-            #   queue_1: {cr_1: list[EC2Instance], cr_2: list[EC2Instance],
-            #   queue_2: {cr_3: list[EC2Instance]}
-            # }
-
-            number_of_launched_instances = sum(
-                len(instance_list)
-                for compute_resources in instances_launched.values()
-                for instance_list in compute_resources.values()
-            )
-            if number_of_launched_instances == len(parsed_requested_node):
-                # All requested capacity for the Job has been launched
-                # Assign launched EC2 instances to the requested Slurm nodes
-                try:
-                    logger.info(
-                        "Successful launched all instances for nodes %s",
-                        print_with_count(parsed_requested_node),
-                    )
-                    self._assign_instances_to_nodes(
-                        update_node_address=update_node_address,
-                        nodes_to_launch=nodes_to_launch,
-                        instances_launched=instances_launched,
-                        assign_node_batch_size=assign_node_batch_size,
-                    )
-                except (HostnameDnsStoreError, HostnameTableStoreError):
-                    # Failed to assign EC2 instances to nodes
-                    # EC2 Instances already assigned, are going to be terminated by
-                    # setting the nodes into DOWN.
-                    # EC2 instances not yet assigned, are going to fail during bootstrap,
-                    # because no entry in the DynamoDB table would be found
-                    self._update_failed_nodes(set(parsed_requested_node))
-            elif 0 < number_of_launched_instances < len(parsed_requested_node):
-                # Try to reuse partial capacity of already launched EC2 instances
-                logger.info(
-                    "Launched instances that can be reused %s",
-                    print_with_count(
-                        [
-                            (queue, compute_resource, instance)
-                            for queue, compute_resources in instances_launched.items()
-                            for compute_resource, instances in compute_resources.items()
-                            for instance in instances
-                        ]
-                    ),
-                )
-                self._update_dict(self.unused_launched_instances, instances_launched)
-                self._update_failed_nodes(set(parsed_requested_node), "LimitedInstanceCapacity", override=False)
-            else:
-                # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
-                self._update_failed_nodes(set(parsed_requested_node), "InsufficientInstanceCapacity", override=False)
         else:
-            # Not implemented, never goes here
-            logger.error("Best effort job level scaling not implemented")
+            self.best_effort_node_assignment(
+                assign_node_batch_size=assign_node_batch_size,
+                failed_launch_nodes=failed_launch_nodes,
+                instances_launched=instances_launched,
+                nodes_resume_list=nodes_resume_list,
+                nodes_resume_mapping=nodes_resume_mapping,
+                successful_launched_nodes=successful_launched_nodes,
+                update_node_address=update_node_address,
+            )
+
+    def best_effort_node_assignment(
+        self,
+        assign_node_batch_size,
+        failed_launch_nodes,
+        instances_launched,
+        nodes_resume_list,
+        nodes_resume_mapping,
+        successful_launched_nodes,
+        update_node_address,
+    ):
+        # best-effort job level scaling
+        if 0 < len(successful_launched_nodes) <= len(nodes_resume_list):
+            # All or partial requested EC2 capacity for the Job has been launched
+            # Assign launched EC2 instances to the requested Slurm nodes
+            self._assign_instances_to_nodes(
+                update_node_address=update_node_address,
+                nodes_to_launch=nodes_resume_mapping,
+                instances_launched=instances_launched,
+                assign_node_batch_size=assign_node_batch_size,
+                raise_on_error=False,
+            )
+
+            logger.info(
+                "Successful launched %s instances for nodes %s",
+                "all" if len(successful_launched_nodes) == len(nodes_resume_list) else "partial",
+                print_with_count(successful_launched_nodes),
+            )
+
+            if len(successful_launched_nodes) < len(nodes_resume_list):
+                # set limited capacity on the failed to launch nodes
+                self._update_failed_nodes(set(failed_launch_nodes), "LimitedInstanceCapacity", override=False)
+        else:
+            # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
+            self._update_failed_nodes(set(nodes_resume_list), "InsufficientInstanceCapacity", override=False)
+
+    def all_or_nothing_node_assignment(
+        self,
+        assign_node_batch_size,
+        instances_launched,
+        nodes_resume_list,
+        nodes_resume_mapping,
+        successful_launched_nodes,
+        update_node_address,
+    ):
+        # all-or-nothing job level scaling
+        if len(successful_launched_nodes) == len(nodes_resume_list):
+            # All requested EC2 capacity for the Job has been launched
+            # Assign launched EC2 instances to the requested Slurm nodes
+            try:
+                self._assign_instances_to_nodes(
+                    update_node_address=update_node_address,
+                    nodes_to_launch=nodes_resume_mapping,
+                    instances_launched=instances_launched,
+                    assign_node_batch_size=assign_node_batch_size,
+                    raise_on_error=True,
+                )
+                logger.info(
+                    "Successful launched all instances for nodes %s",
+                    print_with_count(nodes_resume_list),
+                )
+            except InstanceToNodeAssignmentError:
+                # Failed to assign EC2 instances to nodes
+                # EC2 Instances already assigned, are going to be terminated by
+                # setting the nodes into DOWN.
+                # EC2 instances not yet assigned, are going to fail during bootstrap,
+                # because no entry in the DynamoDB table would be found
+                self._update_failed_nodes(set(nodes_resume_list))
+        elif 0 < len(successful_launched_nodes) < len(nodes_resume_list):
+            # Try to reuse partial capacity of already launched EC2 instances
+            logger.info(
+                "Releasing booked instances %s",
+                print_with_count(
+                    [
+                        (queue, compute_resource, instance)
+                        for queue, compute_resources in instances_launched.items()
+                        for compute_resource, instances in compute_resources.items()
+                        for instance in instances
+                    ]
+                ),
+            )
+            self._update_dict(self.unused_launched_instances, instances_launched)
+            self._update_failed_nodes(set(nodes_resume_list), "LimitedInstanceCapacity", override=False)
+        else:
+            # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
+            self._update_failed_nodes(set(nodes_resume_list), "InsufficientInstanceCapacity", override=False)
 
     def _launch_instances(
         self,
@@ -1044,7 +1129,11 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 )
 
                 if slurm_node_list:
-                    logger.info("Launching instances for nodes %s", print_with_count(slurm_node_list))
+                    logger.info(
+                        "Launching %s instances for nodes %s",
+                        "all-or-nothing" if all_or_nothing_batch else "best-effort",
+                        print_with_count(slurm_node_list),
+                    )
                     fleet_manager = self._get_fleet_manager(all_or_nothing_batch, compute_resource, queue)
 
                     for batch_nodes in grouper(slurm_node_list, launch_batch_size):
@@ -1070,6 +1159,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                             if isinstance(e, ClientError):
                                 update_failed_nodes_parameters["error_code"] = e.response.get("Error", {}).get("Code")
                             self._update_failed_nodes(**update_failed_nodes_parameters)
+                            # TODO pay attention to this in the best-effort case
 
                             if job and all_or_nothing_batch:
                                 # When launching instances for a specific Job,
@@ -1128,7 +1218,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             # Reuse already launched capacity
             # fmt: off
             logger.info(
-                "Reusing already launched instances for nodes %s:",
+                "Booking already launched instances for nodes %s:",
                 print_with_count(slurm_node_list[:len(reusable_instances)]),
             )
             instances_launched[queue][compute_resource].extend(reusable_instances[:len(slurm_node_list)])
@@ -1145,6 +1235,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         nodes_to_launch: Dict[str, any],
         instances_launched: Dict[str, any],
         assign_node_batch_size: int,
+        raise_on_error: bool,
     ):
         if update_node_address:
             for queue, compute_resources in nodes_to_launch.items():
@@ -1152,10 +1243,22 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     launched_ec2_instances = instances_launched.get(queue, {}).get(compute_resource, [])
 
                     for batch in grouper(list(zip(slurm_node_list, launched_ec2_instances)), assign_node_batch_size):
-                        batch_nodes, batch_launched_ec2_instances = zip(*batch)
-                        assigned_nodes = self._update_slurm_node_addrs(list(batch_nodes), batch_launched_ec2_instances)
-                        self._store_assigned_hostnames(assigned_nodes)
-                        self._update_dns_hostnames(assigned_nodes, assign_node_batch_size)
+                        batch_nodes = []
+                        try:
+                            batch_nodes, batch_launched_ec2_instances = zip(*batch)
+                            assigned_nodes = self._update_slurm_node_addrs(
+                                slurm_nodes=list(batch_nodes), launched_instances=batch_launched_ec2_instances
+                            )
+                            self._store_assigned_hostnames(nodes=assigned_nodes)
+                            self._update_dns_hostnames(
+                                nodes=assigned_nodes, update_dns_batch_size=assign_node_batch_size
+                            )
+                        except (NodeAddrUpdateError, HostnameTableStoreError, HostnameDnsStoreError):
+                            if raise_on_error:
+                                raise InstanceToNodeAssignmentError
+
+                            # Update the batch of failed node and continue
+                            self._update_failed_nodes(set(batch_nodes))
 
     def _update_slurm_node_addrs(self, slurm_nodes: List[str], launched_instances: List[EC2Instance]):
         """Update node information in slurm with info from launched EC2 instance."""
@@ -1173,7 +1276,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 nodehostnames=node_hostnames,
             )
             logger.info(
-                "Nodes are now configured with instances: %s",
+                "Nodes are now configured with instances %s",
                 print_with_count(zip(slurm_nodes, launched_instances)),
             )
 
@@ -1185,8 +1288,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 print_with_count(slurm_nodes),
                 print_with_count(launched_instances),
             )
-            self._update_failed_nodes(set(slurm_nodes))
-            return {}
+            raise NodeAddrUpdateError
 
 
 class NodeListScalingInstanceManager(InstanceManager):
