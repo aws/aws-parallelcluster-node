@@ -23,7 +23,13 @@ import pytest
 import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.fleet_manager import EC2Instance
-from slurm_plugin.instance_manager import HostnameDnsStoreError, InstanceManager, InstanceManagerFactory
+from slurm_plugin.instance_manager import (
+    HostnameDnsStoreError,
+    InstanceManager,
+    InstanceManagerFactory,
+    InstanceToNodeAssignmentError,
+    NodeAddrUpdateError,
+)
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -640,7 +646,7 @@ class TestInstanceManager:
     def test_parse_requested_instances(
         self, node_list, expected_results, expected_failed_nodes, instance_manager, job_level_scaling
     ):
-        assert_that(instance_manager._parse_requested_nodes(node_list)).is_equal_to(expected_results)
+        assert_that(instance_manager._parse_nodes_resume_list(node_list)).is_equal_to(expected_results)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
@@ -1818,6 +1824,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
         instance_manager._scaling_for_jobs_multi_node.assert_any_call(
             job_list=expected_jobs_multi_node_no_oversubscribe,
@@ -1826,6 +1833,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
         instance_manager._scaling_for_nodes.assert_any_call(
             node_list=expected_nodes_oversubscribe,
@@ -2187,14 +2195,30 @@ class TestJobLevelScalingInstanceManager:
 
     @pytest.mark.parametrize(
         "update_node_address, nodes_to_launch, instances_launched, assign_node_batch_size, "
-        "expected_update_slurm_node_addrs_calls",
+        "raise_on_error, expected_update_slurm_node_addrs_calls, expected_exception, "
+        "failed_nodes, expected_failed_nodes",
         [
             (
                 False,
                 {},
                 {},
                 0,
+                False,
                 None,
+                None,
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
+            ),
+            (
+                False,
+                {},
+                {},
+                0,
+                True,
+                None,
+                None,
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
             ),
             (
                 True,
@@ -2213,16 +2237,20 @@ class TestJobLevelScalingInstanceManager:
                     },
                 },
                 1,
+                False,
                 [
                     call(
-                        ["q1-q1c1-st-large-1"],
-                        (
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
                             EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
                         ),
                     ),
                 ],
+                None,
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
             ),
             (
                 True,
@@ -2266,10 +2294,11 @@ class TestJobLevelScalingInstanceManager:
                     },
                 },
                 10,
+                False,
                 [
                     call(
-                        ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
-                        (
+                        slurm_nodes=["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                        launched_instances=(
                             EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
@@ -2279,16 +2308,16 @@ class TestJobLevelScalingInstanceManager:
                         ),
                     ),
                     call(
-                        ["q1-q1c2-st-small-1"],
-                        (
+                        slurm_nodes=["q1-q1c2-st-small-1"],
+                        launched_instances=(
                             EC2Instance(
                                 "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
                         ),
                     ),
                     call(
-                        ["q2-q2c1-st-large-1", "q2-q2c1-st-large-2", "q2-q2c1-st-large-3"],
-                        (
+                        slurm_nodes=["q2-q2c1-st-large-1", "q2-q2c1-st-large-2", "q2-q2c1-st-large-3"],
+                        launched_instances=(
                             EC2Instance(
                                 "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
@@ -2301,10 +2330,241 @@ class TestJobLevelScalingInstanceManager:
                         ),
                     ),
                 ],
+                None,
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                False,
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                ],
+                [HostnameDnsStoreError()],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                False,
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-2"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                ],
+                [None, HostnameDnsStoreError()],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-2"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                False,
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-2"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                ],
+                [HostnameDnsStoreError(), None],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                True,
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                ],
+                HostnameDnsStoreError(),
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                True,
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-2"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                ],
+                [None, HostnameDnsStoreError()],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                True,
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-1"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ),
+                    ),
+                ],
+                [HostnameDnsStoreError(), None],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
             ),
         ],
     )
-    def test_assign_instances_to_nodes(
+    def test_assign_instances_to_nodes(  # TODO test the except path for multiple batches e.g. =2
         self,
         mocker,
         instance_manager,
@@ -2312,19 +2572,35 @@ class TestJobLevelScalingInstanceManager:
         nodes_to_launch,
         instances_launched,
         assign_node_batch_size,
+        raise_on_error,
         expected_update_slurm_node_addrs_calls,
+        expected_exception,
+        failed_nodes,
+        expected_failed_nodes,
     ):
         # patch internal functions
         instance_manager._update_slurm_node_addrs = mocker.MagicMock()
         instance_manager._store_assigned_hostnames = mocker.MagicMock()
-        instance_manager._update_dns_hostnames = mocker.MagicMock()
+        instance_manager._update_dns_hostnames = mocker.MagicMock(side_effect=expected_exception)
+        instance_manager.failed_nodes = failed_nodes
 
-        instance_manager._assign_instances_to_nodes(
-            update_node_address=update_node_address,
-            nodes_to_launch=nodes_to_launch,
-            instances_launched=instances_launched,
-            assign_node_batch_size=assign_node_batch_size,
-        )
+        if update_node_address and raise_on_error:
+            with pytest.raises(InstanceToNodeAssignmentError):
+                instance_manager._assign_instances_to_nodes(
+                    update_node_address=update_node_address,
+                    nodes_to_launch=nodes_to_launch,
+                    instances_launched=instances_launched,
+                    assign_node_batch_size=assign_node_batch_size,
+                    raise_on_error=raise_on_error,
+                )
+        else:
+            instance_manager._assign_instances_to_nodes(
+                update_node_address=update_node_address,
+                nodes_to_launch=nodes_to_launch,
+                instances_launched=instances_launched,
+                assign_node_batch_size=assign_node_batch_size,
+                raise_on_error=raise_on_error,
+            )
 
         if not update_node_address:
             instance_manager._update_slurm_node_addrs.assert_not_called()
@@ -2339,9 +2615,11 @@ class TestJobLevelScalingInstanceManager:
                 len(expected_update_slurm_node_addrs_calls)
             )
 
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+
     @pytest.mark.parametrize(
         "node_list, launched_instances, use_private_hostname, expected_update_nodes, "
-        "expected_update_nodes_call, expected_failed_nodes, expected_return",
+        "expected_update_nodes_call, expected_return",
         [
             (
                 ["queue1-st-c5xlarge-1"],
@@ -2350,7 +2628,6 @@ class TestJobLevelScalingInstanceManager:
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=[], nodehostnames=None),
                 {},
-                {},
             ),
             (
                 ["queue1-st-c5xlarge-1"],
@@ -2358,7 +2635,6 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                {},
                 {
                     "queue1-st-c5xlarge-1": EC2Instance(
                         id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
@@ -2371,7 +2647,6 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
-                {},
                 {
                     "queue1-st-c5xlarge-1": EC2Instance(
                         id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
@@ -2384,8 +2659,7 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 subprocess.CalledProcessError(1, "command"),
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
-                {"Exception": {"queue1-st-c5xlarge-1"}},
-                {},
+                NodeAddrUpdateError(),
             ),
             (
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
@@ -2396,7 +2670,6 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 None,
                 call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
-                {},
                 {
                     "queue1-st-c5xlarge-1": EC2Instance(
                         id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
@@ -2415,7 +2688,6 @@ class TestJobLevelScalingInstanceManager:
         use_private_hostname,
         expected_update_nodes,
         expected_update_nodes_call,
-        expected_failed_nodes,
         expected_return,
         instance_manager,
         mocker,
@@ -2425,7 +2697,12 @@ class TestJobLevelScalingInstanceManager:
         )
         instance_manager._use_private_hostname = use_private_hostname
 
-        function_return = instance_manager._update_slurm_node_addrs(node_list, launched_instances)
+        if isinstance(expected_return, Exception):
+            with pytest.raises(expected_return.__class__):
+                instance_manager._update_slurm_node_addrs(node_list, launched_instances)
+        else:
+            function_return = instance_manager._update_slurm_node_addrs(node_list, launched_instances)
+            assert_that(function_return).is_equal_to(expected_return)
 
         if expected_update_nodes_call:
             mock_update_nodes.assert_called_once()
@@ -2433,8 +2710,7 @@ class TestJobLevelScalingInstanceManager:
         else:
             mock_update_nodes.assert_not_called()
 
-        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
-        assert_that(function_return).is_equal_to(expected_return)
+        assert_that(instance_manager.failed_nodes).is_empty()
 
     @pytest.mark.parametrize(
         "job, launch_batch_size, assign_node_batch_size, update_node_address, all_or_nothing_batch, "
@@ -2448,13 +2724,13 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 False,
-                {},
+                {"queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {},
                 {},
                 {},
                 False,
                 None,
-                {},
+                {"InsufficientInstanceCapacity": {"queue4-st-c5xlarge-1"}},
             ),
             (
                 SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
@@ -2511,7 +2787,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 {},
                 True,
-                HostnameDnsStoreError(),
+                InstanceToNodeAssignmentError(),
                 {"Exception": {"queue4-st-c5xlarge-1"}},
             ),
             (
@@ -2740,27 +3016,23 @@ class TestJobLevelScalingInstanceManager:
             job, launch_batch_size, assign_node_batch_size, update_node_address, all_or_nothing_batch
         )
 
-        if not all_or_nothing_batch:
-            instance_manager._launch_instances.assert_not_called()
-            instance_manager._assign_instances_to_nodes.assert_not_called()
-        else:
-            instance_manager._launch_instances.assert_called_once_with(
-                job=job,
-                nodes_to_launch=expected_nodes_to_launch,
-                launch_batch_size=launch_batch_size,
-                all_or_nothing_batch=all_or_nothing_batch,
-            )
+        instance_manager._launch_instances.assert_called_once_with(
+            job=job,
+            nodes_to_launch=expected_nodes_to_launch,
+            launch_batch_size=launch_batch_size,
+            all_or_nothing_batch=all_or_nothing_batch,
+        )
 
-            assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
-            if expect_assign_instances_to_nodes_called:
-                instance_manager._assign_instances_to_nodes.assert_called_once()
-                if expect_assign_instances_to_nodes_failure:
-                    assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
-                else:
-                    assert_that(instance_manager.failed_nodes).is_empty()
-            else:
-                instance_manager._assign_instances_to_nodes.assert_not_called()
+        assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
+        if expect_assign_instances_to_nodes_called:
+            instance_manager._assign_instances_to_nodes.assert_called_once()
+            if expect_assign_instances_to_nodes_failure:
                 assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+            else:
+                assert_that(instance_manager.failed_nodes).is_empty()
+        else:
+            instance_manager._assign_instances_to_nodes.assert_not_called()
+            assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
         "job, nodes_to_launch, launch_batch_size, unused_launched_instances, launched_instances, "
@@ -3074,7 +3346,7 @@ class TestJobLevelScalingInstanceManager:
 
     @pytest.mark.parametrize(
         "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address, "
-        "expected_single_nodes_no_oversubscribe",
+        "expected_single_nodes_no_oversubscribe, all_or_nothing_batch",
         [
             (
                 [],
@@ -3083,6 +3355,7 @@ class TestJobLevelScalingInstanceManager:
                 3,
                 True,
                 [],
+                True,
             ),
             (
                 [
@@ -3093,6 +3366,7 @@ class TestJobLevelScalingInstanceManager:
                 3,
                 True,
                 [],
+                False,
             ),
             (
                 [
@@ -3104,6 +3378,19 @@ class TestJobLevelScalingInstanceManager:
                 3,
                 True,
                 ["queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2"],
+                False,
+            ),
+            (
+                [
+                    SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
+                    SlurmResumeJob(140820, "queue4-st-c5xlarge-2", "queue4-st-c5xlarge-2", "NO"),
+                ],
+                1,
+                2,
+                3,
+                True,
+                ["queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2"],
+                True,
             ),
         ],
     )
@@ -3117,6 +3404,7 @@ class TestJobLevelScalingInstanceManager:
         terminate_batch_size,
         update_node_address,
         expected_single_nodes_no_oversubscribe,
+        all_or_nothing_batch,
     ):
         # patch internal functions
         instance_manager._scaling_for_jobs = mocker.MagicMock()
@@ -3128,6 +3416,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
         if not job_list:
             instance_manager._scaling_for_jobs.assert_not_called()
@@ -3139,6 +3428,7 @@ class TestJobLevelScalingInstanceManager:
                 assign_node_batch_size=assign_node_batch_size,
                 terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
             )
             instance_manager._scaling_for_nodes.assert_not_called()
         if len(job_list) > 1:
@@ -3151,9 +3441,10 @@ class TestJobLevelScalingInstanceManager:
             )
 
     @pytest.mark.parametrize(
-        "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, " "update_node_address",
+        "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address, "
+        "all_or_nothing_batch",
         [
-            ([], 1, 2, 3, True),
+            ([], 1, 2, 3, True, False),
             (
                 [
                     SlurmResumeJob(
@@ -3166,6 +3457,7 @@ class TestJobLevelScalingInstanceManager:
                 3,
                 2,
                 1,
+                True,
                 True,
             ),
             (
@@ -3187,6 +3479,7 @@ class TestJobLevelScalingInstanceManager:
                 1,
                 3,
                 False,
+                True,
             ),
         ],
     )
@@ -3199,6 +3492,7 @@ class TestJobLevelScalingInstanceManager:
         assign_node_batch_size,
         terminate_batch_size,
         update_node_address,
+        all_or_nothing_batch,
     ):
         # patch internal functions
         instance_manager._terminate_unassigned_launched_instances = mocker.MagicMock()
@@ -3213,6 +3507,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
 
         if not job_list:
@@ -3224,7 +3519,7 @@ class TestJobLevelScalingInstanceManager:
                     launch_batch_size=launch_batch_size,
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
-                    all_or_nothing_batch=True,
+                    all_or_nothing_batch=all_or_nothing_batch,
                 )
                 setup_logging_filter.return_value.__enter__.return_value.set_custom_value.assert_any_call(job.job_id)
             assert_that(
@@ -3366,7 +3661,7 @@ class TestJobLevelScalingInstanceManager:
         )
 
         if not node_list:
-            instance_manager._add_instances_for_nodes.assert_not_called()
+            instance_manager._add_instances_for_nodes = mocker.MagicMock()
         else:
             instance_manager._add_instances_for_nodes.assert_called_once_with(
                 node_list=node_list,
@@ -3625,6 +3920,516 @@ class TestJobLevelScalingInstanceManager:
     def test_update_dict(self, instance_manager, target_dict, update, expected_dict):
         actual_dict = instance_manager._update_dict(target_dict, update)
         assert_that(actual_dict).is_equal_to(expected_dict)
+
+    @pytest.mark.parametrize(
+        "assign_node_batch_size, failed_launch_nodes, instances_launched, nodes_resume_list, nodes_resume_mapping, "
+        "successful_launched_nodes, update_node_address, expected_failed_nodes",
+        [
+            (
+                1,
+                [],
+                {},
+                [],
+                {},
+                [],
+                False,
+                {},
+            ),
+            (
+                2,
+                [],
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                    }
+                },
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                True,
+                {},
+            ),
+            (
+                3,
+                ["q1-dy-c2-1"],
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                    }
+                },
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                ["q1-dy-c1-1"],
+                True,
+                {"LimitedInstanceCapacity": {"q1-dy-c2-1"}},
+            ),
+            (
+                4,
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {},
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                [],
+                True,
+                {"InsufficientInstanceCapacity": {"q1-dy-c1-1", "q1-dy-c2-1"}},
+            ),
+        ],
+    )
+    def test_best_effort_node_assignment(
+        self,
+        mocker,
+        instance_manager,
+        assign_node_batch_size,
+        failed_launch_nodes,
+        instances_launched,
+        nodes_resume_list,
+        nodes_resume_mapping,
+        successful_launched_nodes,
+        update_node_address,
+        expected_failed_nodes,
+    ):
+        # patch internal functions
+        instance_manager._assign_instances_to_nodes = mocker.MagicMock()
+
+        instance_manager.best_effort_node_assignment(
+            assign_node_batch_size=assign_node_batch_size,
+            failed_launch_nodes=failed_launch_nodes,
+            instances_launched=instances_launched,
+            nodes_resume_list=nodes_resume_list,
+            nodes_resume_mapping=nodes_resume_mapping,
+            successful_launched_nodes=successful_launched_nodes,
+            update_node_address=update_node_address,
+        )
+
+        if len(successful_launched_nodes) == 0:
+            instance_manager._assign_instances_to_nodes.assert_not_called()
+        else:
+            instance_manager._assign_instances_to_nodes.assert_called_with(
+                update_node_address=update_node_address,
+                nodes_to_launch=nodes_resume_mapping,
+                instances_launched=instances_launched,
+                assign_node_batch_size=assign_node_batch_size,
+                raise_on_error=False,
+            )
+
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+
+    @pytest.mark.parametrize(
+        "assign_node_batch_size, instances_launched, nodes_resume_list, nodes_resume_mapping, "
+        "successful_launched_nodes, update_node_address, expected_failed_nodes, "
+        "expect_assign_instances_to_nodes_failure, unused_launched_instances, expected_unused_launched_instances",
+        [
+            (
+                1,
+                {},
+                [],
+                {},
+                [],
+                False,
+                {},
+                None,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+            ),
+            (
+                2,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                    }
+                },
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                True,
+                {},
+                None,
+                {},
+                {},
+            ),
+            (
+                3,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                    }
+                },
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                ["q1-dy-c1-1"],
+                True,
+                {"LimitedInstanceCapacity": {"q1-dy-c1-1", "q1-dy-c2-1"}},
+                None,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ]
+                    }
+                },
+            ),
+            (
+                4,
+                {},
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                [],
+                True,
+                {"InsufficientInstanceCapacity": {"q1-dy-c1-1", "q1-dy-c2-1"}},
+                None,
+                {},
+                {},
+            ),
+            (
+                5,
+                {},
+                [],
+                {},
+                [],
+                False,
+                {},
+                InstanceToNodeAssignmentError(),
+                {},
+                {},
+            ),
+            (
+                6,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ],
+                    }
+                },
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                {"q1": {"c1": ["q1-dy-c1-1"], "c2": ["q1-dy-c2-1"]}},
+                ["q1-dy-c1-1", "q1-dy-c2-1"],
+                True,
+                {"Exception": {"q1-dy-c1-1", "q1-dy-c2-1"}},
+                InstanceToNodeAssignmentError(),
+                {},
+                {},
+            ),
+        ],
+    )
+    def test_all_or_nothing_node_assignment(
+        self,
+        mocker,
+        instance_manager,
+        assign_node_batch_size,
+        instances_launched,
+        nodes_resume_list,
+        nodes_resume_mapping,
+        successful_launched_nodes,
+        update_node_address,
+        expected_failed_nodes,
+        expect_assign_instances_to_nodes_failure,
+        unused_launched_instances,
+        expected_unused_launched_instances,
+    ):
+        # patch internal functions
+        instance_manager._assign_instances_to_nodes = mocker.MagicMock(
+            side_effect=expect_assign_instances_to_nodes_failure
+        )
+        instance_manager.unused_launched_instances = unused_launched_instances
+
+        instance_manager.all_or_nothing_node_assignment(
+            assign_node_batch_size=assign_node_batch_size,
+            instances_launched=instances_launched,
+            nodes_resume_list=nodes_resume_list,
+            nodes_resume_mapping=nodes_resume_mapping,
+            successful_launched_nodes=successful_launched_nodes,
+            update_node_address=update_node_address,
+        )
+
+        if len(successful_launched_nodes) < len(nodes_resume_list):
+            instance_manager._assign_instances_to_nodes.assert_not_called()
+        else:
+            instance_manager._assign_instances_to_nodes.assert_called_with(
+                update_node_address=update_node_address,
+                nodes_to_launch=nodes_resume_mapping,
+                instances_launched=instances_launched,
+                assign_node_batch_size=assign_node_batch_size,
+                raise_on_error=True,
+            )
+
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+        assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
+
+    @pytest.mark.parametrize(
+        "job_list, "
+        "node_list, "
+        "launch_batch_size, "
+        "assign_node_batch_size, "
+        "terminate_batch_size, "
+        "update_node_address, "
+        "all_or_nothing_batch, "
+        "unused_launched_instances, "
+        "mock_launch_instances, "
+        "expected_unused_launched_instances",
+        [
+            (
+                [],
+                [],
+                1,
+                2,
+                3,
+                False,
+                False,
+                {},
+                {},
+                {},
+            ),
+            (
+                [],
+                [],
+                1,
+                2,
+                3,
+                True,
+                False,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {},
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+            ),
+            (
+                [],
+                [],
+                1,
+                2,
+                3,
+                False,
+                True,
+                {},
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+            ),
+            (
+                [],
+                [],
+                1,
+                2,
+                3,
+                True,
+                True,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ]
+                    }
+                },
+            ),
+            (
+                [
+                    SlurmResumeJob(
+                        job_id=140816,
+                        nodes_alloc="queue3-st-c5xlarge-[7-10]",
+                        nodes_resume="queue3-st-c5xlarge-[7-9]",
+                        oversubscribe="NO",
+                    ),
+                ],
+                ["queue4-st-c5xlarge-1"],
+                3,
+                2,
+                1,
+                True,
+                True,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q2": {
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ]
+                    },
+                    "q2": {
+                        "c2": [
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ]
+                    },
+                },
+            ),
+        ],
+    )
+    def test_scaling_for_jobs_multi_node(
+        self,
+        mocker,
+        instance_manager,
+        job_list,
+        node_list,
+        launch_batch_size,
+        assign_node_batch_size,
+        terminate_batch_size,
+        update_node_address,
+        all_or_nothing_batch,
+        unused_launched_instances,
+        mock_launch_instances,
+        expected_unused_launched_instances,
+    ):
+        # patch internal functions
+        instance_manager._launch_instances = mocker.MagicMock(return_value=mock_launch_instances)
+        instance_manager._scaling_for_jobs = mocker.MagicMock()
+        instance_manager.unused_launched_instances = unused_launched_instances
+
+        instance_manager._scaling_for_jobs_multi_node(
+            job_list=job_list,
+            node_list=node_list,
+            launch_batch_size=launch_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
+            terminate_batch_size=terminate_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
+        )
+
+        instance_manager._scaling_for_jobs.assert_called_once_with(
+            job_list=job_list,
+            launch_batch_size=launch_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
+            terminate_batch_size=terminate_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
+        )
+
+        assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
 
 
 class TestNodeListScalingInstanceManager:
@@ -4513,7 +5318,7 @@ class TestNodeListScalingInstanceManager:
         # Mock _update_slurm_node_addrs_and_failed_nodes but still allow original code to execute
         original_update_func = instance_manager._update_slurm_node_addrs_and_failed_nodes
         instance_manager._update_slurm_node_addrs_and_failed_nodes = mocker.MagicMock(side_effect=original_update_func)
-        instance_manager._parse_requested_nodes = mocker.MagicMock(return_value=nodes_to_launch)
+        instance_manager._parse_nodes_resume_list = mocker.MagicMock(return_value=nodes_to_launch)
         # patch fleet manager calls
         mocker.patch.object(
             slurm_plugin.fleet_manager.Ec2RunInstancesManager,

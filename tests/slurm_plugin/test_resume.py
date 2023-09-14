@@ -50,7 +50,7 @@ def boto3_stubber_path():
                 "logging_config": os.path.join(
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_resume_logging.conf"
                 ),
-                "all_or_nothing_batch": False,
+                "all_or_nothing_batch": True,
                 "clustermgtd_timeout": 300,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                 "job_level_scaling": True,

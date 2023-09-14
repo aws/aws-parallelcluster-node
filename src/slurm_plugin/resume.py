@@ -45,7 +45,7 @@ class SlurmResumeConfig:
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
-        "all_or_nothing_batch": False,
+        "all_or_nothing_batch": True,
         "job_level_scaling": True,
         "temp_jls_for_node_sharing": False,
     }
@@ -158,10 +158,17 @@ def _handle_failed_nodes(node_list, reason="Failure when resuming nodes"):
     Clustermgtd will be responsible for running full DOWN -> POWER_DOWN process.
     """
     try:
-        log.info("Setting following failed nodes into DOWN state: %s", print_with_count(node_list))
+        log.info(
+            "Setting following failed nodes into DOWN state %s with reason: %s", print_with_count(node_list), reason
+        )
         set_nodes_down(node_list, reason=reason)
     except Exception as e:
-        log.error("Failed to place nodes %s into down with exception: %s", print_with_count(node_list), e)
+        log.error(
+            "Failed to place nodes %s into DOWN for reason %s with exception: %s",
+            print_with_count(node_list),
+            reason,
+            e,
+        )
 
 
 def _resume(arg_nodes, resume_config, slurm_resume):
@@ -218,7 +225,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
 
     if failed_nodes:
         log.error(
-            "Failed to launch following nodes, setting nodes to down: %s",
+            "Failed to launch following nodes, setting nodes to DOWN: %s",
             print_with_count(failed_nodes),
         )
         for error_code, node_list in instance_manager.failed_nodes.items():

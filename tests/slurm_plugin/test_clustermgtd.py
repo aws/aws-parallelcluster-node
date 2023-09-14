@@ -1096,7 +1096,7 @@ def test_handle_unhealthy_static_nodes(
 
     # Mock associated function
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
-    cluster_manager._instance_manager._parse_requested_nodes = mocker.MagicMock(
+    cluster_manager._instance_manager._parse_nodes_resume_list = mocker.MagicMock(
         return_value={
             "queue1": {
                 "c5xlarge": [
