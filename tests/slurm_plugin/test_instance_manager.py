@@ -176,143 +176,6 @@ class TestInstanceManager:
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
-        (
-            "node_list, launched_nodes, expected_update_nodes_call, "
-            "expected_failed_nodes, use_private_hostname, dns_domain, job_level_scaling, "
-            "expected_update_nodes_output, update_nodes_exception"
-        ),
-        [
-            (
-                ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                {},
-                False,
-                "dns.domain",
-                False,
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    )
-                },
-                None,
-            ),
-            (
-                ["queue1-st-c5xlarge-1"],
-                {},
-                None,
-                {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-1"}},
-                False,
-                "dns.domain",
-                False,
-                {},
-                None,
-            ),
-            (
-                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4"],
-                [
-                    EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                    EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
-                ],
-                call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
-                {"LimitedInstanceCapacity": {"queue1-st-c5xlarge-4", "queue1-st-c5xlarge-3"}},
-                False,
-                "dns.domain",
-                False,
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    ),
-                    "queue1-st-c5xlarge-2": EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname-2", launch_time="some_launch_time"
-                    ),
-                },
-                None,
-            ),
-            (
-                ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
-                {},
-                True,
-                "dns.domain",
-                False,
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    )
-                },
-                None,
-            ),
-            (
-                ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                {},
-                False,
-                "",
-                False,
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    )
-                },
-                None,
-            ),
-            (
-                ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                {"Exception": {"queue1-st-c5xlarge-1"}},
-                False,
-                "",
-                False,
-                {},
-                subprocess.CalledProcessError(1, "command"),
-            ),
-        ],
-        ids=(
-            "all_launched",
-            "nothing_launched",
-            "partial_launched",
-            "forced_private_hostname",
-            "no_dns_domain",
-            "update_nodes_exception",
-        ),
-    )
-    def test_update_slurm_node_addrs_and_failed_nodes(
-        self,
-        node_list,
-        launched_nodes,
-        expected_update_nodes_call,
-        expected_failed_nodes,
-        use_private_hostname,
-        dns_domain,
-        instance_manager,
-        mocker,
-        job_level_scaling,
-        expected_update_nodes_output,
-        update_nodes_exception,
-    ):
-        mock_update_nodes = mocker.patch(
-            "slurm_plugin.instance_manager.update_nodes", side_effect=update_nodes_exception
-        )
-        instance_manager._use_private_hostname = use_private_hostname
-        instance_manager._dns_domain = dns_domain
-
-        update_slurm_node_addrs_and_failed_nodes_output = instance_manager._update_slurm_node_addrs_and_failed_nodes(
-            node_list, launched_nodes
-        )
-        if expected_update_nodes_call:
-            mock_update_nodes.assert_called_once()
-            mock_update_nodes.assert_has_calls([expected_update_nodes_call])
-        else:
-            mock_update_nodes.assert_not_called()
-        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
-
-        assert_that(update_slurm_node_addrs_and_failed_nodes_output).is_equal_to(expected_update_nodes_output)
-
-    @pytest.mark.parametrize(
         "table_name, node_list, slurm_nodes, expected_put_item_calls, expected_message, job_level_scaling",
         [
             (
@@ -1436,7 +1299,6 @@ class TestInstanceManager:
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
                 assign_node_batch_size=assign_node_batch_size,
-                terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
             )
@@ -1444,6 +1306,7 @@ class TestInstanceManager:
             instance_manager._add_instances_for_nodes.assert_called_once_with(
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
             )
@@ -1550,6 +1413,7 @@ class TestJobLevelScalingInstanceManager:
             instance_manager._add_instances_for_nodes.assert_called_with(
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing,
             )
@@ -1563,7 +1427,6 @@ class TestJobLevelScalingInstanceManager:
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
                 assign_node_batch_size=assign_node_batch_size,
-                terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing,
             )
@@ -1574,7 +1437,6 @@ class TestJobLevelScalingInstanceManager:
             "node_list",
             "launch_batch_size",
             "assign_node_batch_size",
-            "terminate_batch_size",
             "update_node_address",
             "all_or_nothing_batch",
             "expected_nodes_oversubscribe",
@@ -1634,7 +1496,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 10,
                 30,
-                40,
                 True,
                 False,
                 [
@@ -1686,7 +1547,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 5,
                 25,
-                35,
                 False,
                 False,
                 [
@@ -1713,7 +1573,6 @@ class TestJobLevelScalingInstanceManager:
                 [],
                 8,
                 28,
-                38,
                 True,
                 False,
                 [],
@@ -1761,7 +1620,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 8,
                 28,
-                38,
                 True,
                 False,
                 [
@@ -1793,7 +1651,6 @@ class TestJobLevelScalingInstanceManager:
         node_list,
         launch_batch_size,
         assign_node_batch_size,
-        terminate_batch_size,
         update_node_address,
         all_or_nothing_batch,
         expected_nodes_oversubscribe,
@@ -1806,14 +1663,13 @@ class TestJobLevelScalingInstanceManager:
         mocker.patch("slurm_plugin.instance_manager.get_nodes_info", autospec=True)
         instance_manager._scaling_for_jobs_single_node = mocker.MagicMock()
         instance_manager._scaling_for_jobs_multi_node = mocker.MagicMock()
-        instance_manager._scaling_for_nodes = mocker.MagicMock()
+        instance_manager._add_instances_for_nodes = mocker.MagicMock()
 
         instance_manager._add_instances_for_resume_file(
             slurm_resume=slurm_resume,
             node_list=node_list,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
@@ -1822,7 +1678,6 @@ class TestJobLevelScalingInstanceManager:
             job_list=expected_jobs_single_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
@@ -1831,20 +1686,22 @@ class TestJobLevelScalingInstanceManager:
             node_list=expected_multi_node_no_oversubscribe,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
-        instance_manager._scaling_for_nodes.assert_any_call(
-            node_list=expected_nodes_oversubscribe,
-            launch_batch_size=launch_batch_size,
-            update_node_address=update_node_address,
-            all_or_nothing_batch=all_or_nothing_batch,
-        )
+        if expected_nodes_oversubscribe:
+            instance_manager._add_instances_for_nodes.assert_any_call(
+                node_list=expected_nodes_oversubscribe,
+                launch_batch_size=launch_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
+                update_node_address=update_node_address,
+                all_or_nothing_batch=all_or_nothing_batch,
+            )
         assert_that(instance_manager.unused_launched_instances).is_empty()
         assert_that(instance_manager._scaling_for_jobs_single_node.call_count).is_equal_to(1)
         assert_that(instance_manager._scaling_for_jobs_multi_node.call_count).is_equal_to(1)
-        assert_that(instance_manager._scaling_for_nodes.call_count).is_equal_to(1)
+        if expected_nodes_oversubscribe:
+            assert_that(instance_manager._add_instances_for_nodes.call_count).is_equal_to(1)
 
     @pytest.mark.parametrize(
         "slurm_resume, node_list, expected_single_node_oversubscribe, expected_multi_node_oversubscribe, "
@@ -2564,7 +2421,7 @@ class TestJobLevelScalingInstanceManager:
             ),
         ],
     )
-    def test_assign_instances_to_nodes(  # TODO test the except path for multiple batches e.g. =2
+    def test_assign_instances_to_nodes(
         self,
         mocker,
         instance_manager,
@@ -2988,7 +2845,7 @@ class TestJobLevelScalingInstanceManager:
             ),
         ],
     )
-    def test_add_instances_for_job(
+    def test_add_instances_for_nodes(
         self,
         mocker,
         instance_manager,
@@ -3012,8 +2869,13 @@ class TestJobLevelScalingInstanceManager:
         )
         instance_manager.unused_launched_instances = initial_unused_launched_instances
 
-        instance_manager._add_instances_for_job(
-            job, launch_batch_size, assign_node_batch_size, update_node_address, all_or_nothing_batch
+        instance_manager._add_instances_for_nodes(
+            node_list=job.nodes_resume,
+            job=job,
+            launch_batch_size=launch_batch_size,
+            assign_node_batch_size=assign_node_batch_size,
+            update_node_address=update_node_address,
+            all_or_nothing_batch=all_or_nothing_batch,
         )
 
         instance_manager._launch_instances.assert_called_once_with(
@@ -3345,14 +3207,13 @@ class TestJobLevelScalingInstanceManager:
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
-        "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address, "
+        "job_list, launch_batch_size, assign_node_batch_size, update_node_address, "
         "expected_single_nodes_no_oversubscribe, all_or_nothing_batch",
         [
             (
                 [],
                 1,
                 2,
-                3,
                 True,
                 [],
                 True,
@@ -3363,7 +3224,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 1,
                 2,
-                3,
                 True,
                 [],
                 False,
@@ -3375,7 +3235,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 1,
                 2,
-                3,
                 True,
                 ["queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2"],
                 False,
@@ -3387,7 +3246,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 1,
                 2,
-                3,
                 True,
                 ["queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2"],
                 True,
@@ -3401,39 +3259,36 @@ class TestJobLevelScalingInstanceManager:
         job_list,
         launch_batch_size,
         assign_node_batch_size,
-        terminate_batch_size,
         update_node_address,
         expected_single_nodes_no_oversubscribe,
         all_or_nothing_batch,
     ):
         # patch internal functions
         instance_manager._scaling_for_jobs = mocker.MagicMock()
-        instance_manager._scaling_for_nodes = mocker.MagicMock()
+        instance_manager._add_instances_for_nodes = mocker.MagicMock()
 
         instance_manager._scaling_for_jobs_single_node(
             job_list=job_list,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
         if not job_list:
             instance_manager._scaling_for_jobs.assert_not_called()
-            instance_manager._scaling_for_nodes.assert_not_called()
+            instance_manager._add_instances_for_nodes.assert_not_called()
         if len(job_list) == 1:
             instance_manager._scaling_for_jobs.assert_called_once_with(
                 job_list=job_list,
                 launch_batch_size=launch_batch_size,
                 assign_node_batch_size=assign_node_batch_size,
-                terminate_batch_size=terminate_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
             )
-            instance_manager._scaling_for_nodes.assert_not_called()
+            instance_manager._add_instances_for_nodes.assert_not_called()
         if len(job_list) > 1:
             instance_manager._scaling_for_jobs.assert_not_called()
-            instance_manager._scaling_for_nodes.assert_called_once_with(
+            instance_manager._add_instances_for_nodes.assert_called_once_with(
                 node_list=expected_single_nodes_no_oversubscribe,
                 launch_batch_size=launch_batch_size,
                 update_node_address=update_node_address,
@@ -3441,10 +3296,9 @@ class TestJobLevelScalingInstanceManager:
             )
 
     @pytest.mark.parametrize(
-        "job_list, launch_batch_size, assign_node_batch_size, terminate_batch_size, update_node_address, "
-        "all_or_nothing_batch",
+        "job_list, launch_batch_size, assign_node_batch_size, update_node_address, all_or_nothing_batch",
         [
-            ([], 1, 2, 3, True, False),
+            ([], 1, 2, True, False),
             (
                 [
                     SlurmResumeJob(
@@ -3456,7 +3310,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 3,
                 2,
-                1,
                 True,
                 True,
             ),
@@ -3477,7 +3330,6 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 2,
                 1,
-                3,
                 False,
                 True,
             ),
@@ -3490,13 +3342,12 @@ class TestJobLevelScalingInstanceManager:
         job_list,
         launch_batch_size,
         assign_node_batch_size,
-        terminate_batch_size,
         update_node_address,
         all_or_nothing_batch,
     ):
         # patch internal functions
         instance_manager._terminate_unassigned_launched_instances = mocker.MagicMock()
-        instance_manager._add_instances_for_job = mocker.MagicMock()
+        instance_manager._add_instances_for_nodes = mocker.MagicMock()
         setup_logging_filter = mocker.patch(
             "slurm_plugin.instance_manager.setup_logging_filter", return_value=mocker.MagicMock()
         )
@@ -3505,17 +3356,17 @@ class TestJobLevelScalingInstanceManager:
             job_list=job_list,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
 
         if not job_list:
-            instance_manager._add_instances_for_job.assert_not_called()
+            instance_manager._add_instances_for_nodes.assert_not_called()
         else:
             for job in job_list:
-                instance_manager._add_instances_for_job.assert_any_call(
+                instance_manager._add_instances_for_nodes.assert_any_call(
                     job=job,
+                    node_list=job.nodes_resume,
                     launch_batch_size=launch_batch_size,
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
@@ -3525,9 +3376,9 @@ class TestJobLevelScalingInstanceManager:
             assert_that(
                 setup_logging_filter.return_value.__enter__.return_value.set_custom_value.call_count
             ).is_equal_to(len(job_list))
-            assert_that(instance_manager._add_instances_for_job.call_count).is_equal_to(len(job_list))
+            assert_that(instance_manager._add_instances_for_nodes.call_count).is_equal_to(len(job_list))
 
-        instance_manager._terminate_unassigned_launched_instances.assert_called_once_with(terminate_batch_size)
+        instance_manager._terminate_unassigned_launched_instances.assert_not_called()
         setup_logging_filter.assert_called_once()
 
     @pytest.mark.parametrize(
@@ -3606,69 +3457,6 @@ class TestJobLevelScalingInstanceManager:
                 expect_delete_instances_list, terminate_batch_size
             )
         assert_that(instance_manager.unused_launched_instances).is_empty()
-
-    @pytest.mark.parametrize(
-        "node_list, launch_batch_size, update_node_address, all_or_nothing_batch",
-        [
-            (
-                [],
-                1,
-                True,
-                True,
-            ),
-            (
-                [
-                    "queue4-st-c5xlarge-1",
-                ],
-                1,
-                True,
-                False,
-            ),
-            (
-                [
-                    "queue4-st-c5xlarge-1",
-                    "queue4-st-c5xlarge-2",
-                ],
-                1,
-                False,
-                False,
-            ),
-            (
-                ["queue4-st-c5xlarge-1", "queue4-st-c5xlarge-2", "queue4-st-c5xlarge-3"],
-                1,
-                False,
-                True,
-            ),
-        ],
-    )
-    def test_scaling_for_nodes(
-        self,
-        mocker,
-        instance_manager,
-        node_list,
-        launch_batch_size,
-        update_node_address,
-        all_or_nothing_batch,
-    ):
-        # patch internal functions
-        instance_manager._add_instances_for_nodes = mocker.MagicMock()
-
-        instance_manager._scaling_for_nodes(
-            node_list=node_list,
-            launch_batch_size=launch_batch_size,
-            update_node_address=update_node_address,
-            all_or_nothing_batch=all_or_nothing_batch,
-        )
-
-        if not node_list:
-            instance_manager._add_instances_for_nodes = mocker.MagicMock()
-        else:
-            instance_manager._add_instances_for_nodes.assert_called_once_with(
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                update_node_address=update_node_address,
-                all_or_nothing_batch=all_or_nothing_batch,
-            )
 
     @pytest.mark.parametrize(
         "queue, compute_resource, slurm_node_list, instances_launched, "
@@ -4224,7 +4012,6 @@ class TestJobLevelScalingInstanceManager:
         "node_list, "
         "launch_batch_size, "
         "assign_node_batch_size, "
-        "terminate_batch_size, "
         "update_node_address, "
         "all_or_nothing_batch, "
         "unused_launched_instances, "
@@ -4236,7 +4023,6 @@ class TestJobLevelScalingInstanceManager:
                 [],
                 1,
                 2,
-                3,
                 False,
                 False,
                 {},
@@ -4248,7 +4034,6 @@ class TestJobLevelScalingInstanceManager:
                 [],
                 1,
                 2,
-                3,
                 True,
                 False,
                 {
@@ -4276,7 +4061,6 @@ class TestJobLevelScalingInstanceManager:
                 [],
                 1,
                 2,
-                3,
                 False,
                 True,
                 {},
@@ -4304,7 +4088,6 @@ class TestJobLevelScalingInstanceManager:
                 [],
                 1,
                 2,
-                3,
                 True,
                 True,
                 {
@@ -4350,7 +4133,6 @@ class TestJobLevelScalingInstanceManager:
                 ["queue4-st-c5xlarge-1"],
                 3,
                 2,
-                1,
                 True,
                 True,
                 {
@@ -4398,7 +4180,6 @@ class TestJobLevelScalingInstanceManager:
         node_list,
         launch_batch_size,
         assign_node_batch_size,
-        terminate_batch_size,
         update_node_address,
         all_or_nothing_batch,
         unused_launched_instances,
@@ -4415,7 +4196,6 @@ class TestJobLevelScalingInstanceManager:
             node_list=node_list,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
@@ -4424,7 +4204,6 @@ class TestJobLevelScalingInstanceManager:
             job_list=job_list,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
-            terminate_batch_size=terminate_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
@@ -5341,3 +5120,140 @@ class TestNodeListScalingInstanceManager:
             assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
         else:
             assert_that(instance_manager.failed_nodes).is_empty()
+
+    @pytest.mark.parametrize(
+        (
+            "node_list, launched_nodes, expected_update_nodes_call, "
+            "expected_failed_nodes, use_private_hostname, dns_domain, job_level_scaling, "
+            "expected_update_nodes_output, update_nodes_exception"
+        ),
+        [
+            (
+                ["queue1-st-c5xlarge-1"],
+                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                {},
+                False,
+                "dns.domain",
+                False,
+                {
+                    "queue1-st-c5xlarge-1": EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
+                    )
+                },
+                None,
+            ),
+            (
+                ["queue1-st-c5xlarge-1"],
+                {},
+                None,
+                {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-1"}},
+                False,
+                "dns.domain",
+                False,
+                {},
+                None,
+            ),
+            (
+                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4"],
+                [
+                    EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
+                    EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                ],
+                call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
+                {"LimitedInstanceCapacity": {"queue1-st-c5xlarge-4", "queue1-st-c5xlarge-3"}},
+                False,
+                "dns.domain",
+                False,
+                {
+                    "queue1-st-c5xlarge-1": EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
+                    ),
+                    "queue1-st-c5xlarge-2": EC2Instance(
+                        id="id-2", private_ip="ip-2", hostname="hostname-2", launch_time="some_launch_time"
+                    ),
+                },
+                None,
+            ),
+            (
+                ["queue1-st-c5xlarge-1"],
+                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
+                {},
+                True,
+                "dns.domain",
+                False,
+                {
+                    "queue1-st-c5xlarge-1": EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
+                    )
+                },
+                None,
+            ),
+            (
+                ["queue1-st-c5xlarge-1"],
+                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                {},
+                False,
+                "",
+                False,
+                {
+                    "queue1-st-c5xlarge-1": EC2Instance(
+                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
+                    )
+                },
+                None,
+            ),
+            (
+                ["queue1-st-c5xlarge-1"],
+                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                {"Exception": {"queue1-st-c5xlarge-1"}},
+                False,
+                "",
+                False,
+                {},
+                subprocess.CalledProcessError(1, "command"),
+            ),
+        ],
+        ids=(
+            "all_launched",
+            "nothing_launched",
+            "partial_launched",
+            "forced_private_hostname",
+            "no_dns_domain",
+            "update_nodes_exception",
+        ),
+    )
+    def test_update_slurm_node_addrs_and_failed_nodes(
+        self,
+        node_list,
+        launched_nodes,
+        expected_update_nodes_call,
+        expected_failed_nodes,
+        use_private_hostname,
+        dns_domain,
+        instance_manager,
+        mocker,
+        job_level_scaling,
+        expected_update_nodes_output,
+        update_nodes_exception,
+    ):
+        mock_update_nodes = mocker.patch(
+            "slurm_plugin.instance_manager.update_nodes", side_effect=update_nodes_exception
+        )
+        instance_manager._use_private_hostname = use_private_hostname
+        instance_manager._dns_domain = dns_domain
+
+        update_slurm_node_addrs_and_failed_nodes_output = instance_manager._update_slurm_node_addrs_and_failed_nodes(
+            node_list, launched_nodes
+        )
+        if expected_update_nodes_call:
+            mock_update_nodes.assert_called_once()
+            mock_update_nodes.assert_has_calls([expected_update_nodes_call])
+        else:
+            mock_update_nodes.assert_not_called()
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+
+        assert_that(update_slurm_node_addrs_and_failed_nodes_output).is_equal_to(expected_update_nodes_output)

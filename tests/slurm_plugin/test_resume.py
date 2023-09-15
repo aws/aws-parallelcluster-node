@@ -378,93 +378,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             False,
             False,
         ),
-        # job level scaling + empty resume file + all_or_nothing_batch without ice error
-        (
-            [
-                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
-                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
-                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
-                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
-            ],
-            3,
-            True,
-            [
-                {
-                    "Instances": [
-                        {
-                            "InstanceId": "i-11111",
-                            "InstanceType": "c5.xlarge",
-                            "PrivateIpAddress": "ip.1.0.0.1",
-                            "PrivateDnsName": "ip-1-0-0-1",
-                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            "NetworkInterfaces": [
-                                {
-                                    "Attachment": {
-                                        "DeviceIndex": 0,
-                                        "NetworkCardIndex": 0,
-                                    },
-                                    "PrivateIpAddress": "ip.1.0.0.1",
-                                },
-                            ],
-                        },
-                        {
-                            "InstanceId": "i-22222",
-                            "InstanceType": "c5.xlarge",
-                            "PrivateIpAddress": "ip.1.0.0.2",
-                            "PrivateDnsName": "ip-1-0-0-2",
-                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            "NetworkInterfaces": [
-                                {
-                                    "Attachment": {
-                                        "DeviceIndex": 0,
-                                        "NetworkCardIndex": 0,
-                                    },
-                                    "PrivateIpAddress": "ip.1.0.0.2",
-                                },
-                            ],
-                        },
-                        {
-                            "InstanceId": "i-33333",
-                            "InstanceType": "c5.xlarge",
-                            "PrivateIpAddress": "ip.1.0.0.3",
-                            "PrivateDnsName": "ip-1-0-0-3",
-                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
-                            "NetworkInterfaces": [
-                                {
-                                    "Attachment": {
-                                        "DeviceIndex": 0,
-                                        "NetworkCardIndex": 0,
-                                    },
-                                    "PrivateIpAddress": "ip.1.0.0.3",
-                                },
-                            ],
-                        },
-                    ]
-                },
-                client_error("RequestLimitExceeded"),
-            ],
-            {"RequestLimitExceeded": {"queue1-st-c5xlarge-2"}},
-            [
-                call(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
-                    nodehostnames=None,
-                )
-            ],
-            dict(
-                zip(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                    ],
-                )
-            ),
-            True,
-            True,
-        ),
-        # job level scaling + empty resume file + all_or_nothing_batch with ice error
+        # job level scaling + empty resume file + all_or_nothing_batch with ICE error
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -531,26 +445,119 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             ],
             {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-2"}},
             [
+                # call(
+                #     ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
+                #     nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
+                #     nodehostnames=None,
+                # )
+            ],
+            {},
+            True,
+            True,
+        ),
+        # job level scaling + empty resume file + all_or_nothing without error
+        (
+            [
+                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+            ],
+            3,
+            True,
+            [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-11111",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.1",
+                            "PrivateDnsName": "ip-1-0-0-1",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                },
+                            ],
+                        },
+                        {
+                            "InstanceId": "i-22222",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.2",
+                            "PrivateDnsName": "ip-1-0-0-2",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.2",
+                                },
+                            ],
+                        },
+                        {
+                            "InstanceId": "i-33333",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.3",
+                            "PrivateDnsName": "ip-1-0-0-3",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.3",
+                                },
+                            ],
+                        },
+                        {
+                            "InstanceId": "i-44444",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.4",
+                            "PrivateDnsName": "ip-1-0-0-4",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.4",
+                                },
+                            ],
+                        },
+                    ]
+                },
+            ],
+            {},
+            [
                 call(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3", "ip.1.0.0.4"],
                     nodehostnames=None,
                 )
             ],
             dict(
                 zip(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
                     [
                         EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
                         EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
                         EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-44444", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)),
                     ],
                 )
             ),
             True,
             True,
         ),
-        # job level scaling + empty resume file + best_effort without ice error
+        # job level scaling + empty resume file + best_effort with CLIENT error
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -584,8 +591,8 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 client_error("ServiceUnavailable"),
             ],
             {
-                "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
                 "ServiceUnavailable": {"queue1-st-c5xlarge-2"},
+                "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
             },
             [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
             dict(
@@ -599,7 +606,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             True,
             True,
         ),
-        # job level scaling + empty resume file + best_effort wit ice error
+        # job level scaling + empty resume file + best_effort wit ICE error
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -645,6 +652,108 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             True,
             True,
         ),
+        # job level scaling + empty resume file + best-effort without error
+        (
+            [
+                SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-dy-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+                SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
+            ],
+            3,
+            False,
+            [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-11111",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.1",
+                            "PrivateDnsName": "ip-1-0-0-1",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.1",
+                                },
+                            ],
+                        },
+                        {
+                            "InstanceId": "i-22222",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.2",
+                            "PrivateDnsName": "ip-1-0-0-2",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.2",
+                                },
+                            ],
+                        },
+                        {
+                            "InstanceId": "i-33333",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.3",
+                            "PrivateDnsName": "ip-1-0-0-3",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.3",
+                                },
+                            ],
+                        },
+                        {
+                            "InstanceId": "i-44444",
+                            "InstanceType": "c5.xlarge",
+                            "PrivateIpAddress": "ip.1.0.0.4",
+                            "PrivateDnsName": "ip-1-0-0-4",
+                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip.1.0.0.4",
+                                },
+                            ],
+                        },
+                    ]
+                },
+            ],
+            {},
+            [
+                call(
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3", "ip.1.0.0.4"],
+                    nodehostnames=None,
+                )
+            ],
+            dict(
+                zip(
+                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+                    [
+                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-44444", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    ],
+                )
+            ),
+            True,
+            True,
+        ),
     ],
     ids=[
         "node list scaling + all_or_nothing without ICE error",
@@ -652,10 +761,11 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         "node list scaling + best_effort without ICE error",
         "node list scaling + best_effort with ICE error",
         "invalid_heartbeat",
-        "job level scaling + empty resume file + all_or_nothing without ICE error",
         "job level scaling + empty resume file + all_or_nothing with ICE error",
-        "job level scaling + empty resume file + best_effort without ICE error",
+        "job level scaling + empty resume file + all_or_nothing without error",
+        "job level scaling + empty resume file + best_effort with CLIENT error",
         "job level scaling + empty resume file + best_effort with ICE error",
+        "job level scaling + empty resume file + best_effort without error",
     ],
 )
 def test_resume_launch(
@@ -701,12 +811,18 @@ def test_resume_launch(
     # patch slurm calls
     mock_update_nodes = mocker.patch("slurm_plugin.instance_manager.update_nodes", autospec=True)
     mock_get_node_info = mocker.patch("slurm_plugin.resume.get_nodes_info", return_value=mock_node_lists, autospec=True)
-    # patch DNS related functions
+    # patch Table and DNS related functions
     mock_store_hostname = mocker.patch.object(
         slurm_plugin.instance_manager.InstanceManager, "_store_assigned_hostnames", autospec=True
     )
     mock_update_dns = mocker.patch.object(
         slurm_plugin.instance_manager.InstanceManager, "_update_dns_hostnames", autospec=True
+    )
+    # patch EC2 calls
+    mock_terminate_instances = mocker.patch.object(
+        slurm_plugin.instance_manager.JobLevelScalingInstanceManager,
+        "_terminate_unassigned_launched_instances",
+        autospec=True,
     )
 
     # Only mock fleet manager if testing case of valid clustermgtd heartbeat
@@ -725,6 +841,7 @@ def test_resume_launch(
         mock_get_node_info.assert_not_called()
         mock_store_hostname.assert_not_called()
         mock_update_dns.assert_not_called()
+        mock_terminate_instances.assert_not_called()
     else:
         mock_handle_failed_nodes_calls = []
         if expected_failed_nodes:
@@ -733,11 +850,20 @@ def test_resume_launch(
                     call(nodeset, reason=f"(Code:{error_code})Failure when resuming nodes")
                 )
             mock_handle_failed_nodes.assert_has_calls(mock_handle_failed_nodes_calls)
+            if job_level_scaling:
+                mock_terminate_instances.assert_called_with(ANY, mock_resume_config.terminate_max_batch_size)
+            else:
+                mock_terminate_instances.assert_not_called()
         if expected_update_node_calls:
             mock_update_nodes.assert_has_calls(expected_update_node_calls)
         if expected_assigned_nodes:
             mock_store_hostname.assert_called_with(ANY, expected_assigned_nodes)
-            mock_update_dns.assert_called_with(ANY, expected_assigned_nodes)
+            if job_level_scaling:
+                mock_update_dns.assert_called_with(
+                    ANY, expected_assigned_nodes, update_dns_batch_size=mock_resume_config.assign_node_max_batch_size
+                )
+            else:
+                mock_update_dns.assert_called_with(ANY, expected_assigned_nodes)
 
 
 @pytest.mark.parametrize(
