@@ -221,7 +221,8 @@ def _resume(arg_nodes, resume_config, slurm_resume):
     )
     failed_nodes = set().union(*instance_manager.failed_nodes.values())
     success_nodes = [node for node in node_list if node not in failed_nodes]
-    log.info("Successfully launched nodes %s", print_with_count(success_nodes))
+    if success_nodes:
+        log.info("Successfully launched nodes %s", print_with_count(success_nodes))
 
     if failed_nodes:
         log.error(
