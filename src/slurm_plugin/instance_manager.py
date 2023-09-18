@@ -907,6 +907,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 update_node_address=update_node_address,
             )
 
+    def _reset_failed_nodes(self, nodeset):
+        """Remove nodeset from failed nodes dict."""
+        if nodeset:
+            for error_code in self.failed_nodes:
+                self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).difference(nodeset)
+
     def best_effort_node_assignment(
         self,
         assign_node_batch_size,
@@ -935,6 +941,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 print_with_count(successful_launched_nodes),
             )
             self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
+            self._reset_failed_nodes(set(nodes_resume_list))
             if len(successful_launched_nodes) < len(nodes_resume_list):
                 # set limited capacity on the failed to launch nodes
                 self._update_failed_nodes(set(failed_launch_nodes), "LimitedInstanceCapacity", override=False)
@@ -968,6 +975,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     print_with_count(nodes_resume_list),
                 )
                 self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
+                self._reset_failed_nodes(set(nodes_resume_list))
             except InstanceToNodeAssignmentError:
                 # Failed to assign EC2 instances to nodes
                 # EC2 Instances already assigned, are going to be terminated by

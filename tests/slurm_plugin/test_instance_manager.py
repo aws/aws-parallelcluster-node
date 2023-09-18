@@ -4269,6 +4269,53 @@ class TestJobLevelScalingInstanceManager:
 
         assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
 
+    @pytest.mark.parametrize(
+        "nodeset, mock_failed_nodes, expected_failed_nodes",
+        [
+            (
+                    {},
+                    {},
+                    {},
+            ),
+            (
+                    {},
+                    {
+                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                        "some_error_code": {"queue1-st-c52xlarge-1"},
+                    },
+                    {
+                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                        "some_error_code": {"queue1-st-c52xlarge-1"},
+                    },
+            ),
+            (
+                    {"queue1-st-c5xlarge-2"},
+                    {
+                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                        "some_error_code": {"queue1-st-c52xlarge-1"},
+                    },
+                    {
+                        "Exception": {"queue2-dy-c5xlarge-1", "queue2-st-c5xlarge-1"},
+                        "some_error_code": {"queue1-st-c52xlarge-1"},
+                    },
+            ),
+            (
+                    {"queue2-dy-c5xlarge-1"},
+                    {
+                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                        "some_error_code": {"queue2-dy-c5xlarge-1"},
+                    },
+                    {
+                        "Exception": {"queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                        "some_error_code": set(),
+                    },
+            ),
+        ],
+    )
+    def test_reset_failed_nodes(self, instance_manager, nodeset, mock_failed_nodes, expected_failed_nodes):
+        instance_manager.failed_nodes = mock_failed_nodes
+        instance_manager._reset_failed_nodes(nodeset)
+        assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
 class TestNodeListScalingInstanceManager:
     @pytest.fixture
