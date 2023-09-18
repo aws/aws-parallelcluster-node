@@ -155,6 +155,7 @@ class InstanceManager(ABC):
         self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
             resource_name, region_name=region, config=boto3_config
         )
+        self.nodes_assigned_to_instances = {}
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
@@ -250,10 +251,15 @@ class InstanceManager(ABC):
         Sample NodeName: queue1-st-computeres1-2
         """
         nodes_to_launch = defaultdict(lambda: defaultdict(list))
+        logger.debug("Nodes already assigned to running instances: %s", self.nodes_assigned_to_instances)
         for node in node_list:
             try:
                 queue_name, node_type, compute_resource_name = parse_nodename(node)
-                nodes_to_launch[queue_name][compute_resource_name].append(node)
+                if node in self.nodes_assigned_to_instances.get(queue_name, {}).get(compute_resource_name, []):
+                    # skip node for which there is already an instance assigned (oversubscribe case)
+                    logger.info("Discarding NodeName already assigned to running instance: %s", node)
+                else:
+                    nodes_to_launch[queue_name][compute_resource_name].append(node)
             except (InvalidNodenameError, KeyError):
                 logger.warning("Discarding NodeName with invalid format: %s", node)
                 self._update_failed_nodes({node}, "InvalidNodenameError")
@@ -928,7 +934,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 "all" if len(successful_launched_nodes) == len(nodes_resume_list) else "partial",
                 print_with_count(successful_launched_nodes),
             )
-
+            self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
             if len(successful_launched_nodes) < len(nodes_resume_list):
                 # set limited capacity on the failed to launch nodes
                 self._update_failed_nodes(set(failed_launch_nodes), "LimitedInstanceCapacity", override=False)
@@ -961,6 +967,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     "Successful launched all instances for nodes %s",
                     print_with_count(nodes_resume_list),
                 )
+                self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
             except InstanceToNodeAssignmentError:
                 # Failed to assign EC2 instances to nodes
                 # EC2 Instances already assigned, are going to be terminated by

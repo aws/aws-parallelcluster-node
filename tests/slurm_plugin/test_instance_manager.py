@@ -465,7 +465,7 @@ class TestInstanceManager:
             instance_manager._update_dns_hostnames(assigned_nodes)
 
     @pytest.mark.parametrize(
-        ("node_list", "expected_results", "expected_failed_nodes", "job_level_scaling"),
+        ("node_list", "expected_results", "expected_failed_nodes", "nodes_assigned_to_instances"),
         [
             (
                 [
@@ -502,13 +502,72 @@ class TestInstanceManager:
                         "in-valid/queue.name-st-c5xlarge-2",
                     }
                 },
-                False,
+                {},
+            ),
+            (
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-dy-c5xlarge-201",
+                    "queue2-st-g34xlarge-1",
+                    "in-valid/queue.name-st-c5xlarge-2",
+                    "noBrackets-st-c5xlarge-[1-2]",
+                    "queue2-dy-g38xlarge-1",
+                    "queue2-st-u6tb1metal-1",
+                    "queue2-invalidnodetype-c5xlarge-12",
+                    "queuename-with-dash-and_underscore-st-i3enmetal2tb-1",
+                ],
+                {},
+                {
+                    "InvalidNodenameError": {
+                        "queue2-invalidnodetype-c5xlarge-12",
+                        "noBrackets-st-c5xlarge-[1-2]",
+                        "queuename-with-dash-and_underscore-st-i3enmetal2tb-1",
+                        "in-valid/queue.name-st-c5xlarge-2",
+                    }
+                },
+                {
+                    "queue1": {
+                        "c5xlarge": [
+                            "queue1-st-c5xlarge-1",
+                            "queue1-st-c5xlarge-2",
+                            "queue1-dy-c5xlarge-201",
+                        ]
+                    },
+                    "queue2": {
+                        "g34xlarge": ["queue2-st-g34xlarge-1"],
+                        "g38xlarge": ["queue2-dy-g38xlarge-1"],
+                        "u6tb1metal": ["queue2-st-u6tb1metal-1"],
+                    },
+                },
+            ),
+            (
+                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                ],
+                {
+                    "queue1": {
+                        "c5xlarge": [
+                            "queue1-st-c5xlarge-1",
+                        ]
+                    },
+                },
+                {},
+                {
+                    "queue1": {
+                        "c5xlarge": [
+                            "queue1-st-c5xlarge-2",
+                        ]
+                    },
+                },
             ),
         ],
     )
-    def test_parse_requested_instances(
-        self, node_list, expected_results, expected_failed_nodes, instance_manager, job_level_scaling
+    def test_parse_nodes_resume_list(
+        self, node_list, expected_results, expected_failed_nodes, instance_manager, nodes_assigned_to_instances
     ):
+        instance_manager.nodes_assigned_to_instances = nodes_assigned_to_instances
         assert_that(instance_manager._parse_nodes_resume_list(node_list)).is_equal_to(expected_results)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
