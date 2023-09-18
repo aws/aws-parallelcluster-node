@@ -634,11 +634,12 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     all_or_nothing_batch=all_or_nothing_batch,
                 )
             else:
-                # Batch all single node no oversubscribe jobs in a single best-effort EC2 launch request
+                # Batch all single node jobs in a single best-effort EC2 launch request
                 # This to reduce scaling time and save launch API calls
-                single_nodes_no_oversubscribe = [job.nodes_resume[0] for job in job_list]
+                # Remove duplicated node entries (possible in oversubscribe case)
+                single_nodes = list(dict.fromkeys([job.nodes_resume[0] for job in job_list]))
                 self._add_instances_for_nodes(
-                    node_list=single_nodes_no_oversubscribe,
+                    node_list=single_nodes,
                     launch_batch_size=launch_batch_size,
                     update_node_address=update_node_address,
                     all_or_nothing_batch=False,
@@ -660,7 +661,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self._clear_unused_launched_instances()
 
         self._scaling_for_jobs_single_node(
-            job_list=slurm_resume_data.jobs_single_node_no_oversubscribe,
+            job_list=slurm_resume_data.jobs_single_node_no_oversubscribe
+            + slurm_resume_data.jobs_single_node_oversubscribe,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
@@ -668,27 +670,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
         )
 
         self._scaling_for_jobs_multi_node(
-            job_list=slurm_resume_data.jobs_multi_node_no_oversubscribe,
-            node_list=slurm_resume_data.multi_node_no_oversubscribe,
+            job_list=slurm_resume_data.jobs_multi_node_no_oversubscribe
+            + slurm_resume_data.jobs_multi_node_oversubscribe,
+            node_list=slurm_resume_data.multi_node_no_oversubscribe + slurm_resume_data.multi_node_oversubscribe,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
-
-        if not self.temp_jls_for_node_sharing:
-            # node scaling for oversubscribe nodes
-            node_list = list(
-                dict.fromkeys(slurm_resume_data.single_node_oversubscribe + slurm_resume_data.multi_node_oversubscribe)
-            )
-            if node_list:
-                self._add_instances_for_nodes(
-                    node_list=node_list,
-                    launch_batch_size=launch_batch_size,
-                    assign_node_batch_size=assign_node_batch_size,
-                    update_node_address=update_node_address,
-                    all_or_nothing_batch=all_or_nothing_batch,
-                )
 
     def _scaling_for_jobs_multi_node(
         self,
@@ -941,7 +930,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 print_with_count(successful_launched_nodes),
             )
             self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
-            self._reset_failed_nodes(set(nodes_resume_list))
+            self._reset_failed_nodes(set(successful_launched_nodes))
             if len(successful_launched_nodes) < len(nodes_resume_list):
                 # set limited capacity on the failed to launch nodes
                 self._update_failed_nodes(set(failed_launch_nodes), "LimitedInstanceCapacity", override=False)

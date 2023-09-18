@@ -1498,7 +1498,9 @@ class TestJobLevelScalingInstanceManager:
             "assign_node_batch_size",
             "update_node_address",
             "all_or_nothing_batch",
-            "expected_nodes_oversubscribe",
+            "expected_jobs_multi_node_oversubscribe",
+            "expected_multi_node_oversubscribe",
+            "expected_jobs_single_node_oversubscribe",
             "expected_jobs_multi_node_no_oversubscribe",
             "expected_multi_node_no_oversubscribe",
             "expected_jobs_single_node_no_oversubscribe",
@@ -1558,11 +1560,26 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 False,
                 [
+                    SlurmResumeJob(
+                        job_id=140814,
+                        nodes_alloc="queue1-st-c5xlarge-[1-4]",
+                        nodes_resume="queue1-st-c5xlarge-[1-3]",
+                        oversubscribe="YES",
+                    ),
+                    SlurmResumeJob(
+                        job_id=140818,
+                        nodes_alloc="queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        nodes_resume="queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        oversubscribe="OK",
+                    ),
+                ],
+                [
                     "queue1-st-c5xlarge-1",
                     "queue1-st-c5xlarge-2",
                     "queue1-st-c5xlarge-3",
                     "queue4-st-c5xlarge-11",
                 ],
+                [],
                 [
                     SlurmResumeJob(
                         job_id=140815,
@@ -1609,10 +1626,19 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 False,
                 [
+                    SlurmResumeJob(
+                        job_id=140814,
+                        nodes_alloc="queue1-st-c5xlarge-[1-4]",
+                        nodes_resume="queue1-st-c5xlarge-[1-3]",
+                        oversubscribe="FORCE",
+                    ),
+                ],
+                [
                     "queue1-st-c5xlarge-1",
                     "queue1-st-c5xlarge-2",
                     "queue1-st-c5xlarge-3",
                 ],
+                [],
                 [],
                 [],
                 [],
@@ -1634,6 +1660,8 @@ class TestJobLevelScalingInstanceManager:
                 28,
                 True,
                 False,
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -1672,7 +1700,6 @@ class TestJobLevelScalingInstanceManager:
                 },
                 [
                     "queue1-st-c5xlarge-1",
-                    "queue1-st-c5xlarge-2",
                     "queue2-st-c5xlarge-1",
                     "queue2-st-c5xlarge-2",
                     "queue3-st-c5xlarge-1",
@@ -1681,8 +1708,15 @@ class TestJobLevelScalingInstanceManager:
                 28,
                 True,
                 False,
+                [],
+                [],
                 [
-                    "queue3-st-c5xlarge-1",
+                    SlurmResumeJob(
+                        job_id=140816,
+                        nodes_alloc="queue3-st-c5xlarge-1",
+                        nodes_resume="queue3-st-c5xlarge-1",
+                        oversubscribe="YES",
+                    ),
                 ],
                 [
                     SlurmResumeJob(
@@ -1712,7 +1746,9 @@ class TestJobLevelScalingInstanceManager:
         assign_node_batch_size,
         update_node_address,
         all_or_nothing_batch,
-        expected_nodes_oversubscribe,
+        expected_jobs_multi_node_oversubscribe,
+        expected_multi_node_oversubscribe,
+        expected_jobs_single_node_oversubscribe,
         expected_jobs_multi_node_no_oversubscribe,
         expected_multi_node_no_oversubscribe,
         expected_jobs_single_node_no_oversubscribe,
@@ -1734,33 +1770,23 @@ class TestJobLevelScalingInstanceManager:
         )
 
         instance_manager._scaling_for_jobs_single_node.assert_any_call(
-            job_list=expected_jobs_single_node_no_oversubscribe,
+            job_list=expected_jobs_single_node_no_oversubscribe + expected_jobs_single_node_oversubscribe,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
         instance_manager._scaling_for_jobs_multi_node.assert_any_call(
-            job_list=expected_jobs_multi_node_no_oversubscribe,
-            node_list=expected_multi_node_no_oversubscribe,
+            job_list=expected_jobs_multi_node_no_oversubscribe + expected_jobs_multi_node_oversubscribe,
+            node_list=expected_multi_node_no_oversubscribe + expected_multi_node_oversubscribe,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
         )
-        if expected_nodes_oversubscribe:
-            instance_manager._add_instances_for_nodes.assert_any_call(
-                node_list=expected_nodes_oversubscribe,
-                launch_batch_size=launch_batch_size,
-                assign_node_batch_size=assign_node_batch_size,
-                update_node_address=update_node_address,
-                all_or_nothing_batch=all_or_nothing_batch,
-            )
         assert_that(instance_manager.unused_launched_instances).is_empty()
         assert_that(instance_manager._scaling_for_jobs_single_node.call_count).is_equal_to(1)
         assert_that(instance_manager._scaling_for_jobs_multi_node.call_count).is_equal_to(1)
-        if expected_nodes_oversubscribe:
-            assert_that(instance_manager._add_instances_for_nodes.call_count).is_equal_to(1)
 
     @pytest.mark.parametrize(
         "slurm_resume, node_list, expected_single_node_oversubscribe, expected_multi_node_oversubscribe, "
@@ -4273,42 +4299,42 @@ class TestJobLevelScalingInstanceManager:
         "nodeset, mock_failed_nodes, expected_failed_nodes",
         [
             (
-                    {},
-                    {},
-                    {},
+                {},
+                {},
+                {},
             ),
             (
-                    {},
-                    {
-                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
-                        "some_error_code": {"queue1-st-c52xlarge-1"},
-                    },
-                    {
-                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
-                        "some_error_code": {"queue1-st-c52xlarge-1"},
-                    },
+                {},
+                {
+                    "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                    "some_error_code": {"queue1-st-c52xlarge-1"},
+                },
+                {
+                    "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                    "some_error_code": {"queue1-st-c52xlarge-1"},
+                },
             ),
             (
-                    {"queue1-st-c5xlarge-2"},
-                    {
-                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
-                        "some_error_code": {"queue1-st-c52xlarge-1"},
-                    },
-                    {
-                        "Exception": {"queue2-dy-c5xlarge-1", "queue2-st-c5xlarge-1"},
-                        "some_error_code": {"queue1-st-c52xlarge-1"},
-                    },
+                {"queue1-st-c5xlarge-2"},
+                {
+                    "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                    "some_error_code": {"queue1-st-c52xlarge-1"},
+                },
+                {
+                    "Exception": {"queue2-dy-c5xlarge-1", "queue2-st-c5xlarge-1"},
+                    "some_error_code": {"queue1-st-c52xlarge-1"},
+                },
             ),
             (
-                    {"queue2-dy-c5xlarge-1"},
-                    {
-                        "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
-                        "some_error_code": {"queue2-dy-c5xlarge-1"},
-                    },
-                    {
-                        "Exception": {"queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
-                        "some_error_code": set(),
-                    },
+                {"queue2-dy-c5xlarge-1"},
+                {
+                    "Exception": {"queue2-dy-c5xlarge-1", "queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                    "some_error_code": {"queue2-dy-c5xlarge-1"},
+                },
+                {
+                    "Exception": {"queue1-st-c5xlarge-2", "queue2-st-c5xlarge-1"},
+                    "some_error_code": set(),
+                },
             ),
         ],
     )
@@ -4316,6 +4342,7 @@ class TestJobLevelScalingInstanceManager:
         instance_manager.failed_nodes = mock_failed_nodes
         instance_manager._reset_failed_nodes(nodeset)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
+
 
 class TestNodeListScalingInstanceManager:
     @pytest.fixture
