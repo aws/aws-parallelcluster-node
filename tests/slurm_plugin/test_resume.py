@@ -444,13 +444,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 client_error("InsufficientInstanceCapacity"),
             ],
             {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-2"}},
-            [
-                # call(
-                #     ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                #     nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
-                #     nodehostnames=None,
-                # )
-            ],
+            [],
             {},
             True,
             True,
