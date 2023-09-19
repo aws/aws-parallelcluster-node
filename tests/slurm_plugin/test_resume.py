@@ -21,7 +21,7 @@ import pytest
 import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.fleet_manager import EC2Instance
-from slurm_plugin.resume import SlurmResumeConfig, _get_slurm_resume, _resume
+from slurm_plugin.resume import SlurmResumeConfig, _get_slurm_resume, _handle_failed_nodes, _resume
 
 from tests.common import FLEET_CONFIG, LAUNCH_OVERRIDES, client_error
 
@@ -916,3 +916,52 @@ def test_get_slurm_resume(config_file, expected_slurm_resume, test_datadir, capl
         assert_that(caplog.records).is_length(1)
         assert_that(caplog.records[0].levelname).is_equal_to("INFO")
         assert_that(caplog.records[0].message).contains("Slurm Resume File content")
+
+
+@pytest.mark.parametrize(
+    "node_list, reason, expected_set_nodes_down_call, expected_exception",
+    [
+        ([], "no_reason", None, None),
+        (
+            ["queue1-dy-c5xlarge-2"],
+            "InsufficientInstanceCapacity",
+            [
+                call(
+                    ["queue1-dy-c5xlarge-2"],
+                    reason="InsufficientInstanceCapacity",
+                )
+            ],
+            None,
+        ),
+        (
+            ["queue1-dy-c5xlarge-3"],
+            "InsufficientInstanceCapacity",
+            [
+                call(
+                    ["queue1-dy-c5xlarge-3"],
+                    reason="InsufficientInstanceCapacity",
+                )
+            ],
+            Exception(),
+        ),
+    ],
+)
+def test_handle_failed_nodes(mocker, caplog, node_list, reason, expected_set_nodes_down_call, expected_exception):
+    # patch internal functions
+    set_nodes_down = mocker.patch("slurm_plugin.resume.set_nodes_down", side_effect=expected_exception)
+    caplog.set_level(logging.INFO)
+
+    _handle_failed_nodes(node_list, reason)
+    if not node_list:
+        set_nodes_down.assert_not_called()
+    else:
+        set_nodes_down.assert_has_calls(expected_set_nodes_down_call)
+
+        if isinstance(expected_exception, Exception):
+            assert_that(caplog.records).is_length(2)
+            assert_that(caplog.records[1].levelname).is_equal_to("ERROR")
+            assert_that(caplog.records[1].message).contains("Failed to place nodes")
+        else:
+            assert_that(caplog.records).is_length(1)
+        assert_that(caplog.records[0].levelname).is_equal_to("INFO")
+        assert_that(caplog.records[0].message).contains("Setting following failed nodes into DOWN state")

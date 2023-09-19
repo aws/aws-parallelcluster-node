@@ -157,18 +157,19 @@ def _handle_failed_nodes(node_list, reason="Failure when resuming nodes"):
     To save time, should explicitly set nodes to DOWN in ResumeProgram so clustermgtd can maintain failed nodes.
     Clustermgtd will be responsible for running full DOWN -> POWER_DOWN process.
     """
-    try:
-        log.info(
-            "Setting following failed nodes into DOWN state %s with reason: %s", print_with_count(node_list), reason
-        )
-        set_nodes_down(node_list, reason=reason)
-    except Exception as e:
-        log.error(
-            "Failed to place nodes %s into DOWN for reason %s with exception: %s",
-            print_with_count(node_list),
-            reason,
-            e,
-        )
+    if node_list:
+        try:
+            log.info(
+                "Setting following failed nodes into DOWN state %s with reason: %s", print_with_count(node_list), reason
+            )
+            set_nodes_down(node_list, reason=reason)
+        except Exception as e:
+            log.error(
+                "Failed to place nodes %s into DOWN for reason %s with exception: %s",
+                print_with_count(node_list),
+                reason,
+                e,
+            )
 
 
 def _resume(arg_nodes, resume_config, slurm_resume):
