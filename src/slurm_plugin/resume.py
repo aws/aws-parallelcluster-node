@@ -47,7 +47,6 @@ class SlurmResumeConfig:
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "all_or_nothing_batch": True,
         "job_level_scaling": True,
-        "temp_jls_for_node_sharing": False,
     }
 
     def __init__(self, config_file_path):
@@ -95,9 +94,6 @@ class SlurmResumeConfig:
         )
         self.job_level_scaling = config.getboolean(
             "slurm_resume", "job_level_scaling", fallback=self.DEFAULTS.get("job_level_scaling")
-        )
-        self.temp_jls_for_node_sharing = config.getboolean(
-            "slurm_resume", "temp_jls_for_node_sharing", fallback=self.DEFAULTS.get("temp_jls_for_node_sharing")
         )
         fleet_config_file = config.get(
             "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
@@ -209,7 +205,6 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         run_instances_overrides=resume_config.run_instances_overrides,
         create_fleet_overrides=resume_config.create_fleet_overrides,
         job_level_scaling=resume_config.job_level_scaling,
-        temp_jls_for_node_sharing=resume_config.temp_jls_for_node_sharing,
     )
     instance_manager.add_instances(
         slurm_resume=slurm_resume,

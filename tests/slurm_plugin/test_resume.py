@@ -798,7 +798,6 @@ def test_resume_launch(
         job_level_scaling=job_level_scaling,
         assign_node_max_batch_size=500,
         terminate_max_batch_size=1000,
-        temp_jls_for_node_sharing=False,
     )
     mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", autospec=True, return_value=is_heartbeat_valid)
     mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", autospec=True)
