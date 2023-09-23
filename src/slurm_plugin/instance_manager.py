@@ -79,7 +79,6 @@ class InstanceManagerFactory:
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
         job_level_scaling: bool = False,
-        temp_jls_for_node_sharing: bool = False,
     ):
         if job_level_scaling:
             return JobLevelScalingInstanceManager(
@@ -95,7 +94,6 @@ class InstanceManagerFactory:
                 fleet_config=fleet_config,
                 run_instances_overrides=run_instances_overrides,
                 create_fleet_overrides=create_fleet_overrides,
-                temp_jls_for_node_sharing=temp_jls_for_node_sharing,
             )
         else:
             return NodeListScalingInstanceManager(
@@ -493,7 +491,6 @@ class JobLevelScalingInstanceManager(InstanceManager):
         fleet_config: Dict[str, any] = None,
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
-        temp_jls_for_node_sharing: bool = False,
     ):
         super().__init__(
             region=region,
@@ -510,7 +507,6 @@ class JobLevelScalingInstanceManager(InstanceManager):
             create_fleet_overrides=create_fleet_overrides,
         )
         self.unused_launched_instances = {}
-        self.temp_jls_for_node_sharing = temp_jls_for_node_sharing
 
     def _clear_unused_launched_instances(self):
         """Clear and reset unused launched instances list."""
