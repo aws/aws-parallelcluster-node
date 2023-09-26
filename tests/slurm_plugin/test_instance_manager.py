@@ -3376,6 +3376,7 @@ class TestJobLevelScalingInstanceManager:
             instance_manager._add_instances_for_nodes.assert_called_once_with(
                 node_list=expected_single_nodes_no_oversubscribe,
                 launch_batch_size=launch_batch_size,
+                assign_node_batch_size=assign_node_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=False,
             )
