@@ -47,6 +47,7 @@ class SlurmResumeConfig:
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "all_or_nothing_batch": True,
         "job_level_scaling": True,
+        "terminate_idle_nodes": True,
     }
 
     def __init__(self, config_file_path):
@@ -94,6 +95,9 @@ class SlurmResumeConfig:
         )
         self.job_level_scaling = config.getboolean(
             "slurm_resume", "job_level_scaling", fallback=self.DEFAULTS.get("job_level_scaling")
+        )
+        self.terminate_idle_nodes = config.getboolean(
+            "slurm_resume", "terminate_idle_nodes", fallback=self.DEFAULTS.get("terminate_idle_nodes")
         )
         fleet_config_file = config.get(
             "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
@@ -214,6 +218,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         terminate_batch_size=resume_config.terminate_max_batch_size,
         update_node_address=resume_config.update_node_address,
         all_or_nothing_batch=resume_config.all_or_nothing_batch,
+        terminate_idle_nodes=resume_config.terminate_idle_nodes,
     )
     failed_nodes = set().union(*instance_manager.failed_nodes.values())
     success_nodes = [node for node in node_list if node not in failed_nodes]

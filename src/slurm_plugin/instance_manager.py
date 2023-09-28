@@ -79,6 +79,7 @@ class InstanceManagerFactory:
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
         job_level_scaling: bool = False,
+        terminate_idle_nodes: bool = True,
     ):
         if job_level_scaling:
             return JobLevelScalingInstanceManager(
@@ -94,6 +95,7 @@ class InstanceManagerFactory:
                 fleet_config=fleet_config,
                 run_instances_overrides=run_instances_overrides,
                 create_fleet_overrides=create_fleet_overrides,
+                terminate_idle_nodes=terminate_idle_nodes,
             )
         else:
             return NodeListScalingInstanceManager(
@@ -535,6 +537,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         slurm_resume: Dict[str, any] = None,
         assign_node_batch_size: int = None,
         terminate_batch_size: int = None,
+        terminate_idle_nodes: bool = True,
     ):
         """Add EC2 instances to Slurm nodes."""
         # Reset failed nodes pool
@@ -551,6 +554,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 assign_node_batch_size=assign_node_batch_size,
                 update_node_address=update_node_address,
                 all_or_nothing_batch=all_or_nothing_batch,
+                terminate_idle_nodes=terminate_idle_nodes,
             )
         else:
             logger.error(
@@ -558,12 +562,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 "Falling back to node list scaling"
             )
             logger.info("The nodes_resume list from Slurm Resume Program is %s", print_with_count(node_list))
+            # Fallback to a best-effort scaling on whole node list, with no IDLE instances left
             self._add_instances_for_nodes(
                 node_list=node_list,
                 launch_batch_size=launch_batch_size,
                 assign_node_batch_size=assign_node_batch_size,
                 update_node_address=update_node_address,
-                all_or_nothing_batch=False,  # TODO fallback is to perform a best-effort scaling on whole node list (with no IDLE instances)
+                all_or_nothing_batch=False,
+                terminate_idle_nodes=True,
             )
 
         self._terminate_unassigned_launched_instances(terminate_batch_size)
@@ -575,6 +581,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         assign_node_batch_size: int,
         update_node_address: bool,
         all_or_nothing_batch: bool,
+        terminate_idle_nodes: bool,
     ) -> None:
         """Scaling for job list."""
         # Setup custom logging filter
@@ -592,6 +599,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     all_or_nothing_batch=all_or_nothing_batch,
+                    terminate_idle_nodes=terminate_idle_nodes,
                 )
 
     def _terminate_unassigned_launched_instances(self, terminate_batch_size):
@@ -621,7 +629,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         """Scaling for job single node list."""
         if job_list:
             if len(job_list) == 1:
-                # TODO if there is only 1 job single node, think about moving the job into multinode scaling
+                # TODO if there is only 1 job single node, think about moving this job into the multinode scaling, so to remove the if/else here
                 # call _scaling_for_jobs so that JobID is logged
                 self._scaling_for_jobs(
                     job_list=job_list,
@@ -629,6 +637,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     all_or_nothing_batch=all_or_nothing_batch,
+                    terminate_idle_nodes=False,
                 )
             else:
                 # Batch all single node jobs in a single best-effort EC2 launch request
@@ -641,6 +650,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     all_or_nothing_batch=False,
+                    terminate_idle_nodes=False,
                 )
 
     def _add_instances_for_resume_file(
@@ -651,6 +661,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         assign_node_batch_size: int,
         update_node_address: bool = True,
         all_or_nothing_batch: bool = False,
+        terminate_idle_nodes: bool = True,
     ):
         """Launch requested EC2 instances for resume file."""
         slurm_resume_data = self._get_slurm_resume_data(slurm_resume=slurm_resume, node_list=node_list)
@@ -675,6 +686,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
+            terminate_idle_nodes=terminate_idle_nodes,
         )
 
     def _scaling_for_jobs_multi_node(
@@ -685,6 +697,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         assign_node_batch_size,
         update_node_address,
         all_or_nothing_batch: bool,
+        terminate_idle_nodes: bool,
     ):
         # Optimize job level scaling with preliminary scale-all nodes attempt
         self._update_dict(
@@ -702,6 +715,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             all_or_nothing_batch=all_or_nothing_batch,
+            terminate_idle_nodes=terminate_idle_nodes,
         )
 
     def _get_slurm_resume_data(self, slurm_resume: Dict[str, any], node_list: List[str]) -> SlurmResumeData:
@@ -839,6 +853,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         all_or_nothing_batch: bool = True,
         node_list: List[str] = None,
         job: SlurmResumeJob = None,
+        terminate_idle_nodes: bool = True,
     ):
         """Launch requested EC2 instances for nodes."""
         nodes_resume_mapping = self._parse_nodes_resume_list(node_list=node_list)
@@ -855,7 +870,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         # nodes in the resume flattened list, e.g.
         # [nodes_1, nodes_2, nodes_3, nodes_4, nodes_5]
 
-        # TODO think about extracting out the allocation of unused instances from the _launch_instances call (inside _resize_slurm_node_list), so to simplify the if logic inside
+        # TODO think about extracting out the allocation of unused instances from the _launch_instances call (done inside _resize_slurm_node_list), so to simplify the if logic inside
         instances_launched = self._launch_instances(
             job=job if job else None,
             nodes_to_launch=nodes_resume_mapping,
@@ -875,26 +890,25 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 q_cr_instances_launched_length = len(instances_launched.get(queue, {}).get(compute_resource, []))
                 successful_launched_nodes += slurm_node_list[:q_cr_instances_launched_length]
                 failed_launch_nodes += slurm_node_list[q_cr_instances_launched_length:]
-        # TODO in both all-or-nothin and best-effort, the node assignment is all-or-nothing, so to not leave IDLE instances
-        # if all_or_nothing_batch:
-        self.all_or_nothing_node_assignment(
-            assign_node_batch_size=assign_node_batch_size,
-            instances_launched=instances_launched,
-            nodes_resume_list=nodes_resume_list,
-            nodes_resume_mapping=nodes_resume_mapping,
-            successful_launched_nodes=successful_launched_nodes,
-            update_node_address=update_node_address,
-        )
-        # else:
-        #     self.best_effort_node_assignment(
-        #         assign_node_batch_size=assign_node_batch_size,
-        #         failed_launch_nodes=failed_launch_nodes,
-        #         instances_launched=instances_launched,
-        #         nodes_resume_list=nodes_resume_list,
-        #         nodes_resume_mapping=nodes_resume_mapping,
-        #         successful_launched_nodes=successful_launched_nodes,
-        #         update_node_address=update_node_address,
-        #     )
+        if terminate_idle_nodes:
+            self.all_or_nothing_node_assignment(
+                assign_node_batch_size=assign_node_batch_size,
+                instances_launched=instances_launched,
+                nodes_resume_list=nodes_resume_list,
+                nodes_resume_mapping=nodes_resume_mapping,
+                successful_launched_nodes=successful_launched_nodes,
+                update_node_address=update_node_address,
+            )
+        else:
+            self.best_effort_node_assignment(
+                assign_node_batch_size=assign_node_batch_size,
+                failed_launch_nodes=failed_launch_nodes,
+                instances_launched=instances_launched,
+                nodes_resume_list=nodes_resume_list,
+                nodes_resume_mapping=nodes_resume_mapping,
+                successful_launched_nodes=successful_launched_nodes,
+                update_node_address=update_node_address,
+            )
 
     def _reset_failed_nodes(self, nodeset):
         """Remove nodeset from failed nodes dict."""
@@ -1009,7 +1023,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 )
 
                 # Avoid to launch instances per job for the best-effort case
-                if slurm_node_list and (all_or_nothing_batch or (not all_or_nothing_batch and not job)):  # TODO simplify
+                if slurm_node_list and (all_or_nothing_batch or (not all_or_nothing_batch and not job)):  # TODO simplify?
                     logger.info(
                         "Launching %s instances for nodes %s",
                         "all-or-nothing" if all_or_nothing_batch else "best-effort",
