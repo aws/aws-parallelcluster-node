@@ -563,7 +563,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 launch_batch_size=launch_batch_size,
                 assign_node_batch_size=assign_node_batch_size,
                 update_node_address=update_node_address,
-                all_or_nothing_batch=all_or_nothing_batch,
+                all_or_nothing_batch=False,  # TODO fallback is to perform a best-effort scaling on whole node list (with no IDLE instances)
             )
 
         self._terminate_unassigned_launched_instances(terminate_batch_size)
@@ -621,6 +621,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         """Scaling for job single node list."""
         if job_list:
             if len(job_list) == 1:
+                # TODO if there is only 1 job single node, think about moving the job into multinode scaling
                 # call _scaling_for_jobs so that JobID is logged
                 self._scaling_for_jobs(
                     job_list=job_list,
@@ -854,6 +855,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         # nodes in the resume flattened list, e.g.
         # [nodes_1, nodes_2, nodes_3, nodes_4, nodes_5]
 
+        # TODO think about extracting out the allocation of unused instances from the _launch_instances call (inside _resize_slurm_node_list), so to simplify the if logic inside
         instances_launched = self._launch_instances(
             job=job if job else None,
             nodes_to_launch=nodes_resume_mapping,
@@ -873,25 +875,26 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 q_cr_instances_launched_length = len(instances_launched.get(queue, {}).get(compute_resource, []))
                 successful_launched_nodes += slurm_node_list[:q_cr_instances_launched_length]
                 failed_launch_nodes += slurm_node_list[q_cr_instances_launched_length:]
-        if all_or_nothing_batch:
-            self.all_or_nothing_node_assignment(
-                assign_node_batch_size=assign_node_batch_size,
-                instances_launched=instances_launched,
-                nodes_resume_list=nodes_resume_list,
-                nodes_resume_mapping=nodes_resume_mapping,
-                successful_launched_nodes=successful_launched_nodes,
-                update_node_address=update_node_address,
-            )
-        else:
-            self.best_effort_node_assignment(
-                assign_node_batch_size=assign_node_batch_size,
-                failed_launch_nodes=failed_launch_nodes,
-                instances_launched=instances_launched,
-                nodes_resume_list=nodes_resume_list,
-                nodes_resume_mapping=nodes_resume_mapping,
-                successful_launched_nodes=successful_launched_nodes,
-                update_node_address=update_node_address,
-            )
+        # TODO in both all-or-nothin and best-effort, the node assignment is all-or-nothing, so to not leave IDLE instances
+        # if all_or_nothing_batch:
+        self.all_or_nothing_node_assignment(
+            assign_node_batch_size=assign_node_batch_size,
+            instances_launched=instances_launched,
+            nodes_resume_list=nodes_resume_list,
+            nodes_resume_mapping=nodes_resume_mapping,
+            successful_launched_nodes=successful_launched_nodes,
+            update_node_address=update_node_address,
+        )
+        # else:
+        #     self.best_effort_node_assignment(
+        #         assign_node_batch_size=assign_node_batch_size,
+        #         failed_launch_nodes=failed_launch_nodes,
+        #         instances_launched=instances_launched,
+        #         nodes_resume_list=nodes_resume_list,
+        #         nodes_resume_mapping=nodes_resume_mapping,
+        #         successful_launched_nodes=successful_launched_nodes,
+        #         update_node_address=update_node_address,
+        #     )
 
     def _reset_failed_nodes(self, nodeset):
         """Remove nodeset from failed nodes dict."""
@@ -1005,7 +1008,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     slurm_node_list=slurm_node_list,
                 )
 
-                if slurm_node_list:
+                # Avoid to launch instances per job for the best-effort case
+                if slurm_node_list and (all_or_nothing_batch or (not all_or_nothing_batch and not job)):  # TODO simplify
                     logger.info(
                         "Launching %s instances for nodes %s",
                         "all-or-nothing" if all_or_nothing_batch else "best-effort",
