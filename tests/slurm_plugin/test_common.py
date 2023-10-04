@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from assertpy import assert_that
 from common.utils import read_json, time_is_up
-from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
+from slurm_plugin.common import TIMESTAMP_FORMAT, ScalingStrategy, get_clustermgtd_heartbeat
 
 
 @pytest.mark.parametrize(
@@ -106,3 +106,17 @@ def test_read_json(test_datadir, caplog, json_file, default_value, raises_except
         assert_that(caplog.text).matches(message_in_log)
     else:
         assert_that(caplog.text).does_not_match("exception")
+
+
+@pytest.mark.parametrize(
+    "strategy_as_value, expected_strategy_enum",
+    [
+        ("best-effort", ScalingStrategy.BEST_EFFORT),
+        ("all-or-nothing", ScalingStrategy.ALL_OR_NOTHING),
+        ("", ScalingStrategy.ALL_OR_NOTHING),
+        ("invalid-strategy", ScalingStrategy.ALL_OR_NOTHING),
+    ],
+)
+def test_scaling_strategies_enum_from_value(strategy_as_value, expected_strategy_enum):
+    strategy_enum = ScalingStrategy(strategy_as_value)
+    assert_that(strategy_enum).is_equal_to(expected_strategy_enum)

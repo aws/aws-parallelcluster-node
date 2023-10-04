@@ -14,6 +14,7 @@ import functools
 import logging
 from concurrent.futures import Future
 from datetime import datetime
+from enum import Enum
 from typing import Callable, Optional, Protocol, TypedDict
 
 from common.utils import check_command_output, time_is_up, validate_absolute_path
@@ -32,6 +33,23 @@ ComputeInstanceDescriptor = TypedDict(
         "InstanceId": str,
     },
 )
+
+
+class ScalingStrategy(Enum):
+    ALL_OR_NOTHING = "all-or-nothing"
+    BEST_EFFORT = "best-effort"
+
+    @classmethod
+    def _missing_(cls, strategy):
+        # Ref: https://docs.python.org/3/library/enum.html#enum.Enum._missing_
+        _strategy = str(strategy).lower()
+        for member in cls:
+            if member.value == _strategy:
+                return member
+        return cls.ALL_OR_NOTHING  # Default to All-Or-Nothing
+
+    def __str__(self):
+        return str(self.value)
 
 
 class TaskController(Protocol):
