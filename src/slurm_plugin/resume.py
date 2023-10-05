@@ -21,7 +21,7 @@ from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
 from common.utils import read_json
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
-from slurm_plugin.common import is_clustermgtd_heartbeat_valid, print_with_count
+from slurm_plugin.common import ScalingStrategy, is_clustermgtd_heartbeat_valid, print_with_count
 from slurm_plugin.instance_manager import InstanceManagerFactory
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
@@ -45,8 +45,8 @@ class SlurmResumeConfig:
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
-        "all_or_nothing_batch": True,
         "job_level_scaling": True,
+        "scaling_strategy": "all-or-nothing",
     }
 
     def __init__(self, config_file_path):
@@ -92,6 +92,9 @@ class SlurmResumeConfig:
         self.all_or_nothing_batch = config.getboolean(
             "slurm_resume", "all_or_nothing_batch", fallback=self.DEFAULTS.get("all_or_nothing_batch")
         )
+        self.scaling_strategy = config.get(
+            "slurm_resume", "scaling_strategy", fallback=self.DEFAULTS.get("scaling_strategy")
+        )  # TODO: Check if it's a valid scaling strategy before calling expensive downstream APIs
         self.job_level_scaling = config.getboolean(
             "slurm_resume", "job_level_scaling", fallback=self.DEFAULTS.get("job_level_scaling")
         )
@@ -213,7 +216,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         assign_node_batch_size=resume_config.assign_node_max_batch_size,
         terminate_batch_size=resume_config.terminate_max_batch_size,
         update_node_address=resume_config.update_node_address,
-        all_or_nothing_batch=resume_config.all_or_nothing_batch,
+        scaling_strategy=ScalingStrategy(resume_config.scaling_strategy),
     )
     failed_nodes = set().union(*instance_manager.failed_nodes.values())
     success_nodes = [node for node in node_list if node not in failed_nodes]

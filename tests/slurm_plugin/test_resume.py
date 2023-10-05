@@ -23,6 +23,7 @@ from assertpy import assert_that
 from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.resume import SlurmResumeConfig, _get_slurm_resume, _handle_failed_nodes, _resume
 
+from src.slurm_plugin.common import ScalingStrategy
 from tests.common import FLEET_CONFIG, LAUNCH_OVERRIDES, client_error
 
 
@@ -50,7 +51,7 @@ def boto3_stubber_path():
                 "logging_config": os.path.join(
                     os.path.dirname(slurm_plugin.__file__), "logging", "parallelcluster_resume_logging.conf"
                 ),
-                "all_or_nothing_batch": True,
+                "scaling_strategy": "all-or-nothing",
                 "clustermgtd_timeout": 300,
                 "clustermgtd_heartbeat_file_path": "/home/ec2-user/clustermgtd_heartbeat",
                 "job_level_scaling": True,
@@ -70,7 +71,7 @@ def boto3_stubber_path():
                     "proxies": {"https": "my.resume.proxy"},
                 },
                 "logging_config": "/path/to/resume_logging/config",
-                "all_or_nothing_batch": True,
+                "scaling_strategy": "all-or-nothing",
                 "clustermgtd_timeout": 5,
                 "clustermgtd_heartbeat_file_path": "alternate/clustermgtd_heartbeat",
                 "job_level_scaling": False,
@@ -91,7 +92,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
     (
         "mock_node_lists",
         "batch_size",
-        "all_or_nothing_batch",
+        "scaling_strategy",
         "launched_instances",
         "expected_failed_nodes",
         "expected_update_node_calls",
@@ -109,7 +110,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            True,
+            ScalingStrategy.ALL_OR_NOTHING,
             [
                 {
                     "Instances": [
@@ -195,7 +196,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            True,
+            ScalingStrategy.ALL_OR_NOTHING,
             [
                 {
                     "Instances": [
@@ -281,7 +282,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            False,
+            ScalingStrategy.BEST_EFFORT,
             [
                 {
                     "Instances": [
@@ -330,7 +331,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            False,
+            ScalingStrategy.BEST_EFFORT,
             [
                 {
                     "Instances": [
@@ -387,7 +388,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            True,
+            ScalingStrategy.ALL_OR_NOTHING,
             [
                 {
                     "Instances": [
@@ -458,7 +459,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            True,
+            ScalingStrategy.ALL_OR_NOTHING,
             [
                 {
                     "Instances": [
@@ -560,7 +561,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            False,
+            ScalingStrategy.BEST_EFFORT,
             [
                 {
                     "Instances": [
@@ -609,7 +610,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            False,
+            ScalingStrategy.BEST_EFFORT,
             [
                 {
                     "Instances": [
@@ -655,7 +656,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 SimpleNamespace(name="queue1-st-c5xlarge-2", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
             ],
             3,
-            False,
+            ScalingStrategy.BEST_EFFORT,
             [
                 {
                     "Instances": [
@@ -765,7 +766,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
 def test_resume_launch(
     mock_node_lists,
     batch_size,
-    all_or_nothing_batch,
+    scaling_strategy,
     launched_instances,
     expected_failed_nodes,
     expected_update_node_calls,
@@ -779,7 +780,7 @@ def test_resume_launch(
     mock_resume_config = SimpleNamespace(
         launch_max_batch_size=batch_size,
         update_node_address=True,
-        all_or_nothing_batch=all_or_nothing_batch,
+        scaling_strategy=scaling_strategy,
         dynamodb_table="some_table",
         region="us-east-2",
         cluster_name="hit",
