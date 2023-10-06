@@ -2656,7 +2656,7 @@ class TestJobLevelScalingInstanceManager:
         assert_that(instance_manager.failed_nodes).is_empty()
 
     @pytest.mark.parametrize(
-        "job, launch_batch_size, assign_node_batch_size, update_node_address, scaling_strategy, "
+        "job, launch_batch_size, assign_node_batch_size, update_node_address, scaling_strategy, skip_launch, "
         "expected_nodes_to_launch, mock_instances_launched, initial_unused_launched_instances, "
         "expected_unused_launched_instances, expect_assign_instances_to_nodes_called, "
         "expect_assign_instances_to_nodes_failure, expected_failed_nodes",
@@ -2667,6 +2667,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.BEST_EFFORT,
+                False,
                 {"queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {},
                 {},
@@ -2681,6 +2682,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {},
                 {},
@@ -2695,6 +2697,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {
                     "queue4": {
@@ -2717,6 +2720,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {
                     "queue4": {
@@ -2744,6 +2748,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-1"]}, "queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {
                     "queue4": {
@@ -2779,6 +2784,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-1"]}, "queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {},
                 {},
@@ -2798,6 +2804,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-1"]}},
                 {},
                 {},
@@ -2817,6 +2824,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-1"]}},
                 {
                     "queue1": {
@@ -2844,6 +2852,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-1"]}, "queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {
                     "queue4": {
@@ -2894,6 +2903,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
                 {"queue1": {"c5xlarge": ["queue1-st-c5xlarge-1"]}, "queue4": {"c5xlarge": ["queue4-st-c5xlarge-1"]}},
                 {
                     "queue4": {
@@ -2940,6 +2950,7 @@ class TestJobLevelScalingInstanceManager:
         assign_node_batch_size,
         update_node_address,
         scaling_strategy,
+        skip_launch,
         expected_nodes_to_launch,
         mock_instances_launched,
         initial_unused_launched_instances,
@@ -2962,6 +2973,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             scaling_strategy=scaling_strategy,
+            skip_launch=skip_launch,
         )
 
         instance_manager._launch_instances.assert_called_once_with(
@@ -2969,6 +2981,7 @@ class TestJobLevelScalingInstanceManager:
             nodes_to_launch=expected_nodes_to_launch,
             launch_batch_size=launch_batch_size,
             scaling_strategy=scaling_strategy,
+            skip_launch=skip_launch,
         )
 
         assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
@@ -3383,9 +3396,9 @@ class TestJobLevelScalingInstanceManager:
             )
 
     @pytest.mark.parametrize(
-        "job_list, launch_batch_size, assign_node_batch_size, update_node_address, scaling_strategy",
+        "job_list, launch_batch_size, assign_node_batch_size, update_node_address, scaling_strategy, skip_launch",
         [
-            ([], 1, 2, True, False),
+            ([], 1, 2, True, False, False),
             (
                 [
                     SlurmResumeJob(
@@ -3399,6 +3412,7 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 True,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
             ),
             (
                 [
@@ -3419,6 +3433,7 @@ class TestJobLevelScalingInstanceManager:
                 1,
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
+                False,
             ),
         ],
     )
@@ -3431,6 +3446,7 @@ class TestJobLevelScalingInstanceManager:
         assign_node_batch_size,
         update_node_address,
         scaling_strategy,
+        skip_launch,
     ):
         # patch internal functions
         instance_manager._terminate_unassigned_launched_instances = mocker.MagicMock()
@@ -3445,6 +3461,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             scaling_strategy=scaling_strategy,
+            skip_launch=skip_launch,
         )
 
         if not job_list:
@@ -3458,6 +3475,7 @@ class TestJobLevelScalingInstanceManager:
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     scaling_strategy=scaling_strategy,
+                    skip_launch=skip_launch,
                 )
                 setup_logging_filter.return_value.__enter__.return_value.set_custom_value.assert_any_call(job.job_id)
             assert_that(
@@ -4103,11 +4121,12 @@ class TestJobLevelScalingInstanceManager:
         "scaling_strategy, "
         "unused_launched_instances, "
         "mock_launch_instances, "
-        "expected_unused_launched_instances",
+        "expected_unused_launched_instances, "
+        "expect_to_skip_job_level_launch",
         [
             (
                 [],
-                [],
+                ["queue4-st-c5xlarge-1"],
                 1,
                 2,
                 False,
@@ -4115,6 +4134,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 {},
                 {},
+                True,
             ),
             (
                 [],
@@ -4142,6 +4162,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                True,
             ),
             (
                 [],
@@ -4169,6 +4190,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                False,
             ),
             (
                 [],
@@ -4207,6 +4229,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     }
                 },
+                False,
             ),
             (
                 [
@@ -4256,6 +4279,7 @@ class TestJobLevelScalingInstanceManager:
                         ]
                     },
                 },
+                False,
             ),
         ],
     )
@@ -4272,10 +4296,12 @@ class TestJobLevelScalingInstanceManager:
         unused_launched_instances,
         mock_launch_instances,
         expected_unused_launched_instances,
+        expect_to_skip_job_level_launch,
     ):
         # patch internal functions
         instance_manager._launch_instances = mocker.MagicMock(return_value=mock_launch_instances)
         instance_manager._scaling_for_jobs = mocker.MagicMock()
+
         instance_manager.unused_launched_instances = unused_launched_instances
 
         instance_manager._scaling_for_jobs_multi_node(
@@ -4293,6 +4319,7 @@ class TestJobLevelScalingInstanceManager:
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             scaling_strategy=scaling_strategy,
+            skip_launch=expect_to_skip_job_level_launch,
         )
 
         assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)

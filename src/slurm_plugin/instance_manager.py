@@ -575,6 +575,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         assign_node_batch_size: int,
         update_node_address: bool,
         scaling_strategy: ScalingStrategy,
+        skip_launch: bool = False,
     ) -> None:
         """Scaling for job list."""
         # Setup custom logging filter
@@ -592,6 +593,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     assign_node_batch_size=assign_node_batch_size,
                     update_node_address=update_node_address,
                     scaling_strategy=scaling_strategy,
+                    skip_launch=skip_launch,
                 )
 
     def _terminate_unassigned_launched_instances(self, terminate_batch_size):
@@ -695,12 +697,18 @@ class JobLevelScalingInstanceManager(InstanceManager):
             ),
         )
 
+        # Avoid a job level launch if scaling strategy is BEST_EFFORT
+        # The scale all-in launch has been performed already hence from this point we want to skip the extra
+        # job level launch of instances for jobs that are unable to get the needed capacity from the all-in scaling
+        skip_launch = scaling_strategy == ScalingStrategy.BEST_EFFORT
+
         self._scaling_for_jobs(
             job_list=job_list,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             scaling_strategy=scaling_strategy,
+            skip_launch=skip_launch,
         )
 
     def _get_slurm_resume_data(self, slurm_resume: Dict[str, any], node_list: List[str]) -> SlurmResumeData:
@@ -838,6 +846,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         scaling_strategy: ScalingStrategy = ScalingStrategy.ALL_OR_NOTHING,
         node_list: List[str] = None,
         job: SlurmResumeJob = None,
+        skip_launch: bool = False,
     ):
         """Launch requested EC2 instances for nodes."""
         nodes_resume_mapping = self._parse_nodes_resume_list(node_list=node_list)
@@ -859,6 +868,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             nodes_to_launch=nodes_resume_mapping,
             launch_batch_size=launch_batch_size,
             scaling_strategy=scaling_strategy,
+            skip_launch=skip_launch,
         )
         # instances launched, e.g.
         # {
@@ -873,6 +883,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 q_cr_instances_launched_length = len(instances_launched.get(queue, {}).get(compute_resource, []))
                 successful_launched_nodes += slurm_node_list[:q_cr_instances_launched_length]
                 failed_launch_nodes += slurm_node_list[q_cr_instances_launched_length:]
+
         if scaling_strategy == ScalingStrategy.ALL_OR_NOTHING:
             self.all_or_nothing_node_assignment(
                 assign_node_batch_size=assign_node_batch_size,
@@ -994,8 +1005,10 @@ class JobLevelScalingInstanceManager(InstanceManager):
         launch_batch_size: int,
         scaling_strategy: ScalingStrategy,
         job: SlurmResumeJob = None,
+        skip_launch: bool = False,
     ):
         instances_launched = defaultdict(lambda: defaultdict(list))
+
         for queue, compute_resources in nodes_to_launch.items():
             for compute_resource, slurm_node_list in compute_resources.items():
                 slurm_node_list = self._resize_slurm_node_list(
@@ -1005,7 +1018,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     slurm_node_list=slurm_node_list,
                 )
 
-                if slurm_node_list:
+                if slurm_node_list and not skip_launch:
                     logger.info(
                         "Launching %s instances for nodes %s",
                         scaling_strategy,
