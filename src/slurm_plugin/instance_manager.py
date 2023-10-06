@@ -884,7 +884,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 successful_launched_nodes += slurm_node_list[:q_cr_instances_launched_length]
                 failed_launch_nodes += slurm_node_list[q_cr_instances_launched_length:]
 
-        if scaling_strategy == ScalingStrategy.ALL_OR_NOTHING:
+        if scaling_strategy in [ScalingStrategy.ALL_OR_NOTHING, ScalingStrategy.GREEDY_ALL_OR_NOTHING]:
             self.all_or_nothing_node_assignment(
                 assign_node_batch_size=assign_node_batch_size,
                 instances_launched=instances_launched,

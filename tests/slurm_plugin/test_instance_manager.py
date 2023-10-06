@@ -2996,6 +2996,35 @@ class TestJobLevelScalingInstanceManager:
             assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
     @pytest.mark.parametrize(
+        "scaling_strategy, expect_all_or_nothing_node_assignment, expect_best_effort_node_assignment",
+        [
+            (ScalingStrategy.BEST_EFFORT, False, True),
+            (ScalingStrategy.ALL_OR_NOTHING, True, False),
+            (ScalingStrategy.GREEDY_ALL_OR_NOTHING, True, False),
+        ],
+    )
+    def test_node_assignment_by_scaling_strategy(
+        self,
+        mocker,
+        instance_manager,
+        scaling_strategy,
+        expect_all_or_nothing_node_assignment,
+        expect_best_effort_node_assignment,
+    ):
+        instance_manager.all_or_nothing_node_assignment = mocker.MagicMock()
+        instance_manager.best_effort_node_assignment = mocker.MagicMock()
+        instance_manager._add_instances_for_nodes(
+            node_list=[],
+            launch_batch_size=1,
+            assign_node_batch_size=2,
+            scaling_strategy=scaling_strategy,
+        )
+        if expect_all_or_nothing_node_assignment:
+            instance_manager.all_or_nothing_node_assignment.assert_called_once()
+        if expect_best_effort_node_assignment:
+            instance_manager.best_effort_node_assignment.assert_called_once()
+
+    @pytest.mark.parametrize(
         "job, nodes_to_launch, launch_batch_size, unused_launched_instances, launched_instances, "
         "expected_instances_launched, expected_failed_nodes",
         [

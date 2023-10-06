@@ -38,6 +38,7 @@ ComputeInstanceDescriptor = TypedDict(
 class ScalingStrategy(Enum):
     ALL_OR_NOTHING = "all-or-nothing"
     BEST_EFFORT = "best-effort"
+    GREEDY_ALL_OR_NOTHING = "greedy-all-or-nothing"
 
     @classmethod
     def _missing_(cls, strategy):
