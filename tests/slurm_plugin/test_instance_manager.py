@@ -3021,8 +3021,10 @@ class TestJobLevelScalingInstanceManager:
         )
         if expect_all_or_nothing_node_assignment:
             instance_manager.all_or_nothing_node_assignment.assert_called_once()
+            instance_manager.best_effort_node_assignment.assert_not_called()
         if expect_best_effort_node_assignment:
             instance_manager.best_effort_node_assignment.assert_called_once()
+            instance_manager.all_or_nothing_node_assignment.assert_not_called()
 
     @pytest.mark.parametrize(
         "job, nodes_to_launch, launch_batch_size, unused_launched_instances, launched_instances, "
@@ -4160,6 +4162,30 @@ class TestJobLevelScalingInstanceManager:
                 2,
                 False,
                 ScalingStrategy.BEST_EFFORT,
+                {},
+                {},
+                {},
+                True,
+            ),
+            (
+                [],
+                ["queue4-st-c5xlarge-1"],
+                1,
+                2,
+                False,
+                ScalingStrategy.ALL_OR_NOTHING,
+                {},
+                {},
+                {},
+                False,
+            ),
+            (
+                [],
+                ["queue4-st-c5xlarge-1"],
+                1,
+                2,
+                False,
+                ScalingStrategy.GREEDY_ALL_OR_NOTHING,
                 {},
                 {},
                 {},
