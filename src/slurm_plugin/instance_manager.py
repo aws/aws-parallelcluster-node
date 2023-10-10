@@ -885,6 +885,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 failed_launch_nodes += slurm_node_list[q_cr_instances_launched_length:]
 
         if scaling_strategy in [ScalingStrategy.ALL_OR_NOTHING, ScalingStrategy.GREEDY_ALL_OR_NOTHING]:
+            logger.info("Assigning nodes with all-or-nothing strategy")
             self.all_or_nothing_node_assignment(
                 assign_node_batch_size=assign_node_batch_size,
                 instances_launched=instances_launched,
@@ -894,6 +895,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 update_node_address=update_node_address,
             )
         else:
+            logger.info("Assigning nodes with best-effort strategy")
             self.best_effort_node_assignment(
                 assign_node_batch_size=assign_node_batch_size,
                 failed_launch_nodes=failed_launch_nodes,
@@ -1021,7 +1023,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 if slurm_node_list and not skip_launch:
                     logger.info(
                         "Launching %s instances for nodes %s",
-                        scaling_strategy,
+                        "all-or-nothing" if scaling_strategy == ScalingStrategy.ALL_OR_NOTHING else "best-effort",
                         print_with_count(slurm_node_list),
                     )
                     # At instance launch level, the various scaling strategies can be grouped based on the actual
