@@ -697,10 +697,10 @@ class JobLevelScalingInstanceManager(InstanceManager):
             ),
         )
 
-        # Avoid a job level launch if scaling strategy is BEST_EFFORT
+        # Avoid a job level launch if scaling strategy is BEST_EFFORT or GREEDY_ALL_OR_NOTHING
         # The scale all-in launch has been performed already hence from this point we want to skip the extra
         # job level launch of instances for jobs that are unable to get the needed capacity from the all-in scaling
-        skip_launch = scaling_strategy == ScalingStrategy.BEST_EFFORT
+        skip_launch = scaling_strategy in [ScalingStrategy.BEST_EFFORT, ScalingStrategy.GREEDY_ALL_OR_NOTHING]
 
         self._scaling_for_jobs(
             job_list=job_list,

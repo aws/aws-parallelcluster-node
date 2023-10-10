@@ -47,7 +47,7 @@ class ScalingStrategy(Enum):
         for member in cls:
             if member.value == _strategy:
                 return member
-        return cls.ALL_OR_NOTHING  # Default to All-Or-Nothing
+        return cls.ALL_OR_NOTHING  # Default to all-or-nothing
 
     def __str__(self):
         return str(self.value)
