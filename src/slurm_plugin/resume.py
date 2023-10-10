@@ -89,9 +89,6 @@ class SlurmResumeConfig:
         self.update_node_address = config.getboolean(
             "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
         )
-        self.all_or_nothing_batch = config.getboolean(
-            "slurm_resume", "all_or_nothing_batch", fallback=self.DEFAULTS.get("all_or_nothing_batch")
-        )
         self.scaling_strategy = config.get(
             "slurm_resume", "scaling_strategy", fallback=self.DEFAULTS.get("scaling_strategy")
         )  # TODO: Check if it's a valid scaling strategy before calling expensive downstream APIs
