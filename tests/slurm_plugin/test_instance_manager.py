@@ -1363,13 +1363,7 @@ class TestInstanceManager:
                 scaling_strategy=scaling_strategy,
             )
         else:
-            instance_manager._add_instances_for_nodes.assert_called_once_with(
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                assign_node_batch_size=assign_node_batch_size,
-                update_node_address=update_node_address,
-                scaling_strategy=scaling_strategy,
-            )
+            instance_manager._add_instances_for_resume_file.assert_not_called()
 
 
 class TestJobLevelScalingInstanceManager:
@@ -1470,13 +1464,6 @@ class TestJobLevelScalingInstanceManager:
 
         if not slurm_resume:
             instance_manager._add_instances_for_resume_file.assert_not_called()
-            instance_manager._add_instances_for_nodes.assert_called_with(
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                assign_node_batch_size=assign_node_batch_size,
-                update_node_address=update_node_address,
-                scaling_strategy=scaling_strategy,
-            )
             assert_that(caplog.text).contains(
                 "Not possible to perform job level scaling " "because Slurm resume file content is empty."
             )
