@@ -555,15 +555,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
         else:
             logger.error(
                 "Not possible to perform job level scaling because Slurm resume file content is empty. "
-                "Falling back to node list scaling"
-            )
-            logger.info("The nodes_resume list from Slurm Resume Program is %s", print_with_count(node_list))
-            self._add_instances_for_nodes(
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                assign_node_batch_size=assign_node_batch_size,
-                update_node_address=update_node_address,
-                scaling_strategy=scaling_strategy,
+                "No scaling actions will be taken."
             )
 
         self._terminate_unassigned_launched_instances(terminate_batch_size)
