@@ -1486,12 +1486,9 @@ class TestJobLevelScalingInstanceManager:
             "assign_node_batch_size",
             "update_node_address",
             "scaling_strategy",
-            "expected_jobs_multi_node_oversubscribe",
-            "expected_multi_node_oversubscribe",
-            "expected_jobs_single_node_oversubscribe",
-            "expected_jobs_multi_node_no_oversubscribe",
-            "expected_multi_node_no_oversubscribe",
-            "expected_jobs_single_node_no_oversubscribe",
+            "expected_jobs_multi_node",
+            "expected_multi_node",
+            "expected_jobs_single_node",
         ),
         [
             (
@@ -1555,21 +1552,6 @@ class TestJobLevelScalingInstanceManager:
                         oversubscribe="YES",
                     ),
                     SlurmResumeJob(
-                        job_id=140818,
-                        nodes_alloc="queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
-                        nodes_resume="queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
-                        oversubscribe="OK",
-                    ),
-                ],
-                [
-                    "queue1-st-c5xlarge-1",
-                    "queue1-st-c5xlarge-2",
-                    "queue1-st-c5xlarge-3",
-                    "queue4-st-c5xlarge-11",
-                ],
-                [],
-                [
-                    SlurmResumeJob(
                         job_id=140815,
                         nodes_alloc="queue2-st-c5xlarge-[1-3]",
                         nodes_resume="queue2-st-c5xlarge-[1-3]",
@@ -1581,14 +1563,24 @@ class TestJobLevelScalingInstanceManager:
                         nodes_resume="queue3-st-c5xlarge-[7-9]",
                         oversubscribe="NO",
                     ),
+                    SlurmResumeJob(
+                        job_id=140818,
+                        nodes_alloc="queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        nodes_resume="queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        oversubscribe="OK",
+                    ),
                 ],
                 [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
                     "queue2-st-c5xlarge-1",
                     "queue2-st-c5xlarge-2",
                     "queue2-st-c5xlarge-3",
                     "queue3-st-c5xlarge-7",
                     "queue3-st-c5xlarge-8",
                     "queue3-st-c5xlarge-9",
+                    "queue4-st-c5xlarge-11",
                 ],
                 [],
             ),
@@ -1627,9 +1619,6 @@ class TestJobLevelScalingInstanceManager:
                     "queue1-st-c5xlarge-3",
                 ],
                 [],
-                [],
-                [],
-                [],
             ),
             (
                 {
@@ -1648,9 +1637,6 @@ class TestJobLevelScalingInstanceManager:
                 28,
                 True,
                 ScalingStrategy.BEST_EFFORT,
-                [],
-                [],
-                [],
                 [],
                 [],
                 [
@@ -1696,16 +1682,6 @@ class TestJobLevelScalingInstanceManager:
                 28,
                 True,
                 ScalingStrategy.BEST_EFFORT,
-                [],
-                [],
-                [
-                    SlurmResumeJob(
-                        job_id=140816,
-                        nodes_alloc="queue3-st-c5xlarge-1",
-                        nodes_resume="queue3-st-c5xlarge-1",
-                        oversubscribe="YES",
-                    ),
-                ],
                 [
                     SlurmResumeJob(
                         job_id=140815,
@@ -1722,6 +1698,12 @@ class TestJobLevelScalingInstanceManager:
                         nodes_resume="queue1-st-c5xlarge-1",
                         oversubscribe="NO",
                     ),
+                    SlurmResumeJob(
+                        job_id=140816,
+                        nodes_alloc="queue3-st-c5xlarge-1",
+                        nodes_resume="queue3-st-c5xlarge-1",
+                        oversubscribe="YES",
+                    ),
                 ],
             ),
         ],
@@ -1734,12 +1716,9 @@ class TestJobLevelScalingInstanceManager:
         assign_node_batch_size,
         update_node_address,
         scaling_strategy,
-        expected_jobs_multi_node_oversubscribe,
-        expected_multi_node_oversubscribe,
-        expected_jobs_single_node_oversubscribe,
-        expected_jobs_multi_node_no_oversubscribe,
-        expected_multi_node_no_oversubscribe,
-        expected_jobs_single_node_no_oversubscribe,
+        expected_jobs_multi_node,
+        expected_multi_node,
+        expected_jobs_single_node,
         instance_manager,
         mocker,
     ):
@@ -1758,15 +1737,15 @@ class TestJobLevelScalingInstanceManager:
         )
 
         instance_manager._scaling_for_jobs_single_node.assert_any_call(
-            job_list=expected_jobs_single_node_no_oversubscribe + expected_jobs_single_node_oversubscribe,
+            job_list=expected_jobs_single_node,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
             scaling_strategy=scaling_strategy,
         )
         instance_manager._scaling_for_jobs_multi_node.assert_any_call(
-            job_list=expected_jobs_multi_node_no_oversubscribe + expected_jobs_multi_node_oversubscribe,
-            node_list=expected_multi_node_no_oversubscribe + expected_multi_node_oversubscribe,
+            job_list=expected_jobs_multi_node,
+            node_list=expected_multi_node,
             launch_batch_size=launch_batch_size,
             assign_node_batch_size=assign_node_batch_size,
             update_node_address=update_node_address,
@@ -1777,10 +1756,8 @@ class TestJobLevelScalingInstanceManager:
         assert_that(instance_manager._scaling_for_jobs_multi_node.call_count).is_equal_to(1)
 
     @pytest.mark.parametrize(
-        "slurm_resume, node_list, expected_single_node_oversubscribe, expected_multi_node_oversubscribe, "
-        "expected_jobs_single_node_oversubscribe, expected_jobs_multi_node_oversubscribe, "
-        "expected_single_node_no_oversubscribe, expected_multi_node_no_oversubscribe, "
-        "expected_jobs_single_node_no_oversubscribe, expected_jobs_multi_node_no_oversubscribe, "
+        "slurm_resume, node_list, expected_single_node, expected_multi_node, "
+        "expected_jobs_single_node, expected_jobs_multi_node, "
         "expected_nodes_difference",
         [
             (
@@ -1852,24 +1829,12 @@ class TestJobLevelScalingInstanceManager:
                     "queue5-st-c5xlarge-1",
                     "queue6-st-c5xlarge-1",
                 ],
-                ["queue6-st-c5xlarge-1"],
-                ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue4-st-c5xlarge-11"],
+                ["queue5-st-c5xlarge-1", "queue6-st-c5xlarge-1"],
                 [
-                    SlurmResumeJob(140821, "queue6-st-c5xlarge-[1-2]", "queue6-st-c5xlarge-1", "YES"),
-                ],
-                [
-                    SlurmResumeJob(140814, "queue1-st-c5xlarge-[1-4]", "queue1-st-c5xlarge-[1-3]", "YES"),
-                    SlurmResumeJob(
-                        140818,
-                        "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
-                        "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
-                        "OK",
-                    ),
-                ],
-                [
-                    "queue5-st-c5xlarge-1",
-                ],
-                [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                    "queue4-st-c5xlarge-11",
                     "queue2-st-c5xlarge-1",
                     "queue2-st-c5xlarge-2",
                     "queue2-st-c5xlarge-3",
@@ -1880,10 +1845,18 @@ class TestJobLevelScalingInstanceManager:
                 [
                     SlurmResumeJob(140819, "queue4-st-c5xlarge-1", "queue4-st-c5xlarge-1", "NO"),
                     SlurmResumeJob(140820, "queue5-st-c5xlarge-[1-2]", "queue5-st-c5xlarge-1", "NO"),
+                    SlurmResumeJob(140821, "queue6-st-c5xlarge-[1-2]", "queue6-st-c5xlarge-1", "YES"),
                 ],
                 [
+                    SlurmResumeJob(140814, "queue1-st-c5xlarge-[1-4]", "queue1-st-c5xlarge-[1-3]", "YES"),
                     SlurmResumeJob(140815, "queue2-st-c5xlarge-[1-3]", "queue2-st-c5xlarge-[1-3]", "NO"),
                     SlurmResumeJob(140816, "queue3-st-c5xlarge-[7-10]", "queue3-st-c5xlarge-[7-9]", "NO"),
+                    SlurmResumeJob(
+                        140818,
+                        "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        "queue1-st-c5xlarge-[1-3], queue4-st-c5xlarge-11",
+                        "OK",
+                    ),
                 ],
                 ["broken"],
             ),
@@ -1893,14 +1866,10 @@ class TestJobLevelScalingInstanceManager:
         self,
         slurm_resume,
         node_list,
-        expected_single_node_oversubscribe,
-        expected_multi_node_oversubscribe,
-        expected_jobs_single_node_oversubscribe,
-        expected_jobs_multi_node_oversubscribe,
-        expected_single_node_no_oversubscribe,
-        expected_multi_node_no_oversubscribe,
-        expected_jobs_single_node_no_oversubscribe,
-        expected_jobs_multi_node_no_oversubscribe,
+        expected_single_node,
+        expected_multi_node,
+        expected_jobs_single_node,
+        expected_jobs_multi_node,
         instance_manager,
         expected_nodes_difference,
         mocker,
@@ -1908,18 +1877,10 @@ class TestJobLevelScalingInstanceManager:
     ):
         mocker.patch("slurm_plugin.instance_manager.get_nodes_info", autospec=True)
         slurm_resume = instance_manager._get_slurm_resume_data(slurm_resume, node_list)
-        assert_that(slurm_resume.single_node_oversubscribe).contains(*expected_single_node_oversubscribe)
-        assert_that(slurm_resume.multi_node_oversubscribe).contains(*expected_multi_node_oversubscribe)
-        assert_that(slurm_resume.jobs_single_node_oversubscribe).is_equal_to(expected_jobs_single_node_oversubscribe)
-        assert_that(slurm_resume.jobs_multi_node_oversubscribe).is_equal_to(expected_jobs_multi_node_oversubscribe)
-        assert_that(slurm_resume.single_node_no_oversubscribe).contains(*expected_single_node_no_oversubscribe)
-        assert_that(slurm_resume.multi_node_no_oversubscribe).contains(*expected_multi_node_no_oversubscribe)
-        assert_that(slurm_resume.jobs_single_node_no_oversubscribe).is_equal_to(
-            expected_jobs_single_node_no_oversubscribe
-        )
-        assert_that(slurm_resume.jobs_multi_node_no_oversubscribe).is_equal_to(
-            expected_jobs_multi_node_no_oversubscribe
-        )
+        assert_that(slurm_resume.single_node).contains(*expected_single_node)
+        assert_that(slurm_resume.multi_node).contains(*expected_multi_node)
+        assert_that(slurm_resume.jobs_single_node).is_equal_to(expected_jobs_single_node)
+        assert_that(slurm_resume.jobs_multi_node).is_equal_to(expected_jobs_multi_node)
         if expected_nodes_difference:
             assert_that(caplog.text).contains(
                 "Discarding NodeNames because of mismatch in Slurm Resume File Vs Nodes passed to Resume Program: "

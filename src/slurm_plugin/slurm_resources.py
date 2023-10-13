@@ -150,22 +150,14 @@ class SlurmResumeJob(SlurmJob):
 
 @dataclass
 class SlurmResumeData:
-    # List of exclusive job allocated to 1 node each
-    jobs_single_node_no_oversubscribe: List[SlurmResumeJob]
-    # List of exclusive job allocated to more than 1 node each
-    jobs_multi_node_no_oversubscribe: List[SlurmResumeJob]
-    # List of non-exclusive job allocated to 1 node each
-    jobs_single_node_oversubscribe: List[SlurmResumeJob]
-    # List of non-exclusive job allocated to more than 1 node each
-    jobs_multi_node_oversubscribe: List[SlurmResumeJob]
-    # List of node allocated to single node exclusive job
-    single_node_no_oversubscribe: List[str]
-    # List of node allocated to multiple node exclusive job
-    multi_node_no_oversubscribe: List[str]
-    # List of node allocated to single node non-exclusive job
-    single_node_oversubscribe: List[str]
-    # List of node allocated to multiple node non-exclusive job
-    multi_node_oversubscribe: List[str]
+    # List of job allocated to 1 node each
+    jobs_single_node: List[SlurmResumeJob]
+    # List of job allocated to more than 1 node each
+    jobs_multi_node: List[SlurmResumeJob]
+    # List of node allocated to single node job
+    single_node: List[str]
+    # List of node allocated to multiple node job
+    multi_node: List[str]
 
 
 class SlurmNode(metaclass=ABCMeta):
