@@ -129,6 +129,49 @@ def test_is_static_node(nodename, expected_is_static):
             False,
         ),
         (
+            "NodeName=queue1-st-crt2micro-1\n"
+            "NodeAddr=10.0.236.182\n"
+            "NodeHostName=queue1-st-crt2micro-1\n"
+            "State=IDLE+CLOUD+MAINTENANCE+RESERVED\n"
+            "Partitions=queue1\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "LastBusyTime=2023-10-13T10:13:20\n"
+            "ReservationName=root_1\n"
+            "######\n"
+            "NodeName=queuep4d-dy-crp4d-1\n"
+            "NodeAddr=queuep4d-dy-crp4d-1\n"
+            "NodeHostName=queuep4d-dy-crp4d-1\n"
+            "State=DOWN+CLOUD+MAINTENANCE+POWERED_DOWN+RESERVED\n"
+            "Partitions=queuep4d\n"
+            "SlurmdStartTime=None\n"
+            "LastBusyTime=Unknown\n"
+            "Reason=test [slurm@2023-10-20T07:18:35]\n"
+            "ReservationName=root_6\n"
+            "######\n",
+            [
+                StaticNode(
+                    "queue1-st-crt2micro-1",
+                    "10.0.236.182",
+                    "queue1-st-crt2micro-1",
+                    "IDLE+CLOUD+MAINTENANCE+RESERVED",
+                    "queue1",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
+                    lastbusytime=datetime(2023, 10, 13, 10, 13, 20).astimezone(tz=timezone.utc),
+                    reservation_name="root_1",
+                ),
+                DynamicNode(
+                    "queuep4d-dy-crp4d-1",
+                    "queuep4d-dy-crp4d-1",
+                    "queuep4d-dy-crp4d-1",
+                    "DOWN+CLOUD+MAINTENANCE+POWERED_DOWN+RESERVED",
+                    "queuep4d",
+                    reservation_name="root_6",
+                    reason="test [slurm@2023-10-20T07:18:35]",
+                ),
+            ],
+            False,
+        ),
+        (
             "NodeName=multiple-dy-c5xlarge-3\n"
             "NodeAddr=multiple-dy-c5xlarge-3\n"
             "NodeHostName=multiple-dy-c5xlarge-3\n"
@@ -1044,7 +1087,25 @@ def test_get_nodes_info_argument_validation(
                 "   CurrentWatts=0 AveWatts=0\n"
                 "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
                 "   Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:40]\n"
-                "   Comment=some comment \n"
+                "   Comment=some comment \n\n"
+                "NodeName=queue1-st-crt2micro-1 Arch=x86_64 CoresPerSocket=1\n"
+                "   CPUAlloc=0 CPUEfctv=1 CPUTot=1 CPULoad=0.00\n"
+                "   AvailableFeatures=static,t2.micro,crt2micro\n"
+                "   ActiveFeatures=static,t2.micro,crt2micro\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=10.0.236.182 NodeHostName=queue1-st-crt2micro-1 Version=23.02.4\n"
+                "   OS=Linux 5.10.186-179.751.amzn2.x86_64 #1 SMP Tue Aug 1 20:51:38 UTC 2023\n"
+                "   RealMemory=972 AllocMem=0 FreeMem=184 Sockets=1 Boards=1\n"
+                "   State=IDLE+CLOUD+MAINTENANCE+RESERVED ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   Partitions=queue1\n"
+                "   BootTime=2023-10-13T10:09:58 SlurmdStartTime=2023-10-13T10:13:17\n"
+                "   LastBusyTime=2023-10-13T10:13:20 ResumeAfterTime=None\n"
+                "   CfgTRES=cpu=1,mem=972M,billing=1\n"
+                "   AllocTRES=\n"
+                "   CapWatts=n/a\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   ExtSensorsJoules=n/s ExtSensorsWatts=0 ExtSensorsTemp=n/s\n"
+                "   ReservationName=root_5\n"
             ),
             (
                 "NodeName=queue1-st-compute-resource-1-1\nNodeAddr=192.168.123.191\n"
@@ -1057,6 +1118,10 @@ def test_get_nodes_info_argument_validation(
                 "SlurmdStartTime=2023-01-26T09:57:16\n"
                 "LastBusyTime=Unknown\n"
                 "Reason=Reboot ASAP : reboot issued [slurm@2023-01-26T10:11:40]\n######\n"
+                "NodeName=queue1-st-crt2micro-1\nNodeAddr=10.0.236.182\n"
+                "NodeHostName=queue1-st-crt2micro-1\nState=IDLE+CLOUD+MAINTENANCE+RESERVED\nPartitions=queue1\n"
+                "SlurmdStartTime=2023-10-13T10:13:17\n"
+                "LastBusyTime=2023-10-13T10:13:20\nReservationName=root_5######\n"
             ),
         )
     ],
