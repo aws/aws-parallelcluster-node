@@ -63,7 +63,7 @@ SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 SCONTROL_OUTPUT_AWK_PARSER = (
     'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
     + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
-    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(Reason=.*)|(######)'"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(ReservationName=\\S+)|(Reason=.*)|(######)'"
 )
 
 # Set default timeouts for running different slurm commands.
@@ -389,8 +389,8 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     """Parse slurm node info into SlurmNode objects."""
     # [ec2-user@ip-10-0-0-58 ~]$ /opt/slurm/bin/scontrol show nodes compute-dy-c5xlarge-[1-3],compute-dy-c5xlarge-50001\
     # | awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' | grep -oP "^(NodeName=\S+)|(NodeAddr=\S+)
-    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(LastBusyTime=\\S+)|(Reason=.*)\
-    # |(######)"
+    # |(NodeHostName=\S+)|(?<!Next)(State=\S+)|(Partitions=\S+)|(SlurmdStartTime=\S+)|(LastBusyTime=\\S+)
+    # |(ReservationName=\S+)|(Reason=.*)|(######)"
     # NodeName=compute-dy-c5xlarge-1
     # NodeAddr=1.2.3.4
     # NodeHostName=compute-dy-c5xlarge-1
@@ -398,6 +398,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
     # Partitions=compute,compute2
     # SlurmdStartTime=2023-01-26T09:57:15
     # Reason=some reason
+    # ReservationName=root_1
     # ######
     # NodeName=compute-dy-c5xlarge-2
     # NodeAddr=1.2.3.4
@@ -430,6 +431,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
         "Reason": "reason",
         "SlurmdStartTime": "slurmdstarttime",
         "LastBusyTime": "lastbusytime",
+        "ReservationName": "reservation",
     }
 
     date_fields = ["SlurmdStartTime", "LastBusyTime"]
