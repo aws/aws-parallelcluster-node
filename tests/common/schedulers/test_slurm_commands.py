@@ -9,6 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import os.path
+import platform
 from datetime import datetime, timezone
 from typing import Dict, List
 from unittest.mock import call, patch
@@ -1062,8 +1063,13 @@ def test_get_nodes_info_argument_validation(
 )
 def test_scontrol_output_awk_parser(scontrol_output, expected_parsed_output):
     # This test makes use of grep option -P that is only supported by GNU grep.
-    # So the test is expected to fail on MacOS shipping BSD grep.
-    parsed_output = check_command_output(f'echo "{scontrol_output}" | {SCONTROL_OUTPUT_AWK_PARSER}', shell=True)
+    # To have the test passing on MacOS you have to install GNU Grep: brew install grep.
+    scontrol_awk_parser = (
+        SCONTROL_OUTPUT_AWK_PARSER
+        if platform.system() != "Darwin"
+        else SCONTROL_OUTPUT_AWK_PARSER.replace("grep", "ggrep")
+    )
+    parsed_output = check_command_output(f'echo "{scontrol_output}" | {scontrol_awk_parser}', shell=True)
     assert_that(parsed_output).is_equal_to(expected_parsed_output)
 
 
