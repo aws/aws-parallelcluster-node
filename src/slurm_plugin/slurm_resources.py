@@ -187,6 +187,9 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_REBOOT_REQUESTED_STATE = "REBOOT_REQUESTED"
     SLURM_SCONTROL_REBOOT_ISSUED_STATE = "REBOOT_ISSUED"
     SLURM_SCONTROL_INVALID_REGISTRATION_STATE = "INVALID_REG"
+    # Reservation related state
+    SLURM_SCONTROL_RESERVED_STATE = "RESERVED"
+    SLURM_SCONTROL_MAINTENANCE_STATE = "MAINTENANCE"
 
     SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_REASON = re.compile(r"Not responding \[slurm@.+\]")
 
@@ -294,6 +297,14 @@ class SlurmNode(metaclass=ABCMeta):
     def is_up(self):
         """Check if slurm node is in a healthy state."""
         return not self._is_drain() and not self.is_down() and not self.is_powering_down()
+
+    def _is_reserved(self):
+        """Check if slurm node is reserved."""
+        return self.SLURM_SCONTROL_RESERVED_STATE in self.states
+
+    def is_in_maintenance(self):
+        """Check if slurm node is reserved and in maintenance."""
+        return self.SLURM_SCONTROL_MAINTENANCE_STATE in self.states and self._is_reserved()
 
     def is_powering_up(self):
         """Check if slurm node is in powering up state."""

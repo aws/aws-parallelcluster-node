@@ -292,6 +292,65 @@ def test_slurm_node_is_up(node, expected_output):
     [
         (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), False),
         (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+            True,
+        ),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+MAINTENANCE+POWERED_DOWN+RESERVED",
+                "queue1",
+            ),
+            True,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+RESERVED", "queue1"),
+            True,
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "RESERVED", "queue1"), True),
+    ],
+)
+def test_slurm_node_is_reserved(node, expected_output):
+    assert_that(node._is_reserved()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), False),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+            True,
+        ),
+        (
+            StaticNode(
+                "queue1-st-c5xlarge-1",
+                "nodeip",
+                "nodehostname",
+                "DOWN+CLOUD+MAINTENANCE+POWERED_DOWN+RESERVED",
+                "queue1",
+            ),
+            True,
+        ),
+        (
+            DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+MAINTENANCE", "queue1"),
+            False,  # RESERVED is required as well
+        ),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MAINTENANCE", "queue1"), False),
+        (DynamicNode("queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MAINTENANCE+RESERVED", "queue1"), True),
+    ],
+)
+def test_slurm_node_is_in_maintenance(node, expected_output):
+    assert_that(node.is_in_maintenance()).is_equal_to(expected_output)
+
+
+@pytest.mark.parametrize(
+    "node, expected_output",
+    [
+        (StaticNode("queue1-st-c5xlarge-1", "nodeip", "nodehostname", "IDLE+CLOUD+POWER", "queue1"), False),
+        (
             DynamicNode(
                 "queue1-dy-c5xlarge-1", "nodeip", "nodehostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
             ),
