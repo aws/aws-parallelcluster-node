@@ -733,13 +733,32 @@ def test_handle_health_check(
     "current_replacing_nodes, slurm_nodes, expected_replacing_nodes",
     [
         (
-            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-4"},
+            {
+                "queue1-st-c5xlarge-1",
+                "queue1-st-c5xlarge-2",
+                "queue1-st-c5xlarge-3",
+                "queue1-st-c5xlarge-4",
+                "queue1-st-c5xlarge-5",
+                "queue1-st-c5xlarge-6",
+                "queue1-st-c5xlarge-13",
+            },
             [
+                # nodes in the current replacement list
                 StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
                 StaticNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
-                StaticNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-4", "ip", "hostname", "IDLE+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip", "hostname", "DOWN+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-5", "ip", "hostname", "IDLE+CLOUD+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-6", "ip", "hostname", "DOWN+CLOUD+RESERVED", "queue1"),
+                # nodes not in replacement list
+                StaticNode("queue1-st-c5xlarge-8", "ip", "hostname", "IDLE+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-7", "ip", "hostname", "DOWN+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-9", "ip", "hostname", "IDLE+CLOUD+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-10", "ip", "hostname", "DOWN+CLOUD+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-11", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-12", "ip", "hostname", "DOWN+CLOUD", "queue1"),
             ],
-            {"queue1-st-c5xlarge-2"},
+            {"queue1-st-c5xlarge-2", "queue1-st-c5xlarge-6"},
         )
     ],
     ids=["mixed"],
@@ -747,7 +766,7 @@ def test_handle_health_check(
 @pytest.mark.usefixtures(
     "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
 )
-def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes, expected_replacing_nodes, mocker):
+def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes, expected_replacing_nodes):
     mock_sync_config = SimpleNamespace(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
