@@ -735,9 +735,9 @@ def test_handle_health_check(
         (
             {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-4"},
             [
-                DynamicNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
-                DynamicNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
-                DynamicNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD", "queue1"),
             ],
             {"queue1-st-c5xlarge-2"},
         )
