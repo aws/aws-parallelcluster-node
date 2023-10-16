@@ -68,6 +68,7 @@ SCONTROL_OUTPUT_AWK_PARSER = (
 
 # Set default timeouts for running different slurm commands.
 # These timeouts might be needed when running on large scale
+DEFAULT_SCONTROL_COMMAND_TIMEOUT = 30
 DEFAULT_GET_INFO_COMMAND_TIMEOUT = 30
 DEFAULT_UPDATE_COMMAND_TIMEOUT = 60
 
