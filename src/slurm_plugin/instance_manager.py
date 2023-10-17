@@ -963,7 +963,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
             self._update_failed_nodes(set(nodes_resume_list), "InsufficientInstanceCapacity", override=False)
 
-    def _launch_instances(
+    def _launch_instances(  # noqa: C901
         self,
         nodes_to_launch: Dict[str, any],
         launch_batch_size: int,
@@ -1016,6 +1016,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
                             update_failed_nodes_parameters = {"nodeset": set(batch_nodes)}
                             if isinstance(e, ClientError):
                                 update_failed_nodes_parameters["error_code"] = e.response.get("Error", {}).get("Code")
+                            elif isinstance(e, Exception) and hasattr(e, "code"):
+                                update_failed_nodes_parameters["error_code"] = e.code
                             self._update_failed_nodes(**update_failed_nodes_parameters)
 
                             if job and all_or_nothing_batch:
