@@ -71,6 +71,14 @@ class FleetManagerException(Exception):
         super().__init__(message)
 
 
+class LaunchInstancesError(Exception):
+    """Represent an error during the launch of EC2 instances"""
+
+    def __init__(self, code: str, message: str = ""):
+        self.code = code
+        super().__init__(message)
+
+
 class FleetManagerFactory:
     @staticmethod
     def get_manager(
@@ -361,7 +369,8 @@ class Ec2CreateFleetManager(FleetManager):
 
             instances = response.get("Instances", [])
             log_level = logging.WARNING if instances else logging.ERROR
-            for err in response.get("Errors", []):
+            err_list = response.get("Errors", [])
+            for err in err_list:
                 logger.log(
                     log_level,
                     "Error in CreateFleet request (%s): %s - %s",
@@ -375,6 +384,8 @@ class Ec2CreateFleetManager(FleetManager):
             if partial_instance_ids:
                 logger.error("Unable to retrieve instance info for instances: %s", partial_instance_ids)
 
+            if not instances and len(err_list) == 1:
+                raise LaunchInstancesError(err_list[0].get("ErrorCode"), err_list[0].get("ErrorMessage"))
             return {"Instances": instances}
         except ClientError as e:
             logger.error("Failed CreateFleet request: %s", e.response.get("ResponseMetadata", {}).get("RequestId"))
