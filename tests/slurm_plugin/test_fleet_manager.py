@@ -219,33 +219,35 @@ class TestEc2RunInstancesManager:
 
 # -------- Ec2CreateFleetManager ------
 
-test_fleet_exception_params = {
-    "LaunchTemplateConfigs": [
-        {
-            "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
-            "Overrides": [
-                {
-                    "InstanceRequirements": {
-                        "VCpuCount": {"Min": 2},
-                        "MemoryMiB": {"Min": 2048},
-                        "AllowedInstanceTypes": ["inf*"],
-                        "AcceleratorManufacturers": ["nvidia"],
-                    }
-                }
-            ],
-        }
-    ],
-    "SpotOptions": {
-        "AllocationStrategy": "capacity-optimized",
-        "SingleInstanceType": False,
-        "SingleAvailabilityZone": True,
-        "MinTargetCapacity": 1,
-    },
-    "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "spot"},
-    "Type": "instant",
-}
 
-test_fleet_spot_params = {
+class TestEc2CreateFleetManager:
+    test_fleet_exception_params = {
+        "LaunchTemplateConfigs": [
+            {
+                "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
+                "Overrides": [
+                    {
+                        "InstanceRequirements": {
+                            "VCpuCount": {"Min": 2},
+                            "MemoryMiB": {"Min": 2048},
+                            "AllowedInstanceTypes": ["inf*"],
+                            "AcceleratorManufacturers": ["nvidia"],
+                        }
+                    }
+                ],
+            }
+        ],
+        "SpotOptions": {
+            "AllocationStrategy": "capacity-optimized",
+            "SingleInstanceType": False,
+            "SingleAvailabilityZone": True,
+            "MinTargetCapacity": 1,
+        },
+        "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "spot"},
+        "Type": "instant",
+    }
+
+    test_fleet_spot_params = {
     "LaunchTemplateConfigs": [
         {
             "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
@@ -265,7 +267,7 @@ test_fleet_spot_params = {
     "Type": "instant",
 }
 
-test_on_demand_params = {
+    test_on_demand_params = {
     "LaunchTemplateConfigs": [
         {
             "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue2-fleet-ondemand", "Version": "$Latest"},
@@ -286,8 +288,6 @@ test_on_demand_params = {
     "Type": "instant",
 }
 
-
-class TestCreateFleetManager:
     @pytest.mark.parametrize(
         (
             "batch_size",
