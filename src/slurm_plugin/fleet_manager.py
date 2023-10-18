@@ -72,7 +72,7 @@ class FleetManagerException(Exception):
 
 
 class LaunchInstancesError(Exception):
-    """Represent an error during the launch of EC2 instances"""
+    """Represent an error during the launch of EC2 instances."""
 
     def __init__(self, code: str, message: str = ""):
         self.code = code
@@ -161,11 +161,11 @@ class FleetManager(ABC):
 
     @abstractmethod
     def _evaluate_launch_params(self, count):
-        pass
+        """Evaluate parameters to be passed to run_instances call."""
 
     @abstractmethod
     def _launch_instances(self, launch_params):
-        pass
+        """Launch a batch of ec2 instances."""
 
     def launch_ec2_instances(self, count, job_id=None):
         """
