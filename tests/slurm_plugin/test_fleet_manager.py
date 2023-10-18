@@ -16,7 +16,13 @@ from datetime import datetime, timezone
 import pytest
 from assertpy import assert_that
 from botocore.exceptions import ClientError
-from slurm_plugin.fleet_manager import Ec2CreateFleetManager, EC2Instance, Ec2RunInstancesManager, FleetManagerFactory
+from slurm_plugin.fleet_manager import (
+    Ec2CreateFleetManager,
+    EC2Instance,
+    Ec2RunInstancesManager,
+    FleetManagerFactory,
+    LaunchInstancesError,
+)
 
 from tests.common import FLEET_CONFIG, MockedBoto3Request
 
@@ -248,45 +254,48 @@ class TestEc2CreateFleetManager:
     }
 
     test_fleet_spot_params = {
-    "LaunchTemplateConfigs": [
-        {
-            "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
-            "Overrides": [
-                {"MaxPrice": "10", "InstanceType": "t2.medium", "SubnetId": "1234567"},
-                {"MaxPrice": "10", "InstanceType": "t2.large", "SubnetId": "1234567"},
-            ],
-        }
-    ],
-    "SpotOptions": {
-        "AllocationStrategy": "capacity-optimized",
-        "SingleInstanceType": False,
-        "SingleAvailabilityZone": True,
-        "MinTargetCapacity": 1,
-    },
-    "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "spot"},
-    "Type": "instant",
-}
+        "LaunchTemplateConfigs": [
+            {
+                "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue1-fleet-spot", "Version": "$Latest"},
+                "Overrides": [
+                    {"MaxPrice": "10", "InstanceType": "t2.medium", "SubnetId": "1234567"},
+                    {"MaxPrice": "10", "InstanceType": "t2.large", "SubnetId": "1234567"},
+                ],
+            }
+        ],
+        "SpotOptions": {
+            "AllocationStrategy": "capacity-optimized",
+            "SingleInstanceType": False,
+            "SingleAvailabilityZone": True,
+            "MinTargetCapacity": 1,
+        },
+        "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "spot"},
+        "Type": "instant",
+    }
 
     test_on_demand_params = {
-    "LaunchTemplateConfigs": [
-        {
-            "LaunchTemplateSpecification": {"LaunchTemplateName": "hit-queue2-fleet-ondemand", "Version": "$Latest"},
-            "Overrides": [
-                {"InstanceType": "t2.medium", "SubnetId": "1234567"},
-                {"InstanceType": "t2.large", "SubnetId": "1234567"},
-            ],
-        }
-    ],
-    "OnDemandOptions": {
-        "AllocationStrategy": "lowest-price",
-        "SingleInstanceType": False,
-        "SingleAvailabilityZone": True,
-        "MinTargetCapacity": 1,
-        "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
-    },
-    "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "on-demand"},
-    "Type": "instant",
-}
+        "LaunchTemplateConfigs": [
+            {
+                "LaunchTemplateSpecification": {
+                    "LaunchTemplateName": "hit-queue2-fleet-ondemand",
+                    "Version": "$Latest",
+                },
+                "Overrides": [
+                    {"InstanceType": "t2.medium", "SubnetId": "1234567"},
+                    {"InstanceType": "t2.large", "SubnetId": "1234567"},
+                ],
+            }
+        ],
+        "OnDemandOptions": {
+            "AllocationStrategy": "lowest-price",
+            "SingleInstanceType": False,
+            "SingleAvailabilityZone": True,
+            "MinTargetCapacity": 1,
+            "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
+        },
+        "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "on-demand"},
+        "Type": "instant",
+    }
 
     @pytest.mark.parametrize(
         (
@@ -594,8 +603,45 @@ class TestEc2CreateFleetManager:
                     }
                 ],
             ),
+            # create-fleet - throttling
+            (
+                test_on_demand_params,
+                [
+                    MockedBoto3Request(
+                        method="create_fleet",
+                        response={
+                            "Instances": [],
+                            "Errors": [
+                                {"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."}
+                            ],
+                            "ResponseMetadata": {"RequestId": "37633199-bcc6-4a88-89e3-89d859d76096"},
+                        },
+                        expected_params=test_on_demand_params,
+                    ),
+                ],
+                [],
+            ),
+            # create-fleet - multiple errors
+            (
+                test_on_demand_params,
+                [
+                    MockedBoto3Request(
+                        method="create_fleet",
+                        response={
+                            "Instances": [],
+                            "Errors": [
+                                {"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."},
+                                {"ErrorCode": "AnotherError", "ErrorMessage": "Something went wrong"},
+                            ],
+                            "ResponseMetadata": {"RequestId": "37633199-bcc6-4a88-89e3-89d859d76096"},
+                        },
+                        expected_params=test_on_demand_params,
+                    ),
+                ],
+                [],
+            ),
         ],
-        ids=["fleet_spot", "fleet_exception", "fleet_ondemand"],
+        ids=["fleet_spot", "fleet_exception", "fleet_ondemand", "fleet_throttling", "fleet_multiple_errors"],
     )
     def test_launch_instances(
         self,
@@ -617,6 +663,10 @@ class TestEc2CreateFleetManager:
             with pytest.raises(Exception) as e:
                 fleet_manager._launch_instances(launch_params)
                 assert isinstance(e, ClientError)
+        elif len(expected_assigned_nodes) == 0 and len(mocked_boto3_request[0].response.get("Errors")) == 1:
+            with pytest.raises(LaunchInstancesError) as e:
+                fleet_manager._launch_instances(launch_params)
+                assert isinstance(e, LaunchInstancesError)
         else:
             assigned_nodes = fleet_manager._launch_instances(launch_params)
             assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)

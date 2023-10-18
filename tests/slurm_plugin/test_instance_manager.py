@@ -23,7 +23,7 @@ import pytest
 import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.common import ScalingStrategy
-from slurm_plugin.fleet_manager import EC2Instance
+from slurm_plugin.fleet_manager import EC2Instance, LaunchInstancesError
 from slurm_plugin.instance_manager import (
     HostnameDnsStoreError,
     InstanceManager,
@@ -3251,6 +3251,76 @@ class TestJobLevelScalingInstanceManager:
                 [{"Instances": []}],
                 {},
                 {"InsufficientInstanceCapacity": {"queue4-st-c5xlarge-1"}},
+            ),
+            (
+                None,
+                {
+                    "queue1": {"c52xlarge": ["queue1-st-c52xlarge-1"]},
+                    "queue2": {"c5xlarge": ["queue2-st-c5xlarge-1"]},
+                    "queue3": {"p4d24xlarge": ["queue3-st-p4d24xlarge-1"]},
+                },
+                15,
+                {},
+                [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-12345",
+                                "InstanceType": "c5.2xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.1",
+                                "PrivateDnsName": "ip-1-0-0-1",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.1",
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                    LaunchInstancesError("throttling", "got throttled"),
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-123456",
+                                "InstanceType": "p4d24xlarge",
+                                "PrivateIpAddress": "ip.1.0.0.2",
+                                "PrivateDnsName": "ip-1-0-0-2",
+                                "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                "NetworkInterfaces": [
+                                    {
+                                        "Attachment": {
+                                            "DeviceIndex": 0,
+                                            "NetworkCardIndex": 0,
+                                        },
+                                        "PrivateIpAddress": "ip.1.0.0.2",
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                ],
+                {
+                    "queue1": {
+                        "c52xlarge": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    },
+                    "queue3": {
+                        "p4d24xlarge": [
+                            EC2Instance(
+                                "i-123456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    },
+                },
+                {"throttling": {"queue2-st-c5xlarge-1"}},
             ),
         ],
     )
