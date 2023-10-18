@@ -213,7 +213,7 @@ class SlurmNode(metaclass=ABCMeta):
         instance=None,
         slurmdstarttime: datetime = None,
         lastbusytime: datetime = None,
-        reservation_name=None,
+        reservation_name: str = None,
     ):
         """Initialize slurm node with attributes."""
         self.name = name
