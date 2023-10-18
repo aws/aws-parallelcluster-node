@@ -7,6 +7,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 ------
 
 **ENHANCEMENTS**
+- Add support for EC2 Capacity Blocks for ML.
 
 **CHANGES**
 - Perform job-level scaling by default for all jobs, using information in the `SLURM_RESUME_FILE`. Job-level scaling

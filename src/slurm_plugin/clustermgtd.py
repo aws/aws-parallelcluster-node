@@ -40,6 +40,7 @@ from common.schedulers.slurm_commands import (
 from common.time_utils import seconds
 from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up, wait_remaining_time
 from retrying import retry
+from slurm_plugin.capacity_block_manager import CapacityBlockManager
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
@@ -382,6 +383,7 @@ class ClusterManager:
         self._console_logger = None
         self._event_publisher = None
         self._partition_nodelist_mapping_instance = None
+        self._capacity_block_manager = None
         self.set_config(config)
 
     def set_config(self, config: ClustermgtdConfig):
@@ -406,6 +408,7 @@ class ClusterManager:
             self._compute_fleet_status_manager = ComputeFleetStatusManager()
             self._instance_manager = self._initialize_instance_manager(config)
             self._console_logger = self._initialize_console_logger(config)
+            self._capacity_block_manager = self._initialize_capacity_block_manager(config)
 
     def shutdown(self):
         if self._task_executor:
@@ -452,6 +455,12 @@ class ClusterManager:
             console_output_consumer=lambda name, instance_id, output: compute_logger.info(
                 "Console output for node %s (Instance Id %s):\r%s", name, instance_id, output
             ),
+        )
+
+    @staticmethod
+    def _initialize_capacity_block_manager(config):
+        return CapacityBlockManager(
+            region=config.region, fleet_config=config.fleet_config, boto3_config=config.boto3_config
         )
 
     def _update_compute_fleet_status(self, status):
@@ -820,7 +829,12 @@ class ClusterManager:
         except Exception as e:
             log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
 
-        node_list = [node.name for node in unhealthy_static_nodes]
+        # Remove the nodes part of the unactive Capacity Block reservations from the list of unhealthy nodes.
+        # nodes from active Capacity Block reservation will be instead managed as standard static instances.
+        reserved_unhealthy_nodenames = self._capacity_block_manager.get_reserved_nodenames(unhealthy_static_nodes)
+        log.info("Removing reserved nodes %s from list of unhealthy nodes", ",".join(reserved_unhealthy_nodenames))
+        node_list = [node.name for node in unhealthy_static_nodes if node.name not in reserved_unhealthy_nodenames]
+
         # Set nodes into down state so jobs can be requeued immediately
         try:
             log.info("Setting unhealthy static nodes to DOWN")
@@ -866,6 +880,7 @@ class ClusterManager:
         A list of slurm nodes is passed in and slurm node map with IP/nodeaddr as key should be avoided.
         """
         log.info("Performing node maintenance actions")
+        # Retrieve nodes from Slurm partitions in ACTIVE state
         active_nodes = self._find_active_nodes(partitions_name_map)
 
         # Update self.static_nodes_in_replacement by removing from the set any node that is up or in maintenance
@@ -873,7 +888,10 @@ class ClusterManager:
         log.info(
             "Following nodes are currently in replacement: %s", print_with_count(self._static_nodes_in_replacement)
         )
+        # terminate powering down instances
         self._handle_powering_down_nodes(active_nodes)
+
+        # retrieve and manage unhealthy nodes
         (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,
@@ -885,6 +903,8 @@ class ClusterManager:
         if unhealthy_static_nodes:
             log.info("Found the following unhealthy static nodes: %s", print_with_count(unhealthy_static_nodes))
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes)
+
+        # evaluate partitions to put in protected mode and ICEs nodes to terminate
         if self._is_protected_mode_enabled():
             self._handle_protected_mode_process(active_nodes, partitions_name_map)
         if self._config.disable_nodes_on_insufficient_capacity:
@@ -1030,6 +1050,7 @@ class ClusterManager:
         )
 
     def _handle_failed_health_check_nodes_in_replacement(self, active_nodes):
+        """Detect failed health checks for static nodes in replacement, updating _static_nodes_in_replacement attr."""
         failed_health_check_nodes_in_replacement = []
         for node in active_nodes:
             if node.is_static_nodes_in_replacement and node.is_failing_health_check:
