@@ -203,8 +203,23 @@ def test_set_config(initialize_instance_manager_mock):
         worker_pool_max_backlog=10,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
-    updated_config = SimpleNamespace(
+    updated_config_1 = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=5,
+        worker_pool_max_backlog=10,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={"queue1": {"cr1": {"test": "test"}}},
+    )
+    updated_config_2 = SimpleNamespace(
         some_key_1="some_value_1",
         some_key_2="some_value_2_changed",
         insufficient_capacity_timeout=10,
@@ -212,16 +227,21 @@ def test_set_config(initialize_instance_manager_mock):
         worker_pool_max_backlog=5,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={"queue1": {"cr1": {"test": "test"}}},
     )
 
     cluster_manager = ClusterManager(initial_config)
     assert_that(cluster_manager._config).is_equal_to(initial_config)
     cluster_manager.set_config(initial_config)
     assert_that(cluster_manager._config).is_equal_to(initial_config)
-    cluster_manager.set_config(updated_config)
-    assert_that(cluster_manager._config).is_equal_to(updated_config)
+    cluster_manager.set_config(updated_config_1)
+    assert_that(cluster_manager._config).is_equal_to(updated_config_1)
+    cluster_manager.set_config(updated_config_2)
+    assert_that(cluster_manager._config).is_equal_to(updated_config_2)
 
-    assert_that(initialize_instance_manager_mock.call_count).is_equal_to(2)
+    assert_that(initialize_instance_manager_mock.call_count).is_equal_to(3)
 
 
 @pytest.mark.usefixtures(
@@ -238,6 +258,9 @@ def test_exception_from_report_console_output_from_nodes(mocker):
         compute_console_wait_time=10,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     unhealthy_nodes = [
         StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
@@ -344,6 +367,9 @@ def test_clean_up_inactive_partition(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     part = SlurmPartition("partition4", "placeholder_nodes", "INACTIVE")
@@ -705,6 +731,9 @@ def test_handle_health_check(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
 
     cluster_manager = ClusterManager(mock_sync_config)
@@ -771,6 +800,9 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
@@ -880,6 +912,9 @@ def test_handle_unhealthy_dynamic_nodes(
         disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = cluster_manager._instance_manager
@@ -936,6 +971,9 @@ def test_handle_powering_down_nodes(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     mock_instance_manager = cluster_manager._instance_manager
@@ -1310,6 +1348,9 @@ def test_maintain_nodes(
         disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = static_nodes_in_replacement
@@ -1558,6 +1599,7 @@ def test_manage_cluster(
         node_replacement_timeout=1800,
         terminate_max_batch_size=1,
         head_node_instance_id="i-instance-id",
+        fleet_config={},
     )
     mocker.patch("time.sleep")
     cluster_manager = ClusterManager(mock_sync_config)
@@ -2201,6 +2243,7 @@ def test_manage_cluster_boto3(
         )
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
+    mocker.patch.object(cluster_manager._capacity_block_manager, "get_reserved_nodenames", return_value=[])
     cluster_manager.manage_cluster()
 
     assert_that(caplog.records).is_length(len(expected_error_messages))
@@ -2365,6 +2408,9 @@ def test_increase_partitions_protected_failure_count(nodes, initial_map, expecte
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._partitions_protected_failure_count_map = initial_map
@@ -2390,6 +2436,9 @@ def test_reset_partition_failure_count(mocker, partition, expected_map):
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._partitions_protected_failure_count_map = {"queue1": 2, "queue2": 1}
@@ -2461,6 +2510,9 @@ def test_handle_protected_mode_process(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     caplog.set_level(logging.INFO)
     cluster_manager = ClusterManager(mock_sync_config)
@@ -2515,6 +2567,9 @@ def test_enter_protected_mode(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     mock_update_compute_fleet_status = mocker.patch.object(cluster_manager, "_update_compute_fleet_status")
@@ -2593,6 +2648,9 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
         insufficient_capacity_timeout=3,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
@@ -2652,6 +2710,9 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
         insufficient_capacity_timeout=-2.2,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
@@ -2721,6 +2782,9 @@ def test_handle_failed_health_check_nodes_in_replacement(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_nodes_in_replacement
@@ -2782,6 +2846,9 @@ def test_handle_bootstrap_failure_nodes(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     for node, instance in zip(active_nodes, instances):
@@ -2846,6 +2913,9 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     for node, instance in zip(active_nodes, instances):
@@ -3021,6 +3091,9 @@ def test_handle_ice_nodes(
         insufficient_capacity_timeout=600,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     caplog.set_level(logging.INFO)
     cluster_manager = ClusterManager(mock_sync_config)
@@ -3369,6 +3442,9 @@ def test_reset_timeout_expired_compute_resources(
         insufficient_capacity_timeout=20,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(config)
     cluster_manager._current_time = datetime(2021, 1, 2, 0, 0, 0)
@@ -3722,6 +3798,9 @@ def test_find_unhealthy_slurm_nodes(
         disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     cluster_manager = ClusterManager(mock_sync_config)
     # Run test
