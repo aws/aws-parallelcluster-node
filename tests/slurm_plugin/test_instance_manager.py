@@ -8,7 +8,6 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-import collections
 import logging
 import os
 import re
@@ -3714,7 +3713,7 @@ class TestJobLevelScalingInstanceManager:
         expected_instances_launched,
     ):
         if not instances_launched:
-            instances_launched = collections.defaultdict(lambda: collections.defaultdict(list))
+            instances_launched = defaultdict(lambda: defaultdict(list))
 
         instance_manager.unused_launched_instances = unused_launched_instances
         new_slurm_node_list = instance_manager._resize_slurm_node_list(
