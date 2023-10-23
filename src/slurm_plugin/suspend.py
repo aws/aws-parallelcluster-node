@@ -32,7 +32,8 @@ class SlurmSuspendConfig:
     def __init__(self, config_file_path):
         config = ConfigParser()
         try:
-            config.read_file(open(config_file_path, "r"))
+            with open(config_file_path, "r") as config_file:
+                config.read_file(config_file)
         except IOError:
             log.error("Cannot read slurm cloud bursting scripts configuration file: %s", config_file_path)
             raise
