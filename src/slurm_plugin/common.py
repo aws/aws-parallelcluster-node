@@ -86,8 +86,9 @@ def log_exception(
     def _log_exception(function):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
+            wrapped = None
             try:
-                return function(*args, **kwargs)
+                wrapped = function(*args, **kwargs)
             except catch_exception as e:
                 logger.log(log_level, "Failed when %s with exception %s, message: %s", action_desc, type(e).__name__, e)
                 if raise_on_error:
@@ -96,6 +97,8 @@ def log_exception(
                         raise e if isinstance(e, exception_to_raise) else exception_to_raise
                     else:
                         raise
+
+            return wrapped
 
         return wrapper
 
