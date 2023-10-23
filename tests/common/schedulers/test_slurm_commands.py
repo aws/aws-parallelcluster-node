@@ -307,7 +307,6 @@ def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_r
             _batch_node_info(nodenames, nodeaddrs, hostnames, batch_size)
         except Exception as e:
             assert_that(e).is_instance_of(ValueError)
-            pass
         else:
             pytest.fail("Expected _batch_node_info to raise ValueError.")
 
