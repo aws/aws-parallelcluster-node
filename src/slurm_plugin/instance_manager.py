@@ -907,7 +907,9 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 # set limited capacity on the failed to launch nodes
                 self._update_failed_nodes(set(failed_launch_nodes), "LimitedInstanceCapacity", override=False)
         else:
-            # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
+            # No instances launched at all, e.g. CreateFleet API returns no EC2 instances,
+            # or no left instances available from a best-effort EC2 launch
+            logger.info("No launched instances found for nodes %s", print_with_count(nodes_resume_list))
             self._update_failed_nodes(set(nodes_resume_list), "InsufficientInstanceCapacity", override=False)
 
     def all_or_nothing_node_assignment(
@@ -960,7 +962,9 @@ class JobLevelScalingInstanceManager(InstanceManager):
             self._update_dict(self.unused_launched_instances, instances_launched)
             self._update_failed_nodes(set(nodes_resume_list), "LimitedInstanceCapacity", override=False)
         else:
-            # No instances launched at all, e.g. CreateFleet API returns no EC2 instances
+            # No instances launched at all, e.g. CreateFleet API returns no EC2 instances,
+            # or no left instances available from a best-effort EC2 launch
+            logger.info("No launched instances found for nodes %s", print_with_count(nodes_resume_list))
             self._update_failed_nodes(set(nodes_resume_list), "InsufficientInstanceCapacity", override=False)
 
     def _launch_instances(  # noqa: C901
