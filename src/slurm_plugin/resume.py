@@ -244,7 +244,7 @@ def main():
     logging.basicConfig(
         filename=default_log_file,
         level=logging.INFO,
-        format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
+        format="%(asctime)s - %(process)d - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
     )
     log.info("ResumeProgram startup.")
     parser = argparse.ArgumentParser()
