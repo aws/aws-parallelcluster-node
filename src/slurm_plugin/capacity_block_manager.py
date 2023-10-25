@@ -17,6 +17,7 @@ from common.schedulers.slurm_reservation_commands import (
     create_slurm_reservation,
     delete_slurm_reservation,
     does_slurm_reservation_exist,
+    get_slurm_reservations_info,
     update_slurm_reservation,
 )
 from common.time_utils import seconds_to_minutes
@@ -142,9 +143,8 @@ class CapacityBlockManager:
                 reserved_nodenames.extend(self._update_slurm_reservation(capacity_block))
             self._reserved_nodenames = reserved_nodenames
 
-            # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks,
-            # by checking slurm reservation info of the given nodes
-            self._cleanup_leftover_slurm_reservations(nodes)
+            # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
+            self._cleanup_leftover_slurm_reservations()
 
         return self._reserved_nodenames
 
@@ -161,28 +161,28 @@ class CapacityBlockManager:
                     capacity_block.add_nodename(node.name)
                     break
 
-    def _cleanup_leftover_slurm_reservations(self, nodes: List[StaticNode]):
-        """Find list of slurm reservations associated to the nodes not part of the configured CBs."""
-        for node in nodes:
-            if node.reservation_name:
-                # nodes with a slurm reservation already in place
-                slurm_reservation_name = node.reservation_name
-                if CapacityBlock.is_capacity_block_slurm_reservation(slurm_reservation_name):
-                    capacity_block_id = CapacityBlock.slurm_reservation_name_to_id(slurm_reservation_name)
-                    if capacity_block_id not in self._capacity_blocks.keys():
-                        logger.info(
-                            (
-                                "Found leftover slurm reservation %s. "
-                                "Related Capacity Block %s is no longer in the cluster configuration. Deleting it."
-                            ),
-                            slurm_reservation_name,
-                            capacity_block_id,
-                        )
-                        delete_slurm_reservation(name=slurm_reservation_name)
-                else:
-                    logger.debug(
-                        "Slurm reservation %s is not managed by ParallelCluster. Skipping it.", slurm_reservation_name
+    def _cleanup_leftover_slurm_reservations(self):
+        """Find list of slurm reservations created by ParallelCluster but not part of the configured CBs."""
+        slurm_reservations = get_slurm_reservations_info()
+        for slurm_reservation in slurm_reservations:
+            if CapacityBlock.is_capacity_block_slurm_reservation(slurm_reservation.name):
+                capacity_block_id = CapacityBlock.slurm_reservation_name_to_id(slurm_reservation.name)
+                if capacity_block_id not in self._capacity_blocks.keys():
+                    logger.info(
+                        (
+                            "Found leftover slurm reservation %s for nodes %s. "
+                            "Related Capacity Block %s is no longer in the cluster configuration. "
+                            "Deleting the slurm reservation."
+                        ),
+                        slurm_reservation.name,
+                        slurm_reservation.nodes,
+                        capacity_block_id,
                     )
+                    delete_slurm_reservation(name=slurm_reservation.name)
+            else:
+                logger.debug(
+                    "Slurm reservation %s is not managed by ParallelCluster. Skipping it.", slurm_reservation.name
+                )
 
     @staticmethod
     def _update_slurm_reservation(capacity_block: CapacityBlock):
