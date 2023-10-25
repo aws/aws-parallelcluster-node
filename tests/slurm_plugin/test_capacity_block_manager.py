@@ -15,7 +15,7 @@ from unittest.mock import call
 import pytest
 from assertpy import assert_that
 from slurm_plugin.capacity_block_manager import SLURM_RESERVATION_NAME_PREFIX, CapacityBlock, CapacityBlockManager
-from slurm_plugin.slurm_resources import StaticNode
+from slurm_plugin.slurm_resources import SlurmReservation, StaticNode
 
 from aws.ec2 import CapacityBlockReservationInfo
 
@@ -143,63 +143,22 @@ class TestCapacityBlockManager:
             )
 
     @pytest.mark.parametrize(
-        ("nodes", "expected_leftover_slurm_reservations"),
+        ("slurm_reservations", "expected_leftover_slurm_reservations"),
         [
             (
                 [
-                    # node without a slurm reservation -> skipped
-                    StaticNode("queue1-st-compute-resource1-1", "ip-1", "hostname-1", "some_state", "queue1"),
-                    # node with a reservation from the customer -> skipped
-                    StaticNode(
-                        "queue4-st-compute-resource1-1",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue4",
-                        reservation_name="other-reservation",
-                    ),
-                    # node associated with CB, not yet part of slurm reservation -> skipped
-                    StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb"),
-                    # node with a reservation associated with CB -> skipped
-                    StaticNode(
-                        "queue-cb-st-compute-resource-cb-2",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue-cb",
-                        reservation_name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-123456",
-                    ),
-                    # node with a reservation associated with an old CB but in the queue/cr associated to a new CB,
-                    # this is a leftover reservation
-                    StaticNode(
-                        "queue-cb-st-compute-resource-cb-3",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue-cb",
-                        reservation_name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-876543",
-                    ),
-                    # node with a reservation associated with existing CB,
-                    # but from an older queue/cr no longer in config -> skipped
-                    StaticNode(
-                        "queue2-st-compute-resource1-1",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue2",
-                        reservation_name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-123456",
+                    # reservation from the customer -> skipped
+                    SlurmReservation(name="other_reservation", state="active", users="anyone", nodes="node1"),
+                    # reservation associated with existing CB -> skipped
+                    SlurmReservation(
+                        name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-123456", state="active", users="anyone", nodes="node1"
                     ),
                     # node associated with another old CB, no longer in the config, this is a leftover reservation
-                    StaticNode(
-                        "queue3-st-compute-resource1-1",
-                        "ip-1",
-                        "hostname-1",
-                        "some_state",
-                        "queue3",
-                        reservation_name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654",
+                    SlurmReservation(
+                        name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654", state="active", users="anyone", nodes="node1"
                     ),
                 ],
-                [f"{SLURM_RESERVATION_NAME_PREFIX}cr-876543", f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654"],
+                [f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654"],
             )
         ],
     )
@@ -208,13 +167,14 @@ class TestCapacityBlockManager:
         mocker,
         capacity_block_manager,
         capacity_block,
-        nodes,
+        slurm_reservations,
         expected_leftover_slurm_reservations,
     ):
         # only cr-123456, queue-cb, compute-resource-cb is in the list of capacity blocks from config
         capacity_block_manager._capacity_blocks = {"cr-123456": capacity_block}
+        mocker.patch("slurm_plugin.capacity_block_manager.get_slurm_reservations_info", return_value=slurm_reservations)
         delete_res_mock = mocker.patch("slurm_plugin.capacity_block_manager.delete_slurm_reservation")
-        capacity_block_manager._cleanup_leftover_slurm_reservations(nodes)
+        capacity_block_manager._cleanup_leftover_slurm_reservations()
 
         # verify that only the slurm reservation associated with a CB, no longer in the config,
         # are considered as leftover
