@@ -14,11 +14,19 @@ import logging
 # In this file the input of the module subprocess is trusted.
 import subprocess  # nosec B404
 from datetime import datetime
+from typing import List
 
 from common.schedulers.slurm_commands import DEFAULT_SCONTROL_COMMAND_TIMEOUT, SCONTROL
-from common.utils import run_command, validate_subprocess_argument
+from common.utils import check_command_output, run_command, validate_subprocess_argument
+from slurm_plugin.slurm_resources import SlurmReservation
 
 logger = logging.getLogger(__name__)
+
+
+SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER = (
+    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
+    + "grep -oP '^(ReservationName=\\S+)|(?<!Next)(State=\\S+)|(Users=\\S+)|(Nodes=\\S+)|(######)'"
+)
 
 
 def _create_or_update_reservation(
@@ -173,8 +181,10 @@ def does_slurm_reservation_exist(
 
     try:
         logger.debug("Retrieving Slurm reservation with command: %s", cmd)
-        run_command(cmd, raise_on_error=raise_on_error, timeout=command_timeout, shell=True)  # nosec B604
-        reservation_exists = True
+        output = check_command_output(
+            cmd, raise_on_error=raise_on_error, timeout=command_timeout, shell=True
+        )  # nosec B604
+        reservation_exists = f"ReservationName={name}" in output
 
     except subprocess.CalledProcessError as e:
         output = e.stdout.rstrip()
@@ -186,3 +196,59 @@ def does_slurm_reservation_exist(
             raise e
 
     return reservation_exists
+
+
+def get_slurm_reservations_info(
+    command_timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, raise_on_error: bool = True
+) -> List[SlurmReservation]:
+    """
+    List existing slurm reservations with scontrol call.
+
+    The output of the command is something like the following:
+    $ scontrol show reservations
+    ReservationName=root_7 StartTime=2023-10-25T09:46:49 EndTime=2024-10-24T09:46:49 Duration=365-00:00:00
+    Nodes=queuep4d-dy-crp4d-[1-5] NodeCnt=5 CoreCnt=480 Features=(null) PartitionName=(null) Flags=MAINT,SPEC_NODES
+    TRES=cpu=480
+    Users=root Groups=(null) Accounts=(null) Licenses=(null) State=ACTIVE BurstBuffer=(null) Watts=n/a
+    MaxStartDelay=(null)
+
+    Official documentation is https://slurm.schedmd.com/reservations.html
+    """
+    # awk is used to replace the \n\n record separator with '######\n'
+    show_reservations_command = f"{SCONTROL} show reservations | {SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER}"
+    slurm_reservations_info = check_command_output(
+        show_reservations_command, raise_on_error=raise_on_error, timeout=command_timeout, shell=True
+    )  # nosec B604
+
+    return _parse_reservations_info(slurm_reservations_info)
+
+
+def _parse_reservations_info(slurm_reservations_info: str) -> List[SlurmReservation]:
+    """Parse slurm reservations info into SlurmReservation objects."""
+    # $ /opt/slurm/bin/scontrol show reservations awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' |
+    # grep -oP '^(ReservationName=\S+)|(?<!Next)(State=\S+)|(Users=\S+)|(Nodes=\S+)|(######)'
+    # ReservationName=root_8
+    # Nodes=queuep4d-dy-crp4d-[1-5]
+    # Users=root
+    # State=ACTIVE
+    # ######
+    # ReservationName=root_9
+    # Nodes=queue1-st-crt2micro-1
+    # Users=root
+    # State=ACTIVE
+    # ######
+    map_slurm_key_to_arg = {"ReservationName": "name", "Nodes": "nodes", "Users": "users", "State": "state"}
+
+    reservation_info = slurm_reservations_info.split("######\n")
+    slurm_reservations = []
+    for reservation in reservation_info:
+        lines = reservation.splitlines()
+        kwargs = {}
+        for line in lines:
+            key, value = line.split("=")
+            kwargs[map_slurm_key_to_arg[key]] = value
+        if lines:
+            reservation = SlurmReservation(**kwargs)
+            slurm_reservations.append(reservation)
+
+    return slurm_reservations
