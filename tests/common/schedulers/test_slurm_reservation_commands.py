@@ -8,18 +8,25 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from datetime import datetime
+from subprocess import CalledProcessError
 
 import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import DEFAULT_SCONTROL_COMMAND_TIMEOUT, SCONTROL
 from common.schedulers.slurm_reservation_commands import (
+    SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER,
     _add_param,
     _create_or_update_reservation,
+    _parse_reservations_info,
     create_slurm_reservation,
     delete_slurm_reservation,
+    does_slurm_reservation_exist,
+    get_slurm_reservations_info,
     update_slurm_reservation,
 )
+from slurm_plugin.slurm_resources import SlurmReservation
 
 
 @pytest.mark.parametrize(
@@ -120,16 +127,7 @@ def test_create_or_update_reservation(
 @pytest.mark.parametrize(
     "name, nodes, partition, user, start_time, duration, number_of_nodes, flags",
     [
-        (
-            "root_1",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ),
+        ("root_1", None, None, None, None, None, None, None),
         (
             "root_2",
             "nodes-1,nodes[2-6]",
@@ -196,16 +194,7 @@ def test_create_slurm_reservation(
 @pytest.mark.parametrize(
     "name, nodes, partition, user, start_time, duration, number_of_nodes, flags",
     [
-        (
-            "root_1",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ),
+        ("root_1", None, None, None, None, None, None, None),
         (
             "root_2",
             "nodes-1,nodes[2-6]",
@@ -268,9 +257,7 @@ def test_update_slurm_reservation(
 
 @pytest.mark.parametrize(
     "name, cmd_call_kwargs",
-    [
-        ("root_1", {"name": "root_1"}),
-    ],
+    [("root_1", {"name": "root_1"})],
 )
 def test_delete_reservation(name, cmd_call_kwargs, mocker):
     run_cmd_mock = mocker.patch("common.schedulers.slurm_reservation_commands.run_command")
@@ -290,3 +277,77 @@ def test_delete_reservation(name, cmd_call_kwargs, mocker):
 )
 def test_add_param(cmd, param_name, value, expected_cmd):
     assert_that(_add_param(cmd, param_name, value)).is_equal_to(expected_cmd)
+
+
+@pytest.mark.parametrize(
+    ["name", "mocked_output", "expected_output", "expected_exception", "expected_message"],
+    [
+        ("root_1", ["ReservationName=root_1"], True, False, None),
+        ("root_1", ["ReservationName=root_2"], False, False, None),  # this should not happen, scontrol should exit
+        ("root_1", CalledProcessError(1, "", "Reservation root_1 not found"), False, False, "root_1 not found"),
+        ("root_1", CalledProcessError(1, "", "Generic error"), False, True, "Failed when retrieving"),
+    ],
+)
+def test_does_slurm_reservation_exist(
+    mocker, name, mocked_output, expected_output, expected_message, expected_exception, caplog
+):
+    caplog.set_level(logging.INFO)
+    run_cmd_mock = mocker.patch(
+        "common.schedulers.slurm_reservation_commands.check_command_output", side_effect=mocked_output
+    )
+
+    if expected_exception:
+        with pytest.raises(CalledProcessError):
+            does_slurm_reservation_exist(name)
+    else:
+        assert_that(does_slurm_reservation_exist(name)).is_equal_to(expected_output)
+        if expected_message:
+            assert_that(caplog.text).contains(expected_message)
+
+    cmd = f"{SCONTROL} show ReservationName={name}"
+    run_cmd_mock.assert_called_with(cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True)
+
+
+def test_get_slurm_reservations_info(mocker):
+    # Mock check_command_output call performed in get_slurm_reservations_info()
+    check_command_output_mocked = mocker.patch(
+        "common.schedulers.slurm_reservation_commands.check_command_output", autospec=True
+    )
+    get_slurm_reservations_info()
+    expected_cmd = f"{SCONTROL} show reservations | {SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER}"
+    check_command_output_mocked.assert_called_with(
+        expected_cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True
+    )
+
+
+@pytest.mark.parametrize(
+    "reservations_info, expected_parsed_reservations_output",
+    [
+        ("######\n", []),
+        (
+            "ReservationName=root_8\nNodes=queuep4d-dy-crp4d-[1-5]\nUsers=root\nState=ACTIVE\n######\n",
+            [SlurmReservation("root_8", "ACTIVE", "queuep4d-dy-crp4d-[1-5]", "root")],
+        ),
+        (
+            (
+                "ReservationName=root_8\n"
+                "Nodes=queuep4d-dy-crp4d-[1-5]\n"
+                "Users=root\n"
+                "State=ACTIVE\n"
+                "######\n"
+                "ReservationName=root_9\n"
+                "Nodes=queue1-st-crt2micro-1\n"
+                "Users=root\n"
+                "State=ACTIVE\n"
+                "######\n"
+            ),
+            [
+                SlurmReservation("root_8", "ACTIVE", "queuep4d-dy-crp4d-[1-5]", "root"),
+                SlurmReservation("root_9", "ACTIVE", "queue1-st-crt2micro-1", "root"),
+            ],
+        ),
+    ],
+)
+def test_parse_reservations_info(reservations_info, expected_parsed_reservations_output):
+    parsed_info = _parse_reservations_info(reservations_info)
+    assert_that(parsed_info).is_equal_to(expected_parsed_reservations_output)

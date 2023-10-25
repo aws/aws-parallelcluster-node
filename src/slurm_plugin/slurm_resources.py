@@ -160,6 +160,14 @@ class SlurmResumeData:
     multi_node: List[str]
 
 
+@dataclass
+class SlurmReservation:
+    name: str
+    state: str
+    nodes: str
+    users: str
+
+
 class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_COMPLETING_STATE = "COMPLETING"
     SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", SLURM_SCONTROL_COMPLETING_STATE}
