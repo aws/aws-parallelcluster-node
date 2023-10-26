@@ -58,7 +58,7 @@ class TestCapacityBlock:
     )
     def test_is_active(self, capacity_block, state, expected_output):
         capacity_block_reservation_info = CapacityBlockReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
-        capacity_block.update_ec2_info(capacity_block_reservation_info)
+        capacity_block.update_capacity_block_reservation_info(capacity_block_reservation_info)
         assert_that(capacity_block.is_active()).is_equal_to(expected_output)
 
     @pytest.mark.parametrize(
@@ -307,7 +307,7 @@ class TestCapacityBlockManager:
         expected_nodenames_in_capacity_block,
     ):
         capacity_block_manager._capacity_blocks = capacity_blocks
-        capacity_block_manager._associate_nodenames_to_capacity_blocks(nodes)
+        capacity_block_manager._associate_nodenames_to_capacity_blocks(capacity_blocks, nodes)
 
         for capacity_block_id in capacity_block_manager._capacity_blocks.keys():
             # assert in the nodenames list there are only nodes associated to the right queue and compute resource
@@ -385,7 +385,7 @@ class TestCapacityBlockManager:
     ):
         caplog.set_level(logging.INFO)
         capacity_block_reservation_info = CapacityBlockReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
-        capacity_block.update_ec2_info(capacity_block_reservation_info)
+        capacity_block.update_capacity_block_reservation_info(capacity_block_reservation_info)
         capacity_block.add_nodename("node1")
         capacity_block.add_nodename("node2")
         nodenames = ",".join(capacity_block.nodenames())
@@ -499,10 +499,10 @@ class TestCapacityBlockManager:
             with pytest.raises(
                 CapacityBlockManagerError, match="Unable to retrieve Capacity Blocks information from EC2. Boto3Error"
             ):
-                capacity_block_manager._update_capacity_blocks_info_from_ec2()
+                capacity_block_manager._update_capacity_blocks_info_from_ec2(init_capacity_blocks)
 
         elif expected_error:
-            capacity_block_manager._update_capacity_blocks_info_from_ec2()
+            capacity_block_manager._update_capacity_blocks_info_from_ec2(init_capacity_blocks)
             assert_that(caplog.text).contains(expected_error)
 
             # assert that only existing item has been updated
@@ -515,7 +515,7 @@ class TestCapacityBlockManager:
             )
             assert_that(capacity_block_manager._capacity_blocks.get("cr-234567")).is_none()
         else:
-            capacity_block_manager._update_capacity_blocks_info_from_ec2()
+            capacity_block_manager._update_capacity_blocks_info_from_ec2(init_capacity_blocks)
             if init_capacity_blocks:
                 # verify that all the blocks have the updated info from ec2
                 assert_that(
