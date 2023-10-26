@@ -23,6 +23,7 @@ from common.schedulers.slurm_reservation_commands import (
 from common.time_utils import seconds_to_minutes
 from slurm_plugin.slurm_resources import SlurmNode
 
+from aws.common import AWSClientError
 from aws.ec2 import CapacityBlockReservationInfo, Ec2Client
 
 logger = logging.getLogger(__name__)
@@ -131,35 +132,42 @@ class CapacityBlockManager:
 
     def get_reserved_nodenames(self, nodes: List[SlurmNode]):
         """Manage nodes part of capacity block reservation. Returns list of reserved nodes."""
-        # evaluate if it's the moment to update info
-        now = datetime.now(tz=timezone.utc)
-        if self._is_time_to_update_capacity_blocks_info(now):
-            reserved_nodenames = []
+        try:
+            # evaluate if it's the moment to update info
+            now = datetime.now(tz=timezone.utc)
+            if self._is_time_to_update_capacity_blocks_info(now):
+                reserved_nodenames = []
 
-            # update list of capacity blocks from fleet config
-            self._capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
+                # update list of capacity blocks from fleet config
+                self._capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
 
-            if self._capacity_blocks:
-                # update capacity blocks details from ec2 (e.g. state)
-                self._update_capacity_blocks_info_from_ec2()
-                # associate nodenames to capacity blocks,
-                # according to queues and compute resources from fleet configuration
-                self._associate_nodenames_to_capacity_blocks(nodes)
+                if self._capacity_blocks:
+                    # update capacity blocks details from ec2 (e.g. state)
+                    self._update_capacity_blocks_info_from_ec2()
+                    # associate nodenames to capacity blocks,
+                    # according to queues and compute resources from fleet configuration
+                    self._associate_nodenames_to_capacity_blocks(nodes)
 
-                # create, update or delete slurm reservation for the nodes according to CB details.
-                for capacity_block in self._capacity_blocks.values():
-                    self._update_slurm_reservation(capacity_block)
+                    # create, update or delete slurm reservation for the nodes according to CB details.
+                    for capacity_block in self._capacity_blocks.values():
+                        self._update_slurm_reservation(capacity_block)
 
-                    # If CB is in not yet active or expired add nodes to list of reserved nodes
-                    if not capacity_block.is_active():
-                        reserved_nodenames.extend(capacity_block.nodenames())
+                        # If CB is in not yet active or expired add nodes to list of reserved nodes
+                        if not capacity_block.is_active():
+                            reserved_nodenames.extend(capacity_block.nodenames())
 
-            self._reserved_nodenames = reserved_nodenames
+                self._reserved_nodenames = reserved_nodenames
 
-            # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
-            self._cleanup_leftover_slurm_reservations()
+                # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
+                self._cleanup_leftover_slurm_reservations()
 
-            self._capacity_blocks_update_time = now
+                self._capacity_blocks_update_time = now
+        except Exception as e:
+            logger.error(
+                "Unable to retrieve list of reserved nodes, maintaining old list: %s. Error: %s",
+                self._reserved_nodenames,
+                e,
+            )
 
         return self._reserved_nodenames
 
@@ -280,17 +288,22 @@ class CapacityBlockManager:
             "Retrieving Capacity Block reservation information from EC2 for %s",
             ",".join(capacity_block_ids),
         )
-        capacity_block_reservations_info: List[
-            CapacityBlockReservationInfo
-        ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
+        try:
+            capacity_block_reservations_info: List[
+                CapacityBlockReservationInfo
+            ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
 
-        for capacity_block_reservation_info in capacity_block_reservations_info:
-            capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
-            try:
-                self._capacity_blocks[capacity_block_id].update_ec2_info(capacity_block_reservation_info)
-            except KeyError:
-                # should never happen
-                logger.error(f"Unable to find capacity block {capacity_block_id} in the internal map.")
+            for capacity_block_reservation_info in capacity_block_reservations_info:
+                capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
+                try:
+                    self._capacity_blocks[capacity_block_id].update_ec2_info(capacity_block_reservation_info)
+                except KeyError:
+                    # should never happen
+                    logger.error(f"Unable to find Capacity Block {capacity_block_id} in the internal map.")
+        except AWSClientError as e:
+            msg = f"Unable to retrieve Capacity Blocks information from EC2. {e}"
+            logger.error(msg)
+            raise CapacityBlockManagerError(msg)
 
     def _retrieve_capacity_blocks_from_fleet_config(self):
         """
