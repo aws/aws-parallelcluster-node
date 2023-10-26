@@ -4171,7 +4171,8 @@ class TestJobLevelScalingInstanceManager:
         "unused_launched_instances, "
         "mock_launch_instances, "
         "expected_unused_launched_instances, "
-        "expect_to_skip_job_level_launch",
+        "expect_to_skip_job_level_launch, "
+        "expect_optimize_launch_instances_called",
         [
             (
                 [],
@@ -4184,6 +4185,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 {},
                 True,
+                True,
             ),
             (
                 [],
@@ -4195,6 +4197,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 {},
                 {},
+                False,
                 False,
             ),
             (
@@ -4208,6 +4211,7 @@ class TestJobLevelScalingInstanceManager:
                 {},
                 {},
                 True,
+                True,
             ),
             (
                 [],
@@ -4236,6 +4240,7 @@ class TestJobLevelScalingInstanceManager:
                     }
                 },
                 True,
+                True,
             ),
             (
                 [],
@@ -4245,24 +4250,9 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 ScalingStrategy.ALL_OR_NOTHING,
                 {},
-                {
-                    "q1": {
-                        "c1": [
-                            EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
-                {
-                    "q1": {
-                        "c1": [
-                            EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            )
-                        ]
-                    }
-                },
+                {},
+                {},
+                False,
                 False,
             ),
             (
@@ -4296,12 +4286,10 @@ class TestJobLevelScalingInstanceManager:
                             EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
-                            EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            ),
                         ]
                     }
                 },
+                False,
                 False,
             ),
             (
@@ -4310,6 +4298,48 @@ class TestJobLevelScalingInstanceManager:
                         job_id=140816,
                         nodes_alloc="queue3-st-c5xlarge-[7-10]",
                         nodes_resume="queue3-st-c5xlarge-[7-9]",
+                        oversubscribe="NO",
+                    ),
+                ],
+                ["queue4-st-c5xlarge-1"],
+                3,
+                2,
+                True,
+                ScalingStrategy.ALL_OR_NOTHING,
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            )
+                        ]
+                    }
+                },
+                {},
+                {
+                    "q1": {
+                        "c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ]
+                    },
+                },
+                False,
+                False,
+            ),
+            (
+                [
+                    SlurmResumeJob(
+                        job_id=140816,
+                        nodes_alloc="queue3-st-c5xlarge-[7-10]",
+                        nodes_resume="queue3-st-c5xlarge-[7-9]",
+                        oversubscribe="NO",
+                    ),
+                    SlurmResumeJob(
+                        job_id=140817,
+                        nodes_alloc="queue3-st-c5xlarge-[11-12]",
+                        nodes_resume="queue3-st-c5xlarge-[11-12]",
                         oversubscribe="NO",
                     ),
                 ],
@@ -4353,6 +4383,7 @@ class TestJobLevelScalingInstanceManager:
                     },
                 },
                 False,
+                True,
             ),
         ],
     )
@@ -4370,6 +4401,7 @@ class TestJobLevelScalingInstanceManager:
         mock_launch_instances,
         expected_unused_launched_instances,
         expect_to_skip_job_level_launch,
+        expect_optimize_launch_instances_called,
     ):
         # patch internal functions
         instance_manager._launch_instances = mocker.MagicMock(return_value=mock_launch_instances)
@@ -4394,6 +4426,11 @@ class TestJobLevelScalingInstanceManager:
             scaling_strategy=scaling_strategy,
             skip_launch=expect_to_skip_job_level_launch,
         )
+
+        if expect_optimize_launch_instances_called:
+            instance_manager._launch_instances.assert_called_once()
+        else:
+            instance_manager._launch_instances.assert_not_called()
 
         assert_that(instance_manager.unused_launched_instances).is_equal_to(expected_unused_launched_instances)
 

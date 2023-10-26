@@ -676,15 +676,17 @@ class JobLevelScalingInstanceManager(InstanceManager):
         update_node_address,
         scaling_strategy: ScalingStrategy,
     ):
-        # Optimize job level scaling with preliminary scale-all nodes attempt
-        self._update_dict(
-            self.unused_launched_instances,
-            self._launch_instances(
-                nodes_to_launch=self._parse_nodes_resume_list(node_list),
-                launch_batch_size=launch_batch_size,
-                scaling_strategy=scaling_strategy,
-            ),
-        )
+        if not (scaling_strategy in [ScalingStrategy.ALL_OR_NOTHING] and len(job_list) <= 1):
+            # Optimize job level scaling with preliminary scale-all nodes attempt
+            # Except for the case all-or-nothing / single job, to avoid scaling twice the same node list
+            self._update_dict(
+                self.unused_launched_instances,
+                self._launch_instances(
+                    nodes_to_launch=self._parse_nodes_resume_list(node_list),
+                    launch_batch_size=launch_batch_size,
+                    scaling_strategy=scaling_strategy,
+                ),
+            )
 
         # Avoid a job level launch if scaling strategy is BEST_EFFORT or GREEDY_ALL_OR_NOTHING
         # The scale all-in launch has been performed already hence from this point we want to skip the extra
