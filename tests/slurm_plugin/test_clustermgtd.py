@@ -1346,6 +1346,7 @@ def test_maintain_nodes(
         terminate_down_nodes=True,
         insufficient_capacity_timeout=20,
         disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
+        disable_capacity_blocks_management=False,
         cluster_name="cluster",
         head_node_instance_id="i-instance-id",
         region="region",
@@ -1356,6 +1357,9 @@ def test_maintain_nodes(
     cluster_manager._static_nodes_in_replacement = static_nodes_in_replacement
     cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
     cluster_manager._config.node_replacement_timeout = 30
+    mock_reserved_nodes = mocker.patch.object(
+        cluster_manager._capacity_block_manager, "get_reserved_nodenames", return_value=[]
+    )
     mock_update_replacement = mocker.patch.object(cluster_manager, "_update_static_nodes_in_replacement", autospec=True)
     mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", autospec=True)
     mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", autospec=True)
@@ -1375,6 +1379,7 @@ def test_maintain_nodes(
     # Run test
     cluster_manager._maintain_nodes(partitions, {})
     # Check function calls
+    mock_reserved_nodes.assert_called_with(active_nodes)
     mock_update_replacement.assert_called_with(active_nodes)
     mock_handle_dynamic.assert_called_with(expected_unhealthy_dynamic_nodes)
     mock_handle_static.assert_called_with(expected_unhealthy_static_nodes)
@@ -3563,8 +3568,11 @@ def test_set_ice_compute_resources_to_down(
 
 
 @pytest.mark.parametrize(
-    "active_nodes, expected_unhealthy_dynamic_nodes, expected_unhealthy_static_nodes, "
-    "expected_ice_compute_resources_and_nodes_map, disable_nodes_on_insufficient_capacity",
+    (
+        "active_nodes, reserved_nodenames, expected_unhealthy_dynamic_nodes, expected_unhealthy_static_nodes, "
+        "expected_ice_compute_resources_and_nodes_map, disable_nodes_on_insufficient_capacity, "
+        "disable_capacity_blocks_management"
+    ),
     [
         (
             [
@@ -3624,6 +3632,7 @@ def test_set_ice_compute_resources_to_down(
                     "[root@2023-01-31T21:24:55]",
                 ),
             ],
+            [],
             [
                 DynamicNode(
                     "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
@@ -3677,6 +3686,7 @@ def test_set_ice_compute_resources_to_down(
                 },
             },
             True,
+            False,
         ),
         (
             [
@@ -3735,7 +3745,24 @@ def test_set_ice_compute_resources_to_down(
                     "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
                     "[root@2023-01-31T21:24:55]",
                 ),
+                StaticNode(
+                    "queue4-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-123456",
+                ),  # reserved static
+                DynamicNode(
+                    "queue4-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-234567",
+                ),  # reserved  dynamic
             ],
+            ["queue4-st-c5xlarge-1", "queue4-dy-c5xlarge-1"],
             [
                 DynamicNode(
                     "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
@@ -3779,6 +3806,51 @@ def test_set_ice_compute_resources_to_down(
             ],
             {},
             False,
+            False,
+        ),
+        (
+            [
+                StaticNode(
+                    "queue4-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-123456",
+                ),  # reserved static
+                DynamicNode(
+                    "queue4-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-234567",
+                ),  # reserved  dynamic
+            ],
+            ["queue4-st-c5xlarge-1", "queue4-dy-c5xlarge-1"],
+            [
+                DynamicNode(
+                    "queue4-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-234567",
+                ),
+            ],
+            [
+                StaticNode(
+                    "queue4-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-123456",
+                ),
+            ],
+            {},
+            False,
+            True,  # disable_capacity_blocks_management
         ),
     ],
 )
@@ -3787,10 +3859,13 @@ def test_set_ice_compute_resources_to_down(
 )
 def test_find_unhealthy_slurm_nodes(
     active_nodes,
+    reserved_nodenames,
     expected_unhealthy_dynamic_nodes,
     expected_unhealthy_static_nodes,
     expected_ice_compute_resources_and_nodes_map,
     disable_nodes_on_insufficient_capacity,
+    disable_capacity_blocks_management,
+    mocker,
 ):
     mock_sync_config = SimpleNamespace(
         terminate_drain_nodes=True,
@@ -3801,8 +3876,12 @@ def test_find_unhealthy_slurm_nodes(
         region="region",
         boto3_config=None,
         fleet_config={},
+        disable_capacity_blocks_management=disable_capacity_blocks_management,
     )
     cluster_manager = ClusterManager(mock_sync_config)
+    get_reserved_mock = mocker.patch.object(
+        cluster_manager._capacity_block_manager, "get_reserved_nodenames", return_value=reserved_nodenames
+    )
     # Run test
     (
         unhealthy_dynamic_nodes,
@@ -3813,6 +3892,10 @@ def test_find_unhealthy_slurm_nodes(
     assert_that(unhealthy_dynamic_nodes).is_equal_to(expected_unhealthy_dynamic_nodes)
     assert_that(unhealthy_static_nodes).is_equal_to(expected_unhealthy_static_nodes)
     assert_that(ice_compute_resources_and_nodes_map).is_equal_to(expected_ice_compute_resources_and_nodes_map)
+    if disable_capacity_blocks_management:
+        get_reserved_mock.assert_not_called()
+    else:
+        get_reserved_mock.assert_called()
 
 
 @pytest.mark.parametrize(
