@@ -103,6 +103,29 @@ class TestCapacityBlockManager:
         ec2_mock.assert_called_once()
 
     @pytest.mark.parametrize(
+        ("previous_capacity_blocks_update_time", "expected_update_time"),
+        [
+            # manager not initialized
+            (None, True),
+            # delta < CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
+            (datetime(2020, 1, 2, 1, 51, 0), False),
+            (datetime(2020, 1, 2, 1, 50, 0), False),
+            # delta >= CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
+            (datetime(2020, 1, 2, 1, 40, 0), True),
+            (datetime(2020, 1, 2, 0, 51, 0), True),
+            (datetime(2020, 1, 1, 0, 51, 0), True),
+        ],
+    )
+    def test_is_time_to_update_capacity_blocks_info(
+        self, mocker, capacity_block_manager, previous_capacity_blocks_update_time, expected_update_time
+    ):
+        mocked_now = datetime(2020, 1, 2, 1, 51, 0)
+        mocker.patch("slurm_plugin.capacity_block_manager.datetime").now.return_value = mocked_now
+
+        capacity_block_manager._capacity_blocks_update_time = previous_capacity_blocks_update_time
+        assert_that(capacity_block_manager._is_time_to_update_capacity_blocks_info(mocked_now))
+
+    @pytest.mark.parametrize(
         ("capacity_blocks", "nodes", "expected_nodenames_in_capacity_block"),
         [
             (
@@ -257,11 +280,10 @@ class TestCapacityBlockManager:
             "capacity_blocks_from_config",
             "capacity_blocks_info_from_ec2",
             "expected_new_capacity_blocks",
-            "expected_new_update_time",
         ),
         [
-            # nothing in the config, just change update time
-            ({}, {}, [], {}, True),
+            # nothing in the config
+            ({}, {}, [], {}),
             # new config without info, remove old block from the map
             (
                 {
@@ -270,7 +292,6 @@ class TestCapacityBlockManager:
                 {},
                 [],
                 {},
-                True,
             ),
             # update old values with new values
             (
@@ -293,7 +314,6 @@ class TestCapacityBlockManager:
                     "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
                     "cr-234567": CapacityBlock("id2", "queue-cb2", "compute-resource-cb2"),
                 },
-                True,
             ),
         ],
     )
@@ -305,13 +325,10 @@ class TestCapacityBlockManager:
         init_capacity_blocks,
         expected_new_capacity_blocks,
         capacity_blocks_info_from_ec2,
-        expected_new_update_time,
     ):
         mocker.patch.object(
             capacity_block_manager, "_capacity_blocks_from_config", return_value=capacity_blocks_from_config
         )
-        mocked_now = datetime(2020, 1, 1, 0, 0, 0)
-        mocker.patch("slurm_plugin.capacity_block_manager.datetime").now.return_value = mocked_now
         capacity_block_manager._capacity_blocks = init_capacity_blocks
 
         mocked_client = mocker.MagicMock()
@@ -321,7 +338,6 @@ class TestCapacityBlockManager:
         capacity_block_manager._update_capacity_blocks_info_from_ec2()
 
         assert_that(expected_new_capacity_blocks).is_equal_to(capacity_block_manager._capacity_blocks)
-        assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(mocked_now)
         if expected_new_capacity_blocks:
             # verify that all the blocks have the updated info from ec2
             assert_that(

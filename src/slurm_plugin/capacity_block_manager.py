@@ -125,12 +125,8 @@ class CapacityBlockManager:
     def get_reserved_nodenames(self, nodes: List[SlurmNode]):
         """Manage nodes part of capacity block reservation. Returns list of reserved nodes."""
         # evaluate if it's the moment to update info
-        is_time_to_update = (
-            self._capacity_blocks_update_time
-            and seconds_to_minutes(datetime.now(tz=timezone.utc) - self._capacity_blocks_update_time)
-            > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
-        )
-        if is_time_to_update:  # TODO: evaluate time to update accordingly to capacity block start time
+        now = datetime.now(tz=timezone.utc)
+        if self._is_time_to_update_capacity_blocks_info(now):
             reserved_nodenames = []
 
             # update capacity blocks details from ec2 (e.g. state)
@@ -146,7 +142,23 @@ class CapacityBlockManager:
             # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
             self._cleanup_leftover_slurm_reservations()
 
+            self._capacity_blocks_update_time = now
+
         return self._reserved_nodenames
+
+    def _is_time_to_update_capacity_blocks_info(self, now: datetime):
+        """
+        Return true if it's the moment to update capacity blocks info, from ec2 and from config.
+
+        This is true when the CapacityBlockManager is not yet initialized (self._capacity_blocks_update_time == None)
+        and every 10 minutes.
+        # TODO: evaluate time to update accordingly to capacity block start time
+        """
+        return self._capacity_blocks_update_time is None or (
+            self._capacity_blocks_update_time
+            and seconds_to_minutes((now - self._capacity_blocks_update_time).total_seconds())
+            > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
+        )
 
     def _associate_nodenames_to_capacity_blocks(self, nodes: List[SlurmNode]):
         """
@@ -247,7 +259,6 @@ class CapacityBlockManager:
         This method is called every time the CapacityBlockManager is re-initialized,
         so when it starts/is restarted or when fleet configuration changes.
         """
-        # Retrieve updated capacity reservation information at initialization time, and every tot minutes
         self._capacity_blocks = self._capacity_blocks_from_config()
 
         if self._capacity_blocks:
@@ -263,8 +274,6 @@ class CapacityBlockManager:
             for capacity_block_reservation_info in capacity_block_reservations_info:
                 capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
                 self._capacity_blocks[capacity_block_id].update_ec2_info(capacity_block_reservation_info)
-
-        self._capacity_blocks_update_time = datetime.now(tz=timezone.utc)
 
     def _capacity_blocks_from_config(self):
         """
