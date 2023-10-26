@@ -32,6 +32,13 @@ CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD = 10
 SLURM_RESERVATION_NAME_PREFIX = "pcluster-"
 
 
+class CapacityBlockManagerError(Exception):
+    """Represent an error during the execution of an action with the CapacityBlockManager."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 class CapacityType(Enum):
     """Enum to identify the type compute supported by the queues."""
 
@@ -271,9 +278,14 @@ class CapacityBlockManager:
                 CapacityBlockReservationInfo
             ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
 
-            for capacity_block_reservation_info in capacity_block_reservations_info:
-                capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
+        for capacity_block_reservation_info in capacity_block_reservations_info:
+            capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
+            try:
                 self._capacity_blocks[capacity_block_id].update_ec2_info(capacity_block_reservation_info)
+            except KeyError:
+                raise CapacityBlockManagerError(
+                    f"Unable to find capacity block {capacity_block_id} in the internal map"
+                )
 
     def _capacity_blocks_from_config(self):
         """
