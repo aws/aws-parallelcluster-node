@@ -21,6 +21,7 @@ from common.schedulers.slurm_reservation_commands import (
     update_slurm_reservation,
 )
 from common.time_utils import seconds_to_minutes
+from common.utils import SlurmCommandError
 from slurm_plugin.slurm_resources import SlurmNode
 
 from aws.common import AWSClientError
@@ -55,7 +56,7 @@ class CapacityBlock:
     Contains info like:
     - queue and compute resource from the config,
     - state from EC2,
-    - name of the related slurm reservation.
+    - name of the slurm reservation that will be created for this CB.
     """
 
     def __init__(self, capacity_block_id, queue_name, compute_resource_name):
@@ -65,7 +66,7 @@ class CapacityBlock:
         self._capacity_block_reservation_info = None
         self._nodenames = []
 
-    def update_ec2_info(self, capacity_block_reservation_info: CapacityBlockReservationInfo):
+    def update_capacity_block_reservation_info(self, capacity_block_reservation_info: CapacityBlockReservationInfo):
         """Update info from CapacityBlockReservationInfo."""
         self._capacity_block_reservation_info = capacity_block_reservation_info
 
@@ -138,33 +139,40 @@ class CapacityBlockManager:
             if self._is_time_to_update_capacity_blocks_info(now):
                 reserved_nodenames = []
 
-                # update list of capacity blocks from fleet config
-                self._capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
-
-                if self._capacity_blocks:
+                # find an updated list of capacity blocks from fleet config
+                capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
+                if capacity_blocks:
                     # update capacity blocks details from ec2 (e.g. state)
-                    self._update_capacity_blocks_info_from_ec2()
+                    self._update_capacity_blocks_info_from_ec2(capacity_blocks)
                     # associate nodenames to capacity blocks,
                     # according to queues and compute resources from fleet configuration
-                    self._associate_nodenames_to_capacity_blocks(nodes)
+                    self._associate_nodenames_to_capacity_blocks(capacity_blocks, nodes)
 
                     # create, update or delete slurm reservation for the nodes according to CB details.
-                    for capacity_block in self._capacity_blocks.values():
+                    for capacity_block in capacity_blocks.values():
                         self._update_slurm_reservation(capacity_block)
 
                         # If CB is in not yet active or expired add nodes to list of reserved nodes
                         if not capacity_block.is_active():
                             reserved_nodenames.extend(capacity_block.nodenames())
 
+                # Once all the steps have been successful, update object attributes
+                self._capacity_blocks = capacity_blocks
+                self._capacity_blocks_update_time = now
                 self._reserved_nodenames = reserved_nodenames
 
                 # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
                 self._cleanup_leftover_slurm_reservations()
 
-                self._capacity_blocks_update_time = now
+        except (SlurmCommandError, CapacityBlockManagerError) as e:
+            logger.error(
+                "Unable to retrieve list of reserved nodes, maintaining old list: %s. %s",
+                self._reserved_nodenames,
+                e,
+            )
         except Exception as e:
             logger.error(
-                "Unable to retrieve list of reserved nodes, maintaining old list: %s. Error: %s",
+                "Unexpected error. Unable to retrieve list of reserved nodes, maintaining old list: %s. %s",
                 self._reserved_nodenames,
                 e,
             )
@@ -185,48 +193,54 @@ class CapacityBlockManager:
             > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
         )
 
-    def _associate_nodenames_to_capacity_blocks(self, nodes: List[SlurmNode]):
+    @staticmethod
+    def _associate_nodenames_to_capacity_blocks(capacity_blocks: Dict[str, CapacityBlock], nodes: List[SlurmNode]):
         """
         Update capacity_block info adding nodenames list.
 
         Check configured CBs and associate nodes to them according to queue and compute resource info.
         """
         for node in nodes:
-            for capacity_block in self._capacity_blocks.values():
+            for capacity_block in capacity_blocks.values():
                 if capacity_block.does_node_belong_to(node):
                     capacity_block.add_nodename(node.name)
                     break
 
     def _cleanup_leftover_slurm_reservations(self):
         """Find list of slurm reservations created by ParallelCluster but not part of the configured CBs."""
-        slurm_reservations = get_slurm_reservations_info()
-        for slurm_reservation in slurm_reservations:
-            if CapacityBlock.is_capacity_block_slurm_reservation(slurm_reservation.name):
-                capacity_block_id = CapacityBlock.slurm_reservation_name_to_id(slurm_reservation.name)
-                if capacity_block_id not in self._capacity_blocks.keys():
-                    logger.info(
-                        (
-                            "Found leftover slurm reservation %s for nodes %s. "
-                            "Related Capacity Block %s is no longer in the cluster configuration. "
-                            "Deleting the slurm reservation."
-                        ),
-                        slurm_reservation.name,
-                        slurm_reservation.nodes,
-                        capacity_block_id,
-                    )
-                    delete_slurm_reservation(name=slurm_reservation.name)
+        try:
+            for slurm_reservation in get_slurm_reservations_info():
+                if CapacityBlock.is_capacity_block_slurm_reservation(slurm_reservation.name):
+                    capacity_block_id = CapacityBlock.slurm_reservation_name_to_id(slurm_reservation.name)
+                    if capacity_block_id not in self._capacity_blocks.keys():
+                        logger.info(
+                            (
+                                "Found leftover slurm reservation %s for nodes %s. "
+                                "Related Capacity Block %s is no longer in the cluster configuration. "
+                                "Deleting the slurm reservation."
+                            ),
+                            slurm_reservation.name,
+                            slurm_reservation.nodes,
+                            capacity_block_id,
+                        )
+                        try:
+                            delete_slurm_reservation(name=slurm_reservation.name)
+                        except SlurmCommandError as e:
+                            logger.error("Unable to delete slurm reservation %s. %s", slurm_reservation.name, e)
+                    else:
+                        logger.debug(
+                            (
+                                "Slurm reservation %s is managed by ParallelCluster "
+                                "and related to an existing Capacity Block. Skipping it."
+                            ),
+                            slurm_reservation.name,
+                        )
                 else:
                     logger.debug(
-                        (
-                            "Slurm reservation %s is managed by ParallelCluster "
-                            "and related to an existing Capacity Block. Skipping it."
-                        ),
-                        slurm_reservation.name,
+                        "Slurm reservation %s is not managed by ParallelCluster. Skipping it.", slurm_reservation.name
                     )
-            else:
-                logger.debug(
-                    "Slurm reservation %s is not managed by ParallelCluster. Skipping it.", slurm_reservation.name
-                )
+        except SlurmCommandError as e:
+            logger.error("Unable to retrieve list of existing Slurm reservations. %s", e)
 
     @staticmethod
     def _update_slurm_reservation(capacity_block: CapacityBlock):
@@ -251,39 +265,47 @@ class CapacityBlockManager:
         slurm_reservation_name = capacity_block.slurm_reservation_name()
         capacity_block_nodenames = ",".join(capacity_block.nodenames())
 
-        reservation_exists = is_slurm_reservation(name=slurm_reservation_name)
-        # if CB is active we need to remove Slurm reservation and start nodes
-        if capacity_block.is_active():
-            # if Slurm reservation exists, delete it.
-            if reservation_exists:
-                _log_cb_info("Deleting")
-                delete_slurm_reservation(name=slurm_reservation_name)
-            else:
-                _log_cb_info("Nothing to do. No existing")
+        try:
+            reservation_exists = is_slurm_reservation(name=slurm_reservation_name)
+            # if CB is active we need to remove Slurm reservation and start nodes
+            if capacity_block.is_active():
+                # if Slurm reservation exists, delete it.
+                if reservation_exists:
+                    _log_cb_info("Deleting")
+                    delete_slurm_reservation(name=slurm_reservation_name)
+                else:
+                    _log_cb_info("Nothing to do. No existing")
 
-        # if CB is expired or not active we need to (re)create Slurm reservation
-        # to avoid considering nodes as unhealthy
-        else:
-            # create or update Slurm reservation
-            if reservation_exists:
-                _log_cb_info("Updating existing")
-                update_slurm_reservation(name=slurm_reservation_name, nodes=capacity_block_nodenames)
+            # if CB is expired or not active we need to (re)create Slurm reservation
+            # to avoid considering nodes as unhealthy
             else:
-                _log_cb_info("Creating")
-                create_slurm_reservation(
-                    name=slurm_reservation_name,
-                    start_time=datetime.now(tz=timezone.utc),
-                    nodes=capacity_block_nodenames,
-                )
+                # create or update Slurm reservation
+                if reservation_exists:
+                    _log_cb_info("Updating existing")
+                    update_slurm_reservation(name=slurm_reservation_name, nodes=capacity_block_nodenames)
+                else:
+                    _log_cb_info("Creating")
+                    create_slurm_reservation(
+                        name=slurm_reservation_name,
+                        start_time=datetime.now(tz=timezone.utc),
+                        nodes=capacity_block_nodenames,
+                    )
+        except SlurmCommandError as e:
+            logger.error(
+                "Unable to update slurm reservation %s for Capacity Block %s. Skipping it. %s",
+                slurm_reservation_name,
+                capacity_block.capacity_block_id,
+                e,
+            )
 
-    def _update_capacity_blocks_info_from_ec2(self):
+    def _update_capacity_blocks_info_from_ec2(self, capacity_blocks: Dict[str, CapacityBlock]):
         """
-        Update capacity blocks in self._capacity_blocks by adding capacity reservation info.
+        Update capacity blocks in given capacity_blocks by adding capacity reservation info.
 
         This method is called every time the CapacityBlockManager is re-initialized,
         so when it starts/is restarted or when fleet configuration changes.
         """
-        capacity_block_ids = self._capacity_blocks.keys()
+        capacity_block_ids = capacity_blocks.keys()
         logger.info(
             "Retrieving Capacity Block reservation information from EC2 for %s",
             ",".join(capacity_block_ids),
@@ -296,7 +318,9 @@ class CapacityBlockManager:
             for capacity_block_reservation_info in capacity_block_reservations_info:
                 capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
                 try:
-                    self._capacity_blocks[capacity_block_id].update_ec2_info(capacity_block_reservation_info)
+                    capacity_blocks[capacity_block_id].update_capacity_block_reservation_info(
+                        capacity_block_reservation_info
+                    )
                 except KeyError:
                     # should never happen
                     logger.error(f"Unable to find Capacity Block {capacity_block_id} in the internal map.")

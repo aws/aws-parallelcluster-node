@@ -17,7 +17,14 @@ from datetime import datetime
 from typing import List
 
 from common.schedulers.slurm_commands import DEFAULT_SCONTROL_COMMAND_TIMEOUT, SCONTROL
-from common.utils import check_command_output, run_command, validate_subprocess_argument
+from common.utils import (
+    SlurmCommandError,
+    SlurmCommandErrorHandler,
+    check_command_output,
+    run_command,
+    validate_subprocess_argument,
+)
+from retrying import retry
 from slurm_plugin.slurm_resources import SlurmReservation
 
 logger = logging.getLogger(__name__)
@@ -61,6 +68,12 @@ def _create_or_update_reservation(
     run_command(cmd, raise_on_error=raise_on_error, timeout=command_timeout, shell=True)  # nosec B604
 
 
+@retry(
+    stop_max_attempt_number=2,
+    wait_fixed=1000,
+    retry_on_exception=lambda exception: isinstance(exception, SlurmCommandError),
+)
+@SlurmCommandErrorHandler.handle_slurm_command_error
 def create_slurm_reservation(
     name: str,
     nodes: str = "ALL",
@@ -93,6 +106,12 @@ def create_slurm_reservation(
     )
 
 
+@retry(
+    stop_max_attempt_number=2,
+    wait_fixed=1000,
+    retry_on_exception=lambda exception: isinstance(exception, SlurmCommandError),
+)
+@SlurmCommandErrorHandler.handle_slurm_command_error
 def update_slurm_reservation(
     name: str,
     nodes: str = None,
@@ -121,6 +140,12 @@ def update_slurm_reservation(
     )
 
 
+@retry(
+    stop_max_attempt_number=2,
+    wait_fixed=1000,
+    retry_on_exception=lambda exception: isinstance(exception, SlurmCommandError),
+)
+@SlurmCommandErrorHandler.handle_slurm_command_error
 def delete_slurm_reservation(
     name: str,
     command_timeout: int = DEFAULT_SCONTROL_COMMAND_TIMEOUT,
@@ -149,6 +174,12 @@ def _add_param(cmd, param_name, value):
     return cmd
 
 
+@retry(
+    stop_max_attempt_number=2,
+    wait_fixed=1000,
+    retry_on_exception=lambda exception: isinstance(exception, SlurmCommandError),
+)
+@SlurmCommandErrorHandler.handle_slurm_command_error
 def is_slurm_reservation(
     name: str,
     command_timeout: int = DEFAULT_SCONTROL_COMMAND_TIMEOUT,
@@ -187,17 +218,26 @@ def is_slurm_reservation(
         reservation_exists = f"ReservationName={name}" in output
 
     except subprocess.CalledProcessError as e:
-        output = e.stdout.rstrip()
-        if output == f"Reservation {name} not found":
+        expected_output = f"Reservation {name} not found"
+        error = f" Error is: {e.stderr.rstrip()}." if e.stderr else ""
+        output = f" Output is: {e.stdout.rstrip()}." if e.stdout else ""
+        if expected_output in error or expected_output in output:
             logger.info(f"Slurm reservation {name} not found.")
             reservation_exists = False
         else:
-            logger.error("Failed when retrieving Slurm reservation info with command %s. Error: %s", cmd, output)
-            raise e
+            msg = f"Failed when retrieving Slurm reservation info with command {cmd}.{error}{output} {e}"
+            logger.error(msg)
+            raise SlurmCommandError(msg)
 
     return reservation_exists
 
 
+@retry(
+    stop_max_attempt_number=2,
+    wait_fixed=1000,
+    retry_on_exception=lambda exception: isinstance(exception, SlurmCommandError),
+)
+@SlurmCommandErrorHandler.handle_slurm_command_error
 def get_slurm_reservations_info(
     command_timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, raise_on_error: bool = True
 ) -> List[SlurmReservation]:

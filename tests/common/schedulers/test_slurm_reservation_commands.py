@@ -9,8 +9,8 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import subprocess
 from datetime import datetime
-from subprocess import CalledProcessError
 
 import pytest
 from assertpy import assert_that
@@ -26,6 +26,7 @@ from common.schedulers.slurm_reservation_commands import (
     is_slurm_reservation,
     update_slurm_reservation,
 )
+from common.utils import SlurmCommandError
 from slurm_plugin.slurm_resources import SlurmReservation
 
 
@@ -125,11 +126,46 @@ def test_create_or_update_reservation(
 
 
 @pytest.mark.parametrize(
-    "name, nodes, partition, user, start_time, duration, number_of_nodes, flags",
+    (
+        "name, nodes, partition, user, start_time, duration, number_of_nodes, flags, "
+        "run_command_output, expected_exception"
+    ),
     [
-        ("root_1", None, None, None, None, None, None, None),
+        ("root_1", None, None, None, None, None, None, None, None, False),
         (
+            # 1 failure, retry and then proceed
             "root_2",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [
+                subprocess.CalledProcessError(1, "error-msg"),
+                None,
+            ],
+            False,
+        ),
+        (
+            # 2 failures, exception will be raised by the command
+            "root_3",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [
+                subprocess.CalledProcessError(1, "error-msg"),
+                subprocess.CalledProcessError(1, "error-msg", output="some-output", stderr="some-error"),
+            ],
+            True,
+        ),
+        (
+            "root_4",
             "nodes-1,nodes[2-6]",
             "queue1",
             "user1",
@@ -137,6 +173,8 @@ def test_create_or_update_reservation(
             180,
             10,
             "testflag",
+            None,
+            False,
         ),
     ],
 )
@@ -150,8 +188,14 @@ def test_create_slurm_reservation(
     number_of_nodes,
     flags,
     mocker,
+    run_command_output,
+    expected_exception,
 ):
-    run_cmd_mock = mocker.patch("common.schedulers.slurm_reservation_commands._create_or_update_reservation")
+    mocker.patch("time.sleep")
+    run_cmd_mock = mocker.patch(
+        "common.schedulers.slurm_reservation_commands._create_or_update_reservation",
+        side_effect=run_command_output,
+    )
 
     # Compose command to avoid passing None values
     kwargs = {"name": name}
@@ -170,7 +214,13 @@ def test_create_slurm_reservation(
     if flags:
         kwargs.update({"flags": flags})
 
-    create_slurm_reservation(**kwargs)
+    if expected_exception:
+        with pytest.raises(
+            SlurmCommandError, match="Failed to execute slurm command. Error is: some-error. Output is: some-output"
+        ):
+            create_slurm_reservation(**kwargs)
+    else:
+        create_slurm_reservation(**kwargs)
 
     # check expected internal call
     nodes = nodes if nodes else "ALL"
@@ -192,11 +242,46 @@ def test_create_slurm_reservation(
 
 
 @pytest.mark.parametrize(
-    "name, nodes, partition, user, start_time, duration, number_of_nodes, flags",
+    (
+        "name, nodes, partition, user, start_time, duration, number_of_nodes, flags,"
+        "run_command_output, expected_exception"
+    ),
     [
-        ("root_1", None, None, None, None, None, None, None),
+        ("root_1", None, None, None, None, None, None, None, None, False),
         (
+            # 1 failure, retry and then proceed
             "root_2",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [
+                subprocess.CalledProcessError(1, "error-msg"),
+                None,
+            ],
+            False,
+        ),
+        (
+            # 2 failures, exception will be raised by the command
+            "root_3",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [
+                subprocess.CalledProcessError(1, "error-msg"),
+                subprocess.CalledProcessError(1, "error-msg", output="some-output", stderr="some-error"),
+            ],
+            True,
+        ),
+        (
+            "root_4",
             "nodes-1,nodes[2-6]",
             "queue1",
             "user1",
@@ -204,6 +289,8 @@ def test_create_slurm_reservation(
             180,
             10,
             "testflag",
+            None,
+            False,
         ),
     ],
 )
@@ -217,8 +304,14 @@ def test_update_slurm_reservation(
     number_of_nodes,
     flags,
     mocker,
+    run_command_output,
+    expected_exception,
 ):
-    run_cmd_mock = mocker.patch("common.schedulers.slurm_reservation_commands._create_or_update_reservation")
+    mocker.patch("time.sleep")
+    run_cmd_mock = mocker.patch(
+        "common.schedulers.slurm_reservation_commands._create_or_update_reservation",
+        side_effect=run_command_output,
+    )
 
     # Compose command to avoid passing None values
     kwargs = {"name": name}
@@ -237,7 +330,13 @@ def test_update_slurm_reservation(
     if flags:
         kwargs.update({"flags": flags})
 
-    update_slurm_reservation(**kwargs)
+    if expected_exception:
+        with pytest.raises(
+            SlurmCommandError, match="Failed to execute slurm command. Error is: some-error. Output is: some-output"
+        ):
+            update_slurm_reservation(**kwargs)
+    else:
+        update_slurm_reservation(**kwargs)
 
     # check expected internal call
     run_cmd_mock.assert_called_with(
@@ -256,12 +355,42 @@ def test_update_slurm_reservation(
 
 
 @pytest.mark.parametrize(
-    "name, cmd_call_kwargs",
-    [("root_1", {"name": "root_1"})],
+    "name, cmd_call_kwargs, run_command_output, expected_exception",
+    [
+        ("root_1", {"name": "root_1"}, None, False),
+        (
+            "root_1",
+            {"name": "root_1"},
+            [
+                subprocess.CalledProcessError(1, "error-msg"),
+                None,
+            ],
+            False,
+        ),
+        (
+            "root_1",
+            {"name": "root_1"},
+            [
+                subprocess.CalledProcessError(1, "error-msg"),
+                subprocess.CalledProcessError(1, "error-msg", output="some-output", stderr="some-error"),
+            ],
+            True,
+        ),
+    ],
 )
-def test_delete_reservation(name, cmd_call_kwargs, mocker):
-    run_cmd_mock = mocker.patch("common.schedulers.slurm_reservation_commands.run_command")
-    delete_slurm_reservation(name)
+def test_delete_reservation(name, cmd_call_kwargs, mocker, run_command_output, expected_exception):
+    mocker.patch("time.sleep")
+    run_cmd_mock = mocker.patch(
+        "common.schedulers.slurm_reservation_commands.run_command", side_effect=run_command_output
+    )
+
+    if expected_exception:
+        with pytest.raises(
+            SlurmCommandError, match="Failed to execute slurm command. Error is: some-error. Output is: some-output"
+        ):
+            delete_slurm_reservation(name)
+    else:
+        delete_slurm_reservation(name)
 
     cmd = f"{SCONTROL} delete reservation ReservationName={name}"
     run_cmd_mock.assert_called_with(cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True)
@@ -283,21 +412,55 @@ def test_add_param(cmd, param_name, value, expected_cmd):
     ["name", "mocked_output", "expected_output", "expected_exception", "expected_message"],
     [
         ("root_1", ["ReservationName=root_1"], True, False, None),
-        ("root_1", ["ReservationName=root_2"], False, False, None),  # this should not happen, scontrol should exit
-        ("root_1", CalledProcessError(1, "", "Reservation root_1 not found"), False, False, "root_1 not found"),
-        ("root_1", CalledProcessError(1, "", "Generic error"), False, True, "Failed when retrieving"),
+        ("root_2", ["unexpected-output"], False, False, None),  # this should not happen, scontrol should exit
+        # if available retrieve reservation info from stdout, even if there is an exception
+        (
+            "root_3",
+            [subprocess.CalledProcessError(1, "", output="Reservation root_3 not found")],
+            False,
+            False,
+            "root_3 not found",
+        ),
+        # if available retrieve reservation info from stderr, even if there is an exception
+        (
+            "root_4",
+            [subprocess.CalledProcessError(1, "", stderr="Reservation root_4 not found")],
+            False,
+            False,
+            "root_4 not found",
+        ),
+        (
+            # 1 retry
+            "root_5",
+            [subprocess.CalledProcessError(1, ""), "ReservationName=root_5"],
+            True,
+            False,
+            None,
+        ),
+        (
+            # 2 retries, it's a failure
+            "root_6",
+            [
+                subprocess.CalledProcessError(1, "", "Generic error"),
+                subprocess.CalledProcessError(1, "", "Generic error"),
+            ],
+            False,
+            True,
+            "Failed when retrieving",
+        ),
     ],
 )
 def test_is_slurm_reservation(
     mocker, name, mocked_output, expected_output, expected_message, expected_exception, caplog
 ):
+    mocker.patch("time.sleep")
     caplog.set_level(logging.INFO)
     run_cmd_mock = mocker.patch(
         "common.schedulers.slurm_reservation_commands.check_command_output", side_effect=mocked_output
     )
 
     if expected_exception:
-        with pytest.raises(CalledProcessError):
+        with pytest.raises(SlurmCommandError, match=expected_message):
             is_slurm_reservation(name)
     else:
         assert_that(is_slurm_reservation(name)).is_equal_to(expected_output)
