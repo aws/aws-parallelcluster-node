@@ -137,7 +137,7 @@ class CapacityBlockManager:
             reserved_nodenames = []
 
             # update list of capacity blocks from fleet config
-            self._capacity_blocks = self._capacity_blocks_from_config()
+            self._capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
 
             if self._capacity_blocks:
                 # update capacity blocks details from ec2 (e.g. state)
@@ -270,7 +270,7 @@ class CapacityBlockManager:
 
     def _update_capacity_blocks_info_from_ec2(self):
         """
-        Store in the _capacity_reservations a dict for CapacityReservation info.
+        Update capacity blocks in self._capacity_blocks by adding capacity reservation info.
 
         This method is called every time the CapacityBlockManager is re-initialized,
         so when it starts/is restarted or when fleet configuration changes.
@@ -293,7 +293,7 @@ class CapacityBlockManager:
                     f"Unable to find capacity block {capacity_block_id} in the internal map"
                 )
 
-    def _capacity_blocks_from_config(self):
+    def _retrieve_capacity_blocks_from_fleet_config(self):
         """
         Collect list of capacity reservation target from all queues/compute-resources in the fleet config.
 
@@ -303,7 +303,7 @@ class CapacityBlockManager:
                 "my-compute-resource": {
                    "Api": "create-fleet",
                     "CapacityType": "on-demand|spot|capacity-block",
-                    "AllocationStrategy": "lowest-price|capacity-optimized|use-capacity-reservations-first",
+                    "AllocationStrategy": "lowest-price|capacity-optimized",
                     "Instances": [
                         { "InstanceType": "p4d.24xlarge" }
                     ],
