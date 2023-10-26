@@ -146,13 +146,13 @@ class TestCapacityBlockManager:
                     CapacityBlockReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
                     ),
-                    # add another id not in the capacity block to trigger an exception
+                    # add another id not in the capacity block to trigger an internal error, that does not stop the loop
                     CapacityBlockReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
-                ["node1"],
+                ["queue-cb-st-compute-resource-cb-1"],
             ),
             (
                 True,
@@ -192,6 +192,7 @@ class TestCapacityBlockManager:
         capacity_blocks_info_from_ec2,
         nodes,
         expected_reserved_nodenames,
+        caplog,
     ):
         mocker.patch.object(
             capacity_block_manager, "_is_time_to_update_capacity_blocks_info", return_value=is_time_to_update
@@ -213,8 +214,8 @@ class TestCapacityBlockManager:
         # use a trick to trigger an internal exception
         expected_exception = len(capacity_blocks_from_config) != len(capacity_blocks_info_from_ec2)
         if expected_exception:
-            with pytest.raises(CapacityBlockManagerError):
-                capacity_block_manager.get_reserved_nodenames(nodes)
+            capacity_block_manager.get_reserved_nodenames(nodes)
+            assert_that(caplog.text).contains("Unable to find capacity block")
             assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
         else:
             reserved_nodenames = capacity_block_manager.get_reserved_nodenames(nodes)
@@ -222,17 +223,12 @@ class TestCapacityBlockManager:
         assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
 
         if is_time_to_update:
-            if expected_exception:
-                assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
-                update_res_mock.assert_not_called()
-                cleanup_mock.assert_not_called()
-            else:
-                assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
-                update_res_mock.assert_has_calls(
-                    [call(capacity_block) for capacity_block in capacity_block_manager._capacity_blocks.values()],
-                    any_order=True,
-                )
-                cleanup_mock.assert_called_once()
+            assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
+            update_res_mock.assert_has_calls(
+                [call(capacity_block) for capacity_block in capacity_block_manager._capacity_blocks.values()],
+                any_order=True,
+            )
+            cleanup_mock.assert_called_once()
             assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
 
         else:
@@ -413,7 +409,7 @@ class TestCapacityBlockManager:
             assert_that(caplog.text).contains(msg_prefix + "Nothing to do. No existing" + msg_suffix)
 
     @pytest.mark.parametrize(
-        ("init_capacity_blocks", "capacity_blocks_info_from_ec2", "expected_exception"),
+        ("init_capacity_blocks", "capacity_blocks_info_from_ec2", "expected_error"),
         [
             # nothing in the config
             ({}, [], None),
@@ -456,17 +452,19 @@ class TestCapacityBlockManager:
         capacity_block_manager,
         init_capacity_blocks,
         capacity_blocks_info_from_ec2,
-        expected_exception,
+        expected_error,
+        caplog,
     ):
+        caplog.set_level(logging.INFO)
         capacity_block_manager._capacity_blocks = init_capacity_blocks
 
         mocked_client = mocker.MagicMock()
         mocked_client.return_value.describe_capacity_reservations.return_value = capacity_blocks_info_from_ec2
         capacity_block_manager._ec2_client = mocked_client
 
-        if expected_exception:
-            with pytest.raises(CapacityBlockManagerError, match=expected_exception):
-                capacity_block_manager._update_capacity_blocks_info_from_ec2()
+        if expected_error:
+            capacity_block_manager._update_capacity_blocks_info_from_ec2()
+            assert_that(caplog.text).contains(expected_error)
 
             # assert that only existing item has been updated
             assert_that(
