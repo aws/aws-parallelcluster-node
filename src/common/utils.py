@@ -12,6 +12,7 @@
 
 import collections
 import contextlib
+import functools
 import itertools
 import json
 import logging
@@ -43,6 +44,32 @@ class EventType(Enum):
 
 Host = collections.namedtuple("Host", ["instance_id", "hostname", "slots", "gpus"])
 UpdateEvent = collections.namedtuple("UpdateEvent", ["action", "message", "host"])
+
+
+class SlurmCommandError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class SlurmCommandErrorHandler:
+    """Handle SlurmCommandError."""
+
+    @staticmethod
+    def handle_slurm_command_error(func):
+        """Handle slurm command errors, can be used as a decorator."""
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except subprocess.CalledProcessError as e:
+                error = f" Error is: {e.stderr.rstrip()}." if e.stderr else ""
+                output = f" Output is: {e.stdout.rstrip()}." if e.stdout else ""
+                msg = f"Failed to execute slurm command.{error}{output} {e}"
+                log.error(msg)
+                raise SlurmCommandError(msg)
+
+        return wrapper
 
 
 def load_module(module):
