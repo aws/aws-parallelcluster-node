@@ -16,8 +16,8 @@ from typing import Dict, List
 from common.schedulers.slurm_reservation_commands import (
     create_slurm_reservation,
     delete_slurm_reservation,
-    does_slurm_reservation_exist,
     get_slurm_reservations_info,
+    is_slurm_reservation,
     update_slurm_reservation,
 )
 from common.time_utils import seconds_to_minutes
@@ -212,7 +212,7 @@ class CapacityBlockManager:
         capacity_block_nodes = capacity_block.nodenames()
         capacity_block_nodenames = ",".join(capacity_block_nodes)
 
-        reservation_exists = does_slurm_reservation_exist(name=slurm_reservation_name)
+        reservation_exists = is_slurm_reservation(name=slurm_reservation_name)
         # if CB is active we need to remove Slurm reservation and start nodes
         if capacity_block.is_active():
             # if Slurm reservation exists, delete it.

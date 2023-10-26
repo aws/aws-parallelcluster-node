@@ -149,7 +149,7 @@ def _add_param(cmd, param_name, value):
     return cmd
 
 
-def does_slurm_reservation_exist(
+def is_slurm_reservation(
     name: str,
     command_timeout: int = DEFAULT_SCONTROL_COMMAND_TIMEOUT,
     raise_on_error: bool = True,
