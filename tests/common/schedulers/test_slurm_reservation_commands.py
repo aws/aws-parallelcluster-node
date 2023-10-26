@@ -22,8 +22,8 @@ from common.schedulers.slurm_reservation_commands import (
     _parse_reservations_info,
     create_slurm_reservation,
     delete_slurm_reservation,
-    does_slurm_reservation_exist,
     get_slurm_reservations_info,
+    is_slurm_reservation,
     update_slurm_reservation,
 )
 from slurm_plugin.slurm_resources import SlurmReservation
@@ -288,7 +288,7 @@ def test_add_param(cmd, param_name, value, expected_cmd):
         ("root_1", CalledProcessError(1, "", "Generic error"), False, True, "Failed when retrieving"),
     ],
 )
-def test_does_slurm_reservation_exist(
+def test_is_slurm_reservation(
     mocker, name, mocked_output, expected_output, expected_message, expected_exception, caplog
 ):
     caplog.set_level(logging.INFO)
@@ -298,9 +298,9 @@ def test_does_slurm_reservation_exist(
 
     if expected_exception:
         with pytest.raises(CalledProcessError):
-            does_slurm_reservation_exist(name)
+            is_slurm_reservation(name)
     else:
-        assert_that(does_slurm_reservation_exist(name)).is_equal_to(expected_output)
+        assert_that(is_slurm_reservation(name)).is_equal_to(expected_output)
         if expected_message:
             assert_that(caplog.text).contains(expected_message)
 
