@@ -14,8 +14,13 @@ from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
-from slurm_plugin.capacity_block_manager import SLURM_RESERVATION_NAME_PREFIX, CapacityBlock, CapacityBlockManager
-from slurm_plugin.slurm_resources import SlurmReservation, StaticNode
+from slurm_plugin.capacity_block_manager import (
+    SLURM_RESERVATION_NAME_PREFIX,
+    CapacityBlock,
+    CapacityBlockManager,
+    CapacityBlockManagerError,
+)
+from slurm_plugin.slurm_resources import DynamicNode, SlurmReservation, StaticNode
 
 from aws.ec2 import CapacityBlockReservationInfo
 
@@ -101,6 +106,137 @@ class TestCapacityBlockManager:
         ec2_mock.assert_called_with(config="fake_boto3_config")
         capacity_block_manager.ec2_client()
         ec2_mock.assert_called_once()
+
+    @pytest.mark.parametrize(
+        (
+            "is_time_to_update",
+            "previous_reserved_nodenames",
+            "capacity_blocks_from_config",
+            "capacity_blocks_info_from_ec2",
+            "nodes",
+            "expected_reserved_nodenames",
+        ),
+        [
+            (
+                # no time to update, preserve old nodenames
+                False,
+                ["node1"],
+                {},
+                [],
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                ["node1"],
+            ),
+            (
+                # capacity block from config is empty, remove old nodenames
+                True,
+                ["node1"],
+                {},
+                [],
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [],  # empty because capacity block from config is empty
+            ),
+            (
+                # preserve old value because there is an exception
+                True,
+                ["node1"],
+                {
+                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
+                },
+                [
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
+                    ),
+                    # add another id not in the capacity block to trigger an exception
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
+                    ),
+                ],
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                ["node1"],
+            ),
+            (
+                True,
+                ["node1"],
+                {
+                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
+                    "cr-234567": CapacityBlock("cr-234567", "queue-cb2", "compute-resource-cb2"),
+                    "cr-345678": CapacityBlock("cr-345678", "queue-cb3", "compute-resource-cb3"),
+                },
+                [
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
+                    ),
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
+                    ),
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-345678"}
+                    ),
+                ],
+                [
+                    StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb"),
+                    DynamicNode("queue-cb2-dy-compute-resource-cb2-1", "ip-1", "hostname-1", "some_state", "queue-cb2"),
+                    DynamicNode("queue-cb3-dy-compute-resource-cb3-1", "ip-1", "hostname-1", "some_state", "queue-cb3"),
+                ],
+                ["queue-cb-st-compute-resource-cb-1", "queue-cb3-dy-compute-resource-cb3-1"],
+            ),
+        ],
+    )
+    def test_get_reserved_nodenames(
+        self,
+        mocker,
+        capacity_block_manager,
+        is_time_to_update,
+        previous_reserved_nodenames,
+        capacity_blocks_from_config,
+        capacity_blocks_info_from_ec2,
+        nodes,
+        expected_reserved_nodenames,
+    ):
+        mocker.patch.object(
+            capacity_block_manager, "_is_time_to_update_capacity_blocks_info", return_value=is_time_to_update
+        )
+        mocker.patch.object(
+            capacity_block_manager, "_capacity_blocks_from_config", return_value=capacity_blocks_from_config
+        )
+        mocked_client = mocker.MagicMock()
+        mocked_client.return_value.describe_capacity_reservations.return_value = capacity_blocks_info_from_ec2
+        capacity_block_manager._ec2_client = mocked_client
+        update_res_mock = mocker.patch.object(capacity_block_manager, "_update_slurm_reservation")
+        cleanup_mock = mocker.patch.object(capacity_block_manager, "_cleanup_leftover_slurm_reservations")
+        capacity_block_manager._reserved_nodenames = previous_reserved_nodenames
+        previous_update_time = datetime(2020, 1, 1, 0, 0, 0)
+        capacity_block_manager._capacity_blocks_update_time = previous_update_time
+
+        # use a trick to trigger an internal exception
+        expected_exception = len(capacity_blocks_from_config) != len(capacity_blocks_info_from_ec2)
+        if expected_exception:
+            with pytest.raises(CapacityBlockManagerError):
+                capacity_block_manager.get_reserved_nodenames(nodes)
+            assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+        else:
+            reserved_nodenames = capacity_block_manager.get_reserved_nodenames(nodes)
+            assert_that(reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+        assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+
+        if is_time_to_update:
+            if expected_exception:
+                assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
+                update_res_mock.assert_not_called()
+                cleanup_mock.assert_not_called()
+            else:
+                assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
+                update_res_mock.assert_has_calls(
+                    [call(capacity_block) for capacity_block in capacity_block_manager._capacity_blocks.values()],
+                    any_order=True,
+                )
+                cleanup_mock.assert_called_once()
+            assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
+
+        else:
+            assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
+            update_res_mock.assert_not_called()
+            cleanup_mock.assert_not_called()
 
     @pytest.mark.parametrize(
         ("previous_capacity_blocks_update_time", "expected_update_time"),
@@ -275,32 +411,14 @@ class TestCapacityBlockManager:
             assert_that(caplog.text).contains(msg_prefix + "Nothing to do. No existing" + msg_suffix)
 
     @pytest.mark.parametrize(
-        (
-            "init_capacity_blocks",
-            "capacity_blocks_from_config",
-            "capacity_blocks_info_from_ec2",
-            "expected_new_capacity_blocks",
-        ),
+        ("init_capacity_blocks", "capacity_blocks_info_from_ec2", "expected_exception"),
         [
             # nothing in the config
-            ({}, {}, [], {}),
-            # new config without info, remove old block from the map
+            ({}, [], None),
+            # exception, because trying to update a capacity block not in the list, keep previous values
             (
-                {
-                    "cr-987654": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
-                },
-                {},
-                [],
-                {},
-            ),
-            # update old values with new values
-            (
-                {
-                    "cr-987654": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
-                },
                 {
                     "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
-                    "cr-234567": CapacityBlock("id2", "queue-cb2", "compute-resource-cb2"),
                 },
                 [
                     CapacityBlockReservationInfo(
@@ -310,10 +428,23 @@ class TestCapacityBlockManager:
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
+                "Unable to find capacity block cr-234567",
+            ),
+            # update old values with new values
+            (
                 {
-                    "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
-                    "cr-234567": CapacityBlock("id2", "queue-cb2", "compute-resource-cb2"),
+                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
+                    "cr-234567": CapacityBlock("cr-234567", "queue-cb", "compute-resource-cb"),
                 },
+                [
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
+                    ),
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
+                    ),
+                ],
+                None,
             ),
         ],
     )
@@ -321,25 +452,21 @@ class TestCapacityBlockManager:
         self,
         mocker,
         capacity_block_manager,
-        capacity_blocks_from_config,
         init_capacity_blocks,
-        expected_new_capacity_blocks,
         capacity_blocks_info_from_ec2,
+        expected_exception,
     ):
-        mocker.patch.object(
-            capacity_block_manager, "_capacity_blocks_from_config", return_value=capacity_blocks_from_config
-        )
         capacity_block_manager._capacity_blocks = init_capacity_blocks
 
         mocked_client = mocker.MagicMock()
         mocked_client.return_value.describe_capacity_reservations.return_value = capacity_blocks_info_from_ec2
         capacity_block_manager._ec2_client = mocked_client
 
-        capacity_block_manager._update_capacity_blocks_info_from_ec2()
+        if expected_exception:
+            with pytest.raises(CapacityBlockManagerError, match=expected_exception):
+                capacity_block_manager._update_capacity_blocks_info_from_ec2()
 
-        assert_that(expected_new_capacity_blocks).is_equal_to(capacity_block_manager._capacity_blocks)
-        if expected_new_capacity_blocks:
-            # verify that all the blocks have the updated info from ec2
+            # assert that only existing item has been updated
             assert_that(
                 capacity_block_manager._capacity_blocks.get("cr-123456")._capacity_block_reservation_info
             ).is_equal_to(
@@ -347,13 +474,25 @@ class TestCapacityBlockManager:
                     {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
                 )
             )
-            assert_that(
-                capacity_block_manager._capacity_blocks.get("cr-234567")._capacity_block_reservation_info
-            ).is_equal_to(
-                CapacityBlockReservationInfo(
-                    {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
+            assert_that(capacity_block_manager._capacity_blocks.get("cr-234567")).is_none()
+        else:
+            capacity_block_manager._update_capacity_blocks_info_from_ec2()
+            if init_capacity_blocks:
+                # verify that all the blocks have the updated info from ec2
+                assert_that(
+                    capacity_block_manager._capacity_blocks.get("cr-123456")._capacity_block_reservation_info
+                ).is_equal_to(
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
+                    )
                 )
-            )
+                assert_that(
+                    capacity_block_manager._capacity_blocks.get("cr-234567")._capacity_block_reservation_info
+                ).is_equal_to(
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
+                    )
+                )
 
     @pytest.mark.parametrize(
         ("fleet_config", "expected_capacity_blocks", "expected_exception"),
