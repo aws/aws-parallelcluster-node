@@ -136,14 +136,24 @@ class CapacityBlockManager:
         if self._is_time_to_update_capacity_blocks_info(now):
             reserved_nodenames = []
 
-            # update capacity blocks details from ec2 (e.g. state)
-            self._update_capacity_blocks_info_from_ec2()
-            # associate nodenames to capacity blocks, according to queues and compute resources from fleet configuration
-            self._associate_nodenames_to_capacity_blocks(nodes)
+            # update list of capacity blocks from fleet config
+            self._capacity_blocks = self._capacity_blocks_from_config()
 
-            # create, update or delete slurm reservation for the nodes according to CB details.
-            for capacity_block in self._capacity_blocks.values():
-                reserved_nodenames.extend(self._update_slurm_reservation(capacity_block))
+            if self._capacity_blocks:
+                # update capacity blocks details from ec2 (e.g. state)
+                self._update_capacity_blocks_info_from_ec2()
+                # associate nodenames to capacity blocks,
+                # according to queues and compute resources from fleet configuration
+                self._associate_nodenames_to_capacity_blocks(nodes)
+
+                # create, update or delete slurm reservation for the nodes according to CB details.
+                for capacity_block in self._capacity_blocks.values():
+                    self._update_slurm_reservation(capacity_block)
+
+                    # If CB is in not yet active or expired add nodes to list of reserved nodes
+                    if not capacity_block.is_active():
+                        reserved_nodenames.extend(capacity_block.nodenames())
+
             self._reserved_nodenames = reserved_nodenames
 
             # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
@@ -210,8 +220,6 @@ class CapacityBlockManager:
 
         A CB has five possible states: payment-pending, pending, active, expired and payment-failed,
         we need to create/delete Slurm reservation accordingly.
-
-        returns list of nodes reserved for that capacity block, if it's not active.
         """
 
         def _log_cb_info(action_info):
@@ -224,12 +232,9 @@ class CapacityBlockManager:
                 capacity_block_nodenames,
             )
 
-        nodes_in_slurm_reservation = []
-
         # retrieve list of nodes associated to a given slurm reservation/capacity block
         slurm_reservation_name = capacity_block.slurm_reservation_name()
-        capacity_block_nodes = capacity_block.nodenames()
-        capacity_block_nodenames = ",".join(capacity_block_nodes)
+        capacity_block_nodenames = ",".join(capacity_block.nodenames())
 
         reservation_exists = is_slurm_reservation(name=slurm_reservation_name)
         # if CB is active we need to remove Slurm reservation and start nodes
@@ -244,7 +249,6 @@ class CapacityBlockManager:
         # if CB is expired or not active we need to (re)create Slurm reservation
         # to avoid considering nodes as unhealthy
         else:
-            nodes_in_slurm_reservation = capacity_block_nodes
             # create or update Slurm reservation
             if reservation_exists:
                 _log_cb_info("Updating existing related")
@@ -257,8 +261,6 @@ class CapacityBlockManager:
                     nodes=capacity_block_nodenames,
                 )
 
-        return nodes_in_slurm_reservation
-
     def _update_capacity_blocks_info_from_ec2(self):
         """
         Store in the _capacity_reservations a dict for CapacityReservation info.
@@ -266,17 +268,14 @@ class CapacityBlockManager:
         This method is called every time the CapacityBlockManager is re-initialized,
         so when it starts/is restarted or when fleet configuration changes.
         """
-        self._capacity_blocks = self._capacity_blocks_from_config()
-
-        if self._capacity_blocks:
-            capacity_block_ids = self._capacity_blocks.keys()
-            logger.info(
-                "Retrieving updated Capacity Block reservation information from EC2 for %s",
-                ",".join(capacity_block_ids),
-            )
-            capacity_block_reservations_info: List[
-                CapacityBlockReservationInfo
-            ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
+        capacity_block_ids = self._capacity_blocks.keys()
+        logger.info(
+            "Retrieving updated Capacity Block reservation information from EC2 for %s",
+            ",".join(capacity_block_ids),
+        )
+        capacity_block_reservations_info: List[
+            CapacityBlockReservationInfo
+        ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
 
         for capacity_block_reservation_info in capacity_block_reservations_info:
             capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
