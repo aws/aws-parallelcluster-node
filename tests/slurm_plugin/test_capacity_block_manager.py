@@ -218,7 +218,7 @@ class TestCapacityBlockManager:
         nodenames = ",".join(capacity_block.nodenames())
         slurm_reservation_name = f"{SLURM_RESERVATION_NAME_PREFIX}{FAKE_CAPACITY_BLOCK_ID}"
         check_res_mock = mocker.patch(
-            "slurm_plugin.capacity_block_manager.does_slurm_reservation_exist", return_value=reservation_exists
+            "slurm_plugin.capacity_block_manager.is_slurm_reservation", return_value=reservation_exists
         )
         create_res_mock = mocker.patch("slurm_plugin.capacity_block_manager.create_slurm_reservation")
         update_res_mock = mocker.patch("slurm_plugin.capacity_block_manager.update_slurm_reservation")
