@@ -155,6 +155,7 @@ class ClustermgtdConfig:
         "disable_all_cluster_management": False,
         "health_check_timeout": 180,
         "health_check_timeout_after_slurmdstarttime": 180,
+        "disable_capacity_blocks_management": False,
         # DNS domain configs
         "hosted_zone": None,
         "dns_domain": None,
@@ -269,6 +270,11 @@ class ClustermgtdConfig:
             "clustermgtd",
             "disable_all_health_checks",
             fallback=(self.disable_ec2_health_check and self.disable_scheduled_event_health_check),
+        )
+        self.disable_capacity_blocks_management = config.getboolean(
+            "clustermgtd",
+            "disable_capacity_blocks_management",
+            fallback=self.DEFAULTS.get("disable_capacity_block_management"),
         )
 
     def _get_terminate_config(self, config):
@@ -734,8 +740,26 @@ class ClusterManager:
         unhealthy_dynamic_nodes = []
         ice_compute_resources_and_nodes_map = {}
         all_unhealthy_nodes = []
+
+        # Remove the nodes part of unactive Capacity Blocks from the list of unhealthy nodes.
+        # Nodes from active Capacity Blocks will be instead managed as unhealthy instances.
+        reserved_nodenames = []
+        if not self._config.disable_capacity_blocks_management:
+            reserved_nodenames = self._capacity_block_manager.get_reserved_nodenames(slurm_nodes)
+            log.info(
+                (
+                    "The nodes %s are associated to unactive Capacity Blocks, "
+                    "they will not be considered as unhealthy nodes."
+                ),
+                ",".join(reserved_nodenames),
+            )
+
         for node in slurm_nodes:
             if not node.is_healthy(self._config.terminate_drain_nodes, self._config.terminate_down_nodes):
+                if not self._config.disable_capacity_blocks_management and node.name in reserved_nodenames:
+                    # do not consider as unhealthy the nodes reserved for capacity blocks
+                    continue
+
                 all_unhealthy_nodes.append(node)
 
                 if isinstance(node, StaticNode):
@@ -829,12 +853,7 @@ class ClusterManager:
         except Exception as e:
             log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
 
-        # Remove the nodes part of the unactive Capacity Block reservations from the list of unhealthy nodes.
-        # nodes from active Capacity Block reservation will be instead managed as standard static instances.
-        reserved_unhealthy_nodenames = self._capacity_block_manager.get_reserved_nodenames(unhealthy_static_nodes)
-        log.info("Removing reserved nodes %s from list of unhealthy nodes", ",".join(reserved_unhealthy_nodenames))
-        node_list = [node.name for node in unhealthy_static_nodes if node.name not in reserved_unhealthy_nodenames]
-
+        node_list = [node.name for node in unhealthy_static_nodes]
         # Set nodes into down state so jobs can be requeued immediately
         try:
             log.info("Setting unhealthy static nodes to DOWN")
