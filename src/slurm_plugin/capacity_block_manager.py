@@ -277,7 +277,7 @@ class CapacityBlockManager:
         """
         capacity_block_ids = self._capacity_blocks.keys()
         logger.info(
-            "Retrieving updated Capacity Block reservation information from EC2 for %s",
+            "Retrieving Capacity Block reservation information from EC2 for %s",
             ",".join(capacity_block_ids),
         )
         capacity_block_reservations_info: List[
@@ -289,9 +289,8 @@ class CapacityBlockManager:
             try:
                 self._capacity_blocks[capacity_block_id].update_ec2_info(capacity_block_reservation_info)
             except KeyError:
-                raise CapacityBlockManagerError(
-                    f"Unable to find capacity block {capacity_block_id} in the internal map"
-                )
+                # should never happen
+                logger.error(f"Unable to find capacity block {capacity_block_id} in the internal map.")
 
     def _retrieve_capacity_blocks_from_fleet_config(self):
         """
