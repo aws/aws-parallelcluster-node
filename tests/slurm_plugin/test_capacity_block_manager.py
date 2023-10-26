@@ -197,7 +197,9 @@ class TestCapacityBlockManager:
             capacity_block_manager, "_is_time_to_update_capacity_blocks_info", return_value=is_time_to_update
         )
         mocker.patch.object(
-            capacity_block_manager, "_capacity_blocks_from_config", return_value=capacity_blocks_from_config
+            capacity_block_manager,
+            "_retrieve_capacity_blocks_from_fleet_config",
+            return_value=capacity_blocks_from_config,
         )
         mocked_client = mocker.MagicMock()
         mocked_client.return_value.describe_capacity_reservations.return_value = capacity_blocks_info_from_ec2
@@ -534,16 +536,18 @@ class TestCapacityBlockManager:
             ),
         ],
     )
-    def test_capacity_blocks_from_config(
+    def test_retrieve_capacity_blocks_from_fleet_config(
         self, capacity_block_manager, fleet_config, expected_capacity_blocks, expected_exception
     ):
         capacity_block_manager._fleet_config = fleet_config
 
         if expected_exception:
             with pytest.raises(KeyError):
-                capacity_block_manager._capacity_blocks_from_config()
+                capacity_block_manager._retrieve_capacity_blocks_from_fleet_config()
         else:
-            assert_that(expected_capacity_blocks).is_equal_to(capacity_block_manager._capacity_blocks_from_config())
+            assert_that(expected_capacity_blocks).is_equal_to(
+                capacity_block_manager._retrieve_capacity_blocks_from_fleet_config()
+            )
 
     @pytest.mark.parametrize(
         ("compute_resource_config", "expected_result"),
