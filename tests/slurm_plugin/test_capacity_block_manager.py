@@ -22,6 +22,7 @@ from slurm_plugin.capacity_block_manager import (
 )
 from slurm_plugin.slurm_resources import DynamicNode, SlurmReservation, StaticNode
 
+from aws.common import AWSClientError
 from aws.ec2 import CapacityBlockReservationInfo
 
 FAKE_CAPACITY_BLOCK_ID = "cr-a1234567"
@@ -136,7 +137,7 @@ class TestCapacityBlockManager:
                 [],  # empty because capacity block from config is empty
             ),
             (
-                # preserve old value because there is an exception
+                # update values because there is only an internal error
                 True,
                 ["node1"],
                 {
@@ -153,6 +154,17 @@ class TestCapacityBlockManager:
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
                 ["queue-cb-st-compute-resource-cb-1"],
+            ),
+            (
+                # preserve old value because there is an exception
+                True,
+                ["node1"],
+                {
+                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
+                },
+                AWSClientError("describe_capacity_reservations", "Boto3Error"),
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                ["node1"],
             ),
             (
                 True,
@@ -203,7 +215,10 @@ class TestCapacityBlockManager:
             return_value=capacity_blocks_from_config,
         )
         mocked_client = mocker.MagicMock()
-        mocked_client.return_value.describe_capacity_reservations.return_value = capacity_blocks_info_from_ec2
+        expected_exception = isinstance(capacity_blocks_info_from_ec2, AWSClientError)
+        mocked_client.return_value.describe_capacity_reservations.side_effect = [
+            capacity_blocks_info_from_ec2 if expected_exception else capacity_blocks_info_from_ec2
+        ]
         capacity_block_manager._ec2_client = mocked_client
         update_res_mock = mocker.patch.object(capacity_block_manager, "_update_slurm_reservation")
         cleanup_mock = mocker.patch.object(capacity_block_manager, "_cleanup_leftover_slurm_reservations")
@@ -211,18 +226,20 @@ class TestCapacityBlockManager:
         previous_update_time = datetime(2020, 1, 1, 0, 0, 0)
         capacity_block_manager._capacity_blocks_update_time = previous_update_time
 
-        # use a trick to trigger an internal exception
-        expected_exception = len(capacity_blocks_from_config) != len(capacity_blocks_info_from_ec2)
+        reserved_nodenames = capacity_block_manager.get_reserved_nodenames(nodes)
         if expected_exception:
-            capacity_block_manager.get_reserved_nodenames(nodes)
-            assert_that(caplog.text).contains("Unable to find capacity block")
-            assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+            assert_that(caplog.text).contains("Unable to retrieve list of reserved nodes, maintaining old list")
         else:
-            reserved_nodenames = capacity_block_manager.get_reserved_nodenames(nodes)
-            assert_that(reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+            expected_internal_error = len(capacity_blocks_from_config) != len(capacity_blocks_info_from_ec2)
+            if expected_internal_error:
+                assert_that(caplog.text).contains("Unable to find Capacity Block")
+                assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+            else:
+                assert_that(reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+
         assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
 
-        if is_time_to_update:
+        if is_time_to_update and not expected_exception:
             assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
             update_res_mock.assert_has_calls(
                 [call(capacity_block) for capacity_block in capacity_block_manager._capacity_blocks.values()],
@@ -230,7 +247,6 @@ class TestCapacityBlockManager:
             )
             cleanup_mock.assert_called_once()
             assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
-
         else:
             assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
             update_res_mock.assert_not_called()
@@ -413,7 +429,7 @@ class TestCapacityBlockManager:
         [
             # nothing in the config
             ({}, [], None),
-            # exception, because trying to update a capacity block not in the list, keep previous values
+            # exception, keep previous values
             (
                 {
                     "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
@@ -426,7 +442,22 @@ class TestCapacityBlockManager:
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
-                "Unable to find capacity block cr-234567",
+                AWSClientError("describe_capacity_reservations", "Boto3Error"),
+            ),
+            # internal error, because trying to update a capacity block not in the list, keep previous values
+            (
+                {
+                    "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
+                },
+                [
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
+                    ),
+                    CapacityBlockReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
+                    ),
+                ],
+                "Unable to find Capacity Block cr-234567",
             ),
             # update old values with new values
             (
@@ -457,12 +488,20 @@ class TestCapacityBlockManager:
     ):
         caplog.set_level(logging.INFO)
         capacity_block_manager._capacity_blocks = init_capacity_blocks
-
+        expected_exception = isinstance(expected_error, AWSClientError)
         mocked_client = mocker.MagicMock()
-        mocked_client.return_value.describe_capacity_reservations.return_value = capacity_blocks_info_from_ec2
+        mocked_client.return_value.describe_capacity_reservations.side_effect = [
+            expected_error if expected_exception else capacity_blocks_info_from_ec2
+        ]
         capacity_block_manager._ec2_client = mocked_client
 
-        if expected_error:
+        if expected_exception:
+            with pytest.raises(
+                CapacityBlockManagerError, match="Unable to retrieve Capacity Blocks information from EC2. Boto3Error"
+            ):
+                capacity_block_manager._update_capacity_blocks_info_from_ec2()
+
+        elif expected_error:
             capacity_block_manager._update_capacity_blocks_info_from_ec2()
             assert_that(caplog.text).contains(expected_error)
 
