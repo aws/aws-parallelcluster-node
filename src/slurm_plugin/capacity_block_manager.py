@@ -184,7 +184,6 @@ class CapacityBlockManager:
         Check configured CBs and associate nodes to them according to queue and compute resource info.
         """
         for node in nodes:
-            capacity_block: CapacityBlock
             for capacity_block in self._capacity_blocks.values():
                 if capacity_block.does_node_belong_to(node):
                     capacity_block.add_nodename(node.name)
@@ -208,6 +207,14 @@ class CapacityBlockManager:
                         capacity_block_id,
                     )
                     delete_slurm_reservation(name=slurm_reservation.name)
+                else:
+                    logger.debug(
+                        (
+                            "Slurm reservation %s is managed by ParallelCluster "
+                            "and related to an existing Capacity Block. Skipping it."
+                        ),
+                        slurm_reservation.name,
+                    )
             else:
                 logger.debug(
                     "Slurm reservation %s is not managed by ParallelCluster. Skipping it.", slurm_reservation.name
@@ -241,7 +248,7 @@ class CapacityBlockManager:
         if capacity_block.is_active():
             # if Slurm reservation exists, delete it.
             if reservation_exists:
-                _log_cb_info("Deleting related")
+                _log_cb_info("Deleting")
                 delete_slurm_reservation(name=slurm_reservation_name)
             else:
                 _log_cb_info("Nothing to do. No existing")
@@ -251,10 +258,10 @@ class CapacityBlockManager:
         else:
             # create or update Slurm reservation
             if reservation_exists:
-                _log_cb_info("Updating existing related")
+                _log_cb_info("Updating existing")
                 update_slurm_reservation(name=slurm_reservation_name, nodes=capacity_block_nodenames)
             else:
-                _log_cb_info("Creating related")
+                _log_cb_info("Creating")
                 create_slurm_reservation(
                     name=slurm_reservation_name,
                     start_time=datetime.now(tz=timezone.utc),

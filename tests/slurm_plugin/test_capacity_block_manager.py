@@ -397,15 +397,15 @@ class TestCapacityBlockManager:
             create_res_mock.assert_called_with(
                 name=slurm_reservation_name, start_time=expected_start_time, nodes=nodenames
             )
-            assert_that(caplog.text).contains(msg_prefix + "Creating related" + msg_suffix)
+            assert_that(caplog.text).contains(msg_prefix + "Creating" + msg_suffix)
         if expected_update_res_call:
             update_res_mock.assert_called_with(name=slurm_reservation_name, nodes=nodenames)
-            assert_that(caplog.text).contains(msg_prefix + "Updating existing related" + msg_suffix)
+            assert_that(caplog.text).contains(msg_prefix + "Updating existing" + msg_suffix)
 
         # when state is active
         if expected_delete_res_call:
             delete_res_mock.assert_called_with(name=slurm_reservation_name)
-            assert_that(caplog.text).contains(msg_prefix + "Deleting related" + msg_suffix)
+            assert_that(caplog.text).contains(msg_prefix + "Deleting" + msg_suffix)
 
         if state == "active" and not reservation_exists:
             assert_that(caplog.text).contains(msg_prefix + "Nothing to do. No existing" + msg_suffix)
