@@ -95,7 +95,7 @@ class CapacityBlock:
         return node.queue_name == self.queue_name and node.compute_resource_name == self.compute_resource_name
 
     @staticmethod
-    def slurm_reservation_name_to_id(slurm_reservation_name: str):
+    def capacity_block_id_from_slurm_reservation_name(slurm_reservation_name: str):
         """Parse slurm reservation name to retrieve related capacity block id."""
         return slurm_reservation_name[len(SLURM_RESERVATION_NAME_PREFIX) :]  # noqa E203
 
@@ -211,7 +211,9 @@ class CapacityBlockManager:
         try:
             for slurm_reservation in get_slurm_reservations_info():
                 if CapacityBlock.is_capacity_block_slurm_reservation(slurm_reservation.name):
-                    capacity_block_id = CapacityBlock.slurm_reservation_name_to_id(slurm_reservation.name)
+                    capacity_block_id = CapacityBlock.capacity_block_id_from_slurm_reservation_name(
+                        slurm_reservation.name
+                    )
                     if capacity_block_id not in self._capacity_blocks.keys():
                         logger.info(
                             (

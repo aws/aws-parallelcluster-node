@@ -85,8 +85,10 @@ class TestCapacityBlock:
         ("reservation_name", "expected_output"),
         [("test", ""), (f"{SLURM_RESERVATION_NAME_PREFIX}anything-else", "anything-else")],
     )
-    def test_slurm_reservation_name_to_id(self, reservation_name, expected_output):
-        assert_that(CapacityBlock.slurm_reservation_name_to_id(reservation_name)).is_equal_to(expected_output)
+    def test_capacity_block_id_from_slurm_reservation_name(self, reservation_name, expected_output):
+        assert_that(CapacityBlock.capacity_block_id_from_slurm_reservation_name(reservation_name)).is_equal_to(
+            expected_output
+        )
 
     @pytest.mark.parametrize(
         ("reservation_name", "expected_output"),
