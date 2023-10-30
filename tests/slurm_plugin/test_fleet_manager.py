@@ -329,6 +329,25 @@ class TestEc2CreateFleetManager:
         "Type": "instant",
     }
 
+    test_capacity_block_params = {
+        "LaunchTemplateConfigs": [
+            {
+                "LaunchTemplateSpecification": {
+                    "LaunchTemplateName": "queue-cb-fleet-capacity-block",
+                    "Version": "$Latest",
+                },
+            }
+        ],
+        "OnDemandOptions": {
+            "SingleInstanceType": False,
+            "SingleAvailabilityZone": True,
+            "MinTargetCapacity": 1,
+            "CapacityReservationOptions": {"UsageStrategy": "use-capacity-reservations-first"},
+        },
+        "TargetCapacitySpecification": {"TotalTargetCapacity": 5, "DefaultTargetCapacityType": "capacity-block"},
+        "Type": "instant",
+    }
+
     @pytest.mark.parametrize(
         ("batch_size", "queue", "compute_resource", "all_or_nothing", "launch_overrides", "log_assertions"),
         [
@@ -336,6 +355,8 @@ class TestEc2CreateFleetManager:
             (5, "queue1", "fleet-spot", False, {}, None),
             # normal - on-demand
             (5, "queue2", "fleet-ondemand", False, {}, None),
+            # normal - capacity-block
+            (5, "queue-cb", "fleet-capacity-block", False, {}, None),
             # all or nothing
             (5, "queue1", "fleet-spot", True, {}, None),
             # launch_overrides
@@ -374,6 +395,7 @@ class TestEc2CreateFleetManager:
         ids=[
             "fleet_spot",
             "fleet_ondemand",
+            "fleet_capacity_block",
             "all_or_nothing",
             "launch_overrides",
             "fleet-single-az-multi-it-all_or_nothing",
@@ -586,6 +608,68 @@ class TestEc2CreateFleetManager:
                     }
                 ],
             ),
+            # normal - capacity-block
+            (
+                test_capacity_block_params,
+                [
+                    MockedBoto3Request(
+                        method="create_fleet",
+                        response={
+                            "Instances": [{"InstanceIds": ["i-12345"]}],
+                            "Errors": [
+                                {"ErrorCode": "InsufficientInstanceCapacity", "ErrorMessage": "Insufficient capacity."}
+                            ],
+                            "ResponseMetadata": {"RequestId": "1234-abcde"},
+                        },
+                        expected_params=test_capacity_block_params,
+                    ),
+                    MockedBoto3Request(
+                        method="describe_instances",
+                        response={
+                            "Reservations": [
+                                {
+                                    "Instances": [
+                                        {
+                                            "InstanceId": "i-12345",
+                                            "PrivateIpAddress": "ip-2",
+                                            "PrivateDnsName": "hostname",
+                                            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                            "NetworkInterfaces": [
+                                                {
+                                                    "Attachment": {
+                                                        "DeviceIndex": 0,
+                                                        "NetworkCardIndex": 0,
+                                                    },
+                                                    "PrivateIpAddress": "ip-2",
+                                                },
+                                            ],
+                                        },
+                                    ]
+                                }
+                            ]
+                        },
+                        expected_params={"InstanceIds": ["i-12345"]},
+                        generate_error=False,
+                    ),
+                ],
+                [
+                    {
+                        "InstanceId": "i-12345",
+                        "PrivateIpAddress": "ip-2",
+                        "PrivateDnsName": "hostname",
+                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                        "NetworkInterfaces": [
+                            {
+                                "Attachment": {
+                                    "DeviceIndex": 0,
+                                    "NetworkCardIndex": 0,
+                                },
+                                "PrivateIpAddress": "ip-2",
+                            },
+                        ],
+                    }
+                ],
+            ),
             # create-fleet - throttling
             (
                 test_on_demand_params,
@@ -624,7 +708,14 @@ class TestEc2CreateFleetManager:
                 [],
             ),
         ],
-        ids=["fleet_spot", "fleet_exception", "fleet_ondemand", "fleet_throttling", "fleet_multiple_errors"],
+        ids=[
+            "fleet_spot",
+            "fleet_exception",
+            "fleet_ondemand",
+            "fleet_capacity_block",
+            "fleet_throttling",
+            "fleet_multiple_errors",
+        ],
     )
     def test_launch_instances(
         self,

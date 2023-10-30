@@ -94,6 +94,22 @@ FLEET_CONFIG = {
             "Networking": MULTIPLE_SUBNETS,
         },
     },
+    "queue-cb": {
+        "run-instances-capacity-block": {
+            "Api": "run-instances",
+            "Instances": [{"InstanceType": "c5.xlarge"}],
+            "CapacityType": "capacity-block",
+            "Networking": SINGLE_SUBNET,
+            "CapacityReservationId": "cr-123456",
+        },
+        "fleet-capacity-block": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "CapacityType": "capacity-block",
+            "Networking": SINGLE_SUBNET,
+            "CapacityReservationId": "cr-234567",
+        },
+    },
 }
 
 LAUNCH_OVERRIDES = {}
