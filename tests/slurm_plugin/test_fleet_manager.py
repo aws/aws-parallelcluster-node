@@ -330,42 +330,14 @@ class TestEc2CreateFleetManager:
     }
 
     @pytest.mark.parametrize(
-        (
-            "batch_size",
-            "queue",
-            "compute_resource",
-            "all_or_nothing",
-            "launch_overrides",
-            "log_assertions",
-        ),
+        ("batch_size", "queue", "compute_resource", "all_or_nothing", "launch_overrides", "log_assertions"),
         [
             # normal - spot
-            (
-                5,
-                "queue1",
-                "fleet-spot",
-                False,
-                {},
-                None,
-            ),
+            (5, "queue1", "fleet-spot", False, {}, None),
             # normal - on-demand
-            (
-                5,
-                "queue2",
-                "fleet-ondemand",
-                False,
-                {},
-                None,
-            ),
+            (5, "queue2", "fleet-ondemand", False, {}, None),
             # all or nothing
-            (
-                5,
-                "queue1",
-                "fleet-spot",
-                True,
-                {},
-                None,
-            ),
+            (5, "queue1", "fleet-spot", True, {}, None),
             # launch_overrides
             (
                 5,
@@ -384,32 +356,11 @@ class TestEc2CreateFleetManager:
                 None,
             ),
             # Fleet with (Single-Subnet, Multi-InstanceType) AND all_or_nothing is True --> MinTargetCapacity is set
-            (
-                5,
-                "queue4",
-                "fleet1",
-                True,
-                {},
-                None,
-            ),
+            (5, "queue4", "fleet1", True, {}, None),
             # Fleet with (Multi-Subnet, Single-InstanceType) AND all_or_nothing is True --> MinTargetCapacity is set
-            (
-                5,
-                "queue5",
-                "fleet1",
-                True,
-                {},
-                None,
-            ),
+            (5, "queue5", "fleet1", True, {}, None),
             # Fleet with (Multi-Subnet, Multi-InstanceType) AND all_or_nothing is False --> NOT set MinTargetCapacity
-            (
-                5,
-                "queue6",
-                "fleet1",
-                False,
-                {},
-                None,
-            ),
+            (5, "queue6", "fleet1", False, {}, None),
             # Fleet with (Multi-Subnet, Multi-InstanceType) AND all_or_nothing is True --> Log a warning
             (
                 5,
