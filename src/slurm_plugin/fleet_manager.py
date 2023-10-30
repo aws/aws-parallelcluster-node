@@ -314,12 +314,15 @@ class Ec2CreateFleetManager(FleetManager):
         """Evaluate parameters to be passed to create_fleet call."""
         try:
             common_launch_options = {
-                # AllocationStrategy can assume different values for SpotOptions and OnDemandOptions
-                "AllocationStrategy": self._compute_resource_config["AllocationStrategy"],
                 "SingleInstanceType": self._uses_single_instance_type(),
                 "SingleAvailabilityZone": self._uses_single_az(),  # If using Multi-AZ (by specifying multiple subnets),
                 # set SingleAvailabilityZone to False
             }
+            allocation_strategy = self._compute_resource_config.get("AllocationStrategy")
+            if allocation_strategy:
+                # AllocationStrategy can assume different values for SpotOptions and OnDemandOptions
+                # and is not set for Capacity Block
+                common_launch_options.update({"AllocationStrategy": allocation_strategy})
 
             if self._uses_single_az() or self._uses_single_instance_type():
                 # If the minimum target capacity is not reached, the fleet launches no instances
@@ -334,6 +337,7 @@ class Ec2CreateFleetManager(FleetManager):
             if self._compute_resource_config["CapacityType"] == "spot":
                 launch_options = {"SpotOptions": common_launch_options}
             else:
+                # This is valid for both on-demand and capacity-block
                 launch_options = {
                     "OnDemandOptions": {
                         **common_launch_options,
