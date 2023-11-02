@@ -373,7 +373,7 @@ class SlurmNode(metaclass=ABCMeta):
         return self.SLURM_SCONTROL_INVALID_REGISTRATION_STATE in self.states
 
     @abstractmethod
-    def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
+    def is_state_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
         pass
 
@@ -394,7 +394,7 @@ class SlurmNode(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
+    def is_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         pass
 
@@ -478,23 +478,23 @@ class StaticNode(SlurmNode):
             reservation_name=reservation_name,
         )
 
-    def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
+    def is_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         return (
             self._is_static_node_ip_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
             and self.is_state_healthy(
-                terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
+                consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=log_warn_if_unhealthy
             )
         )
 
-    def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
+    def is_state_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
         # Check if node is rebooting: if so, the node is healthy
         if self.is_rebooting():
             return True
         # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
-        if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
+        if self.is_drained() and not self.is_power_down() and consider_drain_as_unhealthy:
             if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DRAINED but is currently being replaced, ignoring, node state: %s",
@@ -507,7 +507,7 @@ class StaticNode(SlurmNode):
                     logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
                 return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
-        elif self.is_down() and terminate_down_nodes:
+        elif self.is_down() and consider_down_as_unhealthy:
             if self.is_being_replaced:
                 logger.debug(
                     "Node state check: node %s in DOWN but is currently being replaced, ignoring. Node state: ",
@@ -597,18 +597,18 @@ class DynamicNode(SlurmNode):
             reservation_name=reservation_name,
         )
 
-    def is_state_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
+    def is_state_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
         """Check if a slurm node's scheduler state is considered healthy."""
         # Check if node is rebooting: if so, the node is healthy
         if self.is_rebooting():
             return True
         # Check to see if node is in DRAINED, ignoring any node currently being replaced or in POWER_DOWN
-        if self.is_drained() and not self.is_power_down() and terminate_drain_nodes:
+        if self.is_drained() and not self.is_power_down() and consider_drain_as_unhealthy:
             if log_warn_if_unhealthy:
                 logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
             return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
-        elif self.is_down() and terminate_down_nodes:
+        elif self.is_down() and consider_down_as_unhealthy:
             if not self.is_nodeaddr_set():
                 # Silently handle failed to launch dynamic node to clean up normal logging
                 logger.debug("Node state check: node %s in DOWN, node state: %s", self, self.state_string)
@@ -618,10 +618,10 @@ class DynamicNode(SlurmNode):
             return False
         return True
 
-    def is_healthy(self, terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=True):
+    def is_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
         """Check if a slurm node is considered healthy."""
         return self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy) and self.is_state_healthy(
-            terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=log_warn_if_unhealthy
+            consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=log_warn_if_unhealthy
         )
 
     def is_bootstrap_failure(self):
