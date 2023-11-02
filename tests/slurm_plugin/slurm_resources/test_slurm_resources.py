@@ -556,7 +556,7 @@ def test_partition_is_inactive(nodes, expected_output):
 
 
 @pytest.mark.parametrize(
-    "node, terminate_drain_nodes, terminate_down_nodes, mock_is_node_being_replaced, expected_result",
+    "node, consider_drain_as_unhealthy, consider_down_as_unhealthy, mock_is_node_being_replaced, expected_result",
     [
         pytest.param(
             DynamicNode("queue-dy-c5xlarge-1", "some_ip", "hostname", "MIXED+CLOUD", "queue"),
@@ -709,10 +709,12 @@ def test_partition_is_inactive(nodes, expected_output):
     ],
 )
 def test_slurm_node_is_state_healthy(
-    node, mock_is_node_being_replaced, terminate_drain_nodes, terminate_down_nodes, expected_result
+    node, mock_is_node_being_replaced, consider_drain_as_unhealthy, consider_down_as_unhealthy, expected_result
 ):
     node.is_being_replaced = mock_is_node_being_replaced
-    assert_that(node.is_state_healthy(terminate_drain_nodes, terminate_down_nodes)).is_equal_to(expected_result)
+    assert_that(node.is_state_healthy(consider_drain_as_unhealthy, consider_down_as_unhealthy)).is_equal_to(
+        expected_result
+    )
 
 
 @pytest.mark.parametrize(
@@ -1005,7 +1007,9 @@ def test_slurm_node_is_bootstrap_failure(
 )
 def test_slurm_node_is_healthy(node, instance, expected_result):
     node.instance = instance
-    assert_that(node.is_healthy(terminate_drain_nodes=True, terminate_down_nodes=True)).is_equal_to(expected_result)
+    assert_that(node.is_healthy(consider_drain_as_unhealthy=True, consider_down_as_unhealthy=True)).is_equal_to(
+        expected_result
+    )
 
 
 @pytest.mark.parametrize(

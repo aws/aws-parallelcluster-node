@@ -755,7 +755,10 @@ class ClusterManager:
             )
 
         for node in slurm_nodes:
-            if not node.is_healthy(self._config.terminate_drain_nodes, self._config.terminate_down_nodes):
+            if not node.is_healthy(
+                consider_drain_as_unhealthy=self._config.terminate_drain_nodes,
+                consider_down_as_unhealthy=self._config.terminate_down_nodes,
+            ):
                 if not self._config.disable_capacity_blocks_management and node.name in reserved_nodenames:
                     # do not consider as unhealthy the nodes reserved for capacity blocks
                     continue
