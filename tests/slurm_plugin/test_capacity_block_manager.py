@@ -14,6 +14,7 @@ from unittest.mock import call
 
 import pytest
 from assertpy import assert_that
+from common.utils import SlurmCommandError
 from slurm_plugin.capacity_block_manager import (
     SLURM_RESERVATION_NAME_PREFIX,
     CapacityBlock,
@@ -158,13 +159,24 @@ class TestCapacityBlockManager:
                 ["queue-cb-st-compute-resource-cb-1"],
             ),
             (
-                # preserve old value because there is an exception
+                # preserve old value because there is a managed exception
                 True,
                 ["node1"],
                 {
                     "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
                 },
                 AWSClientError("describe_capacity_reservations", "Boto3Error"),
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                ["node1"],
+            ),
+            (
+                # preserve old value because there is an unexpected exception
+                True,
+                ["node1"],
+                {
+                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
+                },
+                Exception("generic-error"),
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
                 ["node1"],
             ),
@@ -217,7 +229,7 @@ class TestCapacityBlockManager:
             return_value=capacity_blocks_from_config,
         )
         mocked_client = mocker.MagicMock()
-        expected_exception = isinstance(capacity_blocks_info_from_ec2, AWSClientError)
+        expected_exception = isinstance(capacity_blocks_info_from_ec2, Exception)
         mocked_client.return_value.describe_capacity_reservations.side_effect = [
             capacity_blocks_info_from_ec2 if expected_exception else capacity_blocks_info_from_ec2
         ]
@@ -318,7 +330,13 @@ class TestCapacityBlockManager:
             )
 
     @pytest.mark.parametrize(
-        ("slurm_reservations", "expected_leftover_slurm_reservations"),
+        (
+            "slurm_reservations",
+            "delete_reservation_behaviour",
+            "expected_delete_calls",
+            "expected_leftover_slurm_reservations",
+            "expected_error_message",
+        ),
         [
             (
                 [
@@ -332,9 +350,24 @@ class TestCapacityBlockManager:
                     SlurmReservation(
                         name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654", state="active", users="anyone", nodes="node1"
                     ),
+                    # leftover reservation triggering an exception
+                    SlurmReservation(
+                        name=f"{SLURM_RESERVATION_NAME_PREFIX}cr-876543", state="active", users="anyone", nodes="node1"
+                    ),
                 ],
+                [None, SlurmCommandError("delete error")],
+                [f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654", f"{SLURM_RESERVATION_NAME_PREFIX}cr-876543"],
                 [f"{SLURM_RESERVATION_NAME_PREFIX}cr-987654"],
-            )
+                f"Unable to delete slurm reservation {SLURM_RESERVATION_NAME_PREFIX}cr-876543. delete error",
+            ),
+            (
+                # no reservation in the output because of the error retrieving res info
+                SlurmCommandError("list error"),
+                [],
+                [],
+                [],
+                "Unable to retrieve list of existing Slurm reservations. list error",
+            ),
         ],
     )
     def test_cleanup_leftover_slurm_reservations(
@@ -343,20 +376,31 @@ class TestCapacityBlockManager:
         capacity_block_manager,
         capacity_block,
         slurm_reservations,
+        delete_reservation_behaviour,
+        expected_delete_calls,
         expected_leftover_slurm_reservations,
+        expected_error_message,
+        caplog,
     ):
         # only cr-123456, queue-cb, compute-resource-cb is in the list of capacity blocks from config
         capacity_block_manager._capacity_blocks = {"cr-123456": capacity_block}
-        mocker.patch("slurm_plugin.capacity_block_manager.get_slurm_reservations_info", return_value=slurm_reservations)
-        delete_res_mock = mocker.patch("slurm_plugin.capacity_block_manager.delete_slurm_reservation")
+        mocker.patch(
+            "slurm_plugin.capacity_block_manager.get_slurm_reservations_info", side_effect=[slurm_reservations]
+        )
+        delete_res_mock = mocker.patch(
+            "slurm_plugin.capacity_block_manager.delete_slurm_reservation", side_effect=delete_reservation_behaviour
+        )
         capacity_block_manager._cleanup_leftover_slurm_reservations()
 
         # verify that only the slurm reservation associated with a CB, no longer in the config,
         # are considered as leftover
         expected_calls = []
-        for slurm_reservation in expected_leftover_slurm_reservations:
+        for slurm_reservation in expected_delete_calls:
             expected_calls.append(call(name=slurm_reservation))
         delete_res_mock.assert_has_calls(expected_calls)
+
+        assert_that(delete_res_mock.call_count).is_equal_to(len(delete_reservation_behaviour))
+        assert_that(caplog.text).contains(expected_error_message)
 
     @pytest.mark.parametrize(
         (
@@ -371,6 +415,7 @@ class TestCapacityBlockManager:
             ("pending", True, False, True, False),
             ("active", False, False, False, False),
             ("active", True, False, False, True),
+            ("active", SlurmCommandError("error checking res"), False, False, False),
         ],
     )
     def test_update_slurm_reservation(
@@ -393,7 +438,7 @@ class TestCapacityBlockManager:
         nodenames = ",".join(capacity_block.nodenames())
         slurm_reservation_name = f"{SLURM_RESERVATION_NAME_PREFIX}{FAKE_CAPACITY_BLOCK_ID}"
         check_res_mock = mocker.patch(
-            "slurm_plugin.capacity_block_manager.is_slurm_reservation", return_value=reservation_exists
+            "slurm_plugin.capacity_block_manager.is_slurm_reservation", side_effect=[reservation_exists]
         )
         create_res_mock = mocker.patch("slurm_plugin.capacity_block_manager.create_slurm_reservation")
         update_res_mock = mocker.patch("slurm_plugin.capacity_block_manager.update_slurm_reservation")
@@ -414,17 +459,29 @@ class TestCapacityBlockManager:
                 name=slurm_reservation_name, start_time=expected_start_time, nodes=nodenames
             )
             assert_that(caplog.text).contains(msg_prefix + "Creating" + msg_suffix)
+        else:
+            create_res_mock.assert_not_called()
         if expected_update_res_call:
             update_res_mock.assert_called_with(name=slurm_reservation_name, nodes=nodenames)
             assert_that(caplog.text).contains(msg_prefix + "Updating existing" + msg_suffix)
+        else:
+            update_res_mock.assert_not_called()
 
         # when state is active
         if expected_delete_res_call:
             delete_res_mock.assert_called_with(name=slurm_reservation_name)
             assert_that(caplog.text).contains(msg_prefix + "Deleting" + msg_suffix)
+        else:
+            delete_res_mock.assert_not_called()
 
         if state == "active" and not reservation_exists:
             assert_that(caplog.text).contains(msg_prefix + "Nothing to do. No existing" + msg_suffix)
+
+        if isinstance(reservation_exists, SlurmCommandError):
+            assert_that(caplog.text).contains(
+                f"Unable to update slurm reservation pcluster-{FAKE_CAPACITY_BLOCK_ID} for "
+                f"Capacity Block {FAKE_CAPACITY_BLOCK_ID}. Skipping it. error checking res"
+            )
 
     @pytest.mark.parametrize(
         ("init_capacity_blocks", "capacity_blocks_info_from_ec2", "expected_error"),
