@@ -128,7 +128,7 @@ class CapacityBlockManager:
     @property
     def ec2_client(self):
         if not self._ec2_client:
-            self._ec2_client = Ec2Client(config=self._boto3_config)
+            self._ec2_client = Ec2Client(config=self._boto3_config, region=self._region)
         return self._ec2_client
 
     def get_reserved_nodenames(self, nodes: List[SlurmNode]):
