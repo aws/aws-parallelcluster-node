@@ -24,7 +24,7 @@ from slurm_plugin.capacity_block_manager import (
 from slurm_plugin.slurm_resources import DynamicNode, SlurmReservation, StaticNode
 
 from aws.common import AWSClientError
-from aws.ec2 import CapacityBlockReservationInfo
+from aws.ec2 import CapacityReservationInfo
 
 FAKE_CAPACITY_BLOCK_ID = "cr-a1234567"
 FAKE_CAPACITY_BLOCK_INFO = {
@@ -58,7 +58,7 @@ class TestCapacityBlock:
         [("active", True), ("anything-else", False)],
     )
     def test_is_active(self, capacity_block, state, expected_output):
-        capacity_block_reservation_info = CapacityBlockReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
+        capacity_block_reservation_info = CapacityReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
         capacity_block.update_capacity_block_reservation_info(capacity_block_reservation_info)
         assert_that(capacity_block.is_active()).is_equal_to(expected_output)
 
@@ -147,11 +147,11 @@ class TestCapacityBlockManager:
                     "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
                 },
                 [
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
                     ),
                     # add another id not in the capacity block to trigger an internal error, that does not stop the loop
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
@@ -189,13 +189,13 @@ class TestCapacityBlockManager:
                     "cr-345678": CapacityBlock("cr-345678", "queue-cb3", "compute-resource-cb3"),
                 },
                 [
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
                     ),
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
                     ),
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-345678"}
                     ),
                 ],
@@ -431,7 +431,7 @@ class TestCapacityBlockManager:
         caplog,
     ):
         caplog.set_level(logging.INFO)
-        capacity_block_reservation_info = CapacityBlockReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
+        capacity_block_reservation_info = CapacityReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
         capacity_block.update_capacity_block_reservation_info(capacity_block_reservation_info)
         capacity_block.add_nodename("node1")
         capacity_block.add_nodename("node2")
@@ -494,10 +494,10 @@ class TestCapacityBlockManager:
                     "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
                 },
                 [
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
                     ),
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
@@ -509,10 +509,10 @@ class TestCapacityBlockManager:
                     "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
                 },
                 [
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
                     ),
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
@@ -525,10 +525,10 @@ class TestCapacityBlockManager:
                     "cr-234567": CapacityBlock("cr-234567", "queue-cb", "compute-resource-cb"),
                 },
                 [
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
                     ),
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
@@ -568,7 +568,7 @@ class TestCapacityBlockManager:
             assert_that(
                 capacity_block_manager._capacity_blocks.get("cr-123456")._capacity_block_reservation_info
             ).is_equal_to(
-                CapacityBlockReservationInfo(
+                CapacityReservationInfo(
                     {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
                 )
             )
@@ -580,14 +580,14 @@ class TestCapacityBlockManager:
                 assert_that(
                     capacity_block_manager._capacity_blocks.get("cr-123456")._capacity_block_reservation_info
                 ).is_equal_to(
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-123456"}
                     )
                 )
                 assert_that(
                     capacity_block_manager._capacity_blocks.get("cr-234567")._capacity_block_reservation_info
                 ).is_equal_to(
-                    CapacityBlockReservationInfo(
+                    CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-234567"}
                     )
                 )
