@@ -69,8 +69,8 @@ class CapacityReservationInfo:
 class Ec2Client(Boto3Client):
     """Implement EC2 Boto3 client."""
 
-    def __init__(self, config=None):
-        super().__init__("ec2", config=config)
+    def __init__(self, config=None, region=None):
+        super().__init__("ec2", region=region, config=config)
 
     @AWSExceptionHandler.handle_client_exception
     def describe_capacity_reservations(self, capacity_reservation_ids: List[str]) -> List[CapacityReservationInfo]:
