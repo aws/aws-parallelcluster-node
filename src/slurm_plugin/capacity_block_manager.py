@@ -308,10 +308,7 @@ class CapacityBlockManager:
         so when it starts/is restarted or when fleet configuration changes.
         """
         capacity_block_ids = capacity_blocks.keys()
-        logger.info(
-            "Retrieving Capacity Block reservation information from EC2 for %s",
-            ",".join(capacity_block_ids),
-        )
+        logger.info("Retrieving Capacity Blocks information from EC2 for %s", ",".join(capacity_block_ids))
         try:
             capacity_block_reservations_info: List[
                 CapacityReservationInfo
@@ -355,7 +352,7 @@ class CapacityBlockManager:
         }
         """
         capacity_blocks: Dict[str, CapacityBlock] = {}
-        logger.info("Retrieving Capacity Block reservation information for fleet config.")
+        logger.info("Retrieving Capacity Blocks from fleet configuration.")
 
         for queue_name, queue_config in self._fleet_config.items():
             for compute_resource_name, compute_resource_config in queue_config.items():

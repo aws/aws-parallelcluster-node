@@ -526,7 +526,7 @@ class StaticNode(SlurmNode):
         if not self.is_nodeaddr_set():
             if log_warn_if_unhealthy:
                 logger.warning(
-                    "Node state check: static node without nodeaddr set, node %s, node state %s:",
+                    "Node state check: static node without nodeaddr set, node: %s, node state: %s",
                     self,
                     self.state_string,
                 )
@@ -538,7 +538,7 @@ class StaticNode(SlurmNode):
         if self.is_static_nodes_in_replacement and not self.is_backing_instance_valid(log_warn_if_unhealthy=False):
             # Node is currently in replacement and no backing instance
             logger.warning(
-                "Node bootstrap error: Node %s is currently in replacement and no backing instance, node state %s:",
+                "Node bootstrap error: Node %s is currently in replacement and no backing instance, node state: %s",
                 self,
                 self.state_string,
             )
@@ -546,14 +546,14 @@ class StaticNode(SlurmNode):
             # Replacement timeout expires for node in replacement
         elif self.is_bootstrap_timeout():
             logger.warning(
-                "Node bootstrap error: Replacement timeout expires for node %s in replacement, node state %s:",
+                "Node bootstrap error: Replacement timeout expires for node %s in replacement, node state: %s",
                 self,
                 self.state_string,
             )
             return True
         elif self.is_failing_health_check and self.is_static_nodes_in_replacement:
             logger.warning(
-                "Node bootstrap error: Node %s failed during bootstrap when performing health check, node state %s:",
+                "Node bootstrap error: Node %s failed during bootstrap when performing health check, node state: %s",
                 self,
                 self.state_string,
             )
