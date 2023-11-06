@@ -100,7 +100,7 @@ def create_slurm_reservation(
     """
     cmd = f"{SCONTROL} create reservation"
 
-    logger.info("Creating Slurm reservation with command: %s", cmd)
+    logger.debug("Creating Slurm reservation with command: %s", cmd)
     _create_or_update_reservation(
         cmd, name, nodes, partition, user, start_time, duration, number_of_nodes, flags, command_timeout, raise_on_error
     )
@@ -134,7 +134,7 @@ def update_slurm_reservation(
     """
     cmd = f"{SCONTROL} update"
 
-    logger.info("Updating Slurm reservation with command: %s", cmd)
+    logger.debug("Updating Slurm reservation with command: %s", cmd)
     _create_or_update_reservation(
         cmd, name, nodes, partition, user, start_time, duration, number_of_nodes, flags, command_timeout, raise_on_error
     )
@@ -162,7 +162,7 @@ def delete_slurm_reservation(
     cmd = f"{SCONTROL} delete reservation"
     cmd = _add_param(cmd, "ReservationName", name)
 
-    logger.info("Deleting Slurm reservation with command: %s", cmd)
+    logger.debug("Deleting Slurm reservation with command: %s", cmd)
     run_command(cmd, raise_on_error=raise_on_error, timeout=command_timeout, shell=True)  # nosec B604
 
 
@@ -213,7 +213,7 @@ def is_slurm_reservation(
     try:
         logger.debug("Retrieving Slurm reservation with command: %s", cmd)
         output = check_command_output(
-            cmd, raise_on_error=raise_on_error, timeout=command_timeout, shell=True
+            cmd, raise_on_error=raise_on_error, timeout=command_timeout, shell=True, log_error=False
         )  # nosec B604
         reservation_exists = f"ReservationName={name}" in output
 
@@ -222,7 +222,7 @@ def is_slurm_reservation(
         error = f" Error is: {e.stderr.rstrip()}." if e.stderr else ""
         output = f" Output is: {e.stdout.rstrip()}." if e.stdout else ""
         if expected_output in error or expected_output in output:
-            logger.info(f"Slurm reservation {name} not found.")
+            logger.debug(f"Slurm reservation {name} not found.")
             reservation_exists = False
         else:
             msg = f"Failed when retrieving Slurm reservation info with command {cmd}.{error}{output} {e}"

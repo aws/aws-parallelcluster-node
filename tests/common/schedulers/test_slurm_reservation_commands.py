@@ -454,7 +454,7 @@ def test_is_slurm_reservation(
     mocker, name, mocked_output, expected_output, expected_message, expected_exception, caplog
 ):
     mocker.patch("time.sleep")
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
     run_cmd_mock = mocker.patch(
         "common.schedulers.slurm_reservation_commands.check_command_output", side_effect=mocked_output
     )
@@ -468,7 +468,9 @@ def test_is_slurm_reservation(
             assert_that(caplog.text).contains(expected_message)
 
     cmd = f"{SCONTROL} show ReservationName={name}"
-    run_cmd_mock.assert_called_with(cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True)
+    run_cmd_mock.assert_called_with(
+        cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True, log_error=False
+    )
 
 
 def test_get_slurm_reservations_info(mocker):
