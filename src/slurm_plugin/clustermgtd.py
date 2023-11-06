@@ -741,18 +741,18 @@ class ClusterManager:
         ice_compute_resources_and_nodes_map = {}
         all_unhealthy_nodes = []
 
-        # Remove the nodes part of unactive Capacity Blocks from the list of unhealthy nodes.
+        # Remove the nodes part of inactive Capacity Blocks from the list of unhealthy nodes.
         # Nodes from active Capacity Blocks will be instead managed as unhealthy instances.
         reserved_nodenames = []
         if not self._config.disable_capacity_blocks_management:
             reserved_nodenames = self._capacity_block_manager.get_reserved_nodenames(slurm_nodes)
-            log.info(
-                (
-                    "The nodes %s are associated to unactive Capacity Blocks, "
-                    "they will not be considered as unhealthy nodes."
-                ),
-                ",".join(reserved_nodenames),
-            )
+            if reserved_nodenames:
+                log.info(
+                    "The nodes associated with inactive Capacity Blocks and not considered as unhealthy nodes are: %s",
+                    ",".join(reserved_nodenames),
+                )
+            else:
+                log.debug("No nodes found associated with inactive Capacity Blocks.")
 
         for node in slurm_nodes:
             if not node.is_healthy(
