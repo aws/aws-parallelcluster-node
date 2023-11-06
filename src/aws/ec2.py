@@ -18,20 +18,36 @@ class CapacityReservationInfo:
     Data object wrapping the result of a describe-capacity-reservations call.
 
     {
-        "CapacityReservationId": "cr-abcdEXAMPLE9876ef ",
-        "EndDateType": "unlimited",
-        "AvailabilityZone": "eu-west-1a",
-        "InstanceMatchCriteria": "open",
-        "Tags": [],
-        "EphemeralStorage": false,
-        "CreateDate": "2019-08-07T11:34:19.000Z",
-        "AvailableInstanceCount": 3,
+        "CapacityReservationId": "cr-123456",
+        "OwnerId": "123",
+        "CapacityReservationArn": "arn:aws:ec2:us-east-2:123:capacity-reservation/cr-123456",
+        "AvailabilityZoneId": "use2-az1",
+        "InstanceType": "t3.large",
         "InstancePlatform": "Linux/UNIX",
-        "TotalInstanceCount": 3,
-        "State": "cancelled",
+        "AvailabilityZone": "eu-west-1a",
         "Tenancy": "default",
-        "EbsOptimized": true,
-        "InstanceType": "m5.large"
+        "TotalInstanceCount": 1,
+        "AvailableInstanceCount": 1,
+        "EbsOptimized": false,
+        "EphemeralStorage": false,
+        "State": "active",
+        "StartDate": "2023-11-15T11:30:00+00:00",
+        "EndDate": "2023-11-16T11:30:00+00:00",  # capacity-block only
+        "EndDateType": "limited",
+        "InstanceMatchCriteria": "targeted",
+        "CreateDate": "2023-10-25T20:40:13+00:00",
+        "Tags": [
+            {
+                "Key": "aws:ec2capacityreservation:incrementalRequestedQuantity",
+                "Value": "1"
+            },
+            {
+                "Key": "aws:ec2capacityreservation:capacityReservationType",
+                "Value": "capacity-block"
+            }
+        ],
+        "CapacityAllocations": [],
+        "ReservationType": "capacity-block"  # capacity-block only
     }
     """
 
@@ -46,41 +62,6 @@ class CapacityReservationInfo:
         """Return the state of the Capacity Reservation."""
         return self.capacity_reservation_data.get("State")
 
-
-class CapacityBlockReservationInfo(CapacityReservationInfo):
-    """
-    Data object wrapping the result of a describe-capacity-reservations --capacity-type capacity-block call.
-
-    {   "CapacityReservationId": "cr-a1234567",
-        "EndDateType": "limited",
-        "ReservationType": "capacity-block",
-        "AvailabilityZone": "eu-east-2a",
-        "InstanceMatchCriteria":  "targeted",
-        "EphemeralStorage": false,
-        "CreateDate": "2023-07-29T14:22:45Z  ",
-        “StartDate": "2023-08-15T12:00:00Z",
-        “EndDate": "2023-08-19T12:00:00Z",
-        "AvailableInstanceCount": 0,
-        "InstancePlatform":  "Linux/UNIX",
-        "TotalInstanceCount": 16,
-        “State": "payment-pending",
-        "Tenancy":  "default",
-        "EbsOptimized": true,
-        "InstanceType": "p5.48xlarge“
-    }
-    """
-
-    def __init__(self, capacity_reservation_data):
-        super().__init__(capacity_reservation_data)
-
-    def start_date(self):
-        """Return the start date of the CB."""
-        return self.capacity_reservation_data.get("StartDate")
-
-    def end_date(self):
-        """Return the start date of the CB."""
-        return self.capacity_reservation_data.get("EndDate")
-
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
 
@@ -92,19 +73,17 @@ class Ec2Client(Boto3Client):
         super().__init__("ec2", config=config)
 
     @AWSExceptionHandler.handle_client_exception
-    def describe_capacity_reservations(
-        self, capacity_reservation_ids: List[str], reservation_type=None
-    ) -> List[CapacityBlockReservationInfo]:
-        """Accept a space separated list of ids. Return a list of CapacityReservationInfo."""
+    def describe_capacity_reservations(self, capacity_reservation_ids: List[str]) -> List[CapacityReservationInfo]:
+        """Accept a space separated list of reservation ids. Return a list of CapacityReservationInfo."""
         result = []
         response = list(
             self._paginate_results(
                 self._client.describe_capacity_reservations,
                 CapacityReservationIds=capacity_reservation_ids,
-                ReservationType=reservation_type,
+                # ReservationType=reservation_type,  # not yet available
             )
         )
         for capacity_reservation in response:
-            result.append(CapacityBlockReservationInfo(capacity_reservation))
+            result.append(CapacityReservationInfo(capacity_reservation))
 
         return result

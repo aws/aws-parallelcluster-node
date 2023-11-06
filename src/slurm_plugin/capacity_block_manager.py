@@ -25,7 +25,7 @@ from common.utils import SlurmCommandError
 from slurm_plugin.slurm_resources import SlurmNode
 
 from aws.common import AWSClientError
-from aws.ec2 import CapacityBlockReservationInfo, Ec2Client
+from aws.ec2 import CapacityReservationInfo, Ec2Client
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +66,8 @@ class CapacityBlock:
         self._capacity_block_reservation_info = None
         self._nodenames = []
 
-    def update_capacity_block_reservation_info(self, capacity_block_reservation_info: CapacityBlockReservationInfo):
-        """Update info from CapacityBlockReservationInfo."""
+    def update_capacity_block_reservation_info(self, capacity_block_reservation_info: CapacityReservationInfo):
+        """Update info from CapacityReservationInfo."""
         self._capacity_block_reservation_info = capacity_block_reservation_info
 
     def slurm_reservation_name(self):
@@ -314,7 +314,7 @@ class CapacityBlockManager:
         )
         try:
             capacity_block_reservations_info: List[
-                CapacityBlockReservationInfo
+                CapacityReservationInfo
             ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
 
             for capacity_block_reservation_info in capacity_block_reservations_info:
