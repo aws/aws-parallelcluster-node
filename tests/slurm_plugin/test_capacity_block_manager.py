@@ -107,7 +107,7 @@ class TestCapacityBlockManager:
     def test_ec2_client(self, capacity_block_manager, mocker):
         ec2_mock = mocker.patch("slurm_plugin.capacity_block_manager.Ec2Client", return_value=mocker.MagicMock())
         capacity_block_manager.ec2_client()
-        ec2_mock.assert_called_with(config="fake_boto3_config")
+        ec2_mock.assert_called_with(config="fake_boto3_config", region="eu-west-2")
         capacity_block_manager.ec2_client()
         ec2_mock.assert_called_once()
 

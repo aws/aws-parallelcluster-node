@@ -122,8 +122,9 @@ def _log_boto3_calls(params, **kwargs):
 class Boto3Client:
     """Boto3 client Class."""
 
-    def __init__(self, client_name: str, config: Config):
-        self._client = boto3.client(client_name, config=config if config else None)
+    def __init__(self, client_name: str, config: Config, region: str = None):
+        region = region if region else get_region()
+        self._client = boto3.client(client_name, region_name=region, config=config if config else None)
         self._client.meta.events.register("provide-client-params.*.*", _log_boto3_calls)
 
     def _paginate_results(self, method, **kwargs):
