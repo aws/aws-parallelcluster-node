@@ -191,7 +191,7 @@ class CapacityBlockManager:
 
         return self._reserved_nodenames
 
-    def _is_time_to_update_capacity_blocks_info(self, now: datetime):
+    def _is_time_to_update_capacity_blocks_info(self, current_time: datetime):
         """
         Return true if it's the moment to update capacity blocks info, from ec2 and from config.
 
@@ -199,8 +199,10 @@ class CapacityBlockManager:
         and every 10 minutes.
         # TODO: evaluate time to update accordingly to capacity block start time
         """
-        return not self._is_initialized() or seconds_to_minutes(
-            (now - self._capacity_blocks_update_time).total_seconds() > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
+        return (
+            not self._is_initialized()
+            or seconds_to_minutes((current_time - self._capacity_blocks_update_time).total_seconds())
+            > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
         )
 
     @staticmethod
