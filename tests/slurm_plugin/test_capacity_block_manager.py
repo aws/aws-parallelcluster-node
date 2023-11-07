@@ -104,6 +104,14 @@ class TestCapacityBlockManager:
     def capacity_block_manager(self):
         return CapacityBlockManager("eu-west-2", {}, "fake_boto3_config")
 
+    @pytest.mark.parametrize(
+        ("update_time", "expected_output"),
+        [(None, False), ("any-value", True), (datetime(2020, 1, 1, 0, 0, 0), True)],
+    )
+    def test_is_initialized(self, capacity_block_manager, update_time, expected_output):
+        capacity_block_manager._capacity_blocks_update_time = update_time
+        assert_that(capacity_block_manager._is_initialized()).is_equal_to(expected_output)
+
     def test_ec2_client(self, capacity_block_manager, mocker):
         ec2_mock = mocker.patch("slurm_plugin.capacity_block_manager.Ec2Client", return_value=mocker.MagicMock())
         capacity_block_manager.ec2_client()
@@ -298,7 +306,10 @@ class TestCapacityBlockManager:
                 assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
 
             update_res_mock.assert_has_calls(
-                [call(capacity_block) for capacity_block in capacity_block_manager._capacity_blocks.values()],
+                [
+                    call(capacity_block=capacity_block, do_update=False)
+                    for capacity_block in capacity_block_manager._capacity_blocks.values()
+                ],
                 any_order=True,
             )
             cleanup_mock.assert_called_once()
@@ -447,17 +458,24 @@ class TestCapacityBlockManager:
         (
             "state",
             "reservation_exists",
+            "do_update",
             "expected_create_res_call",
             "expected_update_res_call",
             "expected_delete_res_call",
             "expected_output",
         ),
         [
-            ("pending", False, True, False, False, True),
-            ("pending", True, False, True, False, True),
-            ("active", False, False, False, False, True),
-            ("active", True, False, False, True, True),
-            ("active", SlurmCommandError("error checking res"), False, False, False, False),
+            # Not existing reservation, do_update is useless
+            ("pending", False, None, True, False, False, True),
+            # Existing reservation, update_res is called accordingly to do_update value
+            ("pending", True, True, False, True, False, True),
+            ("pending", True, False, False, False, False, True),
+            # Not existing reservation and CB in active state, do_update is useless
+            ("active", False, None, False, False, False, True),
+            # Existing reservation and CB in active state, do_update is useless
+            ("active", True, None, False, False, True, True),
+            # Error, do_update is useless
+            ("active", SlurmCommandError("error checking res"), None, False, False, False, False),
         ],
     )
     def test_update_slurm_reservation(
@@ -467,6 +485,7 @@ class TestCapacityBlockManager:
         capacity_block,
         state,
         reservation_exists,
+        do_update,
         expected_create_res_call,
         expected_update_res_call,
         expected_delete_res_call,
@@ -489,7 +508,7 @@ class TestCapacityBlockManager:
         expected_start_time = datetime(2020, 1, 1, 0, 0, 0)
         mocker.patch("slurm_plugin.capacity_block_manager.datetime").now.return_value = expected_start_time
 
-        output_value = capacity_block_manager._update_slurm_reservation(capacity_block)
+        output_value = capacity_block_manager._update_slurm_reservation(capacity_block, do_update)
         assert_that(expected_output).is_equal_to(output_value)
 
         # check the right commands to create/delete/update reservations are called accordingly to the state

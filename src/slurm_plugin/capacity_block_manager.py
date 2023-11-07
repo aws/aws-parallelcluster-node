@@ -131,6 +131,10 @@ class CapacityBlockManager:
             self._ec2_client = Ec2Client(config=self._boto3_config, region=self._region)
         return self._ec2_client
 
+    def _is_initialized(self):
+        """Return true if Capacity Block Manager has been already initialized."""
+        return self._capacity_blocks_update_time is not None
+
     def get_reserved_nodenames(self, nodes: List[SlurmNode]):
         """Manage nodes part of capacity block reservation. Returns list of reserved nodes."""
         try:
@@ -151,7 +155,9 @@ class CapacityBlockManager:
 
                     # create, update or delete slurm reservation for the nodes according to CB details.
                     for capacity_block in capacity_blocks.values():
-                        slurm_reservation_updated = self._update_slurm_reservation(capacity_block)
+                        slurm_reservation_updated = self._update_slurm_reservation(
+                            capacity_block=capacity_block, do_update=not self._is_initialized()
+                        )
                         if not slurm_reservation_updated:
                             slurm_reservation_update_errors += 1
 
@@ -193,10 +199,8 @@ class CapacityBlockManager:
         and every 10 minutes.
         # TODO: evaluate time to update accordingly to capacity block start time
         """
-        return self._capacity_blocks_update_time is None or (
-            self._capacity_blocks_update_time
-            and seconds_to_minutes((now - self._capacity_blocks_update_time).total_seconds())
-            > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
+        return not self._is_initialized() or seconds_to_minutes(
+            (now - self._capacity_blocks_update_time).total_seconds() > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
         )
 
     @staticmethod
@@ -251,12 +255,15 @@ class CapacityBlockManager:
             logger.error("Unable to retrieve list of existing Slurm reservations. %s", e)
 
     @staticmethod
-    def _update_slurm_reservation(capacity_block: CapacityBlock):
+    def _update_slurm_reservation(capacity_block: CapacityBlock, do_update: bool):
         """
         Update Slurm reservation associated to the given Capacity Block.
 
         A CB has five possible states: payment-pending, pending, active, expired and payment-failed,
         we need to create/delete Slurm reservation accordingly.
+
+        Pass do_update to True only if you want to update already created reservations
+        (e.g. to update the node list or when the CapacityBlockManager is not yet initialized).
 
         Returns True if slurm action is completed correctly, False otherwise.
         """
@@ -291,8 +298,11 @@ class CapacityBlockManager:
             else:
                 # create or update Slurm reservation
                 if reservation_exists:
-                    _log_cb_info("Updating existing")
-                    update_slurm_reservation(name=slurm_reservation_name, nodes=capacity_block_nodenames)
+                    if do_update:
+                        _log_cb_info("Updating existing")
+                        update_slurm_reservation(name=slurm_reservation_name, nodes=capacity_block_nodenames)
+                    else:
+                        _log_cb_info("Nothing to do. Already existing")
                 else:
                     _log_cb_info("Creating")
                     # The reservation should start now, and will be removed when the capacity block will become active
