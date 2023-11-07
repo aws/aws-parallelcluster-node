@@ -319,27 +319,25 @@ class TestCapacityBlockManager:
             cleanup_mock.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("previous_capacity_blocks_update_time", "expected_update_time"),
+        ("is_initialized", "now", "expected_updated_time"),
         [
             # manager not initialized
-            (None, True),
+            (False, datetime(2020, 1, 1, 1, 00, 0), True),
             # delta < CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
-            (datetime(2020, 1, 2, 1, 51, 0), False),
-            (datetime(2020, 1, 2, 1, 50, 0), False),
+            (True, datetime(2020, 1, 1, 1, 00, 10), False),
+            (True, datetime(2020, 1, 1, 1, 9, 0), False),
             # delta >= CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
-            (datetime(2020, 1, 2, 1, 40, 0), True),
-            (datetime(2020, 1, 2, 0, 51, 0), True),
-            (datetime(2020, 1, 1, 0, 51, 0), True),
+            (True, datetime(2020, 1, 1, 1, 10, 0), True),
+            (True, datetime(2020, 1, 1, 1, 21, 0), True),
+            (True, datetime(2020, 1, 1, 2, 00, 0), True),
+            (True, datetime(2020, 1, 2, 1, 00, 0), True),
         ],
     )
     def test_is_time_to_update_capacity_blocks_info(
-        self, mocker, capacity_block_manager, previous_capacity_blocks_update_time, expected_update_time
+        self, capacity_block_manager, is_initialized, now, expected_updated_time
     ):
-        mocked_now = datetime(2020, 1, 2, 1, 51, 0)
-        mocker.patch("slurm_plugin.capacity_block_manager.datetime").now.return_value = mocked_now
-
-        capacity_block_manager._capacity_blocks_update_time = previous_capacity_blocks_update_time
-        assert_that(capacity_block_manager._is_time_to_update_capacity_blocks_info(mocked_now))
+        capacity_block_manager._capacity_blocks_update_time = datetime(2020, 1, 1, 1, 00, 0) if is_initialized else None
+        assert_that(capacity_block_manager._is_time_to_update_capacity_blocks_info(now))
 
     @pytest.mark.parametrize(
         ("capacity_blocks", "nodes", "expected_nodenames_in_capacity_block"),
