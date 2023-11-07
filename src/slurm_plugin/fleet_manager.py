@@ -186,7 +186,7 @@ class FleetManager(ABC):
                     "Launched the following instances %s",
                     print_with_count([instance.get("InstanceId", "") for instance in assigned_nodes.get("Instances")]),
                 )
-                logger.debug("Full launched instances information: %s", assigned_nodes.get("Instances"))
+                logger.debug("Launched instances information: %s", assigned_nodes.get("Instances"))
 
         return [EC2Instance.from_describe_instance_data(instance_info) for instance_info in assigned_nodes["Instances"]]
 
