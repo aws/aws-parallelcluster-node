@@ -239,7 +239,12 @@ class Ec2RunInstancesManager(FleetManager):
         try:
             return run_instances(self._region, self._boto3_config, launch_params)
         except ClientError as e:
-            logger.error("Failed RunInstances request: %s", e.response.get("ResponseMetadata").get("RequestId"))
+            logger.error(
+                "Failed RunInstances request (%s): %s - %s",
+                e.response.get("ResponseMetadata", {}).get("RequestId"),
+                e.response.get("Error", {}).get("Code"),
+                e.response.get("Error", {}).get("Message"),
+            )
             raise e
 
 
@@ -388,7 +393,12 @@ class Ec2CreateFleetManager(FleetManager):
                 raise LaunchInstancesError(err_list[0].get("ErrorCode"), err_list[0].get("ErrorMessage"))
             return {"Instances": instances}
         except ClientError as e:
-            logger.error("Failed CreateFleet request: %s", e.response.get("ResponseMetadata", {}).get("RequestId"))
+            logger.error(
+                "Failed CreateFleet request (%s): %s - %s",
+                e.response.get("ResponseMetadata", {}).get("RequestId"),
+                e.response.get("Error", {}).get("Code"),
+                e.response.get("Error", {}).get("Message"),
+            )
             raise e
 
     def _get_instances_info(self, instance_ids: list):
