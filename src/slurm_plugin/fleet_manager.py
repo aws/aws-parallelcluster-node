@@ -19,6 +19,7 @@ import boto3
 from botocore.exceptions import ClientError
 from common.ec2_utils import get_private_ip_address_and_dns_name
 from common.utils import setup_logging_filter
+from retrying import retry
 from slurm_plugin.common import print_with_count
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,14 @@ class FleetManager(ABC):
     def _launch_instances(self, launch_params):
         """Launch a batch of ec2 instances."""
 
+    # Retry is sized to let RunInstance refill rate (2) be able to refill the default launch_max_batch_size (500)
+    @retry(
+        wait_exponential_multiplier=1000,
+        wait_exponential_max=300000,
+        wait_jitter_max=500,
+        stop_max_attempt_number=10,
+        retry_on_exception=lambda exception: "Request limit exceeded" in str(exception),
+    )
     def launch_ec2_instances(self, count, job_id=None):
         """
         Launch EC2 instances.
