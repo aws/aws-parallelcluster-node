@@ -209,8 +209,35 @@ class TestEc2RunInstancesManager:
                     }
                 ],
             ),
+            (
+                {
+                    "MinCount": 1,
+                    "MaxCount": 5,
+                    "LaunchTemplate": {
+                        "LaunchTemplateName": "hit-queue1-p4d24xlarge",
+                        "Version": "$Latest",
+                    },
+                },
+                [
+                    MockedBoto3Request(
+                        method="run_instances",
+                        response={},
+                        expected_params={
+                            "MinCount": 1,
+                            "MaxCount": 5,
+                            "LaunchTemplate": {
+                                "LaunchTemplateName": "hit-queue1-p4d24xlarge",
+                                "Version": "$Latest",
+                            },
+                        },
+                        generate_error=True,
+                        error_code="RequestLimitExceeded",
+                    ),
+                ],
+                [],
+            ),
         ],
-        ids=["normal"],
+        ids=["normal", "throttling"],
     )
     def test_launch_instances(self, boto3_stubber, launch_params, mocked_boto3_request, expected_assigned_nodes):
         # patch boto3 call
@@ -219,8 +246,13 @@ class TestEc2RunInstancesManager:
         fleet_manager = FleetManagerFactory.get_manager(
             "hit", "region", "boto3_config", FLEET_CONFIG, "queue1", "p4d24xlarge", False, {}, {}
         )
-        assigned_nodes = fleet_manager._launch_instances(launch_params)
-        assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
+        if mocked_boto3_request[0].generate_error:
+            with pytest.raises(Exception) as e:
+                fleet_manager._launch_instances(launch_params)
+                assert isinstance(e, ClientError)
+        else:
+            assigned_nodes = fleet_manager._launch_instances(launch_params)
+            assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
 
 
 # -------- Ec2CreateFleetManager ------
