@@ -118,6 +118,7 @@ class TestCapacityBlockManager:
             "capacity_blocks_from_config",
             "capacity_blocks_info_from_ec2",
             "nodes",
+            "slurm_reservation_creation_succeeded",
             "expected_reserved_nodenames",
         ),
         [
@@ -128,6 +129,7 @@ class TestCapacityBlockManager:
                 {},
                 [],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [True],
                 ["node1"],
             ),
             (
@@ -137,50 +139,81 @@ class TestCapacityBlockManager:
                 {},
                 [],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [True],
                 [],  # empty because capacity block from config is empty
             ),
             (
-                # update values because there is only an internal error
+                # return first nodename because there is an internal error
+                # in the second capacity block when updating info from EC2
                 True,
                 ["node1"],
-                {
-                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
-                },
+                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
                 [
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
                     ),
-                    # add another id not in the capacity block to trigger an internal error, that does not stop the loop
+                    # add another id not in the capacity block to trigger an internal error
+                    # for _update_capacity_blocks_info_from_ec2, that does not stop the loop
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [True, True],
                 ["queue-cb-st-compute-resource-cb-1"],
             ),
             (
-                # preserve old value because there is a managed exception
+                # return first nodename because there is an internal error
+                # in the second capacity block when creating Slurm reservation
                 True,
                 ["node1"],
-                {
-                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
-                },
+                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                [
+                    CapacityReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
+                    )
+                ],
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [True, False],  # reservation creation failed for the first CB
+                ["queue-cb-st-compute-resource-cb-1"],
+            ),
+            (
+                # preserve original list of nodenames because there are internal errors
+                # while creating all the slurm reservations
+                True,
+                ["node1"],
+                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                [
+                    CapacityReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
+                    ),
+                ],
+                [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [False, False],  # reservation creation failed for all the CBs
+                ["node1"],
+            ),
+            (
+                # preserve old nodenames because there is a managed exception when contacting EC2
+                True,
+                ["node1"],
+                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
                 AWSClientError("describe_capacity_reservations", "Boto3Error"),
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [False],
                 ["node1"],
             ),
             (
-                # preserve old value because there is an unexpected exception
+                # preserve old nodenames because there is an unexpected exception when contacting EC2
                 True,
                 ["node1"],
-                {
-                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
-                },
+                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
                 Exception("generic-error"),
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
+                [False],
                 ["node1"],
             ),
             (
+                # return nodenames accordingly to the state (only pending)
                 True,
                 ["node1"],
                 {
@@ -196,7 +229,7 @@ class TestCapacityBlockManager:
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
                     ),
                     CapacityReservationInfo(
-                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-345678"}
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending-payment", "CapacityReservationId": "cr-345678"}
                     ),
                 ],
                 [
@@ -204,6 +237,7 @@ class TestCapacityBlockManager:
                     DynamicNode("queue-cb2-dy-compute-resource-cb2-1", "ip-1", "hostname-1", "some_state", "queue-cb2"),
                     DynamicNode("queue-cb3-dy-compute-resource-cb3-1", "ip-1", "hostname-1", "some_state", "queue-cb3"),
                 ],
+                [True, True, True],
                 ["queue-cb-st-compute-resource-cb-1", "queue-cb3-dy-compute-resource-cb3-1"],
             ),
         ],
@@ -217,6 +251,7 @@ class TestCapacityBlockManager:
         capacity_blocks_from_config,
         capacity_blocks_info_from_ec2,
         nodes,
+        slurm_reservation_creation_succeeded,
         expected_reserved_nodenames,
         caplog,
     ):
@@ -229,19 +264,21 @@ class TestCapacityBlockManager:
             return_value=capacity_blocks_from_config,
         )
         mocked_client = mocker.MagicMock()
-        expected_exception = isinstance(capacity_blocks_info_from_ec2, Exception)
-        mocked_client.describe_capacity_reservations.side_effect = [
-            capacity_blocks_info_from_ec2 if expected_exception else capacity_blocks_info_from_ec2
-        ]
+        expected_ec2_exception = isinstance(capacity_blocks_info_from_ec2, Exception)
+        mocked_client.describe_capacity_reservations.side_effect = [capacity_blocks_info_from_ec2]
         capacity_block_manager._ec2_client = mocked_client
-        update_res_mock = mocker.patch.object(capacity_block_manager, "_update_slurm_reservation")
+        update_res_mock = mocker.patch.object(
+            capacity_block_manager, "_update_slurm_reservation", side_effect=slurm_reservation_creation_succeeded
+        )
         cleanup_mock = mocker.patch.object(capacity_block_manager, "_cleanup_leftover_slurm_reservations")
         capacity_block_manager._reserved_nodenames = previous_reserved_nodenames
         previous_update_time = datetime(2020, 1, 1, 0, 0, 0)
         capacity_block_manager._capacity_blocks_update_time = previous_update_time
 
         reserved_nodenames = capacity_block_manager.get_reserved_nodenames(nodes)
-        if expected_exception:
+        assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+
+        if expected_ec2_exception:
             assert_that(caplog.text).contains("Unable to retrieve list of reserved nodes, maintaining old list")
         else:
             expected_internal_error = len(capacity_blocks_from_config) != len(capacity_blocks_info_from_ec2)
@@ -251,16 +288,20 @@ class TestCapacityBlockManager:
             else:
                 assert_that(reserved_nodenames).is_equal_to(expected_reserved_nodenames)
 
-        assert_that(capacity_block_manager._reserved_nodenames).is_equal_to(expected_reserved_nodenames)
+        if is_time_to_update and not expected_ec2_exception:
+            if all(not action_succeeded for action_succeeded in slurm_reservation_creation_succeeded):
+                # if all slurm reservations actions failed, do not update the values
+                assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
+                assert_that(capacity_block_manager._capacity_blocks).is_not_equal_to(capacity_blocks_from_config)
+            else:
+                assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
+                assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
 
-        if is_time_to_update and not expected_exception:
-            assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
             update_res_mock.assert_has_calls(
                 [call(capacity_block) for capacity_block in capacity_block_manager._capacity_blocks.values()],
                 any_order=True,
             )
             cleanup_mock.assert_called_once()
-            assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
         else:
             assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
             update_res_mock.assert_not_called()
@@ -409,13 +450,14 @@ class TestCapacityBlockManager:
             "expected_create_res_call",
             "expected_update_res_call",
             "expected_delete_res_call",
+            "expected_output",
         ),
         [
-            ("pending", False, True, False, False),
-            ("pending", True, False, True, False),
-            ("active", False, False, False, False),
-            ("active", True, False, False, True),
-            ("active", SlurmCommandError("error checking res"), False, False, False),
+            ("pending", False, True, False, False, True),
+            ("pending", True, False, True, False, True),
+            ("active", False, False, False, False, True),
+            ("active", True, False, False, True, True),
+            ("active", SlurmCommandError("error checking res"), False, False, False, False),
         ],
     )
     def test_update_slurm_reservation(
@@ -428,6 +470,7 @@ class TestCapacityBlockManager:
         expected_create_res_call,
         expected_update_res_call,
         expected_delete_res_call,
+        expected_output,
         caplog,
     ):
         caplog.set_level(logging.INFO)
@@ -446,7 +489,8 @@ class TestCapacityBlockManager:
         expected_start_time = datetime(2020, 1, 1, 0, 0, 0)
         mocker.patch("slurm_plugin.capacity_block_manager.datetime").now.return_value = expected_start_time
 
-        capacity_block_manager._update_slurm_reservation(capacity_block)
+        output_value = capacity_block_manager._update_slurm_reservation(capacity_block)
+        assert_that(expected_output).is_equal_to(output_value)
 
         # check the right commands to create/delete/update reservations are called accordingly to the state
         check_res_mock.assert_called_with(name=slurm_reservation_name)
