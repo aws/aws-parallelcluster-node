@@ -230,7 +230,7 @@ class TestCapacityBlockManager:
         )
         mocked_client = mocker.MagicMock()
         expected_exception = isinstance(capacity_blocks_info_from_ec2, Exception)
-        mocked_client.return_value.describe_capacity_reservations.side_effect = [
+        mocked_client.describe_capacity_reservations.side_effect = [
             capacity_blocks_info_from_ec2 if expected_exception else capacity_blocks_info_from_ec2
         ]
         capacity_block_manager._ec2_client = mocked_client
@@ -549,7 +549,7 @@ class TestCapacityBlockManager:
         capacity_block_manager._capacity_blocks = init_capacity_blocks
         expected_exception = isinstance(expected_error, AWSClientError)
         mocked_client = mocker.MagicMock()
-        mocked_client.return_value.describe_capacity_reservations.side_effect = [
+        mocked_client.describe_capacity_reservations.side_effect = [
             expected_error if expected_exception else capacity_blocks_info_from_ec2
         ]
         capacity_block_manager._ec2_client = mocked_client
