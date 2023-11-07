@@ -307,12 +307,12 @@ class CapacityBlockManager:
         This method is called every time the CapacityBlockManager is re-initialized,
         so when it starts/is restarted or when fleet configuration changes.
         """
-        capacity_block_ids = capacity_blocks.keys()
+        capacity_block_ids = list(capacity_blocks.keys())
         logger.info("Retrieving Capacity Blocks information from EC2 for %s", ",".join(capacity_block_ids))
         try:
             capacity_block_reservations_info: List[
                 CapacityReservationInfo
-            ] = self.ec2_client().describe_capacity_reservations(capacity_block_ids)
+            ] = self.ec2_client.describe_capacity_reservations(capacity_block_ids)
 
             for capacity_block_reservation_info in capacity_block_reservations_info:
                 capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
