@@ -456,7 +456,7 @@ class TestCapacityBlockManager:
         # when state is != active
         if expected_create_res_call:
             create_res_mock.assert_called_with(
-                name=slurm_reservation_name, start_time=expected_start_time, nodes=nodenames
+                name=slurm_reservation_name, start_time="now", nodes=nodenames, duration="infinite"
             )
             assert_that(caplog.text).contains(msg_prefix + "Creating" + msg_suffix)
         else:
