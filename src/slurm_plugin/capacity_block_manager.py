@@ -138,6 +138,7 @@ class CapacityBlockManager:
             now = datetime.now(tz=timezone.utc)
             if self._is_time_to_update_capacity_blocks_info(now):
                 reserved_nodenames = []
+                slurm_reservation_update_errors = 0
 
                 # find an updated list of capacity blocks from fleet config
                 capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
@@ -150,16 +151,21 @@ class CapacityBlockManager:
 
                     # create, update or delete slurm reservation for the nodes according to CB details.
                     for capacity_block in capacity_blocks.values():
-                        self._update_slurm_reservation(capacity_block)
+                        slurm_reservation_updated = self._update_slurm_reservation(capacity_block)
+                        if not slurm_reservation_updated:
+                            slurm_reservation_update_errors += 1
 
-                        # If CB is in not yet active or expired add nodes to list of reserved nodes
-                        if not capacity_block.is_active():
+                        # If CB is in not yet active or expired add nodes to list of reserved nodes,
+                        # only if slurm reservation has been correctly created/updated
+                        if slurm_reservation_updated and not capacity_block.is_active():
                             reserved_nodenames.extend(capacity_block.nodenames())
 
-                # Once all the steps have been successful, update object attributes
-                self._capacity_blocks = capacity_blocks
-                self._capacity_blocks_update_time = now
-                self._reserved_nodenames = reserved_nodenames
+                # If all Slurm reservation actions failed do not update object attributes
+                if slurm_reservation_update_errors != len(capacity_blocks) or slurm_reservation_update_errors == 0:
+                    # Once all the steps have been successful, update object attributes
+                    self._capacity_blocks = capacity_blocks
+                    self._capacity_blocks_update_time = now
+                    self._reserved_nodenames = reserved_nodenames
 
                 # delete slurm reservations created by CapacityBlockManager not associated to existing capacity blocks
                 self._cleanup_leftover_slurm_reservations()
@@ -251,6 +257,8 @@ class CapacityBlockManager:
 
         A CB has five possible states: payment-pending, pending, active, expired and payment-failed,
         we need to create/delete Slurm reservation accordingly.
+
+        Returns True if slurm action is completed correctly, False otherwise.
         """
 
         def _log_cb_info(action_info):
@@ -294,6 +302,8 @@ class CapacityBlockManager:
                         nodes=capacity_block_nodenames,
                         duration="infinite",
                     )
+
+            action_completed = True
         except SlurmCommandError as e:
             logger.error(
                 "Unable to update slurm reservation %s for Capacity Block %s. Skipping it. %s",
@@ -301,6 +311,9 @@ class CapacityBlockManager:
                 capacity_block.capacity_block_id,
                 e,
             )
+            action_completed = False
+
+        return action_completed
 
     def _update_capacity_blocks_info_from_ec2(self, capacity_blocks: Dict[str, CapacityBlock]):
         """
