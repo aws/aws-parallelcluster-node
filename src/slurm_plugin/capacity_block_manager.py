@@ -287,10 +287,12 @@ class CapacityBlockManager:
                     update_slurm_reservation(name=slurm_reservation_name, nodes=capacity_block_nodenames)
                 else:
                     _log_cb_info("Creating")
+                    # The reservation should start now, and will be removed when the capacity block will become active
                     create_slurm_reservation(
                         name=slurm_reservation_name,
-                        start_time=datetime.now(tz=timezone.utc),
+                        start_time="now",
                         nodes=capacity_block_nodenames,
+                        duration="infinite",
                     )
         except SlurmCommandError as e:
             logger.error(

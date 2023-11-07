@@ -14,7 +14,7 @@ import logging
 # In this file the input of the module subprocess is trusted.
 import subprocess  # nosec B404
 from datetime import datetime
-from typing import List
+from typing import List, Union
 
 from common.schedulers.slurm_commands import DEFAULT_SCONTROL_COMMAND_TIMEOUT, SCONTROL
 from common.utils import (
@@ -42,8 +42,8 @@ def _create_or_update_reservation(
     nodes: str = None,
     partition: str = None,
     user: str = None,
-    start_time: datetime = None,
-    duration: int = None,
+    start_time: Union[datetime, str] = None,  # 'now' is accepted as a value
+    duration: Union[int, str] = None,  # 'infinite' is accepted as a value
     number_of_nodes: int = None,
     flags: str = None,
     command_timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT,
@@ -61,6 +61,8 @@ def _create_or_update_reservation(
     if isinstance(start_time, datetime):
         # Convert start time to format accepted by slurm command
         cmd = _add_param(cmd, "starttime", start_time.strftime("%Y-%m-%dT%H:%M:%S"))
+    elif start_time:
+        cmd = _add_param(cmd, "starttime", start_time)
     cmd = _add_param(cmd, "duration", duration)
     cmd = _add_param(cmd, "nodecnt", number_of_nodes)
     cmd = _add_param(cmd, "flags", flags)
@@ -79,8 +81,8 @@ def create_slurm_reservation(
     nodes: str = "ALL",
     partition: str = None,
     user: str = "slurm",
-    start_time: datetime = None,
-    duration: int = None,
+    start_time: Union[datetime, str] = None,  # 'now' is accepted as a value
+    duration: Union[int, str] = None,  # 'infinite' is accepted as a value
     number_of_nodes: int = None,
     flags: str = "maint",
     command_timeout: int = DEFAULT_SCONTROL_COMMAND_TIMEOUT,
@@ -117,8 +119,8 @@ def update_slurm_reservation(
     nodes: str = None,
     partition: str = None,
     user: str = None,
-    start_time: datetime = None,
-    duration: int = None,
+    start_time: Union[datetime, str] = None,  # 'now' is accepted as a value
+    duration: Union[int, str] = None,  # 'infinite' is accepted as a value
     number_of_nodes: int = None,
     flags: str = None,
     command_timeout: int = DEFAULT_SCONTROL_COMMAND_TIMEOUT,
