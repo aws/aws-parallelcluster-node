@@ -1111,12 +1111,14 @@ class JobLevelScalingInstanceManager(InstanceManager):
                         batch_nodes = []
                         try:
                             batch_nodes, batch_launched_ec2_instances = zip(*batch)
-                            assigned_nodes = self._update_slurm_node_addrs(
-                                slurm_nodes=list(batch_nodes), launched_instances=batch_launched_ec2_instances
-                            )
+                            assigned_nodes = dict(batch)
+
                             self._store_assigned_hostnames(nodes=assigned_nodes)
                             self._update_dns_hostnames(
                                 nodes=assigned_nodes, update_dns_batch_size=assign_node_batch_size
+                            )
+                            self._update_slurm_node_addrs(
+                                slurm_nodes=list(batch_nodes), launched_instances=batch_launched_ec2_instances
                             )
                         except (NodeAddrUpdateError, HostnameTableStoreError, HostnameDnsStoreError):
                             if raise_on_error:
@@ -1144,9 +1146,6 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 "Nodes are now configured with instances %s",
                 print_with_count(zip(slurm_nodes, launched_instances)),
             )
-
-            return dict(zip(slurm_nodes, launched_instances))
-
         except subprocess.CalledProcessError:
             logger.error(
                 "Encountered error when updating nodes %s with instances %s",
