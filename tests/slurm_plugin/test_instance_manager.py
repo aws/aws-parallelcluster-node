@@ -26,6 +26,7 @@ from slurm_plugin.common import ScalingStrategy
 from slurm_plugin.fleet_manager import EC2Instance, LaunchInstancesError
 from slurm_plugin.instance_manager import (
     HostnameDnsStoreError,
+    HostnameTableStoreError,
     InstanceManager,
     InstanceManagerFactory,
     InstanceToNodeAssignmentError,
@@ -2086,7 +2087,8 @@ class TestJobLevelScalingInstanceManager:
 
     @pytest.mark.parametrize(
         "update_node_address, nodes_to_launch, instances_launched, assign_node_batch_size, "
-        "raise_on_error, expected_update_slurm_node_addrs_calls, expected_exception, "
+        "raise_on_error, expected_store_assigned_hostnames_calls, expected_update_dns_hostnames_calls, "
+        "expected_update_slurm_node_addrs_calls, expected_dynamo_exception, expected_dns_exception, "
         "failed_nodes, expected_failed_nodes",
         [
             (
@@ -2097,6 +2099,9 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 None,
                 None,
+                None,
+                [],
+                [],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
             ),
@@ -2108,6 +2113,9 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 None,
                 None,
+                None,
+                [],
+                [],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
             ),
@@ -2131,6 +2139,25 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 [
                     call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    )
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    )
+                ],
+                [
+                    call(
                         slurm_nodes=["q1-q1c1-st-large-1"],
                         launched_instances=(
                             EC2Instance(
@@ -2139,7 +2166,8 @@ class TestJobLevelScalingInstanceManager:
                         ),
                     ),
                 ],
-                None,
+                [None, None],
+                [None, None],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
             ),
@@ -2188,6 +2216,73 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 [
                     call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c2-st-small-1": EC2Instance(
+                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                    call(
+                        nodes={
+                            "q2-q2c1-st-large-1": EC2Instance(
+                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            "q2-q2c1-st-large-2": EC2Instance(
+                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            "q2-q2c1-st-large-3": EC2Instance(
+                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=10,
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c2-st-small-1": EC2Instance(
+                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=10,
+                    ),
+                    call(
+                        nodes={
+                            "q2-q2c1-st-large-1": EC2Instance(
+                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            "q2-q2c1-st-large-2": EC2Instance(
+                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            "q2-q2c1-st-large-3": EC2Instance(
+                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=10,
+                    ),
+                ],
+                [
+                    call(
                         slurm_nodes=["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
                         launched_instances=(
                             EC2Instance(
@@ -2221,7 +2316,8 @@ class TestJobLevelScalingInstanceManager:
                         ),
                     ),
                 ],
-                None,
+                [None, None, None],
+                [None, None, None],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
             ),
@@ -2245,14 +2341,25 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 [
                     call(
-                        slurm_nodes=["q1-q1c1-st-large-1"],
-                        launched_instances=(
-                            EC2Instance(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
-                        ),
+                        }
                     ),
                 ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [],
+                [None],
                 [HostnameDnsStoreError()],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-1"}},
@@ -2280,6 +2387,40 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 [
                     call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [
+                    call(
                         slurm_nodes=["q1-q1c1-st-large-1"],
                         launched_instances=(
                             EC2Instance(
@@ -2287,15 +2428,8 @@ class TestJobLevelScalingInstanceManager:
                             ),
                         ),
                     ),
-                    call(
-                        slurm_nodes=["q1-q1c1-st-large-2"],
-                        launched_instances=(
-                            EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            ),
-                        ),
-                    ),
                 ],
+                [None, None],
                 [None, HostnameDnsStoreError()],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-2"}},
@@ -2323,13 +2457,39 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 [
                     call(
-                        slurm_nodes=["q1-q1c1-st-large-1"],
-                        launched_instances=(
-                            EC2Instance(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
-                        ),
+                        }
                     ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [
                     call(
                         slurm_nodes=["q1-q1c1-st-large-2"],
                         launched_instances=(
@@ -2339,6 +2499,7 @@ class TestJobLevelScalingInstanceManager:
                         ),
                     ),
                 ],
+                [None, None],
                 [HostnameDnsStoreError(), None],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-1"}},
@@ -2363,15 +2524,26 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 [
                     call(
-                        slurm_nodes=["q1-q1c1-st-large-1"],
-                        launched_instances=(
-                            EC2Instance(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
-                        ),
+                        }
                     ),
                 ],
-                HostnameDnsStoreError(),
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [],
+                [None, None],
+                [HostnameDnsStoreError(), None],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
             ),
@@ -2398,6 +2570,40 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 [
                     call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [
+                    call(
                         slurm_nodes=["q1-q1c1-st-large-1"],
                         launched_instances=(
                             EC2Instance(
@@ -2405,15 +2611,8 @@ class TestJobLevelScalingInstanceManager:
                             ),
                         ),
                     ),
-                    call(
-                        slurm_nodes=["q1-q1c1-st-large-2"],
-                        launched_instances=(
-                            EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
-                            ),
-                        ),
-                    ),
                 ],
+                [None, None],
                 [None, HostnameDnsStoreError()],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
@@ -2441,15 +2640,125 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 [
                     call(
-                        slurm_nodes=["q1-q1c1-st-large-1"],
-                        launched_instances=(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [],
+                [None, None],
+                [HostnameDnsStoreError(), None],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
                             EC2Instance(
                                 "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                False,
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-2": EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        },
+                        update_dns_batch_size=1,
+                    ),
+                ],
+                [
+                    call(
+                        slurm_nodes=["q1-q1c1-st-large-2"],
+                        launched_instances=(
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
                             ),
                         ),
                     ),
                 ],
-                [HostnameDnsStoreError(), None],
+                [HostnameTableStoreError(), None],
+                [None, None],
+                {"Error": {"queueX-st-cxlarge-1"}},
+                {"Error": {"queueX-st-cxlarge-1"}, "Exception": {"q1-q1c1-st-large-1"}},
+            ),
+            (
+                True,
+                {
+                    "q1": {
+                        "q1c1": ["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
+                    },
+                },
+                {
+                    "q1": {
+                        "q1c1": [
+                            EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                            EC2Instance(
+                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        ],
+                    },
+                },
+                1,
+                True,
+                [
+                    call(
+                        nodes={
+                            "q1-q1c1-st-large-1": EC2Instance(
+                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                            ),
+                        }
+                    ),
+                ],
+                [],
+                [],
+                [HostnameTableStoreError(), None],
+                [None, None],
                 {"Error": {"queueX-st-cxlarge-1"}},
                 {"Error": {"queueX-st-cxlarge-1"}},
             ),
@@ -2464,15 +2773,18 @@ class TestJobLevelScalingInstanceManager:
         instances_launched,
         assign_node_batch_size,
         raise_on_error,
+        expected_store_assigned_hostnames_calls,
+        expected_update_dns_hostnames_calls,
         expected_update_slurm_node_addrs_calls,
-        expected_exception,
+        expected_dynamo_exception,
+        expected_dns_exception,
         failed_nodes,
         expected_failed_nodes,
     ):
         # patch internal functions
         instance_manager._update_slurm_node_addrs = mocker.MagicMock()
-        instance_manager._store_assigned_hostnames = mocker.MagicMock()
-        instance_manager._update_dns_hostnames = mocker.MagicMock(side_effect=expected_exception)
+        instance_manager._store_assigned_hostnames = mocker.MagicMock(side_effect=expected_dynamo_exception)
+        instance_manager._update_dns_hostnames = mocker.MagicMock(side_effect=expected_dns_exception)
         instance_manager.failed_nodes = failed_nodes
 
         if update_node_address and raise_on_error:
@@ -2494,15 +2806,22 @@ class TestJobLevelScalingInstanceManager:
             )
 
         if not update_node_address:
-            instance_manager._update_slurm_node_addrs.assert_not_called()
             instance_manager._store_assigned_hostnames.assert_not_called()
             instance_manager._update_dns_hostnames.assert_not_called()
+            instance_manager._update_slurm_node_addrs.assert_not_called()
         else:
-            instance_manager._update_slurm_node_addrs.assert_has_calls(expected_update_slurm_node_addrs_calls)
+            instance_manager._store_assigned_hostnames.assert_has_calls(expected_store_assigned_hostnames_calls)
             assert_that(instance_manager._store_assigned_hostnames.call_count).is_equal_to(
-                len(expected_update_slurm_node_addrs_calls)
+                len(expected_store_assigned_hostnames_calls)
             )
+
+            instance_manager._update_dns_hostnames.assert_has_calls(expected_update_dns_hostnames_calls)
             assert_that(instance_manager._update_dns_hostnames.call_count).is_equal_to(
+                len(expected_update_dns_hostnames_calls)
+            )
+
+            instance_manager._update_slurm_node_addrs.assert_has_calls(expected_update_slurm_node_addrs_calls)
+            assert_that(instance_manager._update_slurm_node_addrs.call_count).is_equal_to(
                 len(expected_update_slurm_node_addrs_calls)
             )
 
@@ -2518,7 +2837,7 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=[], nodehostnames=None),
-                {},
+                None,
             ),
             (
                 ["queue1-st-c5xlarge-1"],
@@ -2526,11 +2845,7 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    )
-                },
+                None,
             ),
             (
                 ["queue1-st-c5xlarge-1"],
@@ -2538,11 +2853,7 @@ class TestJobLevelScalingInstanceManager:
                 True,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    )
-                },
+                None,
             ),
             (
                 ["queue1-st-c5xlarge-1"],
@@ -2561,14 +2872,7 @@ class TestJobLevelScalingInstanceManager:
                 False,
                 None,
                 call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
-                {
-                    "queue1-st-c5xlarge-1": EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname-1", launch_time="some_launch_time"
-                    ),
-                    "queue1-st-c5xlarge-2": EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname-2", launch_time="some_launch_time"
-                    ),
-                },
+                None,
             ),
         ],
     )
@@ -2592,8 +2896,7 @@ class TestJobLevelScalingInstanceManager:
             with pytest.raises(expected_return.__class__):
                 instance_manager._update_slurm_node_addrs(node_list, launched_instances)
         else:
-            function_return = instance_manager._update_slurm_node_addrs(node_list, launched_instances)
-            assert_that(function_return).is_equal_to(expected_return)
+            instance_manager._update_slurm_node_addrs(node_list, launched_instances)
 
         if expected_update_nodes_call:
             mock_update_nodes.assert_called_once()
