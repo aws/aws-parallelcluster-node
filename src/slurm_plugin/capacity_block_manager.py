@@ -54,15 +54,14 @@ class CapacityBlock:
     Class to store Capacity Block info from EC2 and fleet config.
 
     Contains info like:
-    - queue and compute resource from the config,
+    - associated queue and compute resources from the config,
     - state from EC2,
     - name of the slurm reservation that will be created for this CB.
     """
 
-    def __init__(self, capacity_block_id, queue_name, compute_resource_name):
+    def __init__(self, capacity_block_id):
         self.capacity_block_id = capacity_block_id
-        self.queue_name = queue_name
-        self.compute_resource_name = compute_resource_name
+        self.compute_resources_map: Dict[str, set] = {}
         self._capacity_block_reservation_info = None
         self._nodenames = []
 
@@ -73,6 +72,16 @@ class CapacityBlock:
     def slurm_reservation_name(self):
         """Retrieve slurm reservation associated."""
         return f"{SLURM_RESERVATION_NAME_PREFIX}{self.capacity_block_id}"
+
+    def add_compute_resource(self, queue_name: str, compute_resource_name: str):
+        """
+        Add compute resource to the internal map.
+
+        The same CB can be associated to multiple queues/compute-resources.
+        """
+        compute_resources_by_queue = self.compute_resources_map.get(queue_name, set())
+        compute_resources_by_queue.add(compute_resource_name)
+        self.compute_resources_map.update({queue_name: compute_resources_by_queue})
 
     def add_nodename(self, nodename: str):
         """Add node name to the list of nodenames associated to the capacity block."""
@@ -92,7 +101,7 @@ class CapacityBlock:
 
     def does_node_belong_to(self, node):
         """Return true if the node belongs to the CB."""
-        return node.queue_name == self.queue_name and node.compute_resource_name == self.compute_resource_name
+        return node.compute_resource_name in self.compute_resources_map.get(node.queue_name, set())
 
     @staticmethod
     def capacity_block_id_from_slurm_reservation_name(slurm_reservation_name: str):
@@ -107,8 +116,7 @@ class CapacityBlock:
     def __eq__(self, other):
         return (
             self.capacity_block_id == other.capacity_block_id
-            and self.queue_name == other.queue_name
-            and self.compute_resource_name == other.compute_resource_name
+            and self.compute_resources_map == other.compute_resources_map
         )
 
 
@@ -387,10 +395,12 @@ class CapacityBlockManager:
                     capacity_block_id = self._capacity_reservation_id_from_compute_resource_config(
                         compute_resource_config
                     )
-                    capacity_block = CapacityBlock(
-                        capacity_block_id=capacity_block_id,
-                        queue_name=queue_name,
-                        compute_resource_name=compute_resource_name,
+                    # retrieve existing CapacityBlock if exists or create a new one.
+                    capacity_block = capacity_blocks.get(
+                        capacity_block_id, CapacityBlock(capacity_block_id=capacity_block_id)
+                    )
+                    capacity_block.add_compute_resource(
+                        queue_name=queue_name, compute_resource_name=compute_resource_name
                     )
                     capacity_blocks.update({capacity_block_id: capacity_block})
 
