@@ -227,11 +227,11 @@ class InstanceManager(ABC):
             # Submit calls to change_resource_record_sets in batches of max 500 elements each.
             # change_resource_record_sets API call has limit of 1000 changes,
             # but the UPSERT action counts for 2 calls
-            # Also pick the number of retries to be the max between the globally configured one and 3.
+            # Also pick the number of retries to be the max between the globally configured one and 4.
             # This is done to address Route53 API throttling without changing the configured retries for all API calls.
             configured_retry = self._boto3_config.retries.get("max_attempts", 0) if self._boto3_config.retries else 0
             boto3_config = self._boto3_config.merge(
-                Config(retries={"max_attempts": max([configured_retry, 3]), "mode": "standard"})
+                Config(retries={"max_attempts": max([configured_retry, 4]), "mode": "standard"})
             )
             route53_client = boto3.client("route53", region_name=self._region, config=boto3_config)
             changes_batch_size = min(update_dns_batch_size, 500)
