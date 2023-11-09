@@ -10,6 +10,8 @@
 # limitations under the License.
 import logging
 from datetime import datetime
+from types import SimpleNamespace
+from typing import Dict
 from unittest.mock import call
 
 import pytest
@@ -49,7 +51,9 @@ FAKE_CAPACITY_BLOCK_INFO = {
 
 @pytest.fixture
 def capacity_block():
-    return CapacityBlock(FAKE_CAPACITY_BLOCK_ID, "queue-cb", "compute-resource-cb")
+    capacity_block = CapacityBlock(FAKE_CAPACITY_BLOCK_ID)
+    capacity_block.add_compute_resource("queue-cb", "compute-resource-cb")
+    return capacity_block
 
 
 class TestCapacityBlock:
@@ -61,6 +65,21 @@ class TestCapacityBlock:
         capacity_block_reservation_info = CapacityReservationInfo({**FAKE_CAPACITY_BLOCK_INFO, "State": state})
         capacity_block.update_capacity_block_reservation_info(capacity_block_reservation_info)
         assert_that(capacity_block.is_active()).is_equal_to(expected_output)
+
+    @pytest.mark.parametrize(
+        ("initial_map", "queue", "compute_resource", "expected_map"),
+        [
+            ({}, "queue1", "cr1", {"queue1": {"cr1"}}),
+            ({"queue1": {"cr1"}}, "queue1", "cr2", {"queue1": {"cr1", "cr2"}}),
+            ({"queue1": {"cr1"}}, "queue2", "cr2", {"queue1": {"cr1"}, "queue2": {"cr2"}}),
+            ({"queue1": {"cr1"}}, "queue2", "cr1", {"queue1": {"cr1"}, "queue2": {"cr1"}}),
+        ],
+    )
+    def test_add_compute_resource(self, initial_map, queue, compute_resource, expected_map):
+        capacity_block = CapacityBlock("id")
+        capacity_block.compute_resources_map = initial_map
+        capacity_block.add_compute_resource(queue, compute_resource)
+        assert_that(capacity_block.compute_resources_map).is_equal_to(expected_map)
 
     @pytest.mark.parametrize(
         "nodes_to_add",
@@ -75,8 +94,10 @@ class TestCapacityBlock:
         ("node", "expected_output"),
         [
             (StaticNode("queue-cb-st-compute-resource-cb-4", "ip-1", "hostname-1", "some_state", "queue-cb"), True),
+            (StaticNode("queue-cb-st-compute-resource-other-2", "ip-1", "hostname-1", "some_state", "queue-cb"), False),
             (StaticNode("queue1-st-c5xlarge-4", "ip-1", "hostname-1", "some_state", "queue1"), False),
             (StaticNode("queue2-st-compute-resource1-4", "ip-1", "hostname-1", "some_state", "queue2"), False),
+            (StaticNode("queue2-st-compute-resource-cb-2", "ip-1", "hostname-1", "some_state", "queue2"), False),
         ],
     )
     def test_does_node_belong_to(self, capacity_block, node, expected_output):
@@ -155,7 +176,11 @@ class TestCapacityBlockManager:
                 # in the second capacity block when updating info from EC2
                 True,
                 ["node1"],
-                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    )
+                },
                 [
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
@@ -175,14 +200,18 @@ class TestCapacityBlockManager:
                 # in the second capacity block when creating Slurm reservation
                 True,
                 ["node1"],
-                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    )
+                },
                 [
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
                     )
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
-                [True, False],  # reservation creation failed for the first CB
+                [True, False],  # reservation creation failed for the second CB
                 ["queue-cb-st-compute-resource-cb-1"],
             ),
             (
@@ -190,7 +219,11 @@ class TestCapacityBlockManager:
                 # while creating all the slurm reservations
                 True,
                 ["node1"],
-                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    )
+                },
                 [
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
@@ -204,7 +237,11 @@ class TestCapacityBlockManager:
                 # preserve old nodenames because there is a managed exception when contacting EC2
                 True,
                 ["node1"],
-                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    )
+                },
                 AWSClientError("describe_capacity_reservations", "Boto3Error"),
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
                 [False],
@@ -214,20 +251,30 @@ class TestCapacityBlockManager:
                 # preserve old nodenames because there is an unexpected exception when contacting EC2
                 True,
                 ["node1"],
-                {"cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb")},
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    )
+                },
                 Exception("generic-error"),
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
                 [False],
                 ["node1"],
             ),
             (
-                # return nodenames accordingly to the state (only pending)
+                # return nodenames accordingly to the state of the CB (only not active CBs)
                 True,
                 ["node1"],
                 {
-                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
-                    "cr-234567": CapacityBlock("cr-234567", "queue-cb2", "compute-resource-cb2"),
-                    "cr-345678": CapacityBlock("cr-345678", "queue-cb3", "compute-resource-cb3"),
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
+                    "cr-234567": SimpleNamespace(
+                        capacity_block_id="cr-234567", compute_resources_map={"queue-cb2": {"compute-resource-cb2"}}
+                    ),
+                    "cr-345678": SimpleNamespace(
+                        capacity_block_id="cr-345678", compute_resources_map={"queue-cb3": {"compute-resource-cb3"}}
+                    ),
                 },
                 [
                     CapacityReservationInfo(
@@ -266,10 +313,11 @@ class TestCapacityBlockManager:
         mocker.patch.object(
             capacity_block_manager, "_is_time_to_update_capacity_blocks_info", return_value=is_time_to_update
         )
+        mocked_capacity_blocks_from_config = self._build_capacity_blocks(capacity_blocks_from_config)
         mocker.patch.object(
             capacity_block_manager,
             "_retrieve_capacity_blocks_from_fleet_config",
-            return_value=capacity_blocks_from_config,
+            return_value=mocked_capacity_blocks_from_config,
         )
         mocked_client = mocker.MagicMock()
         expected_ec2_exception = isinstance(capacity_blocks_info_from_ec2, Exception)
@@ -300,10 +348,10 @@ class TestCapacityBlockManager:
             if all(not action_succeeded for action_succeeded in slurm_reservation_creation_succeeded):
                 # if all slurm reservations actions failed, do not update the values
                 assert_that(capacity_block_manager._capacity_blocks_update_time).is_equal_to(previous_update_time)
-                assert_that(capacity_block_manager._capacity_blocks).is_not_equal_to(capacity_blocks_from_config)
+                assert_that(capacity_block_manager._capacity_blocks).is_not_equal_to(mocked_capacity_blocks_from_config)
             else:
                 assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
-                assert_that(capacity_block_manager._capacity_blocks).is_equal_to(capacity_blocks_from_config)
+                assert_that(capacity_block_manager._capacity_blocks).is_equal_to(mocked_capacity_blocks_from_config)
 
             update_res_mock.assert_has_calls(
                 [
@@ -342,10 +390,29 @@ class TestCapacityBlockManager:
     @pytest.mark.parametrize(
         ("capacity_blocks", "nodes", "expected_nodenames_in_capacity_block"),
         [
+            # empty initial list
+            (
+                {},
+                [
+                    StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb"),
+                    StaticNode("queue1-st-compute-resource1-2", "ip-1", "hostname-1", "some_state", "queue1"),
+                    StaticNode("queue-cb-st-compute-resource-cb-3", "ip-1", "hostname-1", "some_state", "queue-cb"),
+                    StaticNode("queue1-st-compute-resource1-4", "ip-1", "hostname-1", "some_state", "queue1"),
+                    StaticNode("queue-cb2-st-compute-resource-cb2-5", "ip-1", "hostname-1", "some_state", "queue-cb2"),
+                    StaticNode("queue-cb-st-othercr-6", "ip-1", "hostname-1", "some_state", "queue1"),
+                    StaticNode("otherqueue-st-compute-resource-cb-7", "ip-1", "hostname-1", "some_state", "otherqueue"),
+                ],
+                {},
+            ),
+            # multiple CBs
             (
                 {
-                    "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
-                    "cr-234567": CapacityBlock("id2", "queue-cb2", "compute-resource-cb2"),
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
+                    "cr-234567": SimpleNamespace(
+                        capacity_block_id="cr-234567", compute_resources_map={"queue-cb2": {"compute-resource-cb2"}}
+                    ),
                 },
                 [
                     StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb"),
@@ -360,7 +427,27 @@ class TestCapacityBlockManager:
                     "cr-123456": ["queue-cb-st-compute-resource-cb-1", "queue-cb-st-compute-resource-cb-3"],
                     "cr-234567": ["queue-cb2-st-compute-resource-cb2-5"],
                 },
-            )
+            ),
+            # same CB used by multiple queues/compute resources
+            (
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
+                },
+                [
+                    StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb"),
+                    StaticNode("queue1-st-compute-resource1-2", "ip-1", "hostname-1", "some_state", "queue1"),
+                    StaticNode("queue-cb-st-compute-resource-cb-3", "ip-1", "hostname-1", "some_state", "queue-cb"),
+                    StaticNode("queue1-st-compute-resource1-4", "ip-1", "hostname-1", "some_state", "queue1"),
+                    StaticNode("queue-cb2-st-compute-resource-cb2-5", "ip-1", "hostname-1", "some_state", "queue-cb2"),
+                    StaticNode("queue-cb-st-othercr-6", "ip-1", "hostname-1", "some_state", "queue1"),
+                    StaticNode("otherqueue-st-compute-resource-cb-7", "ip-1", "hostname-1", "some_state", "otherqueue"),
+                ],
+                {
+                    "cr-123456": ["queue-cb-st-compute-resource-cb-1", "queue-cb-st-compute-resource-cb-3"],
+                },
+            ),
         ],
     )
     def test_associate_nodenames_to_capacity_blocks(
@@ -370,8 +457,9 @@ class TestCapacityBlockManager:
         nodes,
         expected_nodenames_in_capacity_block,
     ):
-        capacity_block_manager._capacity_blocks = capacity_blocks
-        capacity_block_manager._associate_nodenames_to_capacity_blocks(capacity_blocks, nodes)
+        mocked_capacity_blocks = self._build_capacity_blocks(capacity_blocks)
+        capacity_block_manager._capacity_blocks = mocked_capacity_blocks
+        capacity_block_manager._associate_nodenames_to_capacity_blocks(mocked_capacity_blocks, nodes)
 
         for capacity_block_id in capacity_block_manager._capacity_blocks.keys():
             # assert in the nodenames list there are only nodes associated to the right queue and compute resource
@@ -552,7 +640,9 @@ class TestCapacityBlockManager:
             # exception, keep previous values
             (
                 {
-                    "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    )
                 },
                 [
                     CapacityReservationInfo(
@@ -567,7 +657,9 @@ class TestCapacityBlockManager:
             # internal error, because trying to update a capacity block not in the list, keep previous values
             (
                 {
-                    "cr-123456": CapacityBlock("id", "queue-cb", "compute-resource-cb"),
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
                 },
                 [
                     CapacityReservationInfo(
@@ -582,8 +674,12 @@ class TestCapacityBlockManager:
             # update old values with new values
             (
                 {
-                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
-                    "cr-234567": CapacityBlock("cr-234567", "queue-cb", "compute-resource-cb"),
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
+                    "cr-234567": SimpleNamespace(
+                        capacity_block_id="cr-234567", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
                 },
                 [
                     CapacityReservationInfo(
@@ -607,7 +703,8 @@ class TestCapacityBlockManager:
         caplog,
     ):
         caplog.set_level(logging.INFO)
-        capacity_block_manager._capacity_blocks = init_capacity_blocks
+        mocked_capacity_blocks = self._build_capacity_blocks(init_capacity_blocks)
+        capacity_block_manager._capacity_blocks = mocked_capacity_blocks
         expected_exception = isinstance(expected_error, AWSClientError)
         mocked_client = mocker.MagicMock()
         mocked_client.describe_capacity_reservations.side_effect = [
@@ -619,10 +716,10 @@ class TestCapacityBlockManager:
             with pytest.raises(
                 CapacityBlockManagerError, match="Unable to retrieve Capacity Blocks information from EC2. Boto3Error"
             ):
-                capacity_block_manager._update_capacity_blocks_info_from_ec2(init_capacity_blocks)
+                capacity_block_manager._update_capacity_blocks_info_from_ec2(mocked_capacity_blocks)
 
         elif expected_error:
-            capacity_block_manager._update_capacity_blocks_info_from_ec2(init_capacity_blocks)
+            capacity_block_manager._update_capacity_blocks_info_from_ec2(mocked_capacity_blocks)
             assert_that(caplog.text).contains(expected_error)
 
             # assert that only existing item has been updated
@@ -635,7 +732,7 @@ class TestCapacityBlockManager:
             )
             assert_that(capacity_block_manager._capacity_blocks.get("cr-234567")).is_none()
         else:
-            capacity_block_manager._update_capacity_blocks_info_from_ec2(init_capacity_blocks)
+            capacity_block_manager._update_capacity_blocks_info_from_ec2(mocked_capacity_blocks)
             if init_capacity_blocks:
                 # verify that all the blocks have the updated info from ec2
                 assert_that(
@@ -660,24 +757,40 @@ class TestCapacityBlockManager:
             (
                 {
                     "queue-cb": {
-                        "compute-resource-cb": {
-                            "CapacityType": "capacity-block",
-                            "CapacityReservationId": "cr-123456",
-                        }
+                        "compute-resource-cb": {"CapacityType": "capacity-block", "CapacityReservationId": "cr-123456"}
                     },
                     "queue1": {
                         "compute-resource1": {"CapacityType": "on-demand", "CapacityReservationId": "cr-123456"}
                     },
                     "queue-cb2": {
-                        "compute-resource-cb2": {
-                            "CapacityType": "capacity-block",
-                            "CapacityReservationId": "cr-234567",
-                        }
+                        "compute-resource-cb2": {"CapacityType": "capacity-block", "CapacityReservationId": "cr-234567"}
                     },
                 },
                 {
-                    "cr-123456": CapacityBlock("cr-123456", "queue-cb", "compute-resource-cb"),
-                    "cr-234567": CapacityBlock("cr-234567", "queue-cb2", "compute-resource-cb2"),
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
+                    ),
+                    "cr-234567": SimpleNamespace(
+                        capacity_block_id="cr-234567", compute_resources_map={"queue-cb2": {"compute-resource-cb2"}}
+                    ),
+                },
+                False,
+            ),
+            # Same CB in multiple queues
+            (
+                {
+                    "queue-cb": {
+                        "compute-resource-cb": {"CapacityType": "capacity-block", "CapacityReservationId": "cr-123456"}
+                    },
+                    "queue1": {
+                        "compute-resource1": {"CapacityType": "capacity-block", "CapacityReservationId": "cr-123456"}
+                    },
+                },
+                {
+                    "cr-123456": SimpleNamespace(
+                        capacity_block_id="cr-123456",
+                        compute_resources_map={"queue-cb": {"compute-resource-cb"}, "queue1": {"compute-resource1"}},
+                    ),
                 },
                 False,
             ),
@@ -702,9 +815,21 @@ class TestCapacityBlockManager:
             with pytest.raises(KeyError):
                 capacity_block_manager._retrieve_capacity_blocks_from_fleet_config()
         else:
-            assert_that(expected_capacity_blocks).is_equal_to(
+            assert_that(self._build_capacity_blocks(expected_capacity_blocks)).is_equal_to(
                 capacity_block_manager._retrieve_capacity_blocks_from_fleet_config()
             )
+
+    @staticmethod
+    def _build_capacity_blocks(expected_capacity_blocks_structure: Dict[str, SimpleNamespace]):
+        """Convert dict with list of SimpleNamespaces to list of CapacityBlocks."""
+        expected_capacity_blocks = {}
+        for capacity_block_id, capacity_block_structure in expected_capacity_blocks_structure.items():
+            expected_capacity_block = CapacityBlock(capacity_block_id)
+            for queue, compute_resources in capacity_block_structure.compute_resources_map.items():
+                for compute_resource in compute_resources:
+                    expected_capacity_block.add_compute_resource(queue, compute_resource)
+                    expected_capacity_blocks.update({capacity_block_id: expected_capacity_block})
+        return expected_capacity_blocks
 
     @pytest.mark.parametrize(
         ("compute_resource_config", "expected_result"),
