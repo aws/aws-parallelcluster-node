@@ -173,7 +173,7 @@ class TestCapacityBlockManager:
             ),
             (
                 # return first nodename because there is an internal error
-                # in the second capacity block when updating info from EC2
+                # when associating info from EC2 (2 CBs) and the capacity block in the config (1 CB)
                 True,
                 ["node1"],
                 {
@@ -192,7 +192,7 @@ class TestCapacityBlockManager:
                     ),
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
-                [True, True],
+                [True],
                 ["queue-cb-st-compute-resource-cb-1"],
             ),
             (
@@ -203,12 +203,18 @@ class TestCapacityBlockManager:
                 {
                     "cr-123456": SimpleNamespace(
                         capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
-                    )
+                    ),
+                    "cr-234567": SimpleNamespace(
+                        capacity_block_id="cr-234567", compute_resources_map={"queue-cb2": {"compute-resource-cb2"}}
+                    ),
                 },
                 [
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
-                    )
+                    ),
+                    CapacityReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
+                    ),
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
                 [True, False],  # reservation creation failed for the second CB
@@ -222,11 +228,17 @@ class TestCapacityBlockManager:
                 {
                     "cr-123456": SimpleNamespace(
                         capacity_block_id="cr-123456", compute_resources_map={"queue-cb": {"compute-resource-cb"}}
-                    )
+                    ),
+                    "cr-234567": SimpleNamespace(
+                        capacity_block_id="cr-234567", compute_resources_map={"queue-cb2": {"compute-resource-cb2"}}
+                    ),
                 },
                 [
                     CapacityReservationInfo(
                         {**FAKE_CAPACITY_BLOCK_INFO, "State": "pending", "CapacityReservationId": "cr-123456"}
+                    ),
+                    CapacityReservationInfo(
+                        {**FAKE_CAPACITY_BLOCK_INFO, "State": "active", "CapacityReservationId": "cr-234567"}
                     ),
                 ],
                 [StaticNode("queue-cb-st-compute-resource-cb-1", "ip-1", "hostname-1", "some_state", "queue-cb")],
