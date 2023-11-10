@@ -161,7 +161,7 @@ def delete_slurm_reservation(
 
     Official documentation is https://slurm.schedmd.com/reservations.html
     """
-    cmd = f"{SCONTROL} delete reservation"
+    cmd = f"{SCONTROL} delete"
     cmd = _add_param(cmd, "ReservationName", name)
 
     logger.debug("Deleting Slurm reservation with command: %s", cmd)
