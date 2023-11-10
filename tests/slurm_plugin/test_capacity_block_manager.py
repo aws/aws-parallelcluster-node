@@ -363,6 +363,9 @@ class TestCapacityBlockManager:
                 assert_that(capacity_block_manager._capacity_blocks_update_time).is_not_equal_to(previous_update_time)
                 assert_that(capacity_block_manager._capacity_blocks).is_equal_to(mocked_capacity_blocks_from_config)
 
+            assert_that(capacity_block_manager._slurm_reservation_update_errors).is_equal_to(
+                slurm_reservation_creation_succeeded.count(False)
+            )
             update_res_mock.assert_has_calls(
                 [
                     call(capacity_block=capacity_block, do_update=False)
@@ -377,24 +380,28 @@ class TestCapacityBlockManager:
             cleanup_mock.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("is_initialized", "now", "expected_updated_time"),
+        ("is_initialized", "slurm_reservations_errors", "now", "expected_updated_time"),
         [
             # manager not initialized
-            (False, datetime(2020, 1, 1, 1, 00, 0), True),
+            (False, 0, datetime(2020, 1, 1, 1, 00, 0), True),
             # delta < CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
-            (True, datetime(2020, 1, 1, 1, 00, 10), False),
-            (True, datetime(2020, 1, 1, 1, 9, 0), False),
+            (True, 0, datetime(2020, 1, 1, 1, 00, 10), False),
+            (True, 0, datetime(2020, 1, 1, 1, 9, 0), False),
+            # delta < CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD but errors in previous update
+            (True, 1, datetime(2020, 1, 1, 1, 9, 0), True),
             # delta >= CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
-            (True, datetime(2020, 1, 1, 1, 10, 0), True),
-            (True, datetime(2020, 1, 1, 1, 21, 0), True),
-            (True, datetime(2020, 1, 1, 2, 00, 0), True),
-            (True, datetime(2020, 1, 2, 1, 00, 0), True),
+            (True, 0, datetime(2020, 1, 1, 1, 10, 0), True),
+            (True, 0, datetime(2020, 1, 1, 1, 21, 0), True),
+            (True, 0, datetime(2020, 1, 1, 2, 00, 0), True),
+            (True, 0, datetime(2020, 1, 2, 1, 00, 0), True),
+            (True, 1, datetime(2020, 1, 2, 1, 00, 0), True),
         ],
     )
     def test_is_time_to_update(
-        self, capacity_block_manager, is_initialized, now, expected_updated_time
+        self, capacity_block_manager, is_initialized, slurm_reservations_errors, now, expected_updated_time
     ):
         capacity_block_manager._capacity_blocks_update_time = datetime(2020, 1, 1, 1, 00, 0) if is_initialized else None
+        capacity_block_manager._slurm_reservation_update_errors = slurm_reservations_errors
         assert_that(capacity_block_manager._is_time_to_update(now))
 
     @pytest.mark.parametrize(

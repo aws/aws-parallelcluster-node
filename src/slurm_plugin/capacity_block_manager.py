@@ -132,6 +132,7 @@ class CapacityBlockManager:
         self._capacity_blocks: Dict[str, CapacityBlock] = {}
         self._capacity_blocks_update_time = None
         self._reserved_nodenames: List[str] = []
+        self._slurm_reservation_update_errors = 0
 
     @property
     def ec2_client(self):
@@ -150,7 +151,7 @@ class CapacityBlockManager:
             now = datetime.now(tz=timezone.utc)
             if self._is_time_to_update(now):
                 reserved_nodenames = []
-                slurm_reservation_update_errors = 0
+                self._slurm_reservation_update_errors = 0
 
                 # find an updated list of capacity blocks from fleet config
                 capacity_blocks = self._retrieve_capacity_blocks_from_fleet_config()
@@ -167,7 +168,7 @@ class CapacityBlockManager:
                             capacity_block=capacity_block, do_update=not self._is_initialized()
                         )
                         if not slurm_reservation_updated:
-                            slurm_reservation_update_errors += 1
+                            self._slurm_reservation_update_errors += 1
 
                         # If CB is in not yet active or expired add nodes to list of reserved nodes,
                         # only if slurm reservation has been correctly created/updated
@@ -175,7 +176,10 @@ class CapacityBlockManager:
                             reserved_nodenames.extend(capacity_block.nodenames())
 
                 # If all Slurm reservation actions failed do not update object attributes
-                if slurm_reservation_update_errors != len(capacity_blocks) or slurm_reservation_update_errors == 0:
+                if (
+                    self._slurm_reservation_update_errors != len(capacity_blocks)
+                    or self._slurm_reservation_update_errors == 0
+                ):
                     # Once all the steps have been successful, update object attributes
                     self._capacity_blocks = capacity_blocks
                     self._capacity_blocks_update_time = now
@@ -203,12 +207,12 @@ class CapacityBlockManager:
         """
         Return true if it's the time to update capacity blocks info, from ec2 and config, and manage slurm reservations.
 
-        This is true when the CapacityBlockManager is not yet initialized (self._capacity_blocks_update_time == None)
-        and every 10 minutes.
-        # TODO: evaluate time to update accordingly to capacity block start time
+        This is true when the CapacityBlockManager is not yet initialized (self._capacity_blocks_update_time == None),
+        when there were errors updating slurm reservations in the previous loop and every 10 minutes.
         """
         return (
             not self._is_initialized()
+            or self._slurm_reservation_update_errors
             or seconds_to_minutes((current_time - self._capacity_blocks_update_time).total_seconds())
             > CAPACITY_BLOCK_RESERVATION_UPDATE_PERIOD
         )
