@@ -148,7 +148,7 @@ class CapacityBlockManager:
         try:
             # evaluate if it's the moment to update info
             now = datetime.now(tz=timezone.utc)
-            if self._is_time_to_update_capacity_blocks_info(now):
+            if self._is_time_to_update(now):
                 reserved_nodenames = []
                 slurm_reservation_update_errors = 0
 
@@ -199,9 +199,9 @@ class CapacityBlockManager:
 
         return self._reserved_nodenames
 
-    def _is_time_to_update_capacity_blocks_info(self, current_time: datetime):
+    def _is_time_to_update(self, current_time: datetime):
         """
-        Return true if it's the moment to update capacity blocks info, from ec2 and from config.
+        Return true if it's the time to update capacity blocks info, from ec2 and config, and manage slurm reservations.
 
         This is true when the CapacityBlockManager is not yet initialized (self._capacity_blocks_update_time == None)
         and every 10 minutes.
