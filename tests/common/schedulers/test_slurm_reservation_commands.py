@@ -392,7 +392,7 @@ def test_delete_reservation(name, cmd_call_kwargs, mocker, run_command_output, e
     else:
         delete_slurm_reservation(name)
 
-    cmd = f"{SCONTROL} delete reservation ReservationName={name}"
+    cmd = f"{SCONTROL} delete ReservationName={name}"
     run_cmd_mock.assert_called_with(cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True)
 
 
