@@ -310,9 +310,7 @@ class TestCapacityBlockManager:
         expected_reserved_nodenames,
         caplog,
     ):
-        mocker.patch.object(
-            capacity_block_manager, "_is_time_to_update_capacity_blocks_info", return_value=is_time_to_update
-        )
+        mocker.patch.object(capacity_block_manager, "_is_time_to_update", return_value=is_time_to_update)
         mocked_capacity_blocks_from_config = self._build_capacity_blocks(capacity_blocks_from_config)
         mocker.patch.object(
             capacity_block_manager,
@@ -381,11 +379,11 @@ class TestCapacityBlockManager:
             (True, datetime(2020, 1, 2, 1, 00, 0), True),
         ],
     )
-    def test_is_time_to_update_capacity_blocks_info(
+    def test_is_time_to_update(
         self, capacity_block_manager, is_initialized, now, expected_updated_time
     ):
         capacity_block_manager._capacity_blocks_update_time = datetime(2020, 1, 1, 1, 00, 0) if is_initialized else None
-        assert_that(capacity_block_manager._is_time_to_update_capacity_blocks_info(now))
+        assert_that(capacity_block_manager._is_time_to_update(now))
 
     @pytest.mark.parametrize(
         ("capacity_blocks", "nodes", "expected_nodenames_in_capacity_block"),
