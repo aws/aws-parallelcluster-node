@@ -10,6 +10,8 @@
 # limitations under the License.
 from typing import List
 
+from common.utils import ApiMocker
+
 from aws.common import AWSExceptionHandler, Boto3Client
 
 
@@ -73,6 +75,7 @@ class Ec2Client(Boto3Client):
         super().__init__("ec2", region=region, config=config)
 
     @AWSExceptionHandler.handle_client_exception
+    @ApiMocker.mockable
     def describe_capacity_reservations(self, capacity_reservation_ids: List[str]) -> List[CapacityReservationInfo]:
         """Accept a space separated list of reservation ids. Return a list of CapacityReservationInfo."""
         result = []
