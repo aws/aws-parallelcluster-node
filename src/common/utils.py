@@ -375,3 +375,39 @@ def setup_logging_filter(logger: logging.Logger, custom_field: str):
     finally:
         # Remove the custom log filter
         logger.removeFilter(custom_filter)
+
+
+class ApiMocker:
+    """API mocker."""
+
+    @staticmethod
+    def mockable(func):
+        """
+        Try to mock passed function by searching for an overrides.py file in the same path of the given func.
+
+        This function can be used a decorator and applied any method.
+
+        The function will check if a function called with the name of the given function exists
+        in the <function-dir>/overrides.py, and if it does, the function will execute it.
+
+        E.g. if the method with ApiMocker.mockable decorator is defined in Ec2Client class
+        of the ${node_virtualenv_path}/aws/ec2.py module, the mocked function should be defined
+        in the ${node_virtualenv_path}/aws/overrides.py file.
+        """
+
+        def wrapper(*args, **kwargs):
+            try:
+                function_name = func.__name__
+                # retrieve parent module of the given function that has the ApiMocker.mockable decorator
+                func_module = func.__module__
+                func_parent_module = func_module[: func_module.rindex(".")]
+                # try to import overrides.py module in the same folder of the module to mock
+                overrides_module = __import__(f"{func_parent_module}.overrides", fromlist=function_name)
+                overrided_func = getattr(overrides_module, function_name)
+                log.info("Calling %s override with args: %s and kwargs: %s", function_name, args, kwargs)
+                result = overrided_func(*args, **kwargs)
+            except (ImportError, AttributeError):
+                result = func(*args, **kwargs)
+            return result
+
+        return wrapper
