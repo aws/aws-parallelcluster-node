@@ -903,7 +903,16 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 "all" if len(successful_launched_nodes) == len(nodes_resume_list) else "partial",
                 print_with_count(successful_launched_nodes),
             )
-            self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
+
+            nodes_assigned_mapping = defaultdict(lambda: defaultdict(list))
+            for queue, compute_resources in nodes_resume_mapping.items():
+                for compute_resource, slurm_node_list in compute_resources.items():
+                    launched_ec2_instances = instances_launched.get(queue, {}).get(compute_resource, [])
+                    # fmt: off
+                    nodes_assigned_mapping[queue][compute_resource] = slurm_node_list[:len(launched_ec2_instances)]
+                    # fmt: on
+
+            self._update_dict(self.nodes_assigned_to_instances, nodes_assigned_mapping)
             self._reset_failed_nodes(set(successful_launched_nodes))
             if len(successful_launched_nodes) < len(nodes_resume_list):
                 # set limited capacity on the failed to launch nodes
