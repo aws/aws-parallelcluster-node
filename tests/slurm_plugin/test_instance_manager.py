@@ -3262,8 +3262,8 @@ class TestJobLevelScalingInstanceManager:
         expect_all_or_nothing_node_assignment,
         expect_best_effort_node_assignment,
     ):
-        instance_manager.all_or_nothing_node_assignment = mocker.MagicMock()
-        instance_manager.best_effort_node_assignment = mocker.MagicMock()
+        instance_manager._all_or_nothing_node_assignment = mocker.MagicMock()
+        instance_manager._best_effort_node_assignment = mocker.MagicMock()
         instance_manager._add_instances_for_nodes(
             node_list=[],
             launch_batch_size=1,
@@ -3271,11 +3271,11 @@ class TestJobLevelScalingInstanceManager:
             scaling_strategy=scaling_strategy,
         )
         if expect_all_or_nothing_node_assignment:
-            instance_manager.all_or_nothing_node_assignment.assert_called_once()
-            instance_manager.best_effort_node_assignment.assert_not_called()
+            instance_manager._all_or_nothing_node_assignment.assert_called_once()
+            instance_manager._best_effort_node_assignment.assert_not_called()
         if expect_best_effort_node_assignment:
-            instance_manager.best_effort_node_assignment.assert_called_once()
-            instance_manager.all_or_nothing_node_assignment.assert_not_called()
+            instance_manager._best_effort_node_assignment.assert_called_once()
+            instance_manager._all_or_nothing_node_assignment.assert_not_called()
 
     @pytest.mark.parametrize(
         "job, nodes_to_launch, launch_batch_size, unused_launched_instances, launched_instances, "
@@ -4249,7 +4249,7 @@ class TestJobLevelScalingInstanceManager:
         # patch internal functions
         instance_manager._assign_instances_to_nodes = mocker.MagicMock()
 
-        instance_manager.best_effort_node_assignment(
+        instance_manager._best_effort_node_assignment(
             assign_node_batch_size=assign_node_batch_size,
             failed_launch_nodes=failed_launch_nodes,
             instances_launched=instances_launched,
@@ -4441,7 +4441,7 @@ class TestJobLevelScalingInstanceManager:
         )
         instance_manager.unused_launched_instances = unused_launched_instances
 
-        instance_manager.all_or_nothing_node_assignment(
+        instance_manager._all_or_nothing_node_assignment(
             assign_node_batch_size=assign_node_batch_size,
             instances_launched=instances_launched,
             nodes_resume_list=nodes_resume_list,
