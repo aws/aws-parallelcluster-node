@@ -847,7 +847,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
 
         if scaling_strategy in [ScalingStrategy.ALL_OR_NOTHING, ScalingStrategy.GREEDY_ALL_OR_NOTHING]:
             logger.info("Assigning nodes with all-or-nothing strategy")
-            self.all_or_nothing_node_assignment(
+            self._all_or_nothing_node_assignment(
                 assign_node_batch_size=assign_node_batch_size,
                 instances_launched=instances_launched,
                 nodes_resume_list=nodes_resume_list,
@@ -857,7 +857,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             )
         else:
             logger.info("Assigning nodes with best-effort strategy")
-            self.best_effort_node_assignment(
+            self._best_effort_node_assignment(
                 assign_node_batch_size=assign_node_batch_size,
                 failed_launch_nodes=failed_launch_nodes,
                 instances_launched=instances_launched,
@@ -873,7 +873,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             for error_code in self.failed_nodes:
                 self.failed_nodes[error_code] = self.failed_nodes.get(error_code, set()).difference(nodeset)
 
-    def best_effort_node_assignment(
+    def _best_effort_node_assignment(
         self,
         assign_node_batch_size,
         failed_launch_nodes,
@@ -919,7 +919,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             logger.info("No launched instances found for nodes %s", print_with_count(nodes_resume_list))
             self._update_failed_nodes(set(nodes_resume_list), "InsufficientInstanceCapacity", override=False)
 
-    def all_or_nothing_node_assignment(
+    def _all_or_nothing_node_assignment(
         self,
         assign_node_batch_size,
         instances_launched,
