@@ -194,8 +194,6 @@ class InstanceManager(ABC):
                         }
                     )
 
-        logger.info("Database update: COMPLETED")
-
     @log_exception(logger, "updating DNS records", raise_on_error=True, exception_to_raise=HostnameDnsStoreError)
     def _update_dns_hostnames(self, nodes, update_dns_batch_size=500):
         logger.info(
@@ -205,7 +203,7 @@ class InstanceManager(ABC):
         )
         if not self._hosted_zone or not self._dns_domain:
             logger.info(
-                "Empty DNS domain name or hosted zone configuration parameter.",
+                "Empty DNS domain name or hosted zone configuration parameter",
             )
             return
 
@@ -239,7 +237,6 @@ class InstanceManager(ABC):
                 route53_client.change_resource_record_sets(
                     HostedZoneId=self._hosted_zone, ChangeBatch={"Changes": list(changes_batch)}
                 )
-        logger.info("DNS records update: COMPLETED")
 
     def _parse_nodes_resume_list(self, node_list: List[str]) -> defaultdict[str, defaultdict[str, List[str]]]:
         """
@@ -897,9 +894,8 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 assign_node_batch_size=assign_node_batch_size,
                 raise_on_error=False,
             )
-
             logger.info(
-                "Successful launched %s instances for nodes %s",
+                "Successful launched and assigned %s instances for nodes %s",
                 "all" if len(successful_launched_nodes) == len(nodes_resume_list) else "partial",
                 print_with_count(successful_launched_nodes),
             )
@@ -945,7 +941,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
                     raise_on_error=True,
                 )
                 logger.info(
-                    "Successful launched all instances for nodes %s",
+                    "Successful launched and assigned all instances for nodes %s",
                     print_with_count(nodes_resume_list),
                 )
                 self._update_dict(self.nodes_assigned_to_instances, nodes_resume_mapping)
@@ -1092,7 +1088,7 @@ class JobLevelScalingInstanceManager(InstanceManager):
             # Reuse already launched capacity
             # fmt: off
             logger.info(
-                "Booking already launched instances for nodes %s:",
+                "Booking already launched instances for nodes %s",
                 print_with_count(slurm_node_list[:len(reusable_instances)]),
             )
             instances_launched[queue][compute_resource].extend(reusable_instances[:len(slurm_node_list)])
