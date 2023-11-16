@@ -14,28 +14,28 @@ import logging
 import os
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import call
+from unittest.mock import ANY, call
 
-import boto3
 import botocore
 import pytest
 import slurm_plugin
 from assertpy import assert_that
-from common.schedulers.slurm_commands import update_all_partitions
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
+from slurm_plugin.console_logger import ConsoleLogger
+from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
     EC2_SCHEDULED_EVENT_CODES,
+    ComputeResourceFailureEvent,
     DynamicNode,
-    EC2Instance,
     EC2InstanceHealthState,
     PartitionStatus,
     SlurmPartition,
     StaticNode,
 )
 
-from tests.common import MockedBoto3Request
+from tests.common import FLEET_CONFIG, LAUNCH_OVERRIDES, MockedBoto3Request, client_error
 
 
 @pytest.fixture()
@@ -71,13 +71,21 @@ class TestClustermgtdConfig:
                     "node_replacement_timeout": 1800,
                     "terminate_drain_nodes": True,
                     "terminate_down_nodes": True,
-                    "orphaned_instance_timeout": 120,
+                    "orphaned_instance_timeout": 300,
                     # health check configs
                     "disable_ec2_health_check": False,
                     "disable_scheduled_event_health_check": False,
                     "disable_all_health_checks": False,
                     "health_check_timeout": 180,
                     "protected_failure_count": 10,
+                    "insufficient_capacity_timeout": 600,
+                    # Compute console logging configs
+                    "compute_console_logging_enabled": True,
+                    "compute_console_logging_max_sample_size": 1,
+                    "compute_console_wait_time": 300,
+                    # Task executor configs
+                    "worker_pool_size": 5,
+                    "worker_pool_max_backlog": 100,
                 },
             ),
             (
@@ -110,6 +118,14 @@ class TestClustermgtdConfig:
                     "disable_all_health_checks": False,
                     "health_check_timeout": 10,
                     "protected_failure_count": 5,
+                    "insufficient_capacity_timeout": 50.5,
+                    # Compute console logging configs
+                    "compute_console_logging_enabled": False,
+                    "compute_console_logging_max_sample_size": 50,
+                    "compute_console_wait_time": 10,
+                    # Task executor configs
+                    "worker_pool_size": 2,
+                    "worker_pool_max_backlog": 5,
                 },
             ),
             (
@@ -149,36 +165,124 @@ class TestClustermgtdConfig:
         ids=["default", "all_options", "health_check"],
     )
     def test_config_parsing(self, config_file, expected_attributes, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"c5xlarge": "c5.xlarge"})
+        mocker.patch(
+            "slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES]
+        )
         sync_config = ClustermgtdConfig(test_datadir / config_file)
         for key in expected_attributes:
             assert_that(sync_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
 
-    def test_config_comparison(self, test_datadir, mocker):
-        mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"c5xlarge": "c5.xlarge"})
+    @pytest.mark.parametrize(
+        ("file_to_compare", "read_json_mock"),
+        [
+            ("config_modified.conf", 4 * [FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES]),
+            (
+                "config.conf",
+                3 * [FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES]
+                + [{**FLEET_CONFIG, **{"queue7": "fake"}}, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES],
+            ),
+        ],
+        ids=["different_config_file", "same_file_different_fleet_config"],
+    )
+    def test_config_comparison(self, test_datadir, mocker, file_to_compare, read_json_mock):
+        mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=read_json_mock)
         config = test_datadir / "config.conf"
-        config_modified = test_datadir / "config_modified.conf"
+        config_modified = test_datadir / file_to_compare
 
         assert_that(ClustermgtdConfig(config)).is_equal_to(ClustermgtdConfig(config))
         assert_that(ClustermgtdConfig(config)).is_not_equal_to(ClustermgtdConfig(config_modified))
 
 
-def test_set_config(initialize_instance_manager_mock, initialize_compute_fleet_status_manager_mock):
-    initial_config = SimpleNamespace(some_key_1="some_value_1", some_key_2="some_value_2")
-    updated_config = SimpleNamespace(some_key_1="some_value_1", some_key_2="some_value_2_changed")
+@pytest.mark.usefixtures("initialize_console_logger_mock")
+def test_set_config(initialize_instance_manager_mock):
+    initial_config = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=5,
+        worker_pool_max_backlog=10,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    updated_config_1 = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=5,
+        worker_pool_max_backlog=10,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={"queue1": {"cr1": {"test": "test"}}},
+    )
+    updated_config_2 = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2_changed",
+        insufficient_capacity_timeout=10,
+        worker_pool_size=10,
+        worker_pool_max_backlog=5,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={"queue1": {"cr1": {"test": "test"}}},
+    )
 
     cluster_manager = ClusterManager(initial_config)
     assert_that(cluster_manager._config).is_equal_to(initial_config)
     cluster_manager.set_config(initial_config)
     assert_that(cluster_manager._config).is_equal_to(initial_config)
-    cluster_manager.set_config(updated_config)
-    assert_that(cluster_manager._config).is_equal_to(updated_config)
+    cluster_manager.set_config(updated_config_1)
+    assert_that(cluster_manager._config).is_equal_to(updated_config_1)
+    cluster_manager.set_config(updated_config_2)
+    assert_that(cluster_manager._config).is_equal_to(updated_config_2)
 
-    assert_that(initialize_instance_manager_mock.call_count).is_equal_to(2)
-    assert_that(initialize_compute_fleet_status_manager_mock.call_count).is_equal_to(2)
+    assert_that(initialize_instance_manager_mock.call_count).is_equal_to(3)
 
 
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_exception_from_report_console_output_from_nodes(mocker):
+    config = SimpleNamespace(
+        some_key_1="some_value_1",
+        some_key_2="some_value_2",
+        insufficient_capacity_timeout=20,
+        worker_pool_size=5,
+        worker_pool_max_backlog=0,
+        compute_console_logging_max_sample_size=2,
+        compute_console_wait_time=10,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    unhealthy_nodes = [
+        StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1"),
+    ]
+    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
+    cluster_manager = ClusterManager(config)
+
+    mock_console_logger = mocker.patch.object(cluster_manager, "_console_logger", spec=ConsoleLogger)
+    report_mock = mock_console_logger.report_console_output_from_nodes
+    report_mock.side_effect = Exception
+
+    cluster_manager._handle_unhealthy_static_nodes(unhealthy_nodes)
+
+    # Make sure report_console_output_from_nodes was called.
+    report_mock.assert_called_once()
+
+    # Make sure the code after _report_console_from_output_nodes is called.
+    reset_nodes_mock.assert_called_once_with(
+        ANY, state="down", reason="Static node maintenance: unhealthy node is being replaced"
+    )
+
+
 @pytest.mark.parametrize(
     (
         "inactive_instances",
@@ -246,7 +350,10 @@ def test_set_config(initialize_instance_manager_mock, initialize_compute_fleet_s
     ],
     ids=["normal", "delete_exception", "reset_exception"],
 )
-def test_clean_up_inactive_parititon(
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_clean_up_inactive_partition(
     inactive_instances,
     slurm_inactive_nodes,
     expected_reset,
@@ -255,23 +362,29 @@ def test_clean_up_inactive_parititon(
     mocker,
 ):
     # Test setup
-    mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
+    mock_sync_config = SimpleNamespace(
+        terminate_max_batch_size=4,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     part = SlurmPartition("partition4", "placeholder_nodes", "INACTIVE")
     for node, instance in zip(slurm_inactive_nodes, inactive_instances):
         node.instance = instance
     part.slurm_nodes = slurm_inactive_nodes
-    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
+    mock_instance_manager = cluster_manager._instance_manager
     if delete_instances_side_effect:
-        mock_instance_manager.delete_instances = mocker.patch.object(
-            mock_instance_manager, "delete_instances", side_effect=delete_instances_side_effect, auto_spec=True
-        )
+        mock_instance_manager.delete_instances.side_effect = delete_instances_side_effect
     if reset_nodes_side_effect:
         mock_reset_node = mocker.patch(
-            "slurm_plugin.clustermgtd.reset_nodes", side_effect=reset_nodes_side_effect, auto_spec=True
+            "slurm_plugin.clustermgtd.reset_nodes", side_effect=reset_nodes_side_effect, autospec=True
         )
     else:
-        mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+        mock_reset_node = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     cluster_manager._clean_up_inactive_partition([part])
     inactive_instance_ids = {instance.id for instance in inactive_instances if instance}
     mock_instance_manager.delete_instances.assert_called_with(inactive_instance_ids, terminate_batch_size=4)
@@ -283,7 +396,7 @@ def test_clean_up_inactive_parititon(
         mock_reset_node.assert_not_called()
 
 
-@pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_get_ec2_instances(mocker):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -296,11 +409,15 @@ def test_get_ec2_instances(mocker):
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
+        insufficient_capacity_timeout=600,
+        fleet_config=FLEET_CONFIG,
+        head_node_instance_id="i-instance-id",
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._instance_manager.get_cluster_instances = mocker.MagicMock()
+    mocker.patch("time.sleep")
     # Run test
     cluster_manager._get_ec2_instances()
     # Assert calls
@@ -452,7 +569,7 @@ def test_get_ec2_instances(mocker):
     ],
     ids=["basic", "disable_ec2", "disable_all", "disable_scheduled", "no_unhealthy_instance"],
 )
-@pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_perform_health_check_actions(
     mock_instance_health_states,
     disable_ec2_health_check,
@@ -484,8 +601,11 @@ def test_perform_health_check_actions(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
+        fleet_config=FLEET_CONFIG,
+        insufficient_capacity_timeout=600,
+        head_node_instance_id="i-instance-id",
     )
     # Mock functions
     cluster_manager = ClusterManager(mock_sync_config)
@@ -513,26 +633,28 @@ def test_perform_health_check_actions(
     [
         (
             ClusterManager.HealthCheckTypes.scheduled_event,
-            [True, False, True, False],
-            [False, True, False, True],
+            [True, False, True, False, True, True, True],
+            [False, True, False, True, False, False, False],
             {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-4"},
         ),
         (
             ClusterManager.HealthCheckTypes.ec2_health,
-            [True, False, True, False],
-            [False, True, True, False],
-            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3"},
+            [True, False, True, False, True, True, True],
+            [False, True, True, False, False, False, False],
+            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-7"},
         ),
         (
             ClusterManager.HealthCheckTypes.ec2_health,
-            [False, False, False, False],
-            [False, True, False, True],
+            [False, False, False, False, False, False, False],
+            [False, True, False, True, False, True, True],
             {},
         ),
     ],
     ids=["scheduled_event", "ec2_health", "all_healthy"],
 )
-@pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock", "initialize_instance_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_health_check(
     health_check_type,
     mock_fail_ec2_side_effect,
@@ -540,12 +662,24 @@ def test_handle_health_check(
     expected_failed_nodes,
     mocker,
 ):
-    # Define variable that will be used for all tests
+    # Define variables that will be used for all tests
+    mocker_current_time = datetime(2023, 1, 23, 18, 00, 0).astimezone(tz=timezone.utc)
     health_state_1 = EC2InstanceHealthState("id-1", "some_state", "some_status", "some_status", "some_event")
     health_state_2 = EC2InstanceHealthState("id-2", "some_state", "some_status", "some_status", "some_event")
     health_state_3 = EC2InstanceHealthState("id-3", "some_state", "some_status", "some_status", "some_event")
     health_state_4 = EC2InstanceHealthState("id-4", "some_state", "some_status", "some_status", "some_event")
-    placeholder_states = [health_state_1, health_state_2, health_state_3, health_state_4]
+    health_state_5 = EC2InstanceHealthState("id-5", "some_state", "some_status", "some_status", "some_event")
+    health_state_6 = EC2InstanceHealthState("id-6", "some_state", "some_status", "some_status", "some_event")
+    health_state_7 = EC2InstanceHealthState("id-7", "some_state", "some_status", "some_status", "some_event")
+    placeholder_states = [
+        health_state_1,
+        health_state_2,
+        health_state_3,
+        health_state_4,
+        health_state_5,
+        health_state_6,
+        health_state_7,
+    ]
     instance_id_to_active_node_map = {
         "id-1": StaticNode("queue1-st-c5xlarge-1", "ip-1", "host-1", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
         "id-2": DynamicNode(
@@ -553,6 +687,33 @@ def test_handle_health_check(
         ),
         "id-3": StaticNode("queue1-st-c5xlarge-3", "ip-3", "host-3", "ALLOCATED+CLOUD", "queue1"),
         "id-4": StaticNode("queue1-st-c5xlarge-4", "ip-4", "host-4", "ALLOCATED+CLOUD", "queue1"),
+        # This node is still rebooting, so it's not drained due to EC2 health checks failing
+        "id-5": StaticNode(
+            "queue1-st-c5xlarge-5",
+            "ip-5",
+            "host-5",
+            "DOWN+CLOUD+REBOOT_ISSUED",
+            "queue1",
+            slurmdstarttime=datetime(2023, 1, 23, 17, 56, 0).astimezone(tz=timezone.utc),
+        ),
+        # This node was rebooted very recently, so it's not drained due to EC2 health checks failing
+        "id-6": StaticNode(
+            "queue1-st-c5xlarge-6",
+            "ip-6",
+            "host-6",
+            "IDLE+CLOUD",
+            "queue1",
+            slurmdstarttime=datetime(2023, 1, 23, 17, 59, 0).astimezone(tz=timezone.utc),
+        ),
+        # This node was rebooted a long time ago, so it can be drained due to EC2 health checks failing
+        "id-7": StaticNode(
+            "queue1-st-c5xlarge-7",
+            "ip-7",
+            "host-7",
+            "IDLE+CLOUD",
+            "queue1",
+            slurmdstarttime=datetime(2023, 1, 23, 17, 56, 0).astimezone(tz=timezone.utc),
+        ),
     }
     mock_ec2_health_check = mocker.patch(
         "slurm_plugin.slurm_resources.EC2InstanceHealthState.fail_ec2_health_check",
@@ -563,11 +724,21 @@ def test_handle_health_check(
         side_effect=mock_fail_scheduled_events_side_effect,
     )
     # Setup mocking
-    mock_sync_config = SimpleNamespace(health_check_timeout=10, protected_failure_count=2)
+    mock_sync_config = SimpleNamespace(
+        health_check_timeout=10,
+        health_check_timeout_after_slurmdstarttime=180,
+        protected_failure_count=2,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
 
     cluster_manager = ClusterManager(mock_sync_config)
-    cluster_manager._current_time = "some_current_time"
-    drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", auto_spec=True)
+    cluster_manager._current_time = mocker_current_time
+    drain_node_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_drain", autospec=True)
 
     # Run tests
     cluster_manager._handle_health_check(placeholder_states, instance_id_to_active_node_map, health_check_type)
@@ -577,8 +748,8 @@ def test_handle_health_check(
     else:
         mock_ec2_health_check.assert_has_calls(
             [
-                call("some_current_time", 10),
-                call("some_current_time", 10),
+                call(mocker_current_time, 10),
+                call(mocker_current_time, 10),
             ]
         ),
     if expected_failed_nodes:
@@ -591,51 +762,163 @@ def test_handle_health_check(
     "current_replacing_nodes, slurm_nodes, expected_replacing_nodes",
     [
         (
-            {"queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-4"},
+            {
+                "queue1-st-c5xlarge-1",
+                "queue1-st-c5xlarge-2",
+                "queue1-st-c5xlarge-3",
+                "queue1-st-c5xlarge-4",
+                "queue1-st-c5xlarge-5",
+                "queue1-st-c5xlarge-6",
+                "queue1-st-c5xlarge-13",
+            },
             [
-                DynamicNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
-                DynamicNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
-                DynamicNode("queue1-st-c5xlarge-3", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                # nodes in the current replacement list
+                StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-2", "ip", "hostname", "DOWN+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-4", "ip", "hostname", "IDLE+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip", "hostname", "DOWN+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-5", "ip", "hostname", "IDLE+CLOUD+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-6", "ip", "hostname", "DOWN+CLOUD+RESERVED", "queue1"),
+                # nodes not in replacement list
+                StaticNode("queue1-st-c5xlarge-8", "ip", "hostname", "IDLE+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-7", "ip", "hostname", "DOWN+CLOUD+MAINTENANCE+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-9", "ip", "hostname", "IDLE+CLOUD+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-10", "ip", "hostname", "DOWN+CLOUD+RESERVED", "queue1"),
+                StaticNode("queue1-st-c5xlarge-11", "ip", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-12", "ip", "hostname", "DOWN+CLOUD", "queue1"),
             ],
-            {"queue1-st-c5xlarge-2"},
+            {"queue1-st-c5xlarge-2", "queue1-st-c5xlarge-6"},
         )
     ],
     ids=["mixed"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
-def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes, expected_replacing_nodes, mocker):
-    cluster_manager = ClusterManager(mocker.MagicMock())
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes, expected_replacing_nodes):
+    mock_sync_config = SimpleNamespace(
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
     cluster_manager._update_static_nodes_in_replacement(slurm_nodes)
     assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_replacing_nodes)
 
 
 @pytest.mark.parametrize(
-    "unhealthy_dynamic_nodes, instances, instances_to_terminate, expected_power_save_node_list",
+    "unhealthy_dynamic_nodes, instances, instances_to_terminate, expected_power_save_node_list, "
+    "disable_nodes_on_insufficient_capacity",
     [
         (
             [
-                DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-                DynamicNode("queue1-dy-c5xlarge-2", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    "(Code:ServiceUnavailable)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2",
+                    "ip-1",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                ),
             ],
             [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None],
             ["id-1"],
             ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2"],
-        )
+            True,
+        ),
+        (
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    "(Code:Exception)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2",
+                    "ip-1",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-4",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-5",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
+                    "queue1",
+                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+            ],
+            [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None, None, None, None],
+            ["id-1"],
+            [
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-2",
+                "queue1-dy-c5xlarge-3",
+                "queue1-dy-c5xlarge-4",
+                "queue1-dy-c5xlarge-5",
+            ],
+            False,
+        ),
     ],
-    ids=["basic"],
+    ids=["basic", "disable smart instance capacity"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_unhealthy_dynamic_nodes(
-    unhealthy_dynamic_nodes, instances, instances_to_terminate, expected_power_save_node_list, mocker
+    unhealthy_dynamic_nodes,
+    instances,
+    instances_to_terminate,
+    expected_power_save_node_list,
+    disable_nodes_on_insufficient_capacity,
+    mocker,
 ):
     for node, instance in zip(unhealthy_dynamic_nodes, instances):
         node.instance = instance
-    mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
+    mock_sync_config = SimpleNamespace(
+        terminate_max_batch_size=4,
+        disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
-    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-
-    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", auto_spec=True)
+    mock_instance_manager = cluster_manager._instance_manager
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", autospec=True)
     cluster_manager._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
     mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     power_save_mock.assert_called_with(expected_power_save_node_list, reason="Scheduler health check failed")
@@ -655,6 +938,8 @@ def test_handle_unhealthy_dynamic_nodes(
                 ),
                 DynamicNode("queue1-dy-c5xlarge-7", "ip-7", "hostname", "IDLE+CLOUD+POWER_DOWN", "queue1"),
                 StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname", "POWERING_DOWN", "queue1"),
+                StaticNode("queue1-st-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+DRAIN+POWER_DOWN", "queue1"),
+                StaticNode("queue1-st-c5xlarge-9", "ip-9", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             [
                 EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
@@ -663,24 +948,36 @@ def test_handle_unhealthy_dynamic_nodes(
                 None,
                 None,
                 EC2Instance("id-7", "ip-7", "hostname", "some_launch_time"),
-                None,
+                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                EC2Instance("id-8", "ip-8", "hostname", "some_launch_time"),
+                EC2Instance("id-9", "ip-9", "hostname", "some_launch_time"),
             ],
-            ["id-3", "id-7"],
-            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-7"],
+            ["id-3", "id-6", "id-9"],
+            ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3", "queue1-st-c5xlarge-6", "queue1-st-c5xlarge-9"],
         )
     ],
     ids=["basic"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_powering_down_nodes(
     slurm_nodes, instances, instances_to_terminate, expected_powering_down_nodes, mocker
 ):
     for node, instance in zip(slurm_nodes, instances):
         node.instance = instance
-    mock_sync_config = SimpleNamespace(terminate_max_batch_size=4)
+    mock_sync_config = SimpleNamespace(
+        terminate_max_batch_size=4,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
-    mock_instance_manager = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", auto_spec=True)
+    mock_instance_manager = cluster_manager._instance_manager
+    reset_nodes_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
     cluster_manager._handle_powering_down_nodes(slurm_nodes)
     mock_instance_manager.delete_instances.assert_called_with(instances_to_terminate, terminate_batch_size=4)
     reset_nodes_mock.assert_called_with(nodes=expected_powering_down_nodes)
@@ -695,6 +992,10 @@ def test_handle_powering_down_nodes(
         "expected_replacing_nodes",
         "delete_instance_list",
         "add_node_list",
+        "output_enabled",
+        "set_nodes_down_exception",
+        "sample_size",
+        "expected_warnings",
     ),
     [
         (
@@ -722,6 +1023,10 @@ def test_handle_powering_down_nodes(
             },
             ["id-1", "id-2"],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            True,
+            None,
+            100,
+            [],
         ),
         (
             {"current-queue1-st-c5xlarge-6"},
@@ -744,6 +1049,10 @@ def test_handle_powering_down_nodes(
             },
             [],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            False,
+            None,
+            1,
+            [],
         ),
         (
             {"current-queue1-st-c5xlarge-6"},
@@ -760,11 +1069,42 @@ def test_handle_powering_down_nodes(
             {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
             [],
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            False,
+            None,
+            1,
+            [
+                r"Failed to launch instances due to limited EC2 capacity for following nodes: .*",
+                r'{"datetime": ".*", "version": 0, "scheduler": "slurm", "cluster-name": "hit-test", '
+                + r'"node-role": "HeadNode", "component": "clustermgtd", "level": "WARNING", '
+                + r'"instance-id": "i-instance-id", "event-type": "node-launch-failure-count", '
+                + r'"message": ".*", "detail": {"failure-type": "ice-failures", "count": 1, '
+                + r'"error-details": {"LimitedInstanceCapacity": {"count": 1, '
+                + r'"nodes": \[{"name": "queue1-st-c5xlarge-3"}\]}}}}',
+            ],
+        ),
+        (
+            {"current-queue1-st-c5xlarge-6"},
+            [
+                StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+            ],
+            [None, None],
+            [
+                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+            ],
+            {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
+            [],
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            False,
+            Exception,
+            1,
+            [],
         ),
     ],
-    ids=["basic", "no_associated_instances", "partial_launch"],
+    ids=["basic", "no_associated_instances", "partial_launch", "set_nodes_down_exception"],
 )
-@pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
 def test_handle_unhealthy_static_nodes(
     current_replacing_nodes,
     unhealthy_static_nodes,
@@ -775,7 +1115,10 @@ def test_handle_unhealthy_static_nodes(
     add_node_list,
     mocker,
     caplog,
-    request,
+    output_enabled,
+    set_nodes_down_exception,
+    sample_size,
+    expected_warnings,
 ):
     # Test setup
     mock_sync_config = SimpleNamespace(
@@ -791,9 +1134,17 @@ def test_handle_unhealthy_static_nodes(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
+        fleet_config=FLEET_CONFIG,
         protected_failure_count=10,
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        insufficient_capacity_timeout=600,
+        run_instances_overrides={},
+        create_fleet_overrides={},
+        compute_console_logging_enabled=output_enabled,
+        compute_console_logging_max_sample_size=sample_size,
+        compute_console_wait_time=1,
+        worker_pool_size=5,
+        worker_pool_max_backlog=10,
+        head_node_instance_id="i-instance-id",
     )
     for node, instance in zip(unhealthy_static_nodes, instances):
         node.instance = instance
@@ -802,39 +1153,68 @@ def test_handle_unhealthy_static_nodes(
 
     # Mock associated function
     cluster_manager._instance_manager.delete_instances = mocker.MagicMock()
-    cluster_manager._instance_manager._parse_requested_instances = mocker.MagicMock(
+    cluster_manager._instance_manager._parse_nodes_resume_list = mocker.MagicMock(
         return_value={
-            "some_queue": {
-                "some_compute_resource_name": ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"]
+            "queue1": {
+                "c5xlarge": [
+                    "queue1-st-c5xlarge-1",
+                    "queue1-st-c5xlarge-2",
+                    "queue1-st-c5xlarge-3",
+                ]
             }
         }
     )
-    cluster_manager._instance_manager._launch_ec2_instances = mocker.MagicMock(return_value=launched_instances)
+
+    report_mock = mocker.patch.object(
+        cluster_manager._console_logger, "report_console_output_from_nodes", autospec=True
+    )
+
     mocker.patch("slurm_plugin.instance_manager.update_nodes")
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
     # Mock add_instances_for_nodes but still try to execute original code
-    original_add_instances = cluster_manager._instance_manager.add_instances_for_nodes
-    cluster_manager._instance_manager.add_instances_for_nodes = mocker.MagicMock(side_effect=original_add_instances)
-    update_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", return_value=None, auto_spec=True)
+    original_add_instances = cluster_manager._instance_manager.add_instances
+    cluster_manager._instance_manager.add_instances = mocker.MagicMock(side_effect=original_add_instances)
+    reset_mock = mocker.patch("slurm_plugin.clustermgtd.reset_nodes", autospec=True)
+    if set_nodes_down_exception is Exception:
+        reset_mock.side_effect = set_nodes_down_exception
+    else:
+        reset_mock.return_value = None
+
+    # patch fleet manager
+    mocker.patch.object(
+        slurm_plugin.fleet_manager.FleetManager, "launch_ec2_instances", return_value=launched_instances
+    )
+
     # Run test
     cluster_manager._handle_unhealthy_static_nodes(unhealthy_static_nodes)
+
+    if set_nodes_down_exception is Exception:
+        assert_that(caplog.text).contains("Encountered exception when setting unhealthy static nodes into down state:")
+        return
     # Assert calls
-    update_mock.assert_called_with(add_node_list, reason="Static node maintenance: unhealthy node is being replaced")
+    reset_mock.assert_called_with(
+        add_node_list, reason="Static node maintenance: unhealthy node is being replaced", state="down"
+    )
     if delete_instance_list:
         cluster_manager._instance_manager.delete_instances.assert_called_with(
             delete_instance_list, terminate_batch_size=1
         )
     else:
         cluster_manager._instance_manager.delete_instances.assert_not_called()
-    cluster_manager._instance_manager.add_instances_for_nodes.assert_called_with(add_node_list, 5, True)
-    if "partial_launch" not in request.node.name:
-        assert_that(caplog.text).is_empty()
+    cluster_manager._instance_manager.add_instances.assert_called_with(
+        node_list=add_node_list, launch_batch_size=5, update_node_address=True
+    )
+    assert_that(caplog.records).is_length(len(expected_warnings))
+    for actual, expected in zip(caplog.records, expected_warnings):
+        assert_that(actual.message).matches(expected)
     assert_that(cluster_manager._static_nodes_in_replacement).is_equal_to(expected_replacing_nodes)
+    report_mock.assert_called_once()
 
 
 @pytest.mark.parametrize(
-    "active_nodes, instances, _is_protected_mode_enabled",
+    "active_nodes, instances, _is_protected_mode_enabled, disable_nodes_on_insufficient_capacity, "
+    "expected_ice_compute_resources_nodes_map",
     [
         (
             [
@@ -844,7 +1224,79 @@ def test_handle_unhealthy_static_nodes(
                 StaticNode(
                     "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
                 ),  # unhealthy static
-                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
+                DynamicNode(
+                    "queue-dy-c5xlarge-1",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue",
+                    "Failure when resuming nodes",
+                ),  # unhealthy dynamic
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-4", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
+                ),  # bootstrap failure static
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue1",
+                ),  # bootstrap failure dynamic
+                StaticNode("queue3-st-c5xlarge-1", "ip-5", "hostname", "IDLE", "queue2"),  # healthy static
+                DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
+                DynamicNode(
+                    "queue-dy-c5-xlarge-5",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue",
+                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),  # ice dynamic node does not belong to unhealthy node when enable fast capacity failover
+            ],
+            [
+                EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+                # Setting launch time here for instance for static node to trigger replacement timeout
+                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-2", "ip-4", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                None,
+                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                None,
+            ],
+            True,
+            True,
+            {
+                "queue": {
+                    "c5-xlarge": [
+                        DynamicNode(
+                            "queue-dy-c5-xlarge-5",
+                            "ip-3",
+                            "hostname",
+                            "IDLE+CLOUD",
+                            "queue",
+                            "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        )
+                    ]
+                }
+            },
+        ),
+        (
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1", ""
+                ),  # powering_down
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
+                ),  # unhealthy static
+                DynamicNode(
+                    "queue-dy-c5xlarge-1",
+                    "ip-3",
+                    "hostname",
+                    "DOWN+CLOUD+NOT_RESPONDING+POWERING_UP",
+                    "queue",
+                    "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),  # unhealthy dynamic
                 StaticNode(
                     "queue2-st-c5xlarge-1", "ip-4", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
                 ),  # bootstrap failure static
@@ -865,15 +1317,21 @@ def test_handle_unhealthy_static_nodes(
                 EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
             ],
             True,
+            False,
+            {},
         ),
     ],
-    ids=["basic"],
+    ids=["basic", "disable smart instance capacity fail over mechanism"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_maintain_nodes(
     active_nodes,
     instances,
     _is_protected_mode_enabled,
+    disable_nodes_on_insufficient_capacity,
+    expected_ice_compute_resources_nodes_map,
     mocker,
 ):
     static_nodes_in_replacement = {"queue1-st-c5xlarge-1", "queue2-st-c5xlarge-1"}
@@ -883,33 +1341,45 @@ def test_maintain_nodes(
 
     expected_unhealthy_static_nodes = [active_nodes[1], active_nodes[3]]
     expected_unhealthy_dynamic_nodes = [active_nodes[2], active_nodes[4]]
-    mock_sync_config = SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True)
+    mock_sync_config = SimpleNamespace(
+        terminate_drain_nodes=True,
+        terminate_down_nodes=True,
+        insufficient_capacity_timeout=20,
+        disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
+        disable_capacity_blocks_management=False,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = static_nodes_in_replacement
     cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
     cluster_manager._config.node_replacement_timeout = 30
-    mock_update_replacement = mocker.patch.object(
-        cluster_manager, "_update_static_nodes_in_replacement", auto_spec=True
+    mock_reserved_nodes = mocker.patch.object(
+        cluster_manager._capacity_block_manager, "get_reserved_nodenames", return_value=[]
     )
-    mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", auto_spec=True)
-    mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", auto_spec=True)
-    mock_handle_powering_down_nodes = mocker.patch.object(
-        cluster_manager, "_handle_powering_down_nodes", auto_spec=True
-    )
+    mock_update_replacement = mocker.patch.object(cluster_manager, "_update_static_nodes_in_replacement", autospec=True)
+    mock_handle_dynamic = mocker.patch.object(cluster_manager, "_handle_unhealthy_dynamic_nodes", autospec=True)
+    mock_handle_static = mocker.patch.object(cluster_manager, "_handle_unhealthy_static_nodes", autospec=True)
+    mock_handle_powering_down_nodes = mocker.patch.object(cluster_manager, "_handle_powering_down_nodes", autospec=True)
     mock_handle_protected_mode_process = mocker.patch(
         "slurm_plugin.clustermgtd.ClusterManager._handle_protected_mode_process"
     )
     mock_handle_failed_health_check_nodes_in_replacement = mocker.patch.object(
-        cluster_manager, "_handle_failed_health_check_nodes_in_replacement", auto_spec=True
+        cluster_manager, "_handle_failed_health_check_nodes_in_replacement", autospec=True
     )
+    mock_handle_ice_nodes = mocker.patch.object(cluster_manager, "_handle_ice_nodes", autospec=True)
     mocker.patch.object(cluster_manager, "_is_protected_mode_enabled", return_value=_is_protected_mode_enabled)
     part1 = SlurmPartition("queue1", "placeholder_nodes", "ACTIVE")
     part2 = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
     part1.slurm_nodes = active_nodes
     partitions = {part1.name: part1, part2.name: part2}
     # Run test
-    cluster_manager._maintain_nodes(partitions)
+    cluster_manager._maintain_nodes(partitions, {})
     # Check function calls
+    mock_reserved_nodes.assert_called_with(active_nodes)
     mock_update_replacement.assert_called_with(active_nodes)
     mock_handle_dynamic.assert_called_with(expected_unhealthy_dynamic_nodes)
     mock_handle_static.assert_called_with(expected_unhealthy_static_nodes)
@@ -919,6 +1389,11 @@ def test_maintain_nodes(
         mock_handle_protected_mode_process.assert_called_with(active_nodes, partitions)
     else:
         mock_handle_protected_mode_process.assert_not_called()
+
+    if disable_nodes_on_insufficient_capacity:
+        mock_handle_ice_nodes.assert_called_with(expected_ice_compute_resources_nodes_map, {})
+    else:
+        mock_handle_ice_nodes.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -957,7 +1432,9 @@ def test_maintain_nodes(
     ],
     ids=["all_good", "orphaned", "orphaned_timeout"],
 )
-@pytest.mark.usefixtures("initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_terminate_orphaned_instances(
     cluster_instances, slurm_nodes, current_time, expected_instance_to_terminate, mocker
 ):
@@ -974,10 +1451,13 @@ def test_terminate_orphaned_instances(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
+        insufficient_capacity_timeout=600,
         node_replacement_timeout=1800,
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
+        fleet_config=FLEET_CONFIG,
+        head_node_instance_id="i-instance-id",
     )
     for instance, node in zip(cluster_instances, slurm_nodes):
         instance.slurm_node = node
@@ -994,14 +1474,15 @@ def test_terminate_orphaned_instances(
 
 
 @pytest.mark.parametrize(
-    "disable_cluster_management, disable_health_check, mock_cluster_instances, nodes, partitions",
+    "disable_cluster_management, disable_health_check, mock_cluster_instances, nodes, partitions, status, "
+    "queue_compute_resource_nodes_map",
     [
         (
             False,
             False,
             [
-                EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "launch_time"),
+                EC2Instance("id-1", "ip", "hostname", "launch_time"),
+                EC2Instance("id-2", "ip", "hostname", "launch_time"),
             ],
             [
                 StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
@@ -1010,6 +1491,15 @@ def test_terminate_orphaned_instances(
             {
                 "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
             },
+            ComputeFleetStatus.RUNNING,
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
+                        DynamicNode("queue1-dy-c5xlarge-2", "ip-2", "hostname", "some_state", "queue1"),
+                    ]
+                },
+            },
         ),
         (
             True,
@@ -1022,6 +1512,8 @@ def test_terminate_orphaned_instances(
             {
                 "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
             },
+            ComputeFleetStatus.RUNNING,
+            {},
         ),
         (
             False,
@@ -1034,17 +1526,14 @@ def test_terminate_orphaned_instances(
             {
                 "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
             },
-        ),
-        (
-            False,
-            True,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
-            [
-                StaticNode("inactive-queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "inactive-queue1"),
-                DynamicNode("inactive-queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "inactive-queue1"),
-            ],
+            ComputeFleetStatus.RUNNING,
             {
-                "queue1": SlurmPartition("queue1", "placeholder_nodes", "UP"),
+                "queue1": {
+                    "c5xlarge": [
+                        StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
+                        DynamicNode("queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
+                    ]
+                },
             },
         ),
         (
@@ -1053,10 +1542,38 @@ def test_terminate_orphaned_instances(
             [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
             [],
             {"queue1": SlurmPartition("queue1", "placeholder_nodes", "UP")},
+            ComputeFleetStatus.RUNNING,
+            {},
+        ),
+        (
+            False,
+            None,
+            [],
+            [],
+            {},
+            ComputeFleetStatus.STOPPED,
+            {},
+        ),
+        (
+            True,
+            None,
+            [],
+            [],
+            {},
+            ComputeFleetStatus.STOPPED,
+            {},
         ),
     ],
-    ids=["all_enabled", "disable_all", "disable_health_check", "no_active", "no_node"],
+    ids=[
+        "all_enabled",
+        "disable_all",
+        "disable_health_check",
+        "no_node",
+        "stopped_enabled",
+        "stopped_disabled",
+    ],
 )
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_manage_cluster(
     disable_cluster_management,
     disable_health_check,
@@ -1064,9 +1581,10 @@ def test_manage_cluster(
     nodes,
     mocker,
     initialize_instance_manager_mock,
-    initialize_compute_fleet_status_manager_mock,
     caplog,
     partitions,
+    status,
+    queue_compute_resource_nodes_map,
 ):
     caplog.set_level(logging.ERROR)
     mock_sync_config = SimpleNamespace(
@@ -1082,7 +1600,11 @@ def test_manage_cluster(
         dns_domain="dns.domain",
         use_private_hostname=False,
         protected_failure_count=10,
+        insufficient_capacity_timeout=600,
         node_replacement_timeout=1800,
+        terminate_max_batch_size=1,
+        head_node_instance_id="i-instance-id",
+        fleet_config={},
     )
     mocker.patch("time.sleep")
     cluster_manager = ClusterManager(mock_sync_config)
@@ -1093,37 +1615,37 @@ def test_manage_cluster(
     compute_fleet_status_manager_mock = mocker.patch.object(
         cluster_manager, "_compute_fleet_status_manager", spec=ComputeFleetStatusManager
     )
-    compute_fleet_status_manager_mock.get_status.return_value = ComputeFleetStatus.RUNNING
-    get_partition_info_with_retry_mock = mocker.patch(
-        "slurm_plugin.clustermgtd.ClusterManager._get_partition_info_with_retry", return_value=partitions
+    compute_fleet_status_manager_mock.get_status.return_value = status
+    get_partitions_info_with_retry_mock = mocker.patch(
+        "slurm_plugin.clustermgtd.ClusterManager._get_partitions_info_with_retry", return_value=partitions
     )
 
-    write_timestamp_to_file_mock = mocker.patch.object(ClusterManager, "_write_timestamp_to_file", auto_spec=True)
+    write_timestamp_to_file_mock = mocker.patch.object(ClusterManager, "_write_timestamp_to_file", autospec=True)
     perform_health_check_actions_mock = mocker.patch.object(
-        ClusterManager, "_perform_health_check_actions", auto_spec=True
+        ClusterManager, "_perform_health_check_actions", autospec=True
     )
     clean_up_inactive_partition_mock = mocker.patch.object(
-        ClusterManager, "_clean_up_inactive_partition", return_value=mock_cluster_instances, auto_spec=True
+        ClusterManager, "_clean_up_inactive_partition", return_value=mock_cluster_instances, autospec=True
     )
     terminate_orphaned_instances_mock = mocker.patch.object(
-        ClusterManager, "_terminate_orphaned_instances", auto_spec=True
+        ClusterManager, "_terminate_orphaned_instances", autospec=True
     )
-    maintain_nodes_mock = mocker.patch.object(ClusterManager, "_maintain_nodes", auto_spec=True)
+    maintain_nodes_mock = mocker.patch.object(ClusterManager, "_maintain_nodes", autospec=True)
     get_ec2_instances_mock = mocker.patch.object(
-        ClusterManager, "_get_ec2_instances", auto_spec=True, return_value=mock_cluster_instances
+        ClusterManager, "_get_ec2_instances", autospec=True, return_value=mock_cluster_instances
     )
     get_node_info_with_retry_mock = mocker.patch.object(
         ClusterManager,
         "_get_node_info_with_retry",
-        auto_spec=True,
+        autospec=True,
         return_value=nodes,
     )
+    update_all_partitions_mock = mocker.patch("slurm_plugin.clustermgtd.update_all_partitions", autospec=True)
 
     # Run test
     cluster_manager.manage_cluster()
     # Assert function calls
     initialize_instance_manager_mock.assert_called_once()
-    initialize_compute_fleet_status_manager_mock.assert_called_once()
     write_timestamp_to_file_mock.assert_called_once()
     compute_fleet_status_manager_mock.get_status.assert_called_once()
     if disable_cluster_management:
@@ -1133,24 +1655,41 @@ def test_manage_cluster(
         maintain_nodes_mock.assert_not_called()
         get_node_info_with_retry_mock.assert_not_called()
         get_ec2_instances_mock.assert_not_called()
+        update_all_partitions_mock.assert_not_called()
+        initialize_instance_manager_mock().terminate_all_compute_nodes.assert_not_called()
         return
-    clean_up_inactive_partition_mock.assert_called_with(list(partitions.values()))
-    get_ec2_instances_mock.assert_called_once()
+    if status == ComputeFleetStatus.RUNNING:
+        clean_up_inactive_partition_mock.assert_called_with(cluster_manager, list(partitions.values()))
+        get_ec2_instances_mock.assert_called_once()
 
-    if disable_health_check:
-        perform_health_check_actions_mock.assert_not_called()
-        maintain_nodes_mock.assert_called_with(partitions)
-    else:
-        perform_health_check_actions_mock.assert_called_with(list(partitions.values()))
-        maintain_nodes_mock.assert_called_with(partitions)
-    terminate_orphaned_instances_mock.assert_called_with(mock_cluster_instances)
+        if disable_health_check:
+            perform_health_check_actions_mock.assert_not_called()
+            maintain_nodes_mock.assert_called_with(cluster_manager, partitions, queue_compute_resource_nodes_map)
+        else:
+            perform_health_check_actions_mock.assert_called_with(cluster_manager, list(partitions.values()))
+            maintain_nodes_mock.assert_called_with(cluster_manager, partitions, queue_compute_resource_nodes_map)
+        terminate_orphaned_instances_mock.assert_called_with(cluster_manager, mock_cluster_instances)
 
-    assert_that(caplog.text).is_empty()
-    get_partition_info_with_retry_mock.assert_called_once()
+        assert_that(caplog.text).is_empty()
+        get_partitions_info_with_retry_mock.assert_called_once()
+        update_all_partitions_mock.assert_not_called()
+        initialize_instance_manager_mock().terminate_all_compute_nodes.assert_not_called()
+    elif status == ComputeFleetStatus.STOPPED:
+        update_all_partitions_mock.assert_called_with(PartitionStatus.INACTIVE, reset_node_addrs_hostname=True)
+        initialize_instance_manager_mock().terminate_all_compute_nodes.assert_called_with(
+            mock_sync_config.terminate_max_batch_size
+        )
+        clean_up_inactive_partition_mock.assert_not_called()
+        get_ec2_instances_mock.assert_not_called()
+        terminate_orphaned_instances_mock.assert_not_called()
+        get_partitions_info_with_retry_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "config_file, mocked_active_nodes, mocked_inactive_nodes, mocked_boto3_request, expected_error_messages",
+    (
+        "config_file, mocked_active_nodes, mocked_inactive_nodes, mocked_boto3_request, "
+        "launched_instances, expected_error_messages"
+    ),
     [
         (
             # basic: This is the most comprehensive case in manage_cluster with max number of boto3 calls
@@ -1184,24 +1723,60 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-1",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-1",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-2",
                                         "PrivateIpAddress": "ip-2",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-2",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-3",
                                         "PrivateIpAddress": "ip-3",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-3",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-4",
                                         "PrivateIpAddress": "ip-4",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-4",
+                                            },
+                                        ],
                                     },
                                     # Return an orphaned instance
                                     {
@@ -1209,6 +1784,15 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-999",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-999",
+                                            },
+                                        ],
                                     },
                                 ]
                             }
@@ -1281,26 +1865,6 @@ def test_manage_cluster(
                     expected_params={"InstanceIds": ["i-1"]},
                     generate_error=False,
                 ),
-                # _maintain_nodes/add_instances_for_nodes: launch new instance for static node
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={
-                        "Instances": [
-                            {
-                                "InstanceId": "i-1234",
-                                "PrivateIpAddress": "ip-1234",
-                                "PrivateDnsName": "hostname-1234",
-                                "LaunchTime": datetime(2020, 1, 1, 0, 0, 0),
-                            }
-                        ]
-                    },
-                    expected_params={
-                        "MinCount": 1,
-                        "MaxCount": 1,
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5xlarge", "Version": "$Latest"},
-                    },
-                    generate_error=False,
-                ),
                 # _terminate_orphaned_instances: terminate orphaned instances
                 MockedBoto3Request(
                     method="terminate_instances",
@@ -1309,19 +1873,76 @@ def test_manage_cluster(
                     generate_error=False,
                 ),
             ],
+            # _maintain_nodes/add_instances_for_nodes: launch new instance for static node
+            [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-1234",
+                            "PrivateIpAddress": "ip-1234",
+                            "PrivateDnsName": "hostname-1234",
+                            "LaunchTime": datetime(2020, 1, 1, 0, 0, 0),
+                            "NetworkInterfaces": [
+                                {
+                                    "Attachment": {
+                                        "DeviceIndex": 0,
+                                        "NetworkCardIndex": 0,
+                                    },
+                                    "PrivateIpAddress": "ip-1234",
+                                },
+                            ],
+                        }
+                    ]
+                }
+            ],
             [],
         ),
         (
             # failures: All failure tolerant module will have an exception, but the program should not crash
             "default.conf",
             [
-                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
-                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1"),
-                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode(
+                    "queue-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD",
+                    "queue1",
+                    slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                ),
+                DynamicNode(
+                    "queue-dy-c5xlarge-2",
+                    "ip-2",
+                    "hostname",
+                    "DOWN+CLOUD",
+                    "queue1",
+                    slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                ),
+                DynamicNode(
+                    "queue-dy-c5xlarge-3",
+                    "ip-3",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                ),
             ],
             [
-                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
-                DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
+                StaticNode(
+                    "queue-st-c5xlarge-4",
+                    "ip-4",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue2",
+                    slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                ),
+                DynamicNode(
+                    "queue-dy-c5xlarge-5",
+                    "ip-5",
+                    "hostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                ),
             ],
             [
                 # _get_ec2_instances: get all cluster instances by tags
@@ -1337,24 +1958,60 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-1",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-1",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-2",
                                         "PrivateIpAddress": "ip-2",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-2",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-3",
                                         "PrivateIpAddress": "ip-3",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-3",
+                                            },
+                                        ],
                                     },
                                     {
                                         "InstanceId": "i-4",
                                         "PrivateIpAddress": "ip-4",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-4",
+                                            },
+                                        ],
                                     },
                                     # Return an orphaned instance
                                     {
@@ -1362,6 +2019,15 @@ def test_manage_cluster(
                                         "PrivateIpAddress": "ip-999",
                                         "PrivateDnsName": "hostname",
                                         "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                        "NetworkInterfaces": [
+                                            {
+                                                "Attachment": {
+                                                    "DeviceIndex": 0,
+                                                    "NetworkCardIndex": 0,
+                                                },
+                                                "PrivateIpAddress": "ip-999",
+                                            },
+                                        ],
                                     },
                                 ]
                             }
@@ -1455,16 +2121,6 @@ def test_manage_cluster(
                     expected_params={"InstanceIds": ["i-1"]},
                     generate_error=True,
                 ),
-                MockedBoto3Request(
-                    method="run_instances",
-                    response={"some run_instances error"},
-                    expected_params={
-                        "LaunchTemplate": {"LaunchTemplateName": "hit-queue-c5xlarge", "Version": "$Latest"},
-                        "MaxCount": 1,
-                        "MinCount": 1,
-                    },
-                    generate_error=True,
-                ),
                 # _terminate_orphaned_instances: terminate orphaned instances
                 # Produce an error, cluster should be able to handle exception and move on
                 MockedBoto3Request(
@@ -1474,6 +2130,7 @@ def test_manage_cluster(
                     generate_error=True,
                 ),
             ],
+            [client_error("some run_instances error")],
             [
                 r"Failed TerminateInstances request:",
                 r"Failed when terminating instances \(x1\) \['i-4'\].*{'error for i-4'}",
@@ -1483,10 +2140,9 @@ def test_manage_cluster(
                 r"Failed when terminating instances \(x1\) \['i-2'\].*{'error for i-2'}",
                 r"Failed TerminateInstances request:",
                 r"Failed when terminating instances \(x1\) \['i-1'\].*{'error for i-1'}",
-                r"Failed RunInstances request:",
                 (
                     r"Encountered exception when launching instances for nodes \(x1\) \['queue-st-c5xlarge-1'\].*"
-                    r"{'some run_instances error'}"
+                    r"some run_instances error"
                 ),
                 r"Failed TerminateInstances request:",
                 r"Failed when terminating instances \(x1\) \['i-999'\].*{'error for i-999'}",
@@ -1521,6 +2177,7 @@ def test_manage_cluster(
                     generate_error=True,
                 ),
             ],
+            [{}],
             [
                 r"Failed when getting cluster instances from EC2 with exception",
                 r"Failed when getting instance info from EC2 with exception",
@@ -1533,17 +2190,22 @@ def test_manage_cluster(
             Exception,
             Exception,
             [],
-            ["Unable to get partition/node info from slurm, no other action can be performed"],
+            [{}],
+            [
+                "Unable to get partition/node info from slurm, no other action can be performed",
+            ],
         ),
     ],
     ids=["basic", "failures", "critical_failure_1", "critical_failure_2"],
 )
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_manage_cluster_boto3(
     boto3_stubber,
     config_file,
     mocked_active_nodes,
     mocked_inactive_nodes,
     mocked_boto3_request,
+    launched_instances,
     expected_error_messages,
     test_datadir,
     mocker,
@@ -1556,255 +2218,87 @@ def test_manage_cluster_boto3(
     # patch boto3 call
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
-    mocker.patch("slurm_plugin.clustermgtd.read_json", return_value={"queue": {"c5xlarge": "c5.xlarge"}})
+    mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES])
     sync_config = ClustermgtdConfig(test_datadir / config_file)
-    sync_config.run_instances_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
+    sync_config.launch_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
     cluster_manager = ClusterManager(sync_config)
-    dynamodb_table_mock = mocker.patch.object(cluster_manager._compute_fleet_status_manager, "_table")
-    dynamodb_table_mock.get_item.return_value = {"Item": {"Id": "COMPUTE_FLEET", "Status": "RUNNING"}}
-    mocker.patch.object(cluster_manager, "_write_timestamp_to_file", auto_spec=True)
+    check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output")
+    check_command_output_mocked.return_value = '{"status": "RUNNING"}'
+    mocker.patch.object(cluster_manager, "_write_timestamp_to_file", autospec=True)
     part_active = SlurmPartition("queue1", "placeholder_nodes", "UP")
     part_active.slurm_nodes = mocked_active_nodes
     part_inactive = SlurmPartition("queue2", "placeholder_nodes", "INACTIVE")
     part_inactive.slurm_nodes = mocked_inactive_nodes
     partitions = {"queue1": part_active, "queue2": part_inactive}
+
+    # patch fleet manager calls
+    mocker.patch.object(
+        slurm_plugin.fleet_manager.Ec2RunInstancesManager, "_launch_instances", side_effect=launched_instances
+    )
+
     if mocked_active_nodes is Exception or mocked_inactive_nodes is Exception:
-        mocker.patch.object(
-            cluster_manager,
-            "_get_node_info_with_retry",
-            side_effect=Exception,
-        )
+        mocker.patch.object(cluster_manager, "_get_node_info_with_retry", side_effect=Exception)
 
     else:
         mocker.patch.object(
-            cluster_manager,
-            "_get_node_info_with_retry",
-            return_value=mocked_active_nodes + mocked_inactive_nodes,
+            cluster_manager, "_get_node_info_with_retry", return_value=mocked_active_nodes + mocked_inactive_nodes
         )
-        mocker.patch("slurm_plugin.clustermgtd.ClusterManager._retrieve_scheduler_partitions", return_value=partitions)
+        mocker.patch(
+            "slurm_plugin.clustermgtd.ClusterManager._parse_scheduler_nodes_data", return_value=[partitions, {}]
+        )
     cluster_manager._instance_manager._store_assigned_hostnames = mocker.MagicMock()
     cluster_manager._instance_manager._update_dns_hostnames = mocker.MagicMock()
+    mocker.patch.object(cluster_manager._capacity_block_manager, "get_reserved_nodenames", return_value=[])
     cluster_manager.manage_cluster()
 
-    assert_that(expected_error_messages).is_length(len(caplog.records))
+    assert_that(caplog.records).is_length(len(expected_error_messages))
     for actual, expected in zip(caplog.records, expected_error_messages):
         assert_that(actual.message).matches(expected)
 
 
-@pytest.mark.parametrize(
-    "fleet_initial_status, fleet_status_transitions, update_partition_status, terminate_all_nodes, "
-    "partitions_updated_successfully, nodes_terminated_successfully, error_messages",
-    [
-        (ComputeFleetStatus.RUNNING, [], None, False, None, None, []),
-        (
-            ComputeFleetStatus.START_REQUESTED,
-            [ComputeFleetStatus.STARTING, ComputeFleetStatus.RUNNING],
-            PartitionStatus.UP,
-            False,
-            True,
-            None,
-            [],
-        ),
-        (ComputeFleetStatus.STARTING, [ComputeFleetStatus.RUNNING], PartitionStatus.UP, False, True, None, []),
-        (
-            ComputeFleetStatus.START_REQUESTED,
-            [ComputeFleetStatus.STARTING, ComputeFleetStatus.RUNNING],
-            PartitionStatus.UP,
-            False,
-            True,
-            None,
-            [],
-        ),
-        (
-            ComputeFleetStatus.STOP_REQUESTED,
-            [ComputeFleetStatus.STOPPING, ComputeFleetStatus.STOPPED],
-            PartitionStatus.INACTIVE,
-            True,
-            True,
-            True,
-            [],
-        ),
-        (ComputeFleetStatus.STOPPING, [ComputeFleetStatus.STOPPED], PartitionStatus.INACTIVE, True, True, True, []),
-        (ComputeFleetStatus.STOPPED, [], PartitionStatus.INACTIVE, True, True, True, []),
-        (
-            ComputeFleetStatus.START_REQUESTED,
-            [ComputeFleetStatus.STARTING],
-            PartitionStatus.UP,
-            False,
-            False,
-            False,
-            ["Failed when updating partitions with error"],
-        ),
-        (
-            ComputeFleetStatus.STOP_REQUESTED,
-            [ComputeFleetStatus.STOPPING],
-            PartitionStatus.INACTIVE,
-            True,
-            False,
-            True,
-            ["Failed when updating partitions with error"],
-        ),
-    ],
-)
-def test_manage_compute_fleet_status_transitions(
-    mocker,
-    caplog,
-    fleet_initial_status,
-    fleet_status_transitions,
-    update_partition_status,
-    terminate_all_nodes,
-    partitions_updated_successfully,
-    nodes_terminated_successfully,
-    error_messages,
-):
-    config = SimpleNamespace(
-        region="us-east-2",
-        cluster_name="hit-test",
-        boto3_config=botocore.config.Config(),
-        dynamodb_table="table_name",
-        head_node_private_ip="head.node.ip",
-        head_node_hostname="head-node-hostname",
-        terminate_max_batch_size=4,
-        hosted_zone="hosted_zone",
-        dns_domain="dns.domain",
-        use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
-    )
-    cluster_manager = ClusterManager(config)
-    mocker.patch("subprocess.run", side_effect=None if partitions_updated_successfully else Exception)
-    update_all_partitions_spy = mocker.patch(
-        "slurm_plugin.clustermgtd.update_all_partitions", wraps=update_all_partitions
-    )
-    compute_fleet_status_manager_mock = mocker.patch.object(
-        cluster_manager, "_compute_fleet_status_manager", auto_spec=True
-    )
-    compute_fleet_status_manager_mock.get_status.return_value = fleet_initial_status
-    instance_manager_mock = mocker.patch.object(cluster_manager, "_instance_manager", auto_spec=True)
-    instance_manager_mock.terminate_all_compute_nodes.return_value = nodes_terminated_successfully
-
-    cluster_manager._manage_compute_fleet_status_transitions()
-
-    # Check partitions updated correctly
-    if update_partition_status:
-        if update_partition_status == PartitionStatus.UP:
-            update_all_partitions_spy.assert_called_with(update_partition_status, reset_node_addrs_hostname=False)
-        else:
-            update_all_partitions_spy.assert_called_with(update_partition_status, reset_node_addrs_hostname=True)
-    else:
-        update_all_partitions_spy.assert_not_called()
-    # Check nodes terminated correctly
-    if terminate_all_nodes:
-        instance_manager_mock.terminate_all_compute_nodes.assert_called_with(config.terminate_max_batch_size)
-    else:
-        instance_manager_mock.assert_not_called()
-    # Check compute fleet status transitions
-    update_status_calls = []
-    previous = fleet_initial_status
-    for transition in fleet_status_transitions:
-        update_status_calls.append(call(current_status=previous, next_status=transition))
-        previous = transition
-    compute_fleet_status_manager_mock.update_status.assert_has_calls(update_status_calls)
-    assert_that(compute_fleet_status_manager_mock.update_status.call_count).is_equal_to(len(update_status_calls))
-    # Check errors in logs
-    for actual, expected in zip(caplog.records, error_messages):
-        assert_that(actual.message).matches(expected)
-    assert_that(error_messages).is_length(len(caplog.records))
-
-
-def test_manage_compute_fleet_status_transitions_concurrency(mocker, caplog):
-    config = SimpleNamespace(
-        region="us-east-2",
-        cluster_name="hit-test",
-        boto3_config=botocore.config.Config(),
-        dynamodb_table="table_name",
-        head_node_private_ip="head.node.ip",
-        head_node_hostname="head-node-hostname",
-        terminate_max_batch_size=4,
-        hosted_zone="hosted_zone",
-        dns_domain="dns.domain",
-        use_private_hostname=False,
-        instance_name_type_mapping={},
-        protected_failure_count=10,
-        run_instances_overrides={},
-    )
-    cluster_manager = ClusterManager(config)
-    mocker.patch("slurm_plugin.clustermgtd.update_all_partitions")
-    compute_fleet_status_manager_mock = mocker.patch.object(
-        cluster_manager, "_compute_fleet_status_manager", auto_spec=True
-    )
-    compute_fleet_status_manager_mock.get_status.return_value = ComputeFleetStatus.STOP_REQUESTED
-    compute_fleet_status_manager_mock.update_status.side_effect = (
-        ComputeFleetStatusManager.ConditionalStatusUpdateFailed
-    )
-
-    cluster_manager._manage_compute_fleet_status_transitions()
-
-    assert_that(caplog.text).contains("Cluster status was updated while handling a transition")
-    assert_that(compute_fleet_status_manager_mock.update_status.call_count).is_equal_to(1)
-
-
 class TestComputeFleetStatusManager:
-    @pytest.fixture
-    def compute_fleet_status_manager(self, mocker):
-        status_manager = ComputeFleetStatusManager("table", botocore.config.Config(), "us-east-1")
-        mocker.patch.object(status_manager, "_table")
-
-        return status_manager
-
     @pytest.mark.parametrize(
         "get_item_response, fallback, expected_status",
         [
-            ({"Item": {"Id": "COMPUTE_FLEET", "Status": "RUNNING"}}, None, ComputeFleetStatus.RUNNING),
-            (
-                {},
-                ComputeFleetStatus.STOPPED,
-                ComputeFleetStatus.STOPPED,
-            ),
-            (
-                Exception,
-                ComputeFleetStatus.STOPPED,
-                ComputeFleetStatus.STOPPED,
-            ),
+            ('{"status": "RUNNING"}', None, ComputeFleetStatus.RUNNING),
+            ("", ComputeFleetStatus.STOPPED, ComputeFleetStatus.STOPPED),
+            (Exception, ComputeFleetStatus.STOPPED, ComputeFleetStatus.STOPPED),
         ],
         ids=["success", "empty_response", "exception"],
     )
-    def test_get_status(self, compute_fleet_status_manager, get_item_response, fallback, expected_status):
+    def test_get_status(self, mocker, get_item_response, fallback, expected_status):
+        check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
+        compute_fleet_status_manager = ComputeFleetStatusManager()
+
         if get_item_response is Exception:
-            compute_fleet_status_manager._table.get_item.side_effect = get_item_response
+            check_command_output_mocked.side_effect = get_item_response
         else:
-            compute_fleet_status_manager._table.get_item.return_value = get_item_response
+            check_command_output_mocked.return_value = get_item_response
         status = compute_fleet_status_manager.get_status(fallback)
         assert_that(status).is_equal_to(expected_status)
-        compute_fleet_status_manager._table.get_item.assert_called_with(
-            ConsistentRead=True, Key={"Id": "COMPUTE_FLEET"}
-        )
+        check_command_output_mocked.assert_called_once_with("get-compute-fleet-status.sh")
 
     @pytest.mark.parametrize(
-        "put_item_response, expected_exception",
+        "desired_status, update_item_response",
         [
-            (
-                {},
-                None,
-            ),
-            (
-                boto3.client("dynamodb", region_name="us-east-1").exceptions.ConditionalCheckFailedException(
-                    {"Error": {}}, {}
-                ),
-                ComputeFleetStatusManager.ConditionalStatusUpdateFailed,
-            ),
-            (Exception(), Exception),
+            (ComputeFleetStatus.PROTECTED, None),
+            (ComputeFleetStatus.STOPPED, AttributeError),
         ],
-        ids=["success", "conditional_check_failed", "exception"],
+        ids=["success", "exception"],
     )
-    def test_update_status(self, compute_fleet_status_manager, put_item_response, expected_exception):
-        if isinstance(put_item_response, Exception):
-            compute_fleet_status_manager._table.put_item.side_effect = put_item_response
-            with pytest.raises(expected_exception):
-                compute_fleet_status_manager.update_status(ComputeFleetStatus.STARTING, ComputeFleetStatus.RUNNING)
+    def test_update_status(self, mocker, desired_status, update_item_response):
+        check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
+        compute_fleet_status_manager = ComputeFleetStatusManager()
+
+        if update_item_response is AttributeError:
+            check_command_output_mocked.side_effect = update_item_response
+            with pytest.raises(AttributeError):
+                compute_fleet_status_manager.update_status(desired_status)
         else:
-            compute_fleet_status_manager._table.put_item.return_value = put_item_response
-            compute_fleet_status_manager.update_status(ComputeFleetStatus.STARTING, ComputeFleetStatus.RUNNING)
+            check_command_output_mocked.return_value = update_item_response
+            compute_fleet_status_manager.update_status(desired_status)
+
+        check_command_output_mocked.assert_called_once_with(f"update-compute-fleet-status.sh --status {desired_status}")
 
 
 @pytest.mark.parametrize(
@@ -1830,6 +2324,7 @@ class TestComputeFleetStatusManager:
         ),
     ],
 )
+@pytest.mark.usefixtures("initialize_executor_mock", "initialize_console_logger_mock")
 def test_handle_successfully_launched_nodes(
     healthy_nodes,
     expected_partitions_protected_failure_count_map,
@@ -1848,11 +2343,14 @@ def test_handle_successfully_launched_nodes(
         hosted_zone="hosted_zone",
         dns_domain="dns.domain",
         use_private_hostname=False,
-        instance_name_type_mapping={"c5xlarge": "c5.xlarge"},
         protected_failure_count=10,
+        insufficient_capacity_timeout=600,
         terminate_drain_nodes=True,
         terminate_down_nodes=True,
-        run_instances_overrides={"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}},
+        run_instances_overrides={},
+        create_fleet_overrides={},
+        fleet_config=FLEET_CONFIG,
+        head_node_instance_id="i-instance-id",
     )
     # Mock associated function
     cluster_manager = ClusterManager(mock_sync_config)
@@ -1887,7 +2385,7 @@ def test_handle_successfully_launched_nodes(
             {"queue1": {"c5xlarge": 2}, "queue2": {"c5xlarge": 2}},
         ),
         (
-            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2")],
+            [DynamicNode("queue2-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue2")],
             {"queue1": {"c5xlarge": 1}},
             {"queue1": {"c5xlarge": 1}, "queue2": {"c5xlarge": 1}},
         ),
@@ -1899,17 +2397,27 @@ def test_handle_successfully_launched_nodes(
             {},
             {"queue1": {"c5large": 1, "c5xlarge": 1}},
         ),
-        (
-            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1,queue2")],
+        (  # Custom queue is not managed by protected mode
+            [DynamicNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1,custom_queue1")],
             {},
-            {"queue1": {"c5xlarge": 1}, "queue2": {"c5xlarge": 1}},
+            {"queue1": {"c5xlarge": 1}},
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_increase_partitions_protected_failure_count(nodes, initial_map, expected_map, mocker):
     # Mock associated function
-    cluster_manager = ClusterManager(mocker.MagicMock())
+    mock_sync_config = SimpleNamespace(
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._partitions_protected_failure_count_map = initial_map
     # Run test
     cluster_manager._increase_partitions_protected_failure_count(nodes)
@@ -1924,10 +2432,20 @@ def test_increase_partitions_protected_failure_count(nodes, initial_map, expecte
         ("queue2", {"queue1": 2}),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_reset_partition_failure_count(mocker, partition, expected_map):
     # Mock associated function
-    cluster_manager = ClusterManager(mocker.MagicMock())
+    mock_sync_config = SimpleNamespace(
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._partitions_protected_failure_count_map = {"queue1": 2, "queue2": 1}
     cluster_manager._reset_partition_failure_count(partition)
     assert_that(cluster_manager._partitions_protected_failure_count_map).is_equal_to(expected_map)
@@ -1980,7 +2498,9 @@ def test_reset_partition_failure_count(mocker, partition, expected_map):
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_protected_mode_process(
     partitions,
     slurm_nodes_list,
@@ -1992,6 +2512,12 @@ def test_handle_protected_mode_process(
 ):
     mock_sync_config = SimpleNamespace(
         protected_failure_count=10,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
     )
     caplog.set_level(logging.INFO)
     cluster_manager = ClusterManager(mock_sync_config)
@@ -2032,7 +2558,9 @@ def test_handle_protected_mode_process(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_enter_protected_mode(
     partitions_to_disable,
     mocker,
@@ -2040,9 +2568,17 @@ def test_enter_protected_mode(
     caplog,
 ):
     caplog.set_level(logging.INFO)
-    cluster_manager = ClusterManager(mocker.MagicMock())
+    mock_sync_config = SimpleNamespace(
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    cluster_manager = ClusterManager(mock_sync_config)
     mock_update_compute_fleet_status = mocker.patch.object(cluster_manager, "_update_compute_fleet_status")
-    mocker.patch("common.schedulers.slurm_commands.run_command", auto_spec=True)
+    mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
     cluster_manager._compute_fleet_status = compute_fleet_status
     cluster_manager._enter_protected_mode(partitions_to_disable)
     if compute_fleet_status != ComputeFleetStatus.PROTECTED:
@@ -2061,14 +2597,16 @@ def initialize_instance_manager_mock(mocker):
 
 
 @pytest.fixture()
-def initialize_compute_fleet_status_manager_mock(mocker):
-    compute_fleet_status_manager_mock = mocker.Mock(spec=ComputeFleetStatusManager)
-    compute_fleet_status_manager_mock.get_status.return_value = ComputeFleetStatus.RUNNING
+def initialize_executor_mock(mocker):
+    return mocker.patch.object(ClusterManager, "_initialize_executor", spec=ClusterManager._initialize_executor)
+
+
+@pytest.fixture()
+def initialize_console_logger_mock(mocker):
     return mocker.patch.object(
         ClusterManager,
-        "_initialize_compute_fleet_status_manager",
-        spec=ClusterManager._initialize_compute_fleet_status_manager,
-        return_value=compute_fleet_status_manager_mock,
+        "_initialize_console_logger",
+        spec=ClusterManager._initialize_console_logger,
     )
 
 
@@ -2106,9 +2644,19 @@ def initialize_compute_fleet_status_manager_mock(mocker):
     ],
     ids=["not_in_replacement", "no-backing-instance", "in_replacement", "timeout"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_is_node_being_replaced(current_replacing_nodes, node, instance, current_time, expected_result):
-    mock_sync_config = SimpleNamespace(node_replacement_timeout=30)
+    mock_sync_config = SimpleNamespace(
+        node_replacement_timeout=30,
+        insufficient_capacity_timeout=3,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
@@ -2157,10 +2705,20 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_is_node_replacement_timeout(node, current_node_in_replacement, is_replacement_timeout, instance):
     node.instance = instance
-    mock_sync_config = SimpleNamespace(node_replacement_timeout=30)
+    mock_sync_config = SimpleNamespace(
+        node_replacement_timeout=30,
+        insufficient_capacity_timeout=-2.2,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
     cluster_manager._static_nodes_in_replacement = current_node_in_replacement
@@ -2208,7 +2766,9 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_failed_health_check_nodes_in_replacement(
     active_nodes,
     is_static_nodes_in_replacement,
@@ -2217,13 +2777,21 @@ def test_handle_failed_health_check_nodes_in_replacement(
     expected_nodes_in_replacement,
     mocker,
 ):
-    for node, is_static_nodes_in_replacement, is_failing_health_check in zip(
+    for node, is_node_in_replacement, is_node_failing_health_check in zip(
         active_nodes, is_static_nodes_in_replacement, is_failing_health_check
     ):
-        node.is_static_nodes_in_replacement = is_static_nodes_in_replacement
-        node.is_failing_health_check = is_failing_health_check
+        node.is_static_nodes_in_replacement = is_node_in_replacement
+        node.is_failing_health_check = is_node_failing_health_check
 
-    cluster_manager = ClusterManager(mocker.MagicMock())
+    mock_sync_config = SimpleNamespace(
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_nodes_in_replacement
     # Run tests
     cluster_manager._handle_failed_health_check_nodes_in_replacement(active_nodes)
@@ -2268,14 +2836,25 @@ def test_handle_failed_health_check_nodes_in_replacement(
         ),
     ],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_handle_bootstrap_failure_nodes(
     active_nodes,
     instances,
     mocker,
 ):
     # Mock functions
-    mock_sync_config = SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True)
+    mock_sync_config = SimpleNamespace(
+        terminate_drain_nodes=True,
+        terminate_down_nodes=True,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     for node, instance in zip(active_nodes, instances):
         node.instance = instance
@@ -2328,10 +2907,21 @@ def test_handle_bootstrap_failure_nodes(
     ],
     ids=["basic"],
 )
-@pytest.mark.usefixtures("initialize_instance_manager_mock", "initialize_compute_fleet_status_manager_mock")
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
 def test_find_bootstrap_failure_nodes(active_nodes, instances):
     # Mock functions
-    mock_sync_config = SimpleNamespace(terminate_drain_nodes=True, terminate_down_nodes=True)
+    mock_sync_config = SimpleNamespace(
+        terminate_drain_nodes=True,
+        terminate_down_nodes=True,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
     cluster_manager = ClusterManager(mock_sync_config)
     for node, instance in zip(active_nodes, instances):
         node.instance = instance
@@ -2343,3 +2933,1090 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
     assert_that(cluster_manager._find_bootstrap_failure_nodes(active_nodes)).is_equal_to(
         expected_bootstrap_failure_nodes
     )
+
+
+@pytest.mark.parametrize(
+    "queue_compute_resource_nodes_map, ice_compute_resources_and_nodes_map, "
+    "initial_insufficient_capacity_compute_resources, expected_insufficient_capacity_compute_resources, "
+    "expected_power_save_node_list, expected_nodes_to_down",
+    [
+        (
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-1",
+                            "queue1-dy-c5xlarge-1",
+                            "queue1-dy-c5xlarge-1",
+                            "IDLE+CLOUD+POWERED_DOWN",
+                            "queue1",
+                            "some reason",
+                        ),  # Dynamic powered down node belongs to ICE compute resources need to be down
+                        StaticNode(
+                            "queue1-st-c5xlarge-1",
+                            "nodeip",
+                            "queue1-st-c5xlarge-1",
+                            "IDLE+CLOUD",
+                            "queue1",
+                        ),  # Static powered down node belongs to ICE compute resources not set to down
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue"
+                        ),  # Dynamic not powered down node,
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-2",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),  # unhealthy ice node
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-3",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),  # unhealthy ice node
+                    ],
+                    "c4xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"
+                        ),  # unhealthy not ice node
+                    ],
+                },
+                "queue2": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "queue2-dy-c5large-1",
+                            "queue2-dy-c5large-1",
+                            "IDLE+CLOUD+POWERED_DOWN",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),  # powered down ice node
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "queue2-dy-c5large-2",
+                            "queue2-dy-c5large-2",
+                            "IDLE+CLOUD+POWERED_DOWN",
+                            "queue2",  # Dynamic node belongs to ICE compute resources need to be down
+                        ),
+                    ],
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-3",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),  # unhealthy ice node
+                    ],
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-2",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),  # unhealthy ice node
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-3",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),  # unhealthy ice node
+                    ],
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-3",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),  # unhealthy ice node
+                    ],
+                },
+            },
+            {
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 1, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+            },
+            ["queue2-dy-c5large-3"],
+            [
+                call(
+                    ["queue1-dy-c5xlarge-1"],
+                    reason="(Code:InsufficientReservedInstanceCapacity)Temporarily disabling node due to insufficient "
+                    "capacity",
+                ),
+            ],
+        ),
+    ],
+)
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_handle_ice_nodes(
+    queue_compute_resource_nodes_map,
+    ice_compute_resources_and_nodes_map,
+    initial_insufficient_capacity_compute_resources,
+    expected_insufficient_capacity_compute_resources,
+    expected_power_save_node_list,
+    expected_nodes_to_down,
+    mocker,
+    caplog,
+):
+    mock_sync_config = SimpleNamespace(
+        protected_failure_count=10,
+        insufficient_capacity_timeout=600,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    caplog.set_level(logging.INFO)
+    cluster_manager = ClusterManager(mock_sync_config)
+    cluster_manager._current_time = datetime(2021, 1, 2, 0, 0, 0)
+    cluster_manager._insufficient_capacity_compute_resources = initial_insufficient_capacity_compute_resources
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", autospec=True)
+    power_down_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", autospec=True)
+    # Run test
+    cluster_manager._handle_ice_nodes(ice_compute_resources_and_nodes_map, queue_compute_resource_nodes_map)
+    # Assert calls
+    assert_that(cluster_manager._insufficient_capacity_compute_resources).is_equal_to(
+        expected_insufficient_capacity_compute_resources
+    )
+    if expected_power_save_node_list:
+        power_save_mock.assert_called_with(
+            expected_power_save_node_list, reason="Enabling node since insufficient capacity timeout expired"
+        )
+    else:
+        power_save_mock.assert_not_called()
+    if expected_nodes_to_down:
+        power_down_mock.assert_has_calls(expected_nodes_to_down)
+    else:
+        power_down_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "ice_compute_resources_and_nodes_map, initial_insufficient_capacity_compute_resources, "
+    "expected_insufficient_capacity_compute_resources",
+    [
+        (
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-1",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+            },
+            {},
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+        ),
+        (
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-1",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+        ),
+        (
+            {},
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+            },
+        ),
+    ],
+)
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_update_insufficient_capacity_compute_resources(
+    ice_compute_resources_and_nodes_map,
+    initial_insufficient_capacity_compute_resources,
+    expected_insufficient_capacity_compute_resources,
+    mocker,
+    caplog,
+):
+    caplog.set_level(logging.INFO)
+    cluster_manager = ClusterManager(mocker.MagicMock())
+    cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
+    cluster_manager._insufficient_capacity_compute_resources = initial_insufficient_capacity_compute_resources
+
+    # Run test
+    cluster_manager._update_insufficient_capacity_compute_resources(ice_compute_resources_and_nodes_map)
+    # Assert calls
+    assert_that(cluster_manager._insufficient_capacity_compute_resources).is_equal_to(
+        expected_insufficient_capacity_compute_resources
+    )
+
+
+@pytest.mark.parametrize(
+    "ice_compute_resources_and_nodes_map, initial_insufficient_capacity_compute_resources, "
+    "expected_insufficient_capacity_compute_resources, expected_power_save_node_list",
+    [
+        (
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-1",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+            [],
+        ),
+        (
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-1",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+                "queue3": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue3-dy-c5large-1",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),
+                        DynamicNode(
+                            "queue3-dy-c5large-2",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ],
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    )
+                },
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 1, 0, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+                "queue3": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 1, 0, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2021, 1, 2, 0, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    ),
+                },
+            },
+            ["queue2-dy-c5large-1", "queue2-dy-c5large-2", "queue3-dy-c5large-1", "queue3-dy-c5large-2"],
+        ),
+    ],
+)
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_reset_timeout_expired_compute_resources(
+    ice_compute_resources_and_nodes_map,
+    initial_insufficient_capacity_compute_resources,
+    expected_insufficient_capacity_compute_resources,
+    expected_power_save_node_list,
+    mocker,
+    caplog,
+):
+    caplog.set_level(logging.INFO)
+    config = SimpleNamespace(
+        insufficient_capacity_timeout=20,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+    )
+    cluster_manager = ClusterManager(config)
+    cluster_manager._current_time = datetime(2021, 1, 2, 0, 0, 0)
+    cluster_manager._insufficient_capacity_compute_resources = initial_insufficient_capacity_compute_resources
+    power_save_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_power_down", autospec=True)
+
+    # Run test
+    cluster_manager._reset_timeout_expired_compute_resources(ice_compute_resources_and_nodes_map)
+    # Assert calls
+    assert_that(cluster_manager._insufficient_capacity_compute_resources).is_equal_to(
+        expected_insufficient_capacity_compute_resources
+    )
+    if expected_power_save_node_list:
+        power_save_mock.assert_called_with(
+            expected_power_save_node_list, reason="Enabling node since insufficient capacity timeout expired"
+        )
+    else:
+        power_save_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "queue_compute_resource_nodes_map, insufficient_capacity_compute_resources, expected_nodes_to_down",
+    [
+        (
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-1",
+                            "queue1-dy-c5xlarge-1",
+                            "queue1-dy-c5xlarge-1",
+                            "IDLE+CLOUD+POWERED_DOWN",
+                            "queue1",
+                            "some reason",
+                        ),  # Dynamic node belongs to ICE compute resources need to be down
+                        StaticNode(
+                            "queue1-st-c5xlarge-1",
+                            "nodeip",
+                            "IDLE+CLOUD",
+                            "somestate",
+                            "queue1",
+                        ),  # Static nodes
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue"
+                        ),  # Dynamic not powered down node],
+                    ],
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "queue2-dy-c5large-1",
+                            "queue2-dy-c5large-1",
+                            "IDLE+CLOUD+POWERED_DOWN",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),  # powered down ice node
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "queue2-dy-c5large-2",
+                            "queue2-dy-c5large-2",
+                            "IDLE+CLOUD+POWERED_DOWN",
+                            "queue2",  # Dynamic node belongs to ICE compute resources need to be down
+                        ),
+                    ],
+                },
+            },
+            {
+                "queue1": {
+                    "c5xlarge": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientReservedInstanceCapacity"
+                    )
+                },
+                "queue2": {
+                    "c5large": ComputeResourceFailureEvent(
+                        timestamp=datetime(2020, 1, 2, 0, 0), error_code="InsufficientHostCapacity"
+                    ),
+                },
+            },
+            [
+                call(
+                    ["queue1-dy-c5xlarge-1"],
+                    reason="(Code:InsufficientReservedInstanceCapacity)Temporarily disabling node due to insufficient "
+                    "capacity",
+                ),
+                call(
+                    ["queue2-dy-c5large-1", "queue2-dy-c5large-2"],
+                    reason="(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity",
+                ),
+            ],
+        ),
+    ],
+)
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_set_ice_compute_resources_to_down(
+    queue_compute_resource_nodes_map,
+    insufficient_capacity_compute_resources,
+    expected_nodes_to_down,
+    mocker,
+    caplog,
+):
+    caplog.set_level(logging.INFO)
+    cluster_manager = ClusterManager(mocker.MagicMock())
+    power_down_mock = mocker.patch("slurm_plugin.clustermgtd.set_nodes_down", autospec=True)
+    cluster_manager._insufficient_capacity_compute_resources = insufficient_capacity_compute_resources
+
+    # Run test
+    cluster_manager._set_ice_compute_resources_to_down(queue_compute_resource_nodes_map)
+    # Assert calls
+    if expected_nodes_to_down:
+        power_down_mock.assert_has_calls(expected_nodes_to_down)
+    else:
+        power_down_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    (
+        "active_nodes, reserved_nodenames, expected_unhealthy_dynamic_nodes, expected_unhealthy_static_nodes, "
+        "expected_ice_compute_resources_and_nodes_map, disable_nodes_on_insufficient_capacity, "
+        "disable_capacity_blocks_management"
+    ),
+    [
+        (
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
+                ),  # unhealthy static
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
+                ),  # bootstrap failure static
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),  # bootstrap failure dynamic
+                StaticNode(
+                    "queue3-st-c5xlarge-1",
+                    "ip-5",
+                    "hostname",
+                    "IDLE",
+                    "queue2",
+                    instance=EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                ),  # healthy static
+                DynamicNode(
+                    "queue3-dy-c5xlarge-1",
+                    "ip-6",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    instance=EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                ),  # healthy dynamic
+                DynamicNode("queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "COMPLETING+DRAIN",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                    "[root@2023-01-31T21:24:55]",
+                ),
+            ],
+            [],
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),  # bootstrap failure dynamic
+                DynamicNode("queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
+            ],
+            [
+                StaticNode("queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
+                ),  # bootstrap failure static
+            ],
+            {
+                "queue1": {
+                    "c5xlarge": [
+                        DynamicNode(
+                            "queue1-dy-c5xlarge-3",
+                            "nodeip",
+                            "nodehostname",
+                            "COMPLETING+DRAIN",
+                            "queue1",
+                            "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ]
+                },
+                "queue2": {
+                    "c5large": [
+                        DynamicNode(
+                            "queue2-dy-c5large-1",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                        ),
+                        DynamicNode(
+                            "queue2-dy-c5large-2",
+                            "nodeip",
+                            "nodehostname",
+                            "DOWN+CLOUD",
+                            "queue2",
+                            "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                            "[root@2023-01-31T21:24:55]",
+                        ),
+                    ]
+                },
+            },
+            True,
+            False,
+        ),
+        (
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                StaticNode(
+                    "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"
+                ),  # unhealthy static
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),  # unhealthy dynamic
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
+                ),  # bootstrap failure static
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),  # bootstrap failure dynamic
+                StaticNode(
+                    "queue3-st-c5xlarge-1",
+                    "ip-5",
+                    "hostname",
+                    "IDLE",
+                    "queue2",
+                    instance=EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                ),  # healthy static
+                DynamicNode(
+                    "queue3-dy-c5xlarge-1",
+                    "ip-6",
+                    "hostname",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    instance=EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                ),  # healthy dynamic
+                DynamicNode("queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "COMPLETING+DRAIN",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                    "[root@2023-01-31T21:24:55]",
+                ),
+                StaticNode(
+                    "queue4-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-123456",
+                ),  # reserved static
+                DynamicNode(
+                    "queue4-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-234567",
+                ),  # reserved  dynamic
+            ],
+            ["queue4-st-c5xlarge-1", "queue4-dy-c5xlarge-1"],
+            [
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "ip-2", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"
+                ),  # powering_down
+                DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"
+                ),  # bootstrap failure dynamic
+                DynamicNode("queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-3",
+                    "nodeip",
+                    "nodehostname",
+                    "COMPLETING+DRAIN",
+                    "queue1",
+                    "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-1",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
+                ),
+                DynamicNode(
+                    "queue2-dy-c5large-2",
+                    "nodeip",
+                    "nodehostname",
+                    "DOWN+CLOUD",
+                    "queue2",
+                    "(Code:InsufficientHostCapacity)Temporarily disabling node due to insufficient capacity "
+                    "[root@2023-01-31T21:24:55]",
+                ),
+            ],
+            [
+                StaticNode("queue1-st-c5xlarge-1", "queue1-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue1"),
+                StaticNode(
+                    "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
+                ),  # bootstrap failure static
+            ],
+            {},
+            False,
+            False,
+        ),
+        (
+            [
+                StaticNode(
+                    "queue4-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-123456",
+                ),  # reserved static
+                DynamicNode(
+                    "queue4-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-234567",
+                ),  # reserved  dynamic
+            ],
+            ["queue4-st-c5xlarge-1", "queue4-dy-c5xlarge-1"],
+            [
+                DynamicNode(
+                    "queue4-dy-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-234567",
+                ),
+            ],
+            [
+                StaticNode(
+                    "queue4-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue4",
+                    reservation_name="cr-123456",
+                ),
+            ],
+            {},
+            False,
+            True,  # disable_capacity_blocks_management
+        ),
+    ],
+)
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_find_unhealthy_slurm_nodes(
+    active_nodes,
+    reserved_nodenames,
+    expected_unhealthy_dynamic_nodes,
+    expected_unhealthy_static_nodes,
+    expected_ice_compute_resources_and_nodes_map,
+    disable_nodes_on_insufficient_capacity,
+    disable_capacity_blocks_management,
+    mocker,
+):
+    mock_sync_config = SimpleNamespace(
+        terminate_drain_nodes=True,
+        terminate_down_nodes=True,
+        disable_nodes_on_insufficient_capacity=disable_nodes_on_insufficient_capacity,
+        cluster_name="cluster",
+        head_node_instance_id="i-instance-id",
+        region="region",
+        boto3_config=None,
+        fleet_config={},
+        disable_capacity_blocks_management=disable_capacity_blocks_management,
+    )
+    cluster_manager = ClusterManager(mock_sync_config)
+    get_reserved_mock = mocker.patch.object(
+        cluster_manager._capacity_block_manager, "get_reserved_nodenames", return_value=reserved_nodenames
+    )
+    # Run test
+    (
+        unhealthy_dynamic_nodes,
+        unhealthy_static_nodes,
+        ice_compute_resources_and_nodes_map,
+    ) = cluster_manager._find_unhealthy_slurm_nodes(active_nodes)
+    # Assert calls
+    assert_that(unhealthy_dynamic_nodes).is_equal_to(expected_unhealthy_dynamic_nodes)
+    assert_that(unhealthy_static_nodes).is_equal_to(expected_unhealthy_static_nodes)
+    assert_that(ice_compute_resources_and_nodes_map).is_equal_to(expected_ice_compute_resources_and_nodes_map)
+    if disable_capacity_blocks_management:
+        get_reserved_mock.assert_not_called()
+    else:
+        get_reserved_mock.assert_called()
+
+
+@pytest.mark.parametrize(
+    "partitions_name_map, expected_nodelist",
+    [
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two non-overlapping partitions",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "custom_partition": SimpleNamespace(
+                    name="custom_partition",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two overlapping partitions obtained by creating a custom partition that includes nodes from a "
+            "PC-managed queue",
+        ),
+        pytest.param(
+            {},
+            [],
+            id="Empty cluster with no partitions",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="UP",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [
+                StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+            ],
+            id="Two non-overlapping partitions, one active and one inactive",
+        ),
+        pytest.param(
+            {
+                "queue1": SimpleNamespace(
+                    name="queue1",
+                    nodenames="queue1-st-cr1-1,queue1-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue1-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue1-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+                "queue2": SimpleNamespace(
+                    name="queue2",
+                    nodenames="queue2-st-cr1-1,queue2-st-cr1-2",
+                    state="INACTIVE",
+                    slurm_nodes=[
+                        StaticNode(name="queue2-st-cr1-1", nodeaddr="", nodehostname="", state=""),
+                        StaticNode(name="queue2-st-cr1-2", nodeaddr="", nodehostname="", state=""),
+                    ],
+                ),
+            },
+            [],
+            id="Two inactive non-overlapping partitions",
+        ),
+    ],
+)
+def test_find_active_nodes(partitions_name_map, expected_nodelist):
+    """Unit test for the `ClusterManager._find_active_nodes()` method."""
+    result_nodelist = ClusterManager._find_active_nodes(partitions_name_map)
+    assert_that(result_nodelist).is_equal_to(expected_nodelist)

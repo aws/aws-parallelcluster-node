@@ -8,8 +8,9 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
 from collections import namedtuple
+
+from botocore.exceptions import ClientError
 
 MockedBoto3Request = namedtuple(
     "MockedBoto3Request", ["method", "response", "expected_params", "generate_error", "error_code"]
@@ -24,3 +25,91 @@ def read_text(path):
     """Read the content of a file."""
     with path.open() as f:
         return f.read()
+
+
+def client_error(error_code):
+    return ClientError({"Error": {"Code": error_code}}, "failed_operation")
+
+
+SINGLE_SUBNET = {"SubnetIds": ["1234567"]}
+MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"]}
+
+FLEET_CONFIG = {
+    "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
+    "queue1": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
+        "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
+        "fleet-spot": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "MaxPrice": 10,
+            "AllocationStrategy": "capacity-optimized",
+            "CapacityType": "spot",
+            "Networking": SINGLE_SUBNET,
+        },
+    },
+    "queue2": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet-ondemand": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": SINGLE_SUBNET,
+        },
+    },
+    "queue3": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "c52xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.2xlarge"}]},
+        "p4d24xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "p4d.24xlarge"}]},
+    },
+    "queue4": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": SINGLE_SUBNET,
+        },
+    },
+    "queue5": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue6": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue-cb": {
+        "run-instances-capacity-block": {
+            "Api": "run-instances",
+            "Instances": [{"InstanceType": "c5.xlarge"}],
+            "CapacityType": "capacity-block",
+            "Networking": SINGLE_SUBNET,
+            "CapacityReservationId": "cr-123456",
+        },
+        "fleet-capacity-block": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "CapacityType": "capacity-block",
+            "Networking": SINGLE_SUBNET,
+            "CapacityReservationId": "cr-234567",
+        },
+    },
+}
+
+LAUNCH_OVERRIDES = {}

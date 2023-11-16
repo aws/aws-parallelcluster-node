@@ -1,0 +1,33 @@
+{
+  "LaunchTemplateConfigs":[
+    {
+      "LaunchTemplateSpecification":{
+        "LaunchTemplateName":"hit-queue1-fleet-spot",
+        "Version":"$Latest"
+      },
+      "Overrides":[
+        {
+          "MaxPrice":"10",
+          "InstanceType":"t2.medium",
+          "SubnetId":"1234567"
+        },
+        {
+          "MaxPrice":"10",
+          "InstanceType":"t2.large",
+          "SubnetId":"1234567"
+        }
+      ]
+    }
+  ],
+  "SpotOptions":{
+    "AllocationStrategy":"capacity-optimized",
+    "SingleInstanceType":false,
+    "SingleAvailabilityZone":true,
+    "MinTargetCapacity":1
+  },
+  "TargetCapacitySpecification":{
+    "TotalTargetCapacity":5,
+    "DefaultTargetCapacityType":"spot"
+  },
+  "Type":"instant"
+}

@@ -9,20 +9,22 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import logging
 import os
 import time
 from configparser import ConfigParser
 from datetime import datetime, timezone
+from io import StringIO
 from logging.config import fileConfig
-from subprocess import CalledProcessError
-from tempfile import mkstemp
+
+# A nosec comment is appended to the following line in order to disable the B404 check.
+# In this file the input of the module subprocess is trusted.
+from subprocess import CalledProcessError  # nosec B404
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info
 from common.time_utils import seconds
-from common.utils import run_command, sleep_remaining_loop_time
+from common.utils import check_command_output, run_command, sleep_remaining_loop_time, validate_absolute_path
 from retrying import retry
 from slurm_plugin.common import (
     DEFAULT_COMMAND_TIMEOUT,
@@ -55,7 +57,6 @@ class ComputemgtdConfig:
     }
 
     def __init__(self, config_file_path):
-        _, self._local_config_file = mkstemp()
         self._get_config(config_file_path)
 
     def __repr__(self):
@@ -68,15 +69,17 @@ class ComputemgtdConfig:
         log.info("Reading %s", config_file_path)
         config = ConfigParser()
         try:
+            # Validation to sanitize the input argument and make it safe to use the function affected by B604
+            validate_absolute_path(config_file_path)
             # Use subprocess based method to copy shared file to local to prevent hanging when NFS is down
-            run_command(
-                f"cat {config_file_path} > {self._local_config_file}",
+            config_str = check_command_output(
+                f"cat {config_file_path}",
                 timeout=DEFAULT_COMMAND_TIMEOUT,
-                shell=True,  # nosec
+                shell=True,  # nosec B604
             )
-            config.read_file(open(self._local_config_file, "r"))
+            config.read_file(StringIO(config_str))
         except Exception:
-            log.error(f"Cannot read computemgtd configuration file: {config_file_path}")
+            log.error("Cannot read computemgtd configuration file: %s", config_file_path)
             raise
 
         # Get config settings
@@ -217,7 +220,9 @@ def _run_computemgtd(config_file):
 
 @retry(wait_fixed=seconds(LOOP_TIME))
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(module)s:%(funcName)s] %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s"
+    )
     log.info("Computemgtd Startup")
     try:
         clustermgtd_config_file = os.environ.get("CONFIG_FILE", COMPUTEMGTD_CONFIG_PATH)

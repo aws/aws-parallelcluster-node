@@ -20,16 +20,19 @@ from setuptools import find_packages, setup
 
 
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    path = os.path.join(os.path.dirname(__file__), fname)
+    with open(path, "r") as file:
+        return file.read()
 
 
 console_scripts = [
     "slurm_resume = slurm_plugin.resume:main",
     "slurm_suspend = slurm_plugin.suspend:main",
+    "slurm_fleet_status_manager = slurm_plugin.fleet_status_manager:main",
     "clustermgtd = slurm_plugin.clustermgtd:main",
     "computemgtd = slurm_plugin.computemgtd:main",
 ]
-version = "3.1.0b1"
+version = "3.9.0"
 requires = ["boto3>=1.7.55", "retrying>=1.3.3"]
 
 setup(
@@ -41,7 +44,7 @@ setup(
     license="Apache License 2.0",
     packages=find_packages("src", exclude=["tests"]),
     package_dir={"": "src"},
-    python_requires=">=3.5",
+    python_requires=">=3.9",
     install_requires=requires,
     entry_points=dict(console_scripts=console_scripts),
     zip_safe=False,

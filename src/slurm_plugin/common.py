@@ -11,11 +11,13 @@
 
 
 import functools
-import json
 import logging
+from concurrent.futures import Future
 from datetime import datetime
+from enum import Enum
+from typing import Callable, Optional, Protocol, TypedDict
 
-from common.utils import check_command_output, time_is_up
+from common.utils import check_command_output, time_is_up, validate_absolute_path
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,54 @@ logger = logging.getLogger(__name__)
 # YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM[:SS[.ffffff]]
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S.%f%z"
 DEFAULT_COMMAND_TIMEOUT = 30
+
+ComputeInstanceDescriptor = TypedDict(
+    "ComputeInstanceDescriptor",
+    {
+        "Name": str,
+        "InstanceId": str,
+    },
+)
+
+
+class ScalingStrategy(Enum):
+    ALL_OR_NOTHING = "all-or-nothing"
+    BEST_EFFORT = "best-effort"
+    GREEDY_ALL_OR_NOTHING = "greedy-all-or-nothing"
+
+    @classmethod
+    def _missing_(cls, strategy):
+        # Ref: https://docs.python.org/3/library/enum.html#enum.Enum._missing_
+        _strategy = str(strategy).lower()
+        for member in cls:
+            if member.value == _strategy:
+                return member
+        return cls.ALL_OR_NOTHING  # Default to all-or-nothing
+
+    def __str__(self):
+        return str(self.value)
+
+
+class TaskController(Protocol):
+    class TaskShutdownError(RuntimeError):
+        """Exception raised if shutdown has been requested."""
+
+        pass
+
+    def queue_task(self, task: Callable[[], None]) -> Optional[Future]:
+        """Queue a task and returns a Future for the task or None if the task could not be queued."""
+
+    def is_shutdown(self) -> bool:
+        """Is shutdown has been requested."""
+
+    def raise_if_shutdown(self) -> None:
+        """Raise an error if a shutdown has been requested."""
+
+    def wait_unless_shutdown(self, seconds_to_wait: float) -> None:
+        """Wait for seconds_to_wait or will raise an error if a shutdown has been requested."""
+
+    def shutdown(self, wait: bool, cancel_futures: bool) -> None:
+        """Request that all tasks be shutdown."""
 
 
 def log_exception(
@@ -36,15 +86,19 @@ def log_exception(
     def _log_exception(function):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
+            wrapped = None
             try:
-                return function(*args, **kwargs)
+                wrapped = function(*args, **kwargs)
             except catch_exception as e:
-                logger.log(log_level, "Failed when %s with exception %s", action_desc, e)
+                logger.log(log_level, "Failed when %s with exception %s, message: %s", action_desc, type(e).__name__, e)
                 if raise_on_error:
                     if exception_to_raise:
-                        raise exception_to_raise
+                        # preserve exception message if exception to raise is same of actual exception
+                        raise e if isinstance(e, exception_to_raise) else exception_to_raise
                     else:
                         raise
+
+            return wrapped
 
         return wrapper
 
@@ -59,34 +113,20 @@ def print_with_count(resource_list):
     return f"(x{len(resource_list)}) {str(resource_list)}"
 
 
-def read_json(file_path, default=None):
-    """Read json file into a dict."""
-    try:
-        with open(file_path) as mapping_file:
-            return json.load(mapping_file)
-    except Exception as e:
-        if default is None:
-            logger.error(
-                "Unable to read file from '%s'. Failed with exception: %s",
-                file_path,
-                e,
-            )
-            raise
-        else:
-            logger.info("Unable to read file '%s'. Using default: %s", file_path, default)
-            return default
-
-
 def get_clustermgtd_heartbeat(clustermgtd_heartbeat_file_path):
     """Get clustermgtd's last heartbeat."""
     # Use subprocess based method to read shared file to prevent hanging when NFS is down
     # Do not copy to local. Different users need to access the file, but file should be writable by root only
     # Only use last line of output to avoid taking unexpected output in stdout
+
+    # Validation to sanitize the input argument and make it safe to use the function affected by B604
+    validate_absolute_path(clustermgtd_heartbeat_file_path)
+
     heartbeat = (
         check_command_output(
             f"cat {clustermgtd_heartbeat_file_path}",
             timeout=DEFAULT_COMMAND_TIMEOUT,
-            shell=True,  # nosec
+            shell=True,  # nosec B604
         )
         .splitlines()[-1]
         .strip()

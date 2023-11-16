@@ -62,9 +62,8 @@ from slurm_plugin.slurm_resources import DynamicNode
 )
 def test_computemgtd_config(config_file, expected_attributes, test_datadir, mocker):
     mocker.patch("slurm_plugin.computemgtd.ComputemgtdConfig._read_nodename_from_file", return_value="some_nodename")
-    mocker.patch("slurm_plugin.computemgtd.run_command")
-    mocker.patch("slurm_plugin.computemgtd.open", return_value=open(test_datadir / config_file, "r"))
-    compute_config = ComputemgtdConfig("mocked_config_path")
+    mocker.patch("slurm_plugin.computemgtd.check_command_output", return_value=(test_datadir / config_file).read_text())
+    compute_config = ComputemgtdConfig("/mocked/config/path")
     for key in expected_attributes:
         assert_that(compute_config.__dict__.get(key)).is_equal_to(expected_attributes.get(key))
 

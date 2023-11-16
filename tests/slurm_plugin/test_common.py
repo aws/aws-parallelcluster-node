@@ -8,14 +8,13 @@
 # or in the "LICENSE.txt" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
-
-
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from assertpy import assert_that
-from common.utils import time_is_up
-from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
+from common.utils import read_json, time_is_up
+from slurm_plugin.common import TIMESTAMP_FORMAT, ScalingStrategy, get_clustermgtd_heartbeat
 
 
 @pytest.mark.parametrize(
@@ -51,6 +50,12 @@ from slurm_plugin.common import TIMESTAMP_FORMAT, get_clustermgtd_heartbeat
             90 * 60,
             False,
         ),
+        (
+            None,
+            datetime(2020, 1, 24, 23, 42, 12),
+            180,
+            True,
+        ),
     ],
 )
 def test_time_is_up(initial_time, current_time, grace_time, expected_result):
@@ -75,4 +80,43 @@ def test_get_clustermgtd_heartbeat(time, expected_parsed_time, mocker):
         "slurm_plugin.common.check_command_output",
         return_value=f"some_random_stdout\n{time.strftime(TIMESTAMP_FORMAT)}",
     )
-    assert_that(get_clustermgtd_heartbeat("some file path")).is_equal_to(expected_parsed_time)
+    assert_that(get_clustermgtd_heartbeat("/some/file/path")).is_equal_to(expected_parsed_time)
+
+
+@pytest.mark.parametrize(
+    "json_file, default_value, raises_exception, message_in_log",
+    [
+        ("faulty.json", None, True, "Failed with exception"),
+        ("faulty.json", {}, False, "due to an exception"),  # info message
+        ("standard.json", None, False, None),
+        ("non_existing.json", None, True, "Failed with exception"),
+        ("non_existing.json", {}, False, None),  # info message not displayed
+    ],
+)
+def test_read_json(test_datadir, caplog, json_file, default_value, raises_exception, message_in_log):
+    caplog.set_level(logging.INFO)
+    json_file_path = str(test_datadir.joinpath(json_file))
+    if raises_exception:
+        with pytest.raises((ValueError, FileNotFoundError)):
+            read_json(json_file_path, default_value)
+    else:
+        read_json(json_file_path, default_value)
+
+    if message_in_log:
+        assert_that(caplog.text).matches(message_in_log)
+    else:
+        assert_that(caplog.text).does_not_match("exception")
+
+
+@pytest.mark.parametrize(
+    "strategy_as_value, expected_strategy_enum",
+    [
+        ("best-effort", ScalingStrategy.BEST_EFFORT),
+        ("all-or-nothing", ScalingStrategy.ALL_OR_NOTHING),
+        ("", ScalingStrategy.ALL_OR_NOTHING),
+        ("invalid-strategy", ScalingStrategy.ALL_OR_NOTHING),
+    ],
+)
+def test_scaling_strategies_enum_from_value(strategy_as_value, expected_strategy_enum):
+    strategy_enum = ScalingStrategy(strategy_as_value)
+    assert_that(strategy_enum).is_equal_to(expected_strategy_enum)

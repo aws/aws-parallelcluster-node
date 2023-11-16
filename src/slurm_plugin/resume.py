@@ -19,17 +19,22 @@ from logging.config import fileConfig
 
 from botocore.config import Config
 from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
-from slurm_plugin.common import is_clustermgtd_heartbeat_valid, print_with_count, read_json
-from slurm_plugin.instance_manager import InstanceManager
+from common.utils import read_json
+from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
+from slurm_plugin.common import ScalingStrategy, is_clustermgtd_heartbeat_valid, print_with_count
+from slurm_plugin.instance_manager import InstanceManagerFactory
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
+event_logger = log.getChild("events")
 
 
 class SlurmResumeConfig:
     DEFAULTS = {
         "max_retry": 1,
-        "max_batch_size": 500,
+        "launch_max_batch_size": 500,
+        "assign_node_max_batch_size": 500,
+        "terminate_max_batch_size": 1000,
         "update_node_address": True,
         "clustermgtd_timeout": 300,
         "proxy": "NONE",
@@ -37,9 +42,11 @@ class SlurmResumeConfig:
         "hosted_zone": None,
         "dns_domain": None,
         "use_private_hostname": False,
-        "instance_type_mapping": "/opt/slurm/etc/pcluster/instance_name_type_mappings.json",
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
-        "all_or_nothing_batch": False,
+        "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
+        "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
+        "job_level_scaling": True,
+        "scaling_strategy": "all-or-nothing",
     }
 
     def __init__(self, config_file_path):
@@ -55,9 +62,10 @@ class SlurmResumeConfig:
 
         config = ConfigParser()
         try:
-            config.read_file(open(config_file_path, "r"))
+            with open(config_file_path, "r") as config_file:
+                config.read_file(config_file)
         except IOError:
-            log.error(f"Cannot read slurm cloud bursting scripts configuration file: {config_file_path}")
+            log.error("Cannot read slurm cloud bursting scripts configuration file: %s", config_file_path)
             raise
 
         self.region = config.get("slurm_resume", "region")
@@ -70,24 +78,34 @@ class SlurmResumeConfig:
         )
         self.head_node_private_ip = config.get("slurm_resume", "head_node_private_ip")
         self.head_node_hostname = config.get("slurm_resume", "head_node_hostname")
-        self.max_batch_size = config.getint(
-            "slurm_resume", "max_batch_size", fallback=self.DEFAULTS.get("max_batch_size")
+        self.launch_max_batch_size = config.getint(
+            "slurm_resume", "launch_max_batch_size", fallback=self.DEFAULTS.get("launch_max_batch_size")
+        )
+        self.assign_node_max_batch_size = config.getint(
+            "slurm_resume", "assign_node_max_batch_size", fallback=self.DEFAULTS.get("assign_node_max_batch_size")
+        )
+        self.terminate_max_batch_size = config.getint(
+            "slurm_resume", "terminate_max_batch_size", fallback=self.DEFAULTS.get("terminate_max_batch_size")
         )
         self.update_node_address = config.getboolean(
             "slurm_resume", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
         )
-        self.all_or_nothing_batch = config.getboolean(
-            "slurm_resume", "all_or_nothing_batch", fallback=self.DEFAULTS.get("all_or_nothing_batch")
+        self.scaling_strategy = config.get(
+            "slurm_resume", "scaling_strategy", fallback=self.DEFAULTS.get("scaling_strategy")
+        )  # TODO: Check if it's a valid scaling strategy before calling expensive downstream APIs
+        self.job_level_scaling = config.getboolean(
+            "slurm_resume", "job_level_scaling", fallback=self.DEFAULTS.get("job_level_scaling")
         )
-        instance_name_type_mapping_file = config.get(
-            "slurm_resume", "instance_type_mapping", fallback=self.DEFAULTS.get("instance_type_mapping")
+        fleet_config_file = config.get(
+            "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
         )
-        self.instance_name_type_mapping = read_json(instance_name_type_mapping_file)
-        # run_instances_overrides_file contains a json with the following format:
+        self.fleet_config = read_json(fleet_config_file)
+
+        # run_instances_overrides_file and create_fleet_overrides_file contain a json with the following format:
         # {
         #     "queue_name": {
         #         "compute_resource_name": {
-        #             "RunInstancesCallParam": "Value"
+        #             <arbitrary-json-with-boto3-api-params-to-override>
         #         },
         #         ...
         #     },
@@ -97,6 +115,11 @@ class SlurmResumeConfig:
             "slurm_resume", "run_instances_overrides", fallback=self.DEFAULTS.get("run_instances_overrides")
         )
         self.run_instances_overrides = read_json(run_instances_overrides_file, default={})
+        create_fleet_overrides_file = config.get(
+            "slurm_resume", "create_fleet_overrides", fallback=self.DEFAULTS.get("create_fleet_overrides")
+        )
+        self.create_fleet_overrides = read_json(create_fleet_overrides_file, default={})
+
         self.clustermgtd_timeout = config.getint(
             "slurm_resume",
             "clustermgtd_timeout",
@@ -112,11 +135,12 @@ class SlurmResumeConfig:
             self._boto3_config["proxies"] = {"https": proxy}
         self.boto3_config = Config(**self._boto3_config)
         self.logging_config = config.get("slurm_resume", "logging_config", fallback=self.DEFAULTS.get("logging_config"))
+        self.head_node_instance_id = config.get("slurm_resume", "instance_id", fallback="unknown")
 
-        log.info(self.__repr__())
+        log.debug(self.__repr__())
 
 
-def _handle_failed_nodes(node_list):
+def _handle_failed_nodes(node_list, reason="Failure when resuming nodes"):
     """
     Fall back mechanism to handle failure when launching instances.
 
@@ -130,14 +154,22 @@ def _handle_failed_nodes(node_list):
     To save time, should explicitly set nodes to DOWN in ResumeProgram so clustermgtd can maintain failed nodes.
     Clustermgtd will be responsible for running full DOWN -> POWER_DOWN process.
     """
-    try:
-        log.info("Setting following failed nodes into DOWN state: %s", print_with_count(node_list))
-        set_nodes_down(node_list, reason="Failure when resuming nodes")
-    except Exception as e:
-        log.error("Failed to place nodes %s into down with exception: %s", print_with_count(node_list), e)
+    if node_list:
+        try:
+            log.info(
+                "Setting following failed nodes into DOWN state %s with reason: %s", print_with_count(node_list), reason
+            )
+            set_nodes_down(node_list, reason=reason)
+        except Exception as e:
+            log.error(
+                "Failed to place nodes %s into DOWN for reason %s with exception: %s",
+                print_with_count(node_list),
+                reason,
+                e,
+            )
 
 
-def _resume(arg_nodes, resume_config):
+def _resume(arg_nodes, resume_config, slurm_resume):
     """Launch new EC2 nodes according to nodes requested by slurm."""
     # Check heartbeat
     current_time = datetime.now(tz=timezone.utc)
@@ -153,36 +185,58 @@ def _resume(arg_nodes, resume_config):
         _handle_failed_nodes(arg_nodes)
         return
     log.info("Launching EC2 instances for the following Slurm nodes: %s", arg_nodes)
-    node_list = [node.name for node in get_nodes_info(arg_nodes)]
-    log.debug("Retrieved nodelist: %s", node_list)
+    node_list = []
+    node_list_with_status = []
+    for node in get_nodes_info(arg_nodes):
+        node_list.append(node.name)
+        node_list_with_status.append((node.name, node.state_string))
+    log.info("Current state of Slurm nodes to resume: %s", node_list_with_status)
 
-    instance_manager = InstanceManager(
-        resume_config.region,
-        resume_config.cluster_name,
-        resume_config.boto3_config,
+    instance_manager = InstanceManagerFactory.get_manager(
+        region=resume_config.region,
+        cluster_name=resume_config.cluster_name,
+        boto3_config=resume_config.boto3_config,
         table_name=resume_config.dynamodb_table,
         hosted_zone=resume_config.hosted_zone,
         dns_domain=resume_config.dns_domain,
         use_private_hostname=resume_config.use_private_hostname,
         head_node_private_ip=resume_config.head_node_private_ip,
         head_node_hostname=resume_config.head_node_hostname,
-        instance_name_type_mapping=resume_config.instance_name_type_mapping,
+        fleet_config=resume_config.fleet_config,
         run_instances_overrides=resume_config.run_instances_overrides,
+        create_fleet_overrides=resume_config.create_fleet_overrides,
+        job_level_scaling=resume_config.job_level_scaling,
     )
-    instance_manager.add_instances_for_nodes(
+    instance_manager.add_instances(
+        slurm_resume=slurm_resume,
         node_list=node_list,
-        launch_batch_size=resume_config.max_batch_size,
+        launch_batch_size=resume_config.launch_max_batch_size,
+        assign_node_batch_size=resume_config.assign_node_max_batch_size,
+        terminate_batch_size=resume_config.terminate_max_batch_size,
         update_node_address=resume_config.update_node_address,
-        all_or_nothing_batch=resume_config.all_or_nothing_batch,
+        scaling_strategy=ScalingStrategy(resume_config.scaling_strategy),
     )
-    success_nodes = [node for node in node_list if node not in instance_manager.failed_nodes]
-    log.info("Successfully launched nodes %s", print_with_count(success_nodes))
-    if instance_manager.failed_nodes:
+    failed_nodes = set().union(*instance_manager.failed_nodes.values())
+    success_nodes = [node for node in node_list if node not in failed_nodes]
+    if success_nodes:
+        log.info("Successfully launched nodes %s", print_with_count(success_nodes))
+
+    if failed_nodes:
         log.error(
-            "Failed to launch following nodes, setting nodes to down: %s",
-            print_with_count(instance_manager.failed_nodes),
+            "Failed to launch following nodes, setting nodes to DOWN: %s",
+            print_with_count(failed_nodes),
         )
-        _handle_failed_nodes(instance_manager.failed_nodes)
+        for error_code, node_list in instance_manager.failed_nodes.items():
+            _handle_failed_nodes(node_list, reason=f"(Code:{error_code})Failure when resuming nodes")
+
+        event_publisher = ClusterEventPublisher.create_with_default_publisher(
+            event_logger,
+            resume_config.cluster_name,
+            "HeadNode",
+            "slurm-resume",
+            resume_config.head_node_instance_id,
+        )
+        event_publisher.publish_node_launch_events(instance_manager.failed_nodes)
 
 
 def main():
@@ -190,7 +244,7 @@ def main():
     logging.basicConfig(
         filename=default_log_file,
         level=logging.INFO,
-        format="%(asctime)s - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
+        format="%(asctime)s - %(process)d - [%(name)s:%(funcName)s] - %(levelname)s - %(message)s",
     )
     log.info("ResumeProgram startup.")
     parser = argparse.ArgumentParser()
@@ -210,11 +264,19 @@ def main():
                 e,
             )
         log.info("ResumeProgram config: %s", resume_config)
-        _resume(args.nodes, resume_config)
+
+        _resume(args.nodes, resume_config, _get_slurm_resume())
         log.info("ResumeProgram finished.")
     except Exception as e:
         log.exception("Encountered exception when requesting instances for %s: %s", args.nodes, e)
         _handle_failed_nodes(args.nodes)
+
+
+def _get_slurm_resume():
+    slurm_resume = read_json(os.environ.get("SLURM_RESUME_FILE"), default={})
+    log_level = logging.INFO if slurm_resume else logging.ERROR
+    log.log(log_level, "Slurm Resume File content: %s", slurm_resume)
+    return slurm_resume
 
 
 if __name__ == "__main__":

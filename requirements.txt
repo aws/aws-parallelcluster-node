@@ -1,2 +1,2 @@
 boto3>=1.7.55
-retrying>=1.3.3
+retrying~=1.3

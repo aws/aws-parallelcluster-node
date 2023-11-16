@@ -26,32 +26,25 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         name:
-          - Python 3.6 Tests
-          - Python 3.7 Tests
-          - Python 3.8 Tests
           - Python 3.9 Tests
+          - Python 3.10 Tests
           - Python 3.9 Tests Coverage
           - Code Checks
         include:
-          - name: Python 3.6 Tests
-            python: 3.6
-            toxenv: py36-nocov
-          - name: Python 3.7 Tests
-            python: 3.7
-            toxenv: py37-nocov
-          - name: Python 3.8 Tests
-            python: 3.8
-            toxenv: py38-nocov
           - name: Python 3.9 Tests
             python: 3.9
             toxdir: cli
             toxenv: py39-nocov
+          - name: Python 3.10 Tests
+            python: '3.10'
+            toxdir: cli
+            toxenv: py310-nocov
           - name: Python 3.9 Tests Coverage
             python: 3.9
             toxdir: cli
             toxenv: py39-cov
           - name: Code Checks
-            python: 3.6
+            python: 3.9
             toxdir: cli
             toxenv: code-linters
 
@@ -65,3 +58,19 @@ jobs:
         run: pip install tox
       - name: Run Tox
         run: tox -e ${{ matrix.toxenv }}
+      - name: Upload code coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        if: ${{ endsWith(matrix.toxenv, '-cov') }}
+        with:
+          files: coverage.xml
+          flags: unittests
+          verbose: true
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          severity: error

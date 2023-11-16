@@ -1,0 +1,33 @@
+{
+  "LaunchTemplateConfigs":[
+    {
+      "LaunchTemplateSpecification":{
+        "LaunchTemplateName":"hit-queue-cb-fleet-capacity-block",
+        "Version":"$Latest"
+      },
+      "Overrides":[
+        {
+          "InstanceType":"t2.medium",
+          "SubnetId":"1234567"
+        },
+        {
+          "InstanceType":"t2.large",
+          "SubnetId":"1234567"
+        }
+      ]
+    }
+  ],
+  "OnDemandOptions":{
+    "SingleInstanceType":false,
+    "SingleAvailabilityZone":true,
+    "MinTargetCapacity":1,
+    "CapacityReservationOptions":{
+      "UsageStrategy":"use-capacity-reservations-first"
+    }
+  },
+  "TargetCapacitySpecification":{
+    "TotalTargetCapacity":5,
+    "DefaultTargetCapacityType":"capacity-block"
+  },
+  "Type":"instant"
+}

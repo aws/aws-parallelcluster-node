@@ -3,13 +3,169 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-3.x.x
+3.8.0
 ------
+
+**ENHANCEMENTS**
+- Add support for EC2 Capacity Blocks for ML.
+
+**CHANGES**
+- Perform job-level scaling by default for all jobs, using information in the `SLURM_RESUME_FILE`. Job-level scaling
+  can be disabled using new `job_level_scaling` resume configuration parameter.
+- Remove `all_or_nothing_batch` resume configuration parameter, in favor of the new `scaling_strategy` that can be set
+  using `Scheduling/ScalingStrategy` cluster configuration parameter.
+
+**BUG FIXES**
+
+3.7.2
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.7.1
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.7.0
+------
+
+**ENHANCEMENTS**
+
+**CHANGES**
+- Perform default job-level scaling for exclusive jobs, by reading job information from `SLURM_RESUME_FILE`.
+- Make `aws-parallelcluster-node` daemons handle only ParallelCluster-managed Slurm partitions.
+
+**BUG FIXES**
+- Fix an issue that was causing misalignment of compute nodes DNS name on instances with multiple network interfaces,
+  when using `SlurmSettings/Dns/UseEc2Hostnames` equals to `True`.
+
+3.6.1
+------
+
+**CHANGES**
+- Avoid duplication of nodes seen by ClusterManager if compute nodes are added to multiple Slurm partitions.
+
+**BUG FIXES**
+- Fix fast insufficient capacity fail-over logic when using Multiple Instance Types and no instances are returned
+
+3.6.0
+------
+
+**CHANGES**
+- Consider dynamic nodes failing Slurm registration, identified by `INVALID_REG` flag, as bootstrap failure towards the Slurm protected mode.
+  Static nodes failing the Slurm registration are already treated as a bootstrap failure after the `node_replacement_timeout`.
+
+**BUG FIXES**
+- Fix an issue that was causing misalignment of compute nodes IP on instances with multiple network interfaces.
+
+3.5.1
+------
+
+**BUG FIXES**
+- Fix for compute_console_output log file being truncated at every clustermgtd iteration.
+
+3.5.0
+------
+
+**ENHANCEMENTS**
+- Add logging of compute node console output to CloudWatch from head node on compute node bootstrap failure.
+- Add validators to prevent malicious string injection while calling the subprocess module.
+
+**BUG FIXES**
+- Fix an issue in clustermgtd that caused compute nodes rebooted via Slurm to be replaced if the EC2 instance status checks fail.
+
+3.4.1
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.4.0
+------
+
+**ENHANCEMENTS**
+- Add support for launching nodes across multiple availability zones to increase capacity availability.
+
+
+**CHANGES**
+- Do not consider dynamic nodes in IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING as unhealthy anymore.
+  - The root cause has been fixed in Slurm 22.05.6.
+
+3.3.0
+------
+
+**ENHANCEMENTS**
+- Add support for EC2 Fleet as an alternative instance provisioning mechanism that allows greater flexibility in terms of instance diversification and launch strategy.
+
+**CHANGES**
+- Do not replace DRAIN nodes when nodes are in COMPLETING state as Epilog may be still running.
+- Consider all dynamic nodes in IDLE+CLOUD+COMPLETING+POWER_DOWN+NOT_RESPONDING as unhealthy.
+
+3.2.1
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.2.0
+------
+
+**ENHANCEMENTS**
+- Temporarily disable compute resource when a node launch fails due to insufficient capacity.
+- Add support for rebooting compute nodes via Slurm.
+
+**CHANGES**
+- Drop support for python 3.6.
+- Do not replace dynamic node in POWER_DOWN as jobs may be still running.
+- Manage static nodes in POWERING_DOWN.
+- Automatic disabling of the compute fleet when the configuration parameter `Scheduling/SlurmQueues/ComputeResources/SpotPrice`
+  is lower than the minimum required Spot request fulfillment price.
+
+**BUG FIXES**
+- Handle corner case in the scaling logic when instance is just launched and the describe instances API doesn't report yet all the EC2 info.
+- Fix file handle leak in `computemgtd`.
+
+3.1.5
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.1.4
+------
+
+**BUG FIXES**
+- Reset node address when setting slurm unhealthy static node to down to avoid treating static node failed with insufficient capacity as bootstrap failure node.
+
+3.1.3
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.1.2
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.1.1
+------
+
 **ENHANCEMENTS**
 - Add possibility to override EC2 RunInstances parameters for instances launched in a Slurm cluster.
 
 **CHANGES**
 - Update Slurm plugin to support version 21.08.
+
+3.0.3
+------
+
+**CHANGES**
+- There were no changes for this version.
 
 3.0.2
 ------
