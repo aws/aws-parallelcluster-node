@@ -12,10 +12,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Perform job-level scaling by default for all jobs, using information in the `SLURM_RESUME_FILE`. Job-level scaling
   can be disabled using new `job_level_scaling` resume configuration parameter.
-- Remove `all_or_nothing_batch` resume configuration parameter, in favor of the new `scaling_strategy` that can be set
-  using `Scheduling/ScalingStrategy` cluster configuration parameter.
-
-**BUG FIXES**
+- Remove support of `all_or_nothing_batch` configuration parameter in the Slurm resume program, in favor of the new `Scheduling/ScalingStrategy` cluster configuration.
 
 3.7.2
 ------
