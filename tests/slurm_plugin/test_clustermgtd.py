@@ -746,12 +746,7 @@ def test_handle_health_check(
     if health_check_type == ClusterManager.HealthCheckTypes.scheduled_event:
         mock_scheduled_health_check.assert_has_calls([call(), call()])
     else:
-        mock_ec2_health_check.assert_has_calls(
-            [
-                call(mocker_current_time, 10),
-                call(mocker_current_time, 10),
-            ]
-        ),
+        mock_ec2_health_check.assert_has_calls([call(mocker_current_time, 10), call(mocker_current_time, 10)])
     if expected_failed_nodes:
         drain_node_mock.assert_called_with(expected_failed_nodes, reason=f"Node failing {health_check_type}")
     else:
