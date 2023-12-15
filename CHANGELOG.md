@@ -3,6 +3,15 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.9.0
+------
+
+**ENHANCEMENTS**
+
+**CHANGES**
+
+**BUG FIXES**
+
 3.8.0
 ------
 
@@ -12,10 +21,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Perform job-level scaling by default for all jobs, using information in the `SLURM_RESUME_FILE`. Job-level scaling
   can be disabled using new `job_level_scaling` resume configuration parameter.
-- Remove `all_or_nothing_batch` resume configuration parameter, in favor of the new `scaling_strategy` that can be set
-  using `Scheduling/ScalingStrategy` cluster configuration parameter.
-
-**BUG FIXES**
+- Remove support of `all_or_nothing_batch` configuration parameter in the Slurm resume program, in favor of the new `Scheduling/ScalingStrategy` cluster configuration.
 
 3.7.2
 ------
@@ -31,8 +37,6 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 3.7.0
 ------
-
-**ENHANCEMENTS**
 
 **CHANGES**
 - Perform default job-level scaling for exclusive jobs, by reading job information from `SLURM_RESUME_FILE`.
@@ -511,7 +515,7 @@ Bug Fixes:
 
 Bug fixes/minor improvements:
 
-  - Changed scaling functionality to scale up and scale down faster.
+- Changed scaling functionality to scale up and scale down faster.
 
 
 1.5.4
@@ -519,7 +523,7 @@ Bug fixes/minor improvements:
 
 Bug fixes/minor improvements:
 
-  - Upgraded Boto2 to Boto3 package.
+- Upgraded Boto2 to Boto3 package.
 
 
 1.5.2
@@ -527,12 +531,12 @@ Bug fixes/minor improvements:
 
 Bug fixes/minor improvements:
 
-  - Fixed Slurm behavior to add CPU slots so multiple jobs can be scheduled on a single node, this also sets CPU as a consumable resource
+- Fixed Slurm behavior to add CPU slots so multiple jobs can be scheduled on a single node, this also sets CPU as a consumable resource
 
 1.5.1
 -----
 
 Bug fixes/minor improvements:
 
-  - Fixed Torque behavior when scaling up from an empty cluster
-  - Avoid Torque server restart when adding and removing compute nodes
+- Fixed Torque behavior when scaling up from an empty cluster
+- Avoid Torque server restart when adding and removing compute nodes
