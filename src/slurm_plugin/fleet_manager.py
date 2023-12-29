@@ -61,7 +61,7 @@ class EC2Instance:
                 instance_info["LaunchTime"],
             )
         except KeyError as e:
-            logger.error("Unable to retrieve EC2 instance info: %s", e)
+            logger.warning("Unable to retrieve EC2 instance info: %s", e)
             raise e
 
 
