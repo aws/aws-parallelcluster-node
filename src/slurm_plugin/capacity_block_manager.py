@@ -349,9 +349,9 @@ class CapacityBlockManager:
         capacity_block_ids = list(capacity_blocks.keys())
         logger.info("Retrieving Capacity Blocks information from EC2 for %s", ",".join(capacity_block_ids))
         try:
-            capacity_block_reservations_info: List[
-                CapacityReservationInfo
-            ] = self.ec2_client.describe_capacity_reservations(capacity_block_ids)
+            capacity_block_reservations_info: List[CapacityReservationInfo] = (
+                self.ec2_client.describe_capacity_reservations(capacity_block_ids)
+            )
 
             for capacity_block_reservation_info in capacity_block_reservations_info:
                 capacity_block_id = capacity_block_reservation_info.capacity_reservation_id()
