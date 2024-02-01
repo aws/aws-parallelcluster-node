@@ -101,7 +101,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
         "job_level_scaling",
     ),
     [
-        # node list scaling + all_or_nothing_batch without ice error
+        # node list scaling + all_or_nothing_batch without ice error (two launches without any node assignation)
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -167,27 +167,12 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 client_error("RequestLimitExceeded"),
             ],
             {"RequestLimitExceeded": {"queue1-st-c5xlarge-2"}},
-            [
-                call(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
-                    nodehostnames=None,
-                )
-            ],
-            dict(
-                zip(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                    ],
-                )
-            ),
+            [],
+            dict(),
             True,
             False,
         ),
-        # node list scaling + all_or_nothing_batch with ice error
+        # node list scaling + all_or_nothing_batch with ice error (two launches without any node assignation)
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -253,27 +238,12 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 client_error("InsufficientInstanceCapacity"),
             ],
             {"InsufficientInstanceCapacity": {"queue1-st-c5xlarge-2"}},
-            [
-                call(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    nodeaddrs=["ip.1.0.0.1", "ip.1.0.0.2", "ip.1.0.0.3"],
-                    nodehostnames=None,
-                )
-            ],
-            dict(
-                zip(
-                    ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"],
-                    [
-                        EC2Instance("i-11111", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-22222", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                        EC2Instance("i-33333", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                    ],
-                )
-            ),
+            [],
+            dict(),
             True,
             False,
         ),
-        # node list scaling + best_effort without ice error
+        # node list scaling + best_effort without ice error (two launches with 1 node assignation)
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -307,8 +277,8 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 client_error("ServiceUnavailable"),
             ],
             {
-                "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
                 "ServiceUnavailable": {"queue1-st-c5xlarge-2"},
+                "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
             },
             [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
             dict(
@@ -322,7 +292,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
             True,
             False,
         ),
-        # node list scaling + best_effort wit ice error
+        # node list scaling + best_effort wit ice error (two launches with one node assignation)
         (
             [
                 SimpleNamespace(name="queue1-dy-c5xlarge-1", state_string="ALLOCATED+CLOUD+NOT_RESPONDING+POWERING_UP"),
@@ -439,7 +409,7 @@ def test_resume_launch(
     )
     # patch EC2 calls
     mock_terminate_instances = mocker.patch.object(
-        slurm_plugin.instance_manager.JobLevelScalingInstanceManager,
+        slurm_plugin.instance_manager.InstanceManager,
         "_terminate_unassigned_launched_instances",
         autospec=True,
     )
@@ -469,20 +439,14 @@ def test_resume_launch(
                     call(nodeset, reason=f"(Code:{error_code})Failure when resuming nodes")
                 )
             mock_handle_failed_nodes.assert_has_calls(mock_handle_failed_nodes_calls)
-            if job_level_scaling:
-                mock_terminate_instances.assert_called_with(ANY, mock_resume_config.terminate_max_batch_size)
-            else:
-                mock_terminate_instances.assert_not_called()
+            mock_terminate_instances.assert_called_with(ANY, mock_resume_config.terminate_max_batch_size)
         if expected_update_node_calls:
             mock_update_nodes.assert_has_calls(expected_update_node_calls)
         if expected_assigned_nodes:
             mock_store_hostname.assert_called_with(ANY, expected_assigned_nodes)
-            if job_level_scaling:
-                mock_update_dns.assert_called_with(
-                    ANY, expected_assigned_nodes, update_dns_batch_size=mock_resume_config.assign_node_max_batch_size
-                )
-            else:
-                mock_update_dns.assert_called_with(ANY, expected_assigned_nodes)
+            mock_update_dns.assert_called_with(
+                ANY, expected_assigned_nodes, update_dns_batch_size=mock_resume_config.assign_node_max_batch_size
+            )
 
 
 @pytest.mark.parametrize(

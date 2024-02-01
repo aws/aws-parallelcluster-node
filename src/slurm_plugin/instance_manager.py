@@ -15,7 +15,6 @@ import logging
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
 import subprocess  # nosec B404
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Dict, Iterable, List
 
@@ -63,56 +62,7 @@ class NodeAddrUpdateError(Exception):
     """Raised when error occurs while updating NodeAddrs in Slurm node."""
 
 
-class InstanceManagerFactory:
-    @staticmethod
-    def get_manager(
-        region: str,
-        cluster_name: str,
-        boto3_config: Config,
-        table_name: str = None,
-        hosted_zone: str = None,
-        dns_domain: str = None,
-        use_private_hostname: bool = False,
-        head_node_private_ip: str = None,
-        head_node_hostname: str = None,
-        fleet_config: Dict[str, any] = None,
-        run_instances_overrides: dict = None,
-        create_fleet_overrides: dict = None,
-        job_level_scaling: bool = False,
-    ):
-        if job_level_scaling:
-            return JobLevelScalingInstanceManager(
-                region=region,
-                cluster_name=cluster_name,
-                boto3_config=boto3_config,
-                table_name=table_name,
-                hosted_zone=hosted_zone,
-                dns_domain=dns_domain,
-                use_private_hostname=use_private_hostname,
-                head_node_private_ip=head_node_private_ip,
-                head_node_hostname=head_node_hostname,
-                fleet_config=fleet_config,
-                run_instances_overrides=run_instances_overrides,
-                create_fleet_overrides=create_fleet_overrides,
-            )
-        else:
-            return NodeListScalingInstanceManager(
-                region=region,
-                cluster_name=cluster_name,
-                boto3_config=boto3_config,
-                table_name=table_name,
-                hosted_zone=hosted_zone,
-                dns_domain=dns_domain,
-                use_private_hostname=use_private_hostname,
-                head_node_private_ip=head_node_private_ip,
-                head_node_hostname=head_node_hostname,
-                fleet_config=fleet_config,
-                run_instances_overrides=run_instances_overrides,
-                create_fleet_overrides=create_fleet_overrides,
-            )
-
-
-class InstanceManager(ABC):
+class InstanceManager:
     """
     InstanceManager class.
 
@@ -134,6 +84,7 @@ class InstanceManager(ABC):
         fleet_config: Dict[str, any] = None,
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
+        job_level_scaling: bool = False,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -154,23 +105,12 @@ class InstanceManager(ABC):
             resource_name, region_name=region, config=boto3_config
         )
         self.nodes_assigned_to_instances = {}
+        self.unused_launched_instances = {}
+        self.job_level_scaling = job_level_scaling
 
     def _clear_failed_nodes(self):
         """Clear and reset failed nodes list."""
         self.failed_nodes = {}
-
-    @abstractmethod
-    def add_instances(
-        self,
-        node_list: List[str],
-        launch_batch_size: int,
-        update_node_address: bool = True,
-        scaling_strategy: ScalingStrategy = ScalingStrategy.BEST_EFFORT,
-        slurm_resume: Dict[str, any] = None,
-        assign_node_batch_size: int = None,
-        terminate_batch_size: int = None,
-    ):
-        """Add EC2 instances to Slurm nodes."""
 
     @log_exception(
         logger, "saving assigned hostnames in DynamoDB", raise_on_error=True, exception_to_raise=HostnameTableStoreError
@@ -472,42 +412,13 @@ class InstanceManager(ABC):
             }
         }
 
-
-class JobLevelScalingInstanceManager(InstanceManager):
-    def __init__(
-        self,
-        region: str,
-        cluster_name: str,
-        boto3_config: Config,
-        table_name: str = None,
-        hosted_zone: str = None,
-        dns_domain: str = None,
-        use_private_hostname: bool = False,
-        head_node_private_ip: str = None,
-        head_node_hostname: str = None,
-        fleet_config: Dict[str, any] = None,
-        run_instances_overrides: dict = None,
-        create_fleet_overrides: dict = None,
-    ):
-        super().__init__(
-            region=region,
-            cluster_name=cluster_name,
-            boto3_config=boto3_config,
-            table_name=table_name,
-            hosted_zone=hosted_zone,
-            dns_domain=dns_domain,
-            use_private_hostname=use_private_hostname,
-            head_node_private_ip=head_node_private_ip,
-            head_node_hostname=head_node_hostname,
-            fleet_config=fleet_config,
-            run_instances_overrides=run_instances_overrides,
-            create_fleet_overrides=create_fleet_overrides,
-        )
-        self.unused_launched_instances = {}
-
     def _clear_unused_launched_instances(self):
         """Clear and reset unused launched instances list."""
         self.unused_launched_instances = {}
+
+    def _clear_nodes_assigned_to_instances(self):
+        """Clear and reset nodes assigned to instances list."""
+        self.nodes_assigned_to_instances = {}
 
     def _update_dict(self, target_dict: dict, update: dict) -> dict:
         logger.debug("Updating target dict (%s) with update (%s)", target_dict, update)
@@ -538,24 +449,43 @@ class JobLevelScalingInstanceManager(InstanceManager):
         self._clear_failed_nodes()
         # Reset unused instances pool
         self._clear_unused_launched_instances()
+        # Reset nodes assigned to instances pool
+        self._clear_nodes_assigned_to_instances()
 
-        if slurm_resume:
-            logger.debug("Performing job level scaling using Slurm resume fle")
-            self._add_instances_for_resume_file(
-                slurm_resume=slurm_resume,
-                node_list=node_list,
-                launch_batch_size=launch_batch_size,
-                assign_node_batch_size=assign_node_batch_size,
-                update_node_address=update_node_address,
-                scaling_strategy=scaling_strategy,
-            )
+        if self.job_level_scaling:
+            if slurm_resume:
+                logger.debug("Performing job level scaling using Slurm resume file")
+                self._add_instances_for_resume_file(
+                    slurm_resume=slurm_resume,
+                    node_list=node_list,
+                    launch_batch_size=launch_batch_size,
+                    assign_node_batch_size=assign_node_batch_size,
+                    update_node_address=update_node_address,
+                    scaling_strategy=scaling_strategy,
+                )
+            else:
+                logger.error(
+                    "Not possible to perform job level scaling because Slurm resume file content is empty. "
+                    "No scaling actions will be taken."
+                )
         else:
-            logger.error(
-                "Not possible to perform job level scaling because Slurm resume file content is empty. "
-                "No scaling actions will be taken."
-            )
+            if node_list:
+                logger.debug("Performing node list scaling using Slurm node resume list")
+                self._add_instances_for_nodes(
+                    node_list=node_list,
+                    launch_batch_size=launch_batch_size,
+                    assign_node_batch_size=assign_node_batch_size,
+                    update_node_address=update_node_address,
+                    scaling_strategy=scaling_strategy,
+                )
+            else:
+                logger.error(
+                    "Not possible to perform node list scaling because Slurm node resume list is empty. "
+                    "No scaling actions will be taken."
+                )
 
         self._terminate_unassigned_launched_instances(terminate_batch_size)
+        self._clear_nodes_assigned_to_instances()
 
     def _scaling_for_jobs(
         self,
@@ -1158,169 +1088,3 @@ class JobLevelScalingInstanceManager(InstanceManager):
                 print_with_count(launched_instances),
             )
             raise NodeAddrUpdateError
-
-
-class NodeListScalingInstanceManager(InstanceManager):
-    def __init__(
-        self,
-        region: str,
-        cluster_name: str,
-        boto3_config: Config,
-        table_name: str = None,
-        hosted_zone: str = None,
-        dns_domain: str = None,
-        use_private_hostname: bool = False,
-        head_node_private_ip: str = None,
-        head_node_hostname: str = None,
-        fleet_config: Dict[str, any] = None,
-        run_instances_overrides: dict = None,
-        create_fleet_overrides: dict = None,
-    ):
-        super().__init__(
-            region=region,
-            cluster_name=cluster_name,
-            boto3_config=boto3_config,
-            table_name=table_name,
-            hosted_zone=hosted_zone,
-            dns_domain=dns_domain,
-            use_private_hostname=use_private_hostname,
-            head_node_private_ip=head_node_private_ip,
-            head_node_hostname=head_node_hostname,
-            fleet_config=fleet_config,
-            run_instances_overrides=run_instances_overrides,
-            create_fleet_overrides=create_fleet_overrides,
-        )
-
-    def add_instances(
-        self,
-        node_list: List[str],
-        launch_batch_size: int,
-        update_node_address: bool = True,
-        # Default to BEST_EFFORT since clustermgtd is not yet adapted for Job Level Scaling
-        scaling_strategy: ScalingStrategy = ScalingStrategy.BEST_EFFORT,
-        slurm_resume: Dict[str, any] = None,
-        assign_node_batch_size: int = None,
-        terminate_batch_size: int = None,
-    ):
-        """Add EC2 instances to Slurm nodes."""
-        # Reset failed_nodes
-        self._clear_failed_nodes()
-
-        logger.debug("Node Scaling using Slurm Node Resume List")
-        self._add_instances_for_nodes(
-            node_list=node_list,
-            launch_batch_size=launch_batch_size,
-            update_node_address=update_node_address,
-            scaling_strategy=scaling_strategy,
-        )
-
-    def _add_instances_for_nodes(
-        self,
-        node_list: List[str],
-        launch_batch_size: int,
-        update_node_address: bool = True,
-        scaling_strategy: ScalingStrategy = ScalingStrategy.BEST_EFFORT,
-    ):
-        """Launch requested EC2 instances for nodes."""
-        # At fleet management level, the scaling strategies can be grouped based on the actual
-        # launch behaviour i.e. all-or-nothing or best-effort
-        all_or_nothing_batch = scaling_strategy in [ScalingStrategy.ALL_OR_NOTHING]
-
-        nodes_to_launch = self._parse_nodes_resume_list(node_list)
-        for queue, compute_resources in nodes_to_launch.items():
-            for compute_resource, slurm_node_list in compute_resources.items():
-                logger.info("Launching instances for Slurm nodes %s", print_with_count(slurm_node_list))
-
-                # each compute resource can be configured to use create_fleet or run_instances
-                fleet_manager = FleetManagerFactory.get_manager(
-                    self._cluster_name,
-                    self._region,
-                    self._boto3_config,
-                    self._fleet_config,
-                    queue,
-                    compute_resource,
-                    all_or_nothing_batch,
-                    self._run_instances_overrides,
-                    self._create_fleet_overrides,
-                )
-                for batch_nodes in grouper(slurm_node_list, launch_batch_size):
-                    try:
-                        launched_instances = fleet_manager.launch_ec2_instances(len(batch_nodes))
-
-                        if update_node_address:
-                            assigned_nodes = self._update_slurm_node_addrs_and_failed_nodes(
-                                list(batch_nodes), launched_instances
-                            )
-                            try:
-                                self._store_assigned_hostnames(assigned_nodes)
-                                self._update_dns_hostnames(assigned_nodes)
-                            except (HostnameTableStoreError, HostnameDnsStoreError):
-                                self._update_failed_nodes(set(assigned_nodes.keys()))
-                    except ClientError as e:
-                        logger.error(
-                            "Encountered exception when launching instances for nodes %s: %s",
-                            print_with_count(batch_nodes),
-                            e,
-                        )
-                        error_code = e.response.get("Error", {}).get("Code")
-                        self._update_failed_nodes(set(batch_nodes), error_code)
-                    except Exception as e:
-                        logger.error(
-                            "Encountered exception when launching instances for nodes %s: %s",
-                            print_with_count(batch_nodes),
-                            e,
-                        )
-                        self._update_failed_nodes(set(batch_nodes))
-
-    def _update_slurm_node_addrs_and_failed_nodes(self, slurm_nodes: List[str], launched_instances: List[EC2Instance]):
-        """Update node information in slurm with info from launched EC2 instance."""
-        try:
-            # There could be fewer launched instances than nodes requested to be launched if best-effort scaling
-            # Group nodes into successfully launched and failed to launch based on number of launched instances
-            # fmt: off
-            launched_nodes = slurm_nodes[:len(launched_instances)]
-            fail_launch_nodes = slurm_nodes[len(launched_instances):]
-            # fmt: on
-            if launched_nodes:
-                # When using a cluster DNS domain we don't need to pass nodehostnames
-                # because they are equal to node names.
-                # It is possible to force the use of private hostnames by setting
-                # use_private_hostname = "true" as extra json parameter
-                node_hostnames = (
-                    None if not self._use_private_hostname else [instance.hostname for instance in launched_instances]
-                )
-                update_nodes(
-                    launched_nodes,
-                    nodeaddrs=[instance.private_ip for instance in launched_instances],
-                    nodehostnames=node_hostnames,
-                )
-                logger.info(
-                    "Nodes are now configured with instances %s",
-                    print_with_count(zip(launched_nodes, launched_instances)),
-                )
-            if fail_launch_nodes:
-                if launched_nodes:
-                    logger.warning(
-                        "Failed to launch instances due to limited EC2 capacity for following nodes: %s",
-                        print_with_count(fail_launch_nodes),
-                    )
-                    self._update_failed_nodes(set(fail_launch_nodes), "LimitedInstanceCapacity")
-                else:
-                    # EC2 Fleet doens't trigger any exception in case of ICEs and may return more than one error
-                    # for each request. So when no instances were launched we force the reason to ICE
-                    logger.error(
-                        "Failed to launch instances due to limited EC2 capacity for following nodes: %s",
-                        print_with_count(fail_launch_nodes),
-                    )
-                    self._update_failed_nodes(set(fail_launch_nodes), "InsufficientInstanceCapacity")
-
-            return dict(zip(launched_nodes, launched_instances))
-
-        except subprocess.CalledProcessError:
-            logger.error(
-                "Encountered error when updating nodes %s with instances %s",
-                print_with_count(slurm_nodes),
-                print_with_count(launched_instances),
-            )
-            self._update_failed_nodes(set(slurm_nodes))
-            return {}
