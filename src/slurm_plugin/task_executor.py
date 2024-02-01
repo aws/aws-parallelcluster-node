@@ -78,7 +78,9 @@ class TaskExecutor:
 
             # `cancel_futures` parameter does not exist in python pre-3.9
             can_cancel = "cancel_futures" in inspect.getfullargspec(self._executor_pool.shutdown).kwonlyargs
-            self._executor_pool.shutdown(
-                wait=wait, cancel_futures=cancel_futures
-            ) if can_cancel else self._executor_pool.shutdown(wait=False)
+            (
+                self._executor_pool.shutdown(wait=wait, cancel_futures=cancel_futures)
+                if can_cancel
+                else self._executor_pool.shutdown(wait=False)
+            )
             self._executor_pool = None

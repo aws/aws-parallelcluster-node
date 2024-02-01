@@ -757,9 +757,9 @@ class ClusterEventPublisher:
                 "queue-name": node.queue_name,
                 "compute-resource": node.compute_resource_name,
                 "last-busy-time": node.lastbusytime.isoformat(timespec="milliseconds") if node.lastbusytime else None,
-                "slurm-started-time": node.slurmdstarttime.isoformat(timespec="milliseconds")
-                if node.slurmdstarttime
-                else None,
+                "slurm-started-time": (
+                    node.slurmdstarttime.isoformat(timespec="milliseconds") if node.slurmdstarttime else None
+                ),
             }
             if node
             else None
@@ -772,9 +772,11 @@ class ClusterEventPublisher:
                 "id": instance.id,
                 "private-ip": instance.private_ip,
                 "hostname": instance.hostname,
-                "launch-time": instance.launch_time.isoformat(timespec="milliseconds")
-                if isinstance(instance.launch_time, datetime)
-                else str(instance.launch_time),
+                "launch-time": (
+                    instance.launch_time.isoformat(timespec="milliseconds")
+                    if isinstance(instance.launch_time, datetime)
+                    else str(instance.launch_time)
+                ),
             }
             if instance
             else None

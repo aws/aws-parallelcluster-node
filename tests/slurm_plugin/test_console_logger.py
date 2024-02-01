@@ -119,9 +119,11 @@ def test_get_console_output_from_nodes(compute_instances):
         )
         ec2_stub.assert_no_pending_responses()
 
-    assert_that(task_controller.tasks_queued).is_equal_to(1) if len(compute_instances) > 0 else assert_that(
-        task_controller.tasks_queued
-    ).is_zero()
+    (
+        assert_that(task_controller.tasks_queued).is_equal_to(1)
+        if len(compute_instances) > 0
+        else assert_that(task_controller.tasks_queued).is_zero()
+    )
     assert_that(actual_results).is_length(len(mocked_ec2_requests))
 
     for instance, actual_output in actual_results.items():
