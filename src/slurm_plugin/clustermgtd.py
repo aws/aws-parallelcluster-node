@@ -42,9 +42,9 @@ from common.utils import check_command_output, read_json, sleep_remaining_loop_t
 from retrying import retry
 from slurm_plugin.capacity_block_manager import CapacityBlockManager
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
-from slurm_plugin.common import TIMESTAMP_FORMAT, log_exception, print_with_count
+from slurm_plugin.common import TIMESTAMP_FORMAT, ScalingStrategy, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
-from slurm_plugin.instance_manager import InstanceManagerFactory
+from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     CONFIG_FILE_DIR,
     ComputeResourceFailureEvent,
@@ -138,6 +138,7 @@ class ClustermgtdConfig:
         ),
         # Launch configs
         "launch_max_batch_size": 500,
+        "assign_node_max_batch_size": 500,
         "update_node_address": True,
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
@@ -221,6 +222,9 @@ class ClustermgtdConfig:
         """Get config options related to launching instances."""
         self.launch_max_batch_size = config.getint(
             "clustermgtd", "launch_max_batch_size", fallback=self.DEFAULTS.get("launch_max_batch_size")
+        )
+        self.assign_node_max_batch_size = config.getint(
+            "clustermgtd", "assign_node_max_batch_size", fallback=self.DEFAULTS.get("assign_node_max_batch_size")
         )
         self.update_node_address = config.getboolean(
             "clustermgtd", "update_node_address", fallback=self.DEFAULTS.get("update_node_address")
@@ -424,7 +428,7 @@ class ClusterManager:
     @staticmethod
     def _initialize_instance_manager(config):
         """Initialize instance manager class that will be used to launch/terminate/describe instances."""
-        return InstanceManagerFactory.get_manager(
+        return InstanceManager(
             config.region,
             config.cluster_name,
             config.boto3_config,
@@ -876,7 +880,9 @@ class ClusterManager:
         self._instance_manager.add_instances(
             node_list=node_list,
             launch_batch_size=self._config.launch_max_batch_size,
+            assign_node_batch_size=self._config.assign_node_max_batch_size,
             update_node_address=self._config.update_node_address,
+            scaling_strategy=ScalingStrategy.BEST_EFFORT,
         )
         # Add launched nodes to list of nodes being replaced, excluding any nodes that failed to launch
         failed_nodes = set().union(*self._instance_manager.failed_nodes.values())
@@ -1210,9 +1216,9 @@ class ClusterManager:
         for queue_name, compute_resources in ice_compute_resources_and_nodes_map.items():
             for compute_resource, nodes in compute_resources.items():
                 if not self._insufficient_capacity_compute_resources.get(queue_name, {}).get(compute_resource):
-                    self._insufficient_capacity_compute_resources.setdefault(queue_name, {})[
-                        compute_resource
-                    ] = ComputeResourceFailureEvent(self._current_time, nodes[0].error_code)
+                    self._insufficient_capacity_compute_resources.setdefault(queue_name, {})[compute_resource] = (
+                        ComputeResourceFailureEvent(self._current_time, nodes[0].error_code)
+                    )
 
     def _reset_timeout_expired_compute_resources(
         self, ice_compute_resources_and_nodes_map: Dict[str, Dict[str, List[SlurmNode]]]

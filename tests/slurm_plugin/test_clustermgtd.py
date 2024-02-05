@@ -21,6 +21,7 @@ import pytest
 import slurm_plugin
 from assertpy import assert_that
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
+from slurm_plugin.common import ScalingStrategy
 from slurm_plugin.console_logger import ConsoleLogger
 from slurm_plugin.fleet_manager import EC2Instance
 from slurm_plugin.slurm_resources import (
@@ -1068,7 +1069,6 @@ def test_handle_powering_down_nodes(
             None,
             1,
             [
-                r"Failed to launch instances due to limited EC2 capacity for following nodes: .*",
                 r'{"datetime": ".*", "version": 0, "scheduler": "slurm", "cluster-name": "hit-test", '
                 + r'"node-role": "HeadNode", "component": "clustermgtd", "level": "WARNING", '
                 + r'"instance-id": "i-instance-id", "event-type": "node-launch-failure-count", '
@@ -1119,6 +1119,7 @@ def test_handle_unhealthy_static_nodes(
     mock_sync_config = SimpleNamespace(
         terminate_max_batch_size=1,
         launch_max_batch_size=5,
+        assign_node_max_batch_size=3,
         update_node_address=True,
         region="us-east-2",
         cluster_name="hit-test",
@@ -1198,7 +1199,11 @@ def test_handle_unhealthy_static_nodes(
     else:
         cluster_manager._instance_manager.delete_instances.assert_not_called()
     cluster_manager._instance_manager.add_instances.assert_called_with(
-        node_list=add_node_list, launch_batch_size=5, update_node_address=True
+        node_list=add_node_list,
+        launch_batch_size=5,
+        assign_node_batch_size=3,
+        update_node_address=True,
+        scaling_strategy=ScalingStrategy.BEST_EFFORT,
     )
     assert_that(caplog.records).is_length(len(expected_warnings))
     for actual, expected in zip(caplog.records, expected_warnings):

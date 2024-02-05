@@ -22,7 +22,7 @@ from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
 from common.utils import read_json
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import ScalingStrategy, is_clustermgtd_heartbeat_valid, print_with_count
-from slurm_plugin.instance_manager import InstanceManagerFactory
+from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
 log = logging.getLogger(__name__)
@@ -192,7 +192,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         node_list_with_status.append((node.name, node.state_string))
     log.info("Current state of Slurm nodes to resume: %s", node_list_with_status)
 
-    instance_manager = InstanceManagerFactory.get_manager(
+    instance_manager = InstanceManager(
         region=resume_config.region,
         cluster_name=resume_config.cluster_name,
         boto3_config=resume_config.boto3_config,
