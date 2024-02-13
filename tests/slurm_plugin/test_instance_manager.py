@@ -95,7 +95,7 @@ class TestInstanceManager:
             (
                 [
                     [
-                        EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                        EC2Instance("i-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, tzinfo=timezone.utc)),
                     ],
                 ],
                 10,
@@ -181,7 +181,7 @@ class TestInstanceManager:
             (
                 None,
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 None,
                 "Empty table name configuration parameter",
                 False,
@@ -197,7 +197,7 @@ class TestInstanceManager:
             (
                 "table_name",
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 [
                     call(
                         Item={
@@ -215,8 +215,8 @@ class TestInstanceManager:
                 "table_name",
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
                 [
-                    EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                    EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                    EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                    EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
                 ],
                 [
                     call(
@@ -286,7 +286,7 @@ class TestInstanceManager:
                 None,
                 "dns.domain",
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 None,
                 "Empty table name configuration parameter",
                 False,
@@ -307,7 +307,7 @@ class TestInstanceManager:
                 "hosted_zone",
                 "dns.domain",
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 MockedBoto3Request(
                     method="change_resource_record_sets",
                     response={
@@ -343,8 +343,8 @@ class TestInstanceManager:
                 "dns.domain",
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
                 [
-                    EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                    EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                    EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                    EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
                 ],
                 [
                     MockedBoto3Request(
@@ -391,7 +391,7 @@ class TestInstanceManager:
                 "hosted_zone",
                 "dns.domain",
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 MockedBoto3Request(
                     method="change_resource_record_sets",
                     response={},
@@ -803,8 +803,8 @@ class TestInstanceManager:
                     generate_error=False,
                 ),
                 [
-                    EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
-                    EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    EC2Instance("i-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    EC2Instance("i-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, tzinfo=timezone.utc)),
                 ],
                 False,
                 id="default",
@@ -861,7 +861,7 @@ class TestInstanceManager:
                     },
                     generate_error=False,
                 ),
-                [EC2Instance("i-1", "ip-1", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc))],
+                [EC2Instance("i-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, tzinfo=timezone.utc))],
                 False,
                 id="custom_args",
             ),
@@ -907,7 +907,7 @@ class TestInstanceManager:
                     generate_error=False,
                 ),
                 [
-                    EC2Instance("i-2", "ip-2", "hostname", datetime(2020, 1, 1, tzinfo=timezone.utc)),
+                    EC2Instance("i-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, tzinfo=timezone.utc)),
                 ],
                 False,
                 id="no_ec2_info",
@@ -967,7 +967,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -975,7 +975,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
                     StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
@@ -985,7 +985,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
                 ],
@@ -1001,7 +1001,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -1009,7 +1009,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
                     StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
@@ -1019,7 +1019,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
                 ],
@@ -1035,7 +1035,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -1043,7 +1043,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
                     StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
@@ -1053,7 +1053,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
                 ],
@@ -1069,7 +1069,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -1077,7 +1077,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
                     StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
@@ -1087,7 +1087,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
                 ],
@@ -1103,7 +1103,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -1111,7 +1111,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname-3", "some_state", "queue1"),
                     StaticNode("queue1-st-c5xlarge-4", "ip-4", "hostname-4", "some_state", "queue1"),
@@ -1121,7 +1121,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                     StaticNode("queue1-st-c5xlarge-6", "ip-6", "hostname-6", "some_state", "queue1"),
                 ],
@@ -1137,7 +1137,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -1145,7 +1145,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-5",
@@ -1153,7 +1153,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                 ],
                 0,
@@ -1168,7 +1168,7 @@ class TestInstanceManager:
                         "hostname-1",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", "12:45am"),
+                        instance=EC2Instance("instance-1", "1.2.3.1", "instance-1-host", {"1.2.3.1"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-2",
@@ -1176,7 +1176,7 @@ class TestInstanceManager:
                         "hostname-2",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", "12:45am"),
+                        instance=EC2Instance("instance-2", "1.2.3.2", "instance-2-host", {"1.2.3.2"}, "12:45am"),
                     ),
                     StaticNode(
                         "queue1-st-c5xlarge-5",
@@ -1184,7 +1184,7 @@ class TestInstanceManager:
                         "hostname-5",
                         "some_state",
                         "queue1",
-                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", "12:45am"),
+                        instance=EC2Instance("instance-5", "1.2.3.5", "instance-5-host", {"1.2.3.5"}, "12:45am"),
                     ),
                 ],
                 2,
@@ -2128,7 +2128,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2139,7 +2143,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     )
@@ -2148,7 +2156,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2159,7 +2171,11 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c1-st-large-1"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2184,28 +2200,52 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-54321",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                         "q1c2": [
                             EC2Instance(
-                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     },
                     "q2": {
                         "q2c1": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.5",
+                                "ip-1-0-0-5",
+                                {"ip.1.0.0.5"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12349",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2216,30 +2256,54 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-54321",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
                     call(
                         nodes={
                             "q1-q1c2-st-small-1": EC2Instance(
-                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
                     call(
                         nodes={
                             "q2-q2c1-st-large-1": EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             "q2-q2c1-st-large-2": EC2Instance(
-                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.5",
+                                "ip-1-0-0-5",
+                                {"ip.1.0.0.5"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             "q2-q2c1-st-large-3": EC2Instance(
-                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12349",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2248,10 +2312,18 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-54321",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=10,
@@ -2259,7 +2331,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c2-st-small-1": EC2Instance(
-                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=10,
@@ -2267,13 +2343,25 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q2-q2c1-st-large-1": EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             "q2-q2c1-st-large-2": EC2Instance(
-                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.5",
+                                "ip-1-0-0-5",
+                                {"ip.1.0.0.5"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             "q2-q2c1-st-large-3": EC2Instance(
-                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12349",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=10,
@@ -2284,10 +2372,18 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c1-st-large-1", "q1-q1c1-st-large-2"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-54321",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2295,7 +2391,11 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c2-st-small-1"],
                         launched_instances=(
                             EC2Instance(
-                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2303,13 +2403,25 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q2-q2c1-st-large-1", "q2-q2c1-st-large-2", "q2-q2c1-st-large-3"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.5",
+                                "ip-1-0-0-5",
+                                {"ip.1.0.0.5"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12349",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2330,7 +2442,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2341,7 +2457,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2350,7 +2470,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2373,10 +2497,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2387,14 +2519,22 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2403,7 +2543,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2411,7 +2555,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2422,7 +2570,11 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c1-st-large-1"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2443,10 +2595,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2457,14 +2617,22 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2473,7 +2641,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2481,7 +2653,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2492,7 +2668,11 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c1-st-large-2"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2513,7 +2693,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2524,7 +2708,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2533,7 +2721,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2556,10 +2748,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2570,14 +2770,22 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2586,7 +2794,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2594,7 +2806,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2605,7 +2821,11 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c1-st-large-1"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2626,10 +2846,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2640,7 +2868,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2649,7 +2881,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2672,10 +2908,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2686,14 +2930,22 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2702,7 +2954,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-2": EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         },
                         update_dns_batch_size=1,
@@ -2713,7 +2969,11 @@ class TestJobLevelScalingInstanceManager:
                         slurm_nodes=["q1-q1c1-st-large-2"],
                         launched_instances=(
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ),
                     ),
@@ -2734,10 +2994,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -2748,7 +3016,11 @@ class TestJobLevelScalingInstanceManager:
                     call(
                         nodes={
                             "q1-q1c1-st-large-1": EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         }
                     ),
@@ -2839,7 +3111,7 @@ class TestJobLevelScalingInstanceManager:
             ),
             (
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 False,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
@@ -2847,7 +3119,7 @@ class TestJobLevelScalingInstanceManager:
             ),
             (
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 True,
                 None,
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
@@ -2855,7 +3127,7 @@ class TestJobLevelScalingInstanceManager:
             ),
             (
                 ["queue1-st-c5xlarge-1"],
-                [EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time")],
+                [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 True,
                 subprocess.CalledProcessError(1, "command"),
                 call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
@@ -2864,8 +3136,8 @@ class TestJobLevelScalingInstanceManager:
             (
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
                 [
-                    EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                    EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                    EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                    EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
                 ],
                 False,
                 None,
@@ -2952,7 +3224,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -2975,7 +3251,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3003,7 +3283,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3013,7 +3297,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3079,7 +3367,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue1": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3107,7 +3399,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3116,7 +3412,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue10": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3125,14 +3425,22 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
                     "queue10": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
@@ -3158,7 +3466,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3167,7 +3479,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3176,10 +3492,18 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3310,7 +3634,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3325,7 +3653,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3335,7 +3667,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3350,10 +3686,18 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-654321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-654321",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -3363,7 +3707,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3401,7 +3749,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue4": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3467,7 +3819,11 @@ class TestJobLevelScalingInstanceManager:
                     "queue1": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3530,14 +3886,22 @@ class TestJobLevelScalingInstanceManager:
                     "queue1": {
                         "c52xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     },
                     "queue3": {
                         "p4d24xlarge": [
                             EC2Instance(
-                                "i-123456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     },
@@ -3609,14 +3973,22 @@ class TestJobLevelScalingInstanceManager:
                     "queue1": {
                         "c52xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     },
                     "queue3": {
                         "p4d24xlarge": [
                             EC2Instance(
-                                "i-123456", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     },
@@ -3850,7 +4222,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -3863,28 +4239,52 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "q1c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-54321", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-54321",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                         "q1c2": [
                             EC2Instance(
-                                "i-123456", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-123456",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     },
                     "q2": {
                         "q2c1": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12348", "ip.1.0.0.5", "ip-1-0-0-5", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.5",
+                                "ip-1-0-0-5",
+                                {"ip.1.0.0.5"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12349", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12349",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
@@ -3935,7 +4335,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3945,7 +4349,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3960,7 +4368,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c2": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3976,7 +4388,11 @@ class TestJobLevelScalingInstanceManager:
                     "q2": {
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3985,7 +4401,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c2": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.4", "ip-1-0-0-4", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.4",
+                                "ip-1-0-0-4",
+                                {"ip.1.0.0.4"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -3995,7 +4415,11 @@ class TestJobLevelScalingInstanceManager:
                     "q2": {
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4105,10 +4529,22 @@ class TestJobLevelScalingInstanceManager:
                 {
                     "q1": {
                         "c1": [
-                            EC2Instance("q1c1-1", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c1-1",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                         "c2": [
-                            EC2Instance("q1c2-1", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c2-1",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                     }
                 },
@@ -4116,10 +4552,22 @@ class TestJobLevelScalingInstanceManager:
                 {
                     "q1": {
                         "c1": [
-                            EC2Instance("q1c1-1", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c1-1",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                         "c2": [
-                            EC2Instance("q1c2-1", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c2-1",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                     }
                 },
@@ -4128,31 +4576,63 @@ class TestJobLevelScalingInstanceManager:
                 {
                     "q1": {
                         "c1": [
-                            EC2Instance("q1c1-1", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c1-1",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                         "c2": [
-                            EC2Instance("q1c2-1", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c2-1",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                     }
                 },
                 {
                     "q1": {
                         "c2": [
-                            EC2Instance("q1c2-2", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c2-2",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ]
                     }
                 },
                 {
                     "q1": {
                         "c1": [
-                            EC2Instance("q1c1-1", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc))
+                            EC2Instance(
+                                "q1c1-1",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
+                            )
                         ],
                         "c2": [
                             EC2Instance(
-                                "q1c2-1", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "q1c2-1",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "q1c2-2", "ip.1.0.0.3", "ip-1-0-0-3", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "q1c2-2",
+                                "ip.1.0.0.3",
+                                "ip-1-0-0-3",
+                                {"ip.1.0.0.3"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     }
@@ -4185,12 +4665,20 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     }
@@ -4208,7 +4696,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     }
@@ -4288,7 +4780,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4297,7 +4793,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4309,12 +4809,20 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     }
@@ -4334,7 +4842,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     }
@@ -4349,7 +4861,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4358,10 +4874,18 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -4397,12 +4921,20 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ],
                     }
@@ -4525,7 +5057,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4535,7 +5071,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4567,7 +5107,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4576,7 +5120,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4585,7 +5133,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     }
@@ -4611,7 +5163,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4621,7 +5177,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
@@ -4653,7 +5213,11 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4662,7 +5226,11 @@ class TestJobLevelScalingInstanceManager:
                     "q2": {
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             )
                         ]
                     }
@@ -4671,14 +5239,22 @@ class TestJobLevelScalingInstanceManager:
                     "q1": {
                         "c1": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
                     "q2": {
                         "c2": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.2", "ip-1-0-0-2", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.2",
+                                "ip-1-0-0-2",
+                                {"ip.1.0.0.2"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
@@ -4885,22 +5461,38 @@ class TestNodeListScalingInstanceManager:
                     "queue1": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                         "c52xlarge": [
                             EC2Instance(
-                                "i-12346", "ip.1.0.0.6", "ip-1-0-0-6", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12346",
+                                "ip.1.0.0.6",
+                                "ip-1-0-0-6",
+                                {"ip.1.0.0.6"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
                     "queue2": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.7", "ip-1-0-0-7", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.7",
+                                "ip-1-0-0-7",
+                                {"ip.1.0.0.7"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12348", "ip.1.0.0.8", "ip-1-0-0-8", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.8",
+                                "ip-1-0-0-8",
+                                {"ip.1.0.0.8"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
@@ -4925,17 +5517,29 @@ class TestNodeListScalingInstanceManager:
                     "queue1": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },
                     "queue2": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12347", "ip.1.0.0.7", "ip-1-0-0-7", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12347",
+                                "ip.1.0.0.7",
+                                "ip-1-0-0-7",
+                                {"ip.1.0.0.7"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                             EC2Instance(
-                                "i-12348", "ip.1.0.0.8", "ip-1-0-0-8", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12348",
+                                "ip.1.0.0.8",
+                                "ip-1-0-0-8",
+                                {"ip.1.0.0.8"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ]
                     },
@@ -4958,7 +5562,11 @@ class TestNodeListScalingInstanceManager:
                     "queue1": {
                         "c5xlarge": [
                             EC2Instance(
-                                "i-12345", "ip.1.0.0.1", "ip-1-0-0-1", datetime(2020, 1, 1, tzinfo=timezone.utc)
+                                "i-12345",
+                                "ip.1.0.0.1",
+                                "ip-1-0-0-1",
+                                {"ip.1.0.0.1"},
+                                datetime(2020, 1, 1, tzinfo=timezone.utc),
                             ),
                         ],
                     },

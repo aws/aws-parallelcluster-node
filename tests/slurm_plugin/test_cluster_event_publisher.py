@@ -939,7 +939,9 @@ def test_publish_unhealthy_static_node_events(test_nodes, expected_details, leve
         event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=level_filter))
 
     instances = [
-        EC2Instance(f"i-id-{instance_id}", f"1.2.3.{instance_id}", f"host-{instance_id}", "sometime")
+        EC2Instance(
+            f"i-id-{instance_id}", f"1.2.3.{instance_id}", f"host-{instance_id}", {f"1.2.3.{instance_id}"}, "sometime"
+        )
         for instance_id in range(len(test_nodes))
     ]
 
@@ -1663,7 +1665,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue1",
                     "(Code:InsufficientReservedInstanceCapacity)Failure when resuming nodes",
                     instance=EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                        id="id-1",
+                        private_ip="ip-1",
+                        hostname="hostname",
+                        launch_time="some_launch_time",
+                        all_private_ips={"ip-1"},
                     ),
                 ),
                 DynamicNode(
@@ -1693,7 +1699,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:UnauthorizedOperation)Error",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1756,7 +1766,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "IDLE+CLOUD+POWERING_DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                        id="id-1",
+                        private_ip="ip-1",
+                        hostname="hostname",
+                        all_private_ips={"ip-1"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1766,7 +1780,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "IDLE+CLOUD",
                     "queue",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1776,7 +1794,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1786,7 +1808,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                        id="id-3",
+                        private_ip="ip-3",
+                        hostname="hostname",
+                        all_private_ips={"ip-3"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1800,7 +1826,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-4", private_ip="ip-4", hostname="hostname", launch_time="some_launch_time"
+                        id="id-4",
+                        private_ip="ip-4",
+                        hostname="hostname",
+                        all_private_ips={"ip-4"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1811,7 +1841,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                     instance=EC2Instance(
-                        id="id-5", private_ip="ip-5", hostname="hostname", launch_time="some_launch_time"
+                        id="id-5",
+                        private_ip="ip-5",
+                        hostname="hostname",
+                        all_private_ips={"ip-5"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1825,7 +1859,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-6", private_ip="ip-6", hostname="hostname", launch_time="some_launch_time"
+                        id="id-6",
+                        private_ip="ip-6",
+                        hostname="hostname",
+                        all_private_ips={"ip-6"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1839,7 +1877,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-7", private_ip="ip-7", hostname="hostname", launch_time="some_launch_time"
+                        id="id-7",
+                        private_ip="ip-7",
+                        hostname="hostname",
+                        all_private_ips={"ip-7"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1853,7 +1895,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-8", private_ip="ip-8", hostname="hostname", launch_time="some_launch_time"
+                        id="id-8",
+                        private_ip="ip-8",
+                        hostname="hostname",
+                        all_private_ips={"ip-8"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1864,7 +1910,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:AccessDeniedException)Error",
                     instance=EC2Instance(
-                        id="id-9", private_ip="ip-9", hostname="hostname", launch_time="some_launch_time"
+                        id="id-9",
+                        private_ip="ip-9",
+                        hostname="hostname",
+                        all_private_ips={"ip-9"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1878,7 +1928,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-10", private_ip="ip-10", hostname="hostname", launch_time="some_launch_time"
+                        id="id-10",
+                        private_ip="ip-10",
+                        hostname="hostname",
+                        all_private_ips={"ip-10"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1889,7 +1943,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:VolumeLimitExceeded)Error",
                     instance=EC2Instance(
-                        id="id-11", private_ip="ip-11", hostname="hostname", launch_time="some_launch_time"
+                        id="id-11",
+                        private_ip="ip-11",
+                        hostname="hostname",
+                        all_private_ips={"ip-11"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1903,7 +1961,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-12", private_ip="ip-12", hostname="hostname", launch_time="some_launch_time"
+                        id="id-12",
+                        private_ip="ip-12",
+                        hostname="hostname",
+                        all_private_ips={"ip-12"},
+                        launch_time="some_launch_time",
                     ),
                 ),
             ],
@@ -1977,7 +2039,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "IDLE+CLOUD+POWERING_DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                        id="id-1",
+                        private_ip="ip-1",
+                        hostname="hostname",
+                        all_private_ips={"ip-1"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -1987,7 +2053,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "IDLE+CLOUD",
                     "queue",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -1997,7 +2067,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2007,7 +2081,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                        id="id-3",
+                        private_ip="ip-3",
+                        hostname="hostname",
+                        all_private_ips={"ip-3"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2021,7 +2099,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-4", private_ip="ip-4", hostname="hostname", launch_time="some_launch_time"
+                        id="id-4",
+                        private_ip="ip-4",
+                        hostname="hostname",
+                        all_private_ips={"ip-4"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2032,7 +2114,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                     instance=EC2Instance(
-                        id="id-5", private_ip="ip-5", hostname="hostname", launch_time="some_launch_time"
+                        id="id-5",
+                        private_ip="ip-5",
+                        hostname="hostname",
+                        all_private_ips={"ip-5"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2046,7 +2132,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-6", private_ip="ip-6", hostname="hostname", launch_time="some_launch_time"
+                        id="id-6",
+                        private_ip="ip-6",
+                        hostname="hostname",
+                        all_private_ips={"ip-6"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2060,7 +2150,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-7", private_ip="ip-7", hostname="hostname", launch_time="some_launch_time"
+                        id="id-7",
+                        private_ip="ip-7",
+                        hostname="hostname",
+                        all_private_ips={"ip-7"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2074,7 +2168,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-8", private_ip="ip-8", hostname="hostname", launch_time="some_launch_time"
+                        id="id-8",
+                        private_ip="ip-8",
+                        hostname="hostname",
+                        all_private_ips={"ip-8"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2085,7 +2183,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:AccessDeniedException)Error",
                     instance=EC2Instance(
-                        id="id-9", private_ip="ip-9", hostname="hostname", launch_time="some_launch_time"
+                        id="id-9",
+                        private_ip="ip-9",
+                        hostname="hostname",
+                        all_private_ips={"ip-9"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2099,7 +2201,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-10", private_ip="ip-10", hostname="hostname", launch_time="some_launch_time"
+                        id="id-10",
+                        private_ip="ip-10",
+                        hostname="hostname",
+                        all_private_ips={"ip-10"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2110,7 +2216,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:VolumeLimitExceeded)Error",
                     instance=EC2Instance(
-                        id="id-11", private_ip="ip-11", hostname="hostname", launch_time="some_launch_time"
+                        id="id-11",
+                        private_ip="ip-11",
+                        hostname="hostname",
+                        all_private_ips={"ip-11"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2124,7 +2234,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-12", private_ip="ip-12", hostname="hostname", launch_time="some_launch_time"
+                        id="id-12",
+                        private_ip="ip-12",
+                        hostname="hostname",
+                        all_private_ips={"ip-12"},
+                        launch_time="some_launch_time",
                     ),
                 ),
             ],
@@ -2506,7 +2620,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2516,7 +2634,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                        id="id-3",
+                        private_ip="ip-3",
+                        hostname="hostname",
+                        all_private_ips={"ip-3"},
+                        launch_time="some_launch_time",
                     ),
                 ),
             ],
@@ -2599,7 +2721,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "IDLE+CLOUD+POWERING_DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                        id="id-1",
+                        private_ip="ip-1",
+                        hostname="hostname",
+                        all_private_ips={"ip-1"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2609,7 +2735,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "IDLE+CLOUD",
                     "queue",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2619,7 +2749,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                        id="id-2",
+                        private_ip="ip-2",
+                        hostname="hostname",
+                        all_private_ips={"ip-2"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2629,7 +2763,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "DOWN",
                     "queue1",
                     instance=EC2Instance(
-                        id="id-3", private_ip="ip-3", hostname="hostname", launch_time="some_launch_time"
+                        id="id-3",
+                        private_ip="ip-3",
+                        hostname="hostname",
+                        all_private_ips={"ip-3"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2643,7 +2781,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=24, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-4", private_ip="ip-4", hostname="hostname", launch_time="some_launch_time"
+                        id="id-4",
+                        private_ip="ip-4",
+                        hostname="hostname",
+                        all_private_ips={"ip-4"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2654,7 +2796,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:InsufficientHostCapacity)Failure when resuming nodes",
                     instance=EC2Instance(
-                        id="id-5", private_ip="ip-5", hostname="hostname", launch_time="some_launch_time"
+                        id="id-5",
+                        private_ip="ip-5",
+                        hostname="hostname",
+                        all_private_ips={"ip-5"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2668,7 +2814,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=12, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-6", private_ip="ip-6", hostname="hostname", launch_time="some_launch_time"
+                        id="id-6",
+                        private_ip="ip-6",
+                        hostname="hostname",
+                        all_private_ips={"ip-6"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2682,7 +2832,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=23, second=10, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-7", private_ip="ip-7", hostname="hostname", launch_time="some_launch_time"
+                        id="id-7",
+                        private_ip="ip-7",
+                        hostname="hostname",
+                        all_private_ips={"ip-7"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2696,7 +2850,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=21, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-8", private_ip="ip-8", hostname="hostname", launch_time="some_launch_time"
+                        id="id-8",
+                        private_ip="ip-8",
+                        hostname="hostname",
+                        all_private_ips={"ip-8"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2707,7 +2865,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:AccessDeniedException)Error",
                     instance=EC2Instance(
-                        id="id-9", private_ip="ip-9", hostname="hostname", launch_time="some_launch_time"
+                        id="id-9",
+                        private_ip="ip-9",
+                        hostname="hostname",
+                        all_private_ips={"ip-9"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2721,7 +2883,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=10, hour=11, minute=25, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-10", private_ip="ip-10", hostname="hostname", launch_time="some_launch_time"
+                        id="id-10",
+                        private_ip="ip-10",
+                        hostname="hostname",
+                        all_private_ips={"ip-10"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 StaticNode(
@@ -2732,7 +2898,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                     "queue2",
                     "(Code:VolumeLimitExceeded)Error",
                     instance=EC2Instance(
-                        id="id-11", private_ip="ip-11", hostname="hostname", launch_time="some_launch_time"
+                        id="id-11",
+                        private_ip="ip-11",
+                        hostname="hostname",
+                        all_private_ips={"ip-11"},
+                        launch_time="some_launch_time",
                     ),
                 ),
                 DynamicNode(
@@ -2746,7 +2916,11 @@ def test_publish_node_launch_events(failed_nodes, expected_details, level_filter
                         year=2023, month=3, day=11, hour=11, minute=23, second=14, tzinfo=timezone.utc
                     ),
                     instance=EC2Instance(
-                        id="id-12", private_ip="ip-12", hostname="hostname", launch_time="some_launch_time"
+                        id="id-12",
+                        private_ip="ip-12",
+                        hostname="hostname",
+                        all_private_ips={"ip-12"},
+                        launch_time="some_launch_time",
                     ),
                 ),
             ],

@@ -22,10 +22,11 @@ def get_private_ip_address_and_dns_name(instance_info):
     """
     private_ip = instance_info["PrivateIpAddress"]
     private_dns_name = instance_info["PrivateDnsName"]
+    all_private_ips = [private_ip]
     for network_interface in instance_info["NetworkInterfaces"]:
+        all_private_ips.append(network_interface.get("PrivateIpAddress", private_ip))
         attachment = network_interface["Attachment"]
         if attachment.get("DeviceIndex", -1) == 0 and attachment.get("NetworkCardIndex", -1) == 0:
             private_ip = network_interface.get("PrivateIpAddress", private_ip)
             private_dns_name = network_interface.get("PrivateDnsName", private_dns_name)
-            break
-    return private_ip, private_dns_name
+    return private_ip, private_dns_name, set(all_private_ips)

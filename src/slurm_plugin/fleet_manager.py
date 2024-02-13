@@ -26,11 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 class EC2Instance:
-    def __init__(self, id, private_ip, hostname, launch_time):
+    def __init__(self, id, private_ip, hostname, all_private_ips, launch_time):
         """Initialize slurm node with attributes."""
         self.id = id
         self.private_ip = private_ip
         self.hostname = hostname
+        self.all_private_ips = all_private_ips
         self.launch_time = launch_time
         self.slurm_node = None
 
@@ -53,11 +54,12 @@ class EC2Instance:
     @staticmethod
     def from_describe_instance_data(instance_info):
         try:
-            private_ip, private_dns_name = get_private_ip_address_and_dns_name(instance_info)
+            private_ip, private_dns_name, all_private_ips = get_private_ip_address_and_dns_name(instance_info)
             return EC2Instance(
                 instance_info["InstanceId"],
                 private_ip,
                 private_dns_name.split(".")[0],
+                all_private_ips,
                 instance_info["LaunchTime"],
             )
         except KeyError as e:

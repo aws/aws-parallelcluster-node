@@ -732,7 +732,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             True,
             True,
             "Node bootstrap error: Replacement timeout expires for node queue1-st-c5xlarge-1(ip-1) in replacement",
@@ -750,7 +750,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             False,
             False,
             "Node bootstrap error: Resume timeout expires",
@@ -779,7 +779,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             False,
             False,
             None,
@@ -790,7 +790,7 @@ def test_slurm_node_is_state_healthy(
             DynamicNode(
                 "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWERED_DOWN", "queue1"
             ),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             False,
             False,
             None,
@@ -799,7 +799,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DRAIN+CLOUD", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             False,
             False,
             None,
@@ -808,7 +808,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             False,
             False,
             None,
@@ -817,7 +817,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             True,
             False,
             "failed during bootstrap when performing health check",
@@ -826,7 +826,7 @@ def test_slurm_node_is_state_healthy(
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             False,
             False,
             "failed during bootstrap when performing health check",
@@ -841,7 +841,7 @@ def test_slurm_node_is_state_healthy(
                 "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
                 "queue1",
             ),
-            EC2Instance("id-1", "ip-1", "hostname", "launch_time"),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             False,
             False,
             None,
@@ -937,12 +937,12 @@ def test_slurm_node_is_bootstrap_failure(
     [
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             True,
         ),
         (
             StaticNode("queue-st-c5xlarge-1", "queue-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             False,
         ),
         (
@@ -963,7 +963,7 @@ def test_slurm_node_is_bootstrap_failure(
         # Powering_down nodes with backing instance is considered as healthy
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
-            EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, 0, 0, 0)),
             True,
         ),
         # Powering_down nodes without backing instance is considered as unhealthy
@@ -1105,7 +1105,7 @@ def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             True,
         ),
     ],

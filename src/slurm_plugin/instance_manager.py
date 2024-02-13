@@ -279,12 +279,13 @@ class InstanceManager:
         instances = []
         for instance_info in filtered_iterator:
             try:
-                private_ip, private_dns_name = get_private_ip_address_and_dns_name(instance_info)
+                private_ip, private_dns_name, all_private_ips = get_private_ip_address_and_dns_name(instance_info)
                 instances.append(
                     EC2Instance(
                         instance_info["InstanceId"],
                         private_ip,
                         private_dns_name.split(".")[0],
+                        all_private_ips,
                         instance_info["LaunchTime"],
                     )
                 )

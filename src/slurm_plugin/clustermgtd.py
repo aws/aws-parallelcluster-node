@@ -1129,10 +1129,12 @@ class ClusterManager:
         if cluster_instances:
             ip_to_slurm_node_map = {node.nodeaddr: node for node in nodes}
             for instance in cluster_instances:
-                if instance.private_ip in ip_to_slurm_node_map:
-                    slurm_node = ip_to_slurm_node_map.get(instance.private_ip)
-                    slurm_node.instance = instance
-                    instance.slurm_node = slurm_node
+                for private_ip in instance.all_private_ips:
+                    if private_ip in ip_to_slurm_node_map:
+                        slurm_node = ip_to_slurm_node_map.get(private_ip)
+                        slurm_node.instance = instance
+                        instance.slurm_node = slurm_node
+                        break
 
     @staticmethod
     def get_instance_id_to_active_node_map(partitions: List[SlurmPartition]) -> Dict:
