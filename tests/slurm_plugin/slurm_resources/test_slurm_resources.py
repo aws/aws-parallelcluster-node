@@ -718,12 +718,14 @@ def test_slurm_node_is_state_healthy(
 
 
 @pytest.mark.parametrize(
-    "node, instance, is_static_nodes_in_replacement, is_replacement_timeout, bootstrap_failure_messages, "
-    "is_failing_health_check, is_node_bootstrap_failure",
+    "node, instance, max_count, count_map, is_static_nodes_in_replacement, is_replacement_timeout, "
+    "bootstrap_failure_messages, is_failing_health_check, is_node_bootstrap_failure",
     [
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             None,
+            0,
+            {},
             True,
             False,
             "Node bootstrap error: Node queue1-st-c5xlarge-1(ip-1) is currently in replacement and no backing instance",
@@ -733,6 +735,8 @@ def test_slurm_node_is_state_healthy(
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+            0,
+            {},
             True,
             True,
             "Node bootstrap error: Replacement timeout expires for node queue1-st-c5xlarge-1(ip-1) in replacement",
@@ -742,6 +746,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             None,
+            0,
+            {},
             False,
             False,
             "Node bootstrap error: Node queue1-dy-c5xlarge-1(ip-1) is in power up state without valid backing instance",
@@ -751,6 +757,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             False,
             False,
             "Node bootstrap error: Resume timeout expires",
@@ -760,6 +768,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWERING_UP", "queue1"),
             None,
+            0,
+            {},
             False,
             False,
             None,
@@ -771,6 +781,8 @@ def test_slurm_node_is_state_healthy(
                 "queue1-st-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
             ),
             None,
+            0,
+            {},
             False,
             False,
             None,
@@ -780,6 +792,8 @@ def test_slurm_node_is_state_healthy(
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+            0,
+            {},
             False,
             False,
             None,
@@ -791,6 +805,8 @@ def test_slurm_node_is_state_healthy(
                 "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWERED_DOWN", "queue1"
             ),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             False,
             False,
             None,
@@ -800,6 +816,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DRAIN+CLOUD", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             False,
             False,
             None,
@@ -809,6 +827,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             False,
             False,
             None,
@@ -818,6 +838,8 @@ def test_slurm_node_is_state_healthy(
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             True,
             False,
             "failed during bootstrap when performing health check",
@@ -827,6 +849,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             False,
             False,
             "failed during bootstrap when performing health check",
@@ -842,6 +866,8 @@ def test_slurm_node_is_state_healthy(
                 "queue1",
             ),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
+            0,
+            {},
             False,
             False,
             None,
@@ -851,6 +877,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             None,
+            0,
+            {},
             False,
             False,
             "Node bootstrap error: Node queue1-dy-c5xlarge-1(ip-1) is in power up state without valid backing instance",
@@ -861,6 +889,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN+INVALID_REG", "queue1"),
             None,
+            0,
+            {},
             False,
             False,
             "Node bootstrap error: Node queue1-dy-c5xlarge-1(ip-1) failed to register to the Slurm management daemon, "
@@ -874,6 +904,8 @@ def test_slurm_node_is_state_healthy(
                 "queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN+INVALID_REG+POWER_DOWN", "queue1"
             ),
             None,
+            0,
+            {},
             False,
             False,
             None,
@@ -884,6 +916,8 @@ def test_slurm_node_is_state_healthy(
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+DRAIN+INVALID_REG+POWERING_DOWN", "queue1"),
             None,
+            0,
+            {},
             False,
             False,
             None,
@@ -913,6 +947,8 @@ def test_slurm_node_is_state_healthy(
 )
 def test_slurm_node_is_bootstrap_failure(
     node,
+    max_count,
+    count_map,
     is_static_nodes_in_replacement,
     is_replacement_timeout,
     bootstrap_failure_messages,
@@ -927,61 +963,79 @@ def test_slurm_node_is_bootstrap_failure(
     node.is_failing_health_check = is_failing_health_check
     caplog.set_level(logging.WARNING)
     # Run tests and assert calls
-    assert_that(node.is_bootstrap_failure()).is_equal_to(is_node_bootstrap_failure)
+    assert_that(node.is_bootstrap_failure(max_count, count_map)).is_equal_to(is_node_bootstrap_failure)
     if bootstrap_failure_messages:
         assert_that(caplog.text).contains(bootstrap_failure_messages)
 
 
 @pytest.mark.parametrize(
-    "node, instance, expected_result",
+    "node, instance, max_count, count_map, expected_result",
     [
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+            0,
+            {},
             True,
         ),
         (
             StaticNode("queue-st-c5xlarge-1", "queue-st-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+            0,
+            {},
             False,
         ),
         (
             DynamicNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "hostname", "IDLE+CLOUD", "queue"),
             None,
+            0,
+            {},
             True,
         ),
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-3", "hostname", "IDLE+CLOUD", "queue"),
             None,
+            0,
+            {},
             False,
         ),
         (
             DynamicNode("queue-st-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD", "queue"),
             None,
+            0,
+            {},
             False,
         ),
         # Powering_down nodes with backing instance is considered as healthy
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
             EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, 0, 0, 0)),
+            0,
+            {},
             True,
         ),
         # Powering_down nodes without backing instance is considered as unhealthy
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "DOWN+CLOUD+POWERING_DOWN", "queue"),
             None,
+            0,
+            {},
             False,
         ),
         # Node in POWER_SAVE, but still has ip associated should be considered unhealthy
         (
             DynamicNode("queue-dy-c5xlarge-1", "ip-2", "hostname", "IDLE+CLOUD+POWER", "queue"),
             None,
+            0,
+            {},
             False,
         ),
         # Node in POWER_SAVE, but also in DOWN should be considered unhealthy
         (
             DynamicNode("queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "hostname", "DOWN+CLOUD+POWER", "queue"),
             None,
+            0,
+            {},
             False,
         ),
         (
@@ -989,6 +1043,8 @@ def test_slurm_node_is_bootstrap_failure(
                 "queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "queue-dy-c5xlarge-1", "IDLE+CLOUD+POWER", "queue"
             ),
             None,
+            0,
+            {},
             True,
         ),
     ],
@@ -1005,11 +1061,16 @@ def test_slurm_node_is_bootstrap_failure(
         "power_healthy",
     ],
 )
-def test_slurm_node_is_healthy(node, instance, expected_result):
+def test_slurm_node_is_healthy(node, instance, max_count, count_map, expected_result):
     node.instance = instance
-    assert_that(node.is_healthy(consider_drain_as_unhealthy=True, consider_down_as_unhealthy=True)).is_equal_to(
-        expected_result
-    )
+    assert_that(
+        node.is_healthy(
+            consider_drain_as_unhealthy=True,
+            consider_down_as_unhealthy=True,
+            ec2_instance_missing_max_count=max_count,
+            nodes_without_backing_instance_count_map=count_map,
+        )
+    ).is_equal_to(expected_result)
 
 
 @pytest.mark.parametrize(
@@ -1086,34 +1147,85 @@ def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
 
 
 @pytest.mark.parametrize(
-    "node, instance, expected_result",
+    "node, instance, max_count, count_map, final_map, expected_result",
     [
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
             None,
+            0,
+            {},
+            {},
             False,
         ),
         (
             DynamicNode("node-dy-c5xlarge-1", "node-dy-c5xlarge-1", "hostname", "IDLE+CLOUD+POWER", "node"),
             None,
+            0,
+            {},
+            {},
             True,
         ),
         (
             DynamicNode("node-dy-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "node"),
             None,
+            0,
+            {},
+            {},
             False,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+            0,
+            {},
+            {},
+            True,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+            None,
+            2,
+            {"queue1-st-c5xlarge-1": 1},
+            {"queue1-st-c5xlarge-1": 2},
+            True,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+            None,
+            2,
+            {"queue1-st-c5xlarge-1": 2},
+            {"queue1-st-c5xlarge-1": 2},
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+            "Instance",
+            2,
+            {"queue1-st-c5xlarge-1": 3},
+            {},
             True,
         ),
     ],
-    ids=["static_no_backing", "dynamic_power_save", "dynamic_no_backing", "static_valid"],
+    ids=[
+        "static_no_backing_zero_max_count",
+        "dynamic_power_save_zero_max_count",
+        "dynamic_no_backing_zero_max_count",
+        "static_valid_zero_max_count",
+        "static_no_backing_count_not_exceeded",
+        "static_no_backing_with_count_exceeded",
+        "static_backed_with_count_exceeded",
+    ],
 )
-def test_slurm_node_is_backing_instance_valid(node, instance, expected_result):
+def test_slurm_node_is_backing_instance_valid(node, instance, max_count, count_map, final_map, expected_result):
     node.instance = instance
-    assert_that(node.is_backing_instance_valid()).is_equal_to(expected_result)
+    assert_that(
+        node.is_backing_instance_valid(
+            ec2_instance_missing_max_count=max_count, nodes_without_backing_instance_count_map=count_map
+        )
+    ).is_equal_to(expected_result)
+    assert_that(node.ec2_backing_instance_valid).is_equal_to(expected_result)
+    if count_map:
+        assert_that(count_map[node.name]).is_equal_to(final_map.get(node.name, None))
 
 
 @pytest.mark.parametrize(

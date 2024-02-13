@@ -317,12 +317,18 @@ class ClusterEventPublisher:
     #     }
     # }
     @log_exception(logger, "publish_unhealthy_node_events", catch_exception=Exception, raise_on_error=False)
-    def publish_unhealthy_node_events(self, unhealthy_nodes: List[SlurmNode]):
+    def publish_unhealthy_node_events(
+        self, unhealthy_nodes: List[SlurmNode], ec2_instance_missing_max_count, nodes_without_backing_instance_count_map
+    ):
         """Publish events for unhealthy nodes without a backing instance and for nodes that are not responding."""
         timestamp = ClusterEventPublisher.timestamp()
 
         nodes_with_invalid_backing_instance = [
-            node for node in unhealthy_nodes if not node.is_backing_instance_valid(log_warn_if_unhealthy=False)
+            node
+            for node in unhealthy_nodes
+            if not node.is_backing_instance_valid(
+                ec2_instance_missing_max_count, nodes_without_backing_instance_count_map, log_warn_if_unhealthy=False
+            )
         ]
         self.publish_event(
             logging.WARNING if nodes_with_invalid_backing_instance else logging.DEBUG,

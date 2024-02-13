@@ -150,6 +150,7 @@ class ClustermgtdConfig:
         "terminate_drain_nodes": True,
         "terminate_down_nodes": True,
         "orphaned_instance_timeout": 300,
+        "ec2_instance_missing_max_count": 2,
         # Health check configs
         "disable_ec2_health_check": False,
         "disable_scheduled_event_health_check": False,
@@ -304,6 +305,11 @@ class ClustermgtdConfig:
         self.insufficient_capacity_timeout = config.getfloat(
             "clustermgtd", "insufficient_capacity_timeout", fallback=self.DEFAULTS.get("insufficient_capacity_timeout")
         )
+        self.ec2_instance_missing_max_count = config.getint(
+            "clustermgtd",
+            "ec2_instance_missing_max_count",
+            fallback=self.DEFAULTS.get("ec2_instance_missing_max_count"),
+        )
         self.disable_nodes_on_insufficient_capacity = self.insufficient_capacity_timeout > 0
 
     def _get_dns_config(self, config):
@@ -384,6 +390,7 @@ class ClusterManager:
         self._insufficient_capacity_compute_resources = {}
         self._static_nodes_in_replacement = set()
         self._partitions_protected_failure_count_map = {}
+        self._nodes_without_backing_instance_count_map = {}
         self._compute_fleet_status = ComputeFleetStatus.RUNNING
         self._current_time = None
         self._config = None
@@ -492,7 +499,10 @@ class ClusterManager:
         partitions_protected_failure_count_map = self._partitions_protected_failure_count_map.copy()
         for partition, failures_per_compute_resource in partitions_protected_failure_count_map.items():
             partition_online_compute_resources = partitions_name_map[partition].get_online_node_by_type(
-                self._config.terminate_drain_nodes, self._config.terminate_down_nodes
+                self._config.terminate_drain_nodes,
+                self._config.terminate_down_nodes,
+                self._config.ec2_instance_missing_max_count,
+                self._nodes_without_backing_instance_count_map,
             )
             for compute_resource in failures_per_compute_resource.keys():
                 if compute_resource in partition_online_compute_resources:
@@ -762,6 +772,8 @@ class ClusterManager:
             if not node.is_healthy(
                 consider_drain_as_unhealthy=self._config.terminate_drain_nodes,
                 consider_down_as_unhealthy=self._config.terminate_down_nodes,
+                ec2_instance_missing_max_count=self._config.ec2_instance_missing_max_count,
+                nodes_without_backing_instance_count_map=self._nodes_without_backing_instance_count_map,
                 log_warn_if_unhealthy=node.name not in reserved_nodenames,
             ):
                 if not self._config.disable_capacity_blocks_management and node.name in reserved_nodenames:
@@ -778,7 +790,11 @@ class ClusterManager:
                     ).append(node)
                 else:
                     unhealthy_dynamic_nodes.append(node)
-        self._event_publisher.publish_unhealthy_node_events(all_unhealthy_nodes)
+        self._event_publisher.publish_unhealthy_node_events(
+            all_unhealthy_nodes,
+            self._config.ec2_instance_missing_max_count,
+            self._nodes_without_backing_instance_count_map,
+        )
         return (
             unhealthy_dynamic_nodes,
             unhealthy_static_nodes,
@@ -1167,11 +1183,12 @@ class ClusterManager:
         """Check if a static node is in replacement but replacement time is expired."""
         return self._is_node_in_replacement_valid(node, check_node_is_valid=False)
 
-    @staticmethod
-    def _find_bootstrap_failure_nodes(slurm_nodes):
+    def _find_bootstrap_failure_nodes(self, slurm_nodes):
         bootstrap_failure_nodes = []
         for node in slurm_nodes:
-            if node.is_bootstrap_failure():
+            if node.is_bootstrap_failure(
+                self._config.ec2_instance_missing_max_count, self._nodes_without_backing_instance_count_map
+            ):
                 bootstrap_failure_nodes.append(node)
         return bootstrap_failure_nodes
 
