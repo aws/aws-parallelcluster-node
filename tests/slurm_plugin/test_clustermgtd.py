@@ -295,10 +295,10 @@ def test_exception_from_report_console_output_from_nodes(mocker):
     [
         (
             [
-                EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "some_launch_time"),
                 None,
                 None,
-                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, "some_launch_time"),
                 None,
                 None,
                 None,
@@ -335,14 +335,14 @@ def test_exception_from_report_console_output_from_nodes(mocker):
             None,
         ),
         (
-            [EC2Instance("id-3", "ip-3", "hostname", "some_launch_time")],
+            [EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, "some_launch_time")],
             [StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1")],
             None,
             Exception,
             None,
         ),
         (
-            [EC2Instance("id-3", "ip-3", "hostname", "some_launch_time")],
+            [EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, "some_launch_time")],
             [StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "some_state", "queue1")],
             {"queue1-st-c5xlarge-3"},
             None,
@@ -450,7 +450,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                                id="id-1",
+                                private_ip="ip-1",
+                                hostname="hostname",
+                                all_private_ips={"ip-1"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                         "id-2": StaticNode(
@@ -460,7 +464,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                                id="id-2",
+                                private_ip="ip-2",
+                                hostname="hostname",
+                                all_private_ips={"ip-2"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                     },
@@ -476,7 +484,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                                id="id-1",
+                                private_ip="ip-1",
+                                hostname="hostname",
+                                all_private_ips={"ip-1"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                         "id-2": StaticNode(
@@ -486,7 +498,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                                id="id-2",
+                                private_ip="ip-2",
+                                hostname="hostname",
+                                all_private_ips={"ip-2"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                     },
@@ -509,7 +525,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                                id="id-1",
+                                private_ip="ip-1",
+                                hostname="hostname",
+                                all_private_ips={"ip-1"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                         "id-2": StaticNode(
@@ -519,7 +539,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                                id="id-2",
+                                private_ip="ip-2",
+                                hostname="hostname",
+                                all_private_ips={"ip-2"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                     },
@@ -543,7 +567,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-1", private_ip="ip-1", hostname="hostname", launch_time="some_launch_time"
+                                id="id-1",
+                                private_ip="ip-1",
+                                hostname="hostname",
+                                all_private_ips={"ip-1"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                         "id-2": StaticNode(
@@ -553,7 +581,11 @@ def test_get_ec2_instances(mocker):
                             state="some_state",
                             partitions="queue1",
                             instance=EC2Instance(
-                                id="id-2", private_ip="ip-2", hostname="hostname", launch_time="some_launch_time"
+                                id="id-2",
+                                private_ip="ip-2",
+                                hostname="hostname",
+                                all_private_ips={"ip-2"},
+                                launch_time="some_launch_time",
                             ),
                         ),
                     },
@@ -584,8 +616,8 @@ def test_perform_health_check_actions(
         StaticNode("queue1-st-c5xlarge-5", "ip-2", "queue1-st-c5xlarge-5", "some_state", "queue1"),
     ]
     instances = [
-        EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
-        EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+        EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "some_launch_time"),
+        EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, "some_launch_time"),
     ]
     for node, instance in zip(slurm_nodes, instances):
         node.instance = instance
@@ -828,7 +860,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "queue1",
                 ),
             ],
-            [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None],
+            [EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "some_launch_time"), None],
             ["id-1"],
             ["queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-2"],
             True,
@@ -876,7 +908,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
                     "(Code:MaxSpotInstanceCountExceeded)Failure when resuming nodes [root@2023-01-31T21:24:55]",
                 ),
             ],
-            [EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"), None, None, None, None],
+            [EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "some_launch_time"), None, None, None, None],
             ["id-1"],
             [
                 "queue1-dy-c5xlarge-1",
@@ -938,15 +970,15 @@ def test_handle_unhealthy_dynamic_nodes(
                 StaticNode("queue1-st-c5xlarge-9", "ip-9", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             [
-                EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "some_launch_time"),
                 None,
-                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
+                EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, "some_launch_time"),
                 None,
                 None,
-                EC2Instance("id-7", "ip-7", "hostname", "some_launch_time"),
-                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
-                EC2Instance("id-8", "ip-8", "hostname", "some_launch_time"),
-                EC2Instance("id-9", "ip-9", "hostname", "some_launch_time"),
+                EC2Instance("id-7", "ip-7", "hostname", {"ip-7"}, "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", {"ip-6"}, "some_launch_time"),
+                EC2Instance("id-8", "ip-8", "hostname", {"ip-8"}, "some_launch_time"),
+                EC2Instance("id-9", "ip-9", "hostname", {"ip-9"}, "some_launch_time"),
             ],
             ["id-3", "id-6", "id-9"],
             ["queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-3", "queue1-st-c5xlarge-6", "queue1-st-c5xlarge-9"],
@@ -1002,14 +1034,14 @@ def test_handle_powering_down_nodes(
                 StaticNode("queue1-st-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
             ],
             [
-                EC2Instance("id-1", "ip-1", "hostname", "some_launch_time"),
-                EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, "some_launch_time"),
                 None,
             ],
             [
-                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
-                EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
+                EC2Instance("id-3", "ip-3", "hostname-3", {"ip-3"}, "some_launch_time"),
             ],
             {
                 "current-queue1-st-c5xlarge-6",
@@ -1033,9 +1065,9 @@ def test_handle_powering_down_nodes(
             ],
             [None, None, None],
             [
-                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
-                EC2Instance("id-3", "ip-3", "hostname-3", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
+                EC2Instance("id-3", "ip-3", "hostname-3", {"ip-3"}, "some_launch_time"),
             ],
             {
                 "current-queue1-st-c5xlarge-6",
@@ -1059,8 +1091,8 @@ def test_handle_powering_down_nodes(
             ],
             [None, None],
             [
-                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
             ],
             {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
             [],
@@ -1086,8 +1118,8 @@ def test_handle_powering_down_nodes(
             ],
             [None, None],
             [
-                EC2Instance("id-1", "ip-1", "hostname-1", "some_launch_time"),
-                EC2Instance("id-2", "ip-2", "hostname-2", "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname-2", {"ip-2"}, "some_launch_time"),
             ],
             {"current-queue1-st-c5xlarge-6", "queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"},
             [],
@@ -1254,14 +1286,14 @@ def test_handle_unhealthy_static_nodes(
                 ),  # ice dynamic node does not belong to unhealthy node when enable fast capacity failover
             ],
             [
-                EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", {"ip-2"}, "hostname", "some_launch_time"),
                 # Setting launch time here for instance for static node to trigger replacement timeout
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-1", "ip-1", {"ip-1"}, "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-2", "ip-4", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-2", "ip-4", {"ip-4"}, "hostname", datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
-                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                EC2Instance("id-5", "ip-5", {"ip-5"}, "hostname", "some_launch_time"),
+                EC2Instance("id-6", "ip-6", {"ip-6"}, "hostname", "some_launch_time"),
                 None,
             ],
             True,
@@ -1307,14 +1339,14 @@ def test_handle_unhealthy_static_nodes(
                 DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
             ],
             [
-                EC2Instance("id-2", "ip-2", "hostname", "some_launch_time"),
+                EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, "some_launch_time"),
                 # Setting launch time here for instance for static node to trigger replacement timeout
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-2", "ip-4", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-2", "ip-4", "hostname", {"ip-4"}, datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
-                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                EC2Instance("id-5", "ip-5", "hostname", {"ip-5"}, "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", {"ip-6"}, "some_launch_time"),
             ],
             True,
             False,
@@ -1401,8 +1433,8 @@ def test_maintain_nodes(
     [
         (
             [
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, 0, 0, 0)),
             ],
             [
                 DynamicNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
@@ -1413,8 +1445,8 @@ def test_maintain_nodes(
         ),
         (
             [
-                EC2Instance("id-3", "ip-3", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, 0, 0, 0)),
             ],
             [None, None],
             datetime(2020, 1, 1, 0, 0, 30),
@@ -1422,8 +1454,8 @@ def test_maintain_nodes(
         ),
         (
             [
-                EC2Instance("id-3", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
-                EC2Instance("id-2", "ip-2", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-3", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, 0, 0, 0)),
             ],
             [None, None],
             datetime(2020, 1, 1, 0, 0, 29),
@@ -1481,8 +1513,8 @@ def test_terminate_orphaned_instances(
             False,
             False,
             [
-                EC2Instance("id-1", "ip", "hostname", "launch_time"),
-                EC2Instance("id-2", "ip", "hostname", "launch_time"),
+                EC2Instance("id-1", "ip", "hostname", {"ip"}, "launch_time"),
+                EC2Instance("id-2", "ip", "hostname", {"ip"}, "launch_time"),
             ],
             [
                 StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "some_state", "queue1"),
@@ -1504,7 +1536,7 @@ def test_terminate_orphaned_instances(
         (
             True,
             False,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            [EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time")],
             [
                 StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
                 DynamicNode("queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
@@ -1518,7 +1550,7 @@ def test_terminate_orphaned_instances(
         (
             False,
             True,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            [EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time")],
             [
                 StaticNode("queue1-st-c5xlarge-1", "ip", "hostname", "some_state", "queue1"),
                 DynamicNode("queue1-dy-c5xlarge-2", "ip", "hostname", "some_state", "queue1"),
@@ -1539,7 +1571,7 @@ def test_terminate_orphaned_instances(
         (
             False,
             True,
-            [EC2Instance("id-1", "ip-1", "hostname", "launch_time")],
+            [EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time")],
             [],
             {"queue1": SlurmPartition("queue1", "placeholder_nodes", "UP")},
             ComputeFleetStatus.RUNNING,
@@ -2616,7 +2648,7 @@ def initialize_console_logger_mock(mocker):
         (
             set(),
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             datetime(2020, 1, 1, 0, 0, 29),
             False,
         ),
@@ -2630,14 +2662,14 @@ def initialize_console_logger_mock(mocker):
         (
             {"queue1-st-c5xlarge-1"},
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             datetime(2020, 1, 1, 0, 0, 29),
             True,
         ),
         (
             {"queue1-st-c5xlarge-1"},
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             datetime(2020, 1, 1, 0, 0, 30),
             False,
         ),
@@ -2675,7 +2707,7 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             {"queue1-st-c5xlarge-1"},
             True,
         ),
@@ -2693,13 +2725,13 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
                 "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING",
                 "queue1",
             ),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             {"some_node_in_replacement"},
             False,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
-            EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+            EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             {"some_node_in_replacement"},
             False,
         ),
@@ -2825,13 +2857,13 @@ def test_handle_failed_health_check_nodes_in_replacement(
                 ),  # fail health check
             ],
             [
-                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
-                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                EC2Instance("id-5", "ip-5", "hostname", {"ip-5"}, "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", {"ip-6"}, "some_launch_time"),
             ],
         ),
     ],
@@ -2895,13 +2927,13 @@ def test_handle_bootstrap_failure_nodes(
                 DynamicNode("queue3-dy-c5xlarge-1", "ip-6", "hostname", "IDLE+CLOUD", "queue1"),  # healthy dynamic
             ],
             [
-                EC2Instance("id-3", "ip-3", "hostname", "some_launch_time"),
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-3", "ip-3", "hostname", {"ip-3"}, "some_launch_time"),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-1", "ip-1", "hostname", datetime(2020, 1, 1, 0, 0, 0)),
+                EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
                 None,
-                EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
-                EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                EC2Instance("id-5", "ip-5", "hostname", {"ip-5"}, "some_launch_time"),
+                EC2Instance("id-6", "ip-6", "hostname", {"ip-6"}, "some_launch_time"),
             ],
         ),
     ],
@@ -3595,7 +3627,7 @@ def test_set_ice_compute_resources_to_down(
                     "hostname",
                     "IDLE",
                     "queue2",
-                    instance=EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                    instance=EC2Instance("id-5", "ip-5", "hostname", {"ip-5"}, "some_launch_time"),
                 ),  # healthy static
                 DynamicNode(
                     "queue3-dy-c5xlarge-1",
@@ -3603,7 +3635,7 @@ def test_set_ice_compute_resources_to_down(
                     "hostname",
                     "IDLE+CLOUD",
                     "queue1",
-                    instance=EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                    instance=EC2Instance("id-6", "ip-6", "hostname", {"ip-6"}, "some_launch_time"),
                 ),  # healthy dynamic
                 DynamicNode("queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
                 DynamicNode(
@@ -3709,7 +3741,7 @@ def test_set_ice_compute_resources_to_down(
                     "hostname",
                     "IDLE",
                     "queue2",
-                    instance=EC2Instance("id-5", "ip-5", "hostname", "some_launch_time"),
+                    instance=EC2Instance("id-5", "ip-5", "hostname", {"ip-5"}, "some_launch_time"),
                 ),  # healthy static
                 DynamicNode(
                     "queue3-dy-c5xlarge-1",
@@ -3717,7 +3749,7 @@ def test_set_ice_compute_resources_to_down(
                     "hostname",
                     "IDLE+CLOUD",
                     "queue1",
-                    instance=EC2Instance("id-6", "ip-6", "hostname", "some_launch_time"),
+                    instance=EC2Instance("id-6", "ip-6", "hostname", {"ip-6"}, "some_launch_time"),
                 ),  # healthy dynamic
                 DynamicNode("queue1-dy-c4xlarge-1", "ip-1", "hostname", "DOWN", "queue1"),
                 DynamicNode(

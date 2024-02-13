@@ -15,7 +15,7 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
 
 
 @pytest.mark.parametrize(
-    "instance_info, expected_private_ip, expected_private_dns_name",
+    "instance_info, expected_private_ip, expected_private_dns_name, expected_all_private_ips",
     [
         (
             {
@@ -36,6 +36,7 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
             },
             "ip.1.0.0.1",
             "ip-1-0-0-1",
+            {"ip.1.0.0.1"},
         ),
         (
             {
@@ -54,6 +55,7 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
             },
             "ip.1.0.0.1",
             "ip-1-0-0-1",
+            {"ip.1.0.0.1"},
         ),
         (
             {
@@ -69,6 +71,7 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
             },
             "ip.1.0.0.1",
             "ip-1-0-0-1",
+            {"ip.1.0.0.1"},
         ),
         (
             {
@@ -97,6 +100,7 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
             },
             "ip.1.0.0.2",
             "ip-1-0-0-2",
+            {"ip.1.0.0.1", "ip.1.0.0.2"},
         ),
         (
             {
@@ -125,10 +129,16 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
             },
             "ip.1.0.0.1",
             "ip-1-0-0-1",
+            {"ip.1.0.0.1", "ip.1.0.0.2"},
         ),
     ],
 )
-def test_get_private_ip_address_and_dns_name(mocker, instance_info, expected_private_ip, expected_private_dns_name):
-    actual_private_ip, actual_private_dns_name = get_private_ip_address_and_dns_name(instance_info)
+def test_get_private_ip_address_and_dns_name(
+    mocker, instance_info, expected_private_ip, expected_private_dns_name, expected_all_private_ips
+):
+    actual_private_ip, actual_private_dns_name, actual_all_private_ips = get_private_ip_address_and_dns_name(
+        instance_info
+    )
     assert_that(actual_private_ip).is_equal_to(expected_private_ip)
     assert_that(actual_private_dns_name).is_equal_to(expected_private_dns_name)
+    assert_that(actual_all_private_ips).is_equal_to(expected_all_private_ips)
