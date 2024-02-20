@@ -436,34 +436,30 @@ class SlurmNode(metaclass=ABCMeta):
             return self.ec2_backing_instance_valid
         # Set ec2_backing_instance_valid to True since it will be the result most often
         self.ec2_backing_instance_valid = True
-        if self.is_nodeaddr_set():
-            if not self.instance:
+        if self.is_nodeaddr_set() and not self.instance:
+            if log_warn_if_unhealthy:
+                logger.warning(
+                    "Node state check: no corresponding instance in EC2 for node %s, node state: %s",
+                    self,
+                    self.state_string,
+                )
+            # Allow a few iterations for the eventual consistency of EC2 data
+            logger.debug(f"Map of slurm nodes without backing instances {nodes_without_backing_instance_count_map}")
+            missing_instance_loop_count = nodes_without_backing_instance_count_map.get(self.name, 0)
+            # If the loop count has been reached, the instance is unhealthy and will be terminated
+            if missing_instance_loop_count >= ec2_instance_missing_max_count:
+                if log_warn_if_unhealthy:
+                    logger.warning(f"EC2 instance availability for node {self.name} has timed out.")
+                # Remove the slurm node from the map since a new instance will be launched
+                nodes_without_backing_instance_count_map.pop(self.name, None)
+                self.ec2_backing_instance_valid = False
+            else:
+                nodes_without_backing_instance_count_map[self.name] = missing_instance_loop_count + 1
                 if log_warn_if_unhealthy:
                     logger.warning(
-                        "Node state check: no corresponding instance in EC2 for node %s, node state: %s",
-                        self,
-                        self.state_string,
+                        f"Incrementing missing EC2 instance count for node {self.name} to "
+                        f"{nodes_without_backing_instance_count_map[self.name]}."
                     )
-                # Allow a few iterations for the eventual consistency of EC2 data
-                logger.debug(f"Map of slurm nodes without backing instances {nodes_without_backing_instance_count_map}")
-                missing_instance_loop_count = nodes_without_backing_instance_count_map.get(self.name, 0)
-                # If the loop count has been reached, the instance is unhealthy and will be terminated
-                if missing_instance_loop_count >= ec2_instance_missing_max_count:
-                    if log_warn_if_unhealthy:
-                        logger.warning(f"EC2 instance availability for node {self.name} has timed out.")
-                    # Remove the slurm node from the map since a new instance will be launched
-                    nodes_without_backing_instance_count_map.pop(self.name, None)
-                    self.ec2_backing_instance_valid = False
-                else:
-                    nodes_without_backing_instance_count_map[self.name] = missing_instance_loop_count + 1
-                    if log_warn_if_unhealthy:
-                        logger.warning(
-                            f"Incrementing missing EC2 instance count for node {self.name} to "
-                            f"{nodes_without_backing_instance_count_map[self.name]}."
-                        )
-            else:
-                # Remove the slurm node from the map since the instance is healthy
-                nodes_without_backing_instance_count_map.pop(self.name, None)
         else:
             # Remove the slurm node from the map since the instance is healthy
             nodes_without_backing_instance_count_map.pop(self.name, None)
