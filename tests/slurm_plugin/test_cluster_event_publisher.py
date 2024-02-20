@@ -1256,10 +1256,12 @@ def test_publish_unhealthy_node_events(failed_nodes, expected_details, level_fil
     for node, invalid_backing_instance in failed_nodes:
         if not invalid_backing_instance:
             node.nodeaddr = node.name
+        else:
+            node.ec2_backing_instance_valid = False
         bad_nodes.append(node)
 
     # Run test
-    event_publisher.publish_unhealthy_node_events(bad_nodes)
+    event_publisher.publish_unhealthy_node_events(bad_nodes, 0, {})
 
     # Assert calls
     assert_that(received_events).is_length(len(expected_details))

@@ -7,6 +7,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 ------
 
 **ENHANCEMENTS**
+- Add a clustermgtd config option `ec2_instance_missing_max_count` to allow a configurable amount of retries for eventual EC2 
+  describe instances consistency with run instances
 
 **CHANGES**
 

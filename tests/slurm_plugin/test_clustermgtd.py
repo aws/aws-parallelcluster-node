@@ -1384,6 +1384,7 @@ def test_maintain_nodes(
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = static_nodes_in_replacement
@@ -1423,6 +1424,7 @@ def test_maintain_nodes(
         mock_handle_protected_mode_process.assert_not_called()
 
     if disable_nodes_on_insufficient_capacity:
+        expected_ice_compute_resources_nodes_map["queue"]["c5-xlarge"][0].ec2_backing_instance_valid = False
         mock_handle_ice_nodes.assert_called_with(expected_ice_compute_resources_nodes_map, {})
     else:
         mock_handle_ice_nodes.assert_not_called()
@@ -2383,6 +2385,7 @@ def test_handle_successfully_launched_nodes(
         create_fleet_overrides={},
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
+        ec2_instance_missing_max_count=0,
     )
     # Mock associated function
     cluster_manager = ClusterManager(mock_sync_config)
@@ -2886,6 +2889,7 @@ def test_handle_bootstrap_failure_nodes(
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     for node, instance in zip(active_nodes, instances):
@@ -2953,6 +2957,7 @@ def test_find_bootstrap_failure_nodes(active_nodes, instances):
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     for node, instance in zip(active_nodes, instances):
@@ -3602,8 +3607,8 @@ def test_set_ice_compute_resources_to_down(
 @pytest.mark.parametrize(
     (
         "active_nodes, reserved_nodenames, expected_unhealthy_dynamic_nodes, expected_unhealthy_static_nodes, "
-        "expected_ice_compute_resources_and_nodes_map, disable_nodes_on_insufficient_capacity, "
-        "disable_capacity_blocks_management"
+        "unhealthy_static_node_backing_instance_valid, expected_ice_compute_resources_and_nodes_map, "
+        "disable_nodes_on_insufficient_capacity, disable_capacity_blocks_management"
     ),
     [
         (
@@ -3681,6 +3686,7 @@ def test_set_ice_compute_resources_to_down(
                     "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
                 ),  # bootstrap failure static
             ],
+            [True, False],
             {
                 "queue1": {
                     "c5xlarge": [
@@ -3836,6 +3842,7 @@ def test_set_ice_compute_resources_to_down(
                     "queue2-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"
                 ),  # bootstrap failure static
             ],
+            [True, False],
             {},
             False,
             False,
@@ -3880,6 +3887,7 @@ def test_set_ice_compute_resources_to_down(
                     reservation_name="cr-123456",
                 ),
             ],
+            [False],
             {},
             False,
             True,  # disable_capacity_blocks_management
@@ -3894,6 +3902,7 @@ def test_find_unhealthy_slurm_nodes(
     reserved_nodenames,
     expected_unhealthy_dynamic_nodes,
     expected_unhealthy_static_nodes,
+    unhealthy_static_node_backing_instance_valid,
     expected_ice_compute_resources_and_nodes_map,
     disable_nodes_on_insufficient_capacity,
     disable_capacity_blocks_management,
@@ -3909,6 +3918,7 @@ def test_find_unhealthy_slurm_nodes(
         boto3_config=None,
         fleet_config={},
         disable_capacity_blocks_management=disable_capacity_blocks_management,
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     get_reserved_mock = mocker.patch.object(
@@ -3921,6 +3931,15 @@ def test_find_unhealthy_slurm_nodes(
         ice_compute_resources_and_nodes_map,
     ) = cluster_manager._find_unhealthy_slurm_nodes(active_nodes)
     # Assert calls
+    for node in expected_unhealthy_dynamic_nodes:
+        node.ec2_backing_instance_valid = False
+    for i, node in enumerate(expected_unhealthy_static_nodes):
+        node.ec2_backing_instance_valid = unhealthy_static_node_backing_instance_valid[i]
+    for queue in expected_ice_compute_resources_and_nodes_map.values():
+        for node_list in queue.values():
+            print(node_list)
+            for node in node_list:
+                node.ec2_backing_instance_valid = False
     assert_that(unhealthy_dynamic_nodes).is_equal_to(expected_unhealthy_dynamic_nodes)
     assert_that(unhealthy_static_nodes).is_equal_to(expected_unhealthy_static_nodes)
     assert_that(ice_compute_resources_and_nodes_map).is_equal_to(expected_ice_compute_resources_and_nodes_map)

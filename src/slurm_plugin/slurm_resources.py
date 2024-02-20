@@ -63,12 +63,24 @@ class SlurmPartition:
     def has_running_job(self):
         return any(node.is_running_job() for node in self.slurm_nodes)
 
-    def get_online_node_by_type(self, terminate_drain_nodes, terminate_down_nodes):
+    def get_online_node_by_type(
+        self,
+        terminate_drain_nodes,
+        terminate_down_nodes,
+        ec2_instance_missing_max_count,
+        nodes_without_backing_instance_count_map,
+    ):
         online_compute_resources = set()
         if not self.state == "INACTIVE":
             for node in self.slurm_nodes:
                 if (
-                    node.is_healthy(terminate_drain_nodes, terminate_down_nodes, log_warn_if_unhealthy=False)
+                    node.is_healthy(
+                        terminate_drain_nodes,
+                        terminate_down_nodes,
+                        ec2_instance_missing_max_count,
+                        nodes_without_backing_instance_count_map,
+                        log_warn_if_unhealthy=False,
+                    )
                     and node.is_online()
                 ):
                     logger.debug("Currently online node: %s, node state: %s", node.name, node.state_string)
@@ -233,6 +245,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.is_failing_health_check = False
         self.error_code = self._parse_error_code()
         self.queue_name, self._node_type, self.compute_resource_name = parse_nodename(name)
+        self.ec2_backing_instance_valid = None
 
     def is_nodeaddr_set(self):
         """Check if nodeaddr(private ip) for the node is set."""
@@ -378,7 +391,7 @@ class SlurmNode(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def is_bootstrap_failure(self):
+    def is_bootstrap_failure(self, ec2_instance_missing_max_count, nodes_without_backing_instance_count_map: dict):
         """
         Check if a slurm node has boostrap failure.
 
@@ -394,7 +407,14 @@ class SlurmNode(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def is_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
+    def is_healthy(
+        self,
+        consider_drain_as_unhealthy,
+        consider_down_as_unhealthy,
+        ec2_instance_missing_max_count,
+        nodes_without_backing_instance_count_map: dict,
+        log_warn_if_unhealthy=True,
+    ):
         """Check if a slurm node is considered healthy."""
         pass
 
@@ -404,8 +424,18 @@ class SlurmNode(metaclass=ABCMeta):
         # for example because of a short SuspendTimeout
         return self.is_nodeaddr_set() and (self.is_power() or self.is_powering_down())
 
-    def is_backing_instance_valid(self, log_warn_if_unhealthy=True):
+    def is_backing_instance_valid(
+        self,
+        ec2_instance_missing_max_count,
+        nodes_without_backing_instance_count_map: dict,
+        log_warn_if_unhealthy=True,
+    ):
         """Check if a slurm node's addr is set, it points to a valid instance in EC2."""
+        # Perform this logic only once and return the result thereafter
+        if self.ec2_backing_instance_valid is not None:
+            return self.ec2_backing_instance_valid
+        # Set ec2_backing_instance_valid to True since it will be the result most often
+        self.ec2_backing_instance_valid = True
         if self.is_nodeaddr_set():
             if not self.instance:
                 if log_warn_if_unhealthy:
@@ -414,8 +444,30 @@ class SlurmNode(metaclass=ABCMeta):
                         self,
                         self.state_string,
                     )
-                return False
-        return True
+                # Allow a few iterations for the eventual consistency of EC2 data
+                logger.debug(f"Map of slurm nodes without backing instances {nodes_without_backing_instance_count_map}")
+                missing_instance_loop_count = nodes_without_backing_instance_count_map.get(self.name, 0)
+                # If the loop count has been reached, the instance is unhealthy and will be terminated
+                if missing_instance_loop_count >= ec2_instance_missing_max_count:
+                    if log_warn_if_unhealthy:
+                        logger.warning(f"EC2 instance availability for node {self.name} has timed out.")
+                    # Remove the slurm node from the map since a new instance will be launched
+                    nodes_without_backing_instance_count_map.pop(self.name, None)
+                    self.ec2_backing_instance_valid = False
+                else:
+                    nodes_without_backing_instance_count_map[self.name] = missing_instance_loop_count + 1
+                    if log_warn_if_unhealthy:
+                        logger.warning(
+                            f"Incrementing missing EC2 instance count for node {self.name} to "
+                            f"{nodes_without_backing_instance_count_map[self.name]}."
+                        )
+            else:
+                # Remove the slurm node from the map since the instance is healthy
+                nodes_without_backing_instance_count_map.pop(self.name, None)
+        else:
+            # Remove the slurm node from the map since the instance is healthy
+            nodes_without_backing_instance_count_map.pop(self.name, None)
+        return self.ec2_backing_instance_valid
 
     @abstractmethod
     def needs_reset_when_inactive(self):
@@ -478,11 +530,22 @@ class StaticNode(SlurmNode):
             reservation_name=reservation_name,
         )
 
-    def is_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
+    def is_healthy(
+        self,
+        consider_drain_as_unhealthy,
+        consider_down_as_unhealthy,
+        ec2_instance_missing_max_count,
+        nodes_without_backing_instance_count_map: dict,
+        log_warn_if_unhealthy=True,
+    ):
         """Check if a slurm node is considered healthy."""
         return (
             self._is_static_node_ip_configuration_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
-            and self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy)
+            and self.is_backing_instance_valid(
+                ec2_instance_missing_max_count=ec2_instance_missing_max_count,
+                nodes_without_backing_instance_count_map=nodes_without_backing_instance_count_map,
+                log_warn_if_unhealthy=log_warn_if_unhealthy,
+            )
             and self.is_state_healthy(
                 consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=log_warn_if_unhealthy
             )
@@ -533,9 +596,13 @@ class StaticNode(SlurmNode):
             return False
         return True
 
-    def is_bootstrap_failure(self):
+    def is_bootstrap_failure(self, ec2_instance_missing_max_count, nodes_without_backing_instance_count_map: dict):
         """Check if a slurm node has boostrap failure."""
-        if self.is_static_nodes_in_replacement and not self.is_backing_instance_valid(log_warn_if_unhealthy=False):
+        if self.is_static_nodes_in_replacement and not self.is_backing_instance_valid(
+            ec2_instance_missing_max_count=ec2_instance_missing_max_count,
+            nodes_without_backing_instance_count_map=nodes_without_backing_instance_count_map,
+            log_warn_if_unhealthy=False,
+        ):
             # Node is currently in replacement and no backing instance
             logger.warning(
                 "Node bootstrap error: Node %s is currently in replacement and no backing instance, node state: %s",
@@ -618,17 +685,30 @@ class DynamicNode(SlurmNode):
             return False
         return True
 
-    def is_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):
+    def is_healthy(
+        self,
+        consider_drain_as_unhealthy,
+        consider_down_as_unhealthy,
+        ec2_instance_missing_max_count,
+        nodes_without_backing_instance_count_map,
+        log_warn_if_unhealthy=True,
+    ):
         """Check if a slurm node is considered healthy."""
-        return self.is_backing_instance_valid(log_warn_if_unhealthy=log_warn_if_unhealthy) and self.is_state_healthy(
+        return self.is_backing_instance_valid(
+            ec2_instance_missing_max_count=ec2_instance_missing_max_count,
+            nodes_without_backing_instance_count_map=nodes_without_backing_instance_count_map,
+            log_warn_if_unhealthy=log_warn_if_unhealthy,
+        ) and self.is_state_healthy(
             consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=log_warn_if_unhealthy
         )
 
-    def is_bootstrap_failure(self):
+    def is_bootstrap_failure(self, ec2_instance_missing_max_count, nodes_without_backing_instance_count_map: dict):
         """Check if a slurm node has boostrap failure."""
         # no backing instance + [working state]# in node state
         if (self.is_configuring_job() or self.is_powering_up_idle()) and not self.is_backing_instance_valid(
-            log_warn_if_unhealthy=False
+            ec2_instance_missing_max_count=ec2_instance_missing_max_count,
+            nodes_without_backing_instance_count_map=nodes_without_backing_instance_count_map,
+            log_warn_if_unhealthy=False,
         ):
             logger.warning(
                 "Node bootstrap error: Node %s is in power up state without valid backing instance, node state: %s",
