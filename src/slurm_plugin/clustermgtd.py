@@ -150,7 +150,7 @@ class ClustermgtdConfig:
         "terminate_drain_nodes": True,
         "terminate_down_nodes": True,
         "orphaned_instance_timeout": 300,
-        "ec2_instance_missing_max_count": 2,
+        "ec2_instance_missing_max_count": 0,
         # Health check configs
         "disable_ec2_health_check": False,
         "disable_scheduled_event_health_check": False,
