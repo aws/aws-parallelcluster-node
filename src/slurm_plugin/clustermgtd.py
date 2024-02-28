@@ -1207,6 +1207,7 @@ class ClusterManager:
         If check_node_is_valid=True, check whether a node is in replacement,
         If check_node_is_valid=False, check whether a node is replacement timeout.
         """
+        log.debug(f"Checking if node is in replacement {node}")
         if (
             node.is_backing_instance_valid(
                 self._config.ec2_instance_missing_max_count,
@@ -1215,9 +1216,15 @@ class ClusterManager:
             )
             and node.name in self._static_nodes_in_replacement
         ):
-            time_is_expired = time_is_up(
-                node.instance.launch_time, self._current_time, grace_time=self._config.node_replacement_timeout
+            # Set `time_is_expired` to `False` if `node.instance` is `None` since we don't have a launch time yet
+            time_is_expired = (
+                False
+                if not node.instance
+                else time_is_up(
+                    node.instance.launch_time, self._current_time, grace_time=self._config.node_replacement_timeout
+                )
             )
+            log.debug(f"Node {node} is in replacement and timer expired? {time_is_expired}, instance? {node.instance}")
             return not time_is_expired if check_node_is_valid else time_is_expired
         return False
 

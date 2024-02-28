@@ -474,7 +474,7 @@ class SlurmNode(metaclass=ABCMeta):
                 if log_warn_if_unhealthy:
                     logger.warning(
                         f"Incrementing missing EC2 instance count for node {self.name} to "
-                        f"{nodes_without_backing_instance_count_map[self.name]}."
+                        f"{nodes_without_backing_instance_count_map[self.name].count}."
                     )
         else:
             # Remove the slurm node from the map since the instance is healthy
