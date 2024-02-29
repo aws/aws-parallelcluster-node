@@ -1200,14 +1200,21 @@ class ClusterManager:
                 active_nodes += partition.slurm_nodes
         return list(dict.fromkeys(active_nodes))
 
-    def _is_node_in_replacement_valid(self, node, check_node_is_valid):
+    def _is_node_in_replacement_valid(self, node: SlurmNode, check_node_is_valid):
         """
         Check node is replacement timeout or in replacement.
 
         If check_node_is_valid=True, check whether a node is in replacement,
         If check_node_is_valid=False, check whether a node is replacement timeout.
         """
-        if node.instance and node.name in self._static_nodes_in_replacement:
+        if (
+            node.is_backing_instance_valid(
+                self._config.ec2_instance_missing_max_count,
+                self._nodes_without_backing_instance_count_map,
+                log_warn_if_unhealthy=True,
+            )
+            and node.name in self._static_nodes_in_replacement
+        ):
             time_is_expired = time_is_up(
                 node.instance.launch_time, self._current_time, grace_time=self._config.node_replacement_timeout
             )

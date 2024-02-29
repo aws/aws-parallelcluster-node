@@ -767,6 +767,7 @@ def test_handle_health_check(
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
 
     cluster_manager = ClusterManager(mock_sync_config)
@@ -831,6 +832,7 @@ def test_update_static_nodes_in_replacement(current_replacing_nodes, slurm_nodes
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._static_nodes_in_replacement = current_replacing_nodes
@@ -2691,6 +2693,7 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
@@ -2753,6 +2756,7 @@ def test_is_node_replacement_timeout(node, current_node_in_replacement, is_repla
         region="region",
         boto3_config=None,
         fleet_config={},
+        ec2_instance_missing_max_count=0,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = datetime(2020, 1, 2, 0, 0, 0)
