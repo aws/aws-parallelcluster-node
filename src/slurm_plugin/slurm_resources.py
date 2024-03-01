@@ -180,6 +180,17 @@ class SlurmReservation:
     users: str
 
 
+class MissingInstance:
+    name: str
+    ip: str
+    count: int
+
+    def __init__(self, name, ip, count):
+        self.name = name
+        self.ip = ip
+        self.count = count
+
+
 class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_COMPLETING_STATE = "COMPLETING"
     SLURM_SCONTROL_BUSY_STATES = {"MIXED", "ALLOCATED", SLURM_SCONTROL_COMPLETING_STATE}
@@ -427,7 +438,7 @@ class SlurmNode(metaclass=ABCMeta):
     def is_backing_instance_valid(
         self,
         ec2_instance_missing_max_count,
-        nodes_without_backing_instance_count_map: dict,
+        nodes_without_backing_instance_count_map: dict[str, MissingInstance],
         log_warn_if_unhealthy=True,
     ):
         """Check if a slurm node's addr is set, it points to a valid instance in EC2."""
@@ -445,7 +456,11 @@ class SlurmNode(metaclass=ABCMeta):
                 )
             # Allow a few iterations for the eventual consistency of EC2 data
             logger.debug(f"Map of slurm nodes without backing instances {nodes_without_backing_instance_count_map}")
-            missing_instance_loop_count = nodes_without_backing_instance_count_map.get(self.name, 0)
+            missing_instance = nodes_without_backing_instance_count_map.get(self.name, None)
+            missing_instance_loop_count = missing_instance.count if missing_instance else 0
+            if missing_instance and self.nodeaddr != missing_instance.ip:
+                # Reset the loop count since the nodeaddr has changed
+                missing_instance_loop_count = 0
             # If the loop count has been reached, the instance is unhealthy and will be terminated
             if missing_instance_loop_count >= ec2_instance_missing_max_count:
                 if log_warn_if_unhealthy:
@@ -454,11 +469,12 @@ class SlurmNode(metaclass=ABCMeta):
                 nodes_without_backing_instance_count_map.pop(self.name, None)
                 self.ec2_backing_instance_valid = False
             else:
-                nodes_without_backing_instance_count_map[self.name] = missing_instance_loop_count + 1
+                instance_to_add = MissingInstance(self.name, self.nodeaddr, missing_instance_loop_count + 1)
+                nodes_without_backing_instance_count_map[self.name] = instance_to_add
                 if log_warn_if_unhealthy:
                     logger.warning(
                         f"Incrementing missing EC2 instance count for node {self.name} to "
-                        f"{nodes_without_backing_instance_count_map[self.name]}."
+                        f"{nodes_without_backing_instance_count_map[self.name].count}."
                     )
         else:
             # Remove the slurm node from the map since the instance is healthy

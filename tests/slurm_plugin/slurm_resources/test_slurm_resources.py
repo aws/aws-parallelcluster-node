@@ -18,6 +18,7 @@ from slurm_plugin.slurm_resources import (
     DynamicNode,
     EC2InstanceHealthState,
     InvalidNodenameError,
+    MissingInstance,
     SlurmPartition,
     SlurmResumeJob,
     StaticNode,
@@ -1185,24 +1186,32 @@ def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
             None,
             2,
-            {"queue1-st-c5xlarge-1": 1},
-            {"queue1-st-c5xlarge-1": 2},
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 1)},
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 2)},
             True,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
             None,
             2,
-            {"queue1-st-c5xlarge-1": 2},
-            {"queue1-st-c5xlarge-1": 2},
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 2)},
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 2)},
             False,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
             "Instance",
             2,
-            {"queue1-st-c5xlarge-1": 3},
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 3)},
             {},
+            True,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+POWER", "queue1"),
+            "Instance",
+            3,
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-2", 2)},
+            {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 1)},
             True,
         ),
     ],
@@ -1214,6 +1223,7 @@ def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
         "static_no_backing_count_not_exceeded",
         "static_no_backing_with_count_exceeded",
         "static_backed_with_count_exceeded",
+        "static_no_backing_count_not_exceeded_with_wrong_ip",
     ],
 )
 def test_slurm_node_is_backing_instance_valid(node, instance, max_count, count_map, final_map, expected_result):
@@ -1225,7 +1235,9 @@ def test_slurm_node_is_backing_instance_valid(node, instance, max_count, count_m
     ).is_equal_to(expected_result)
     assert_that(node.ec2_backing_instance_valid).is_equal_to(expected_result)
     if count_map:
-        assert_that(count_map[node.name]).is_equal_to(final_map.get(node.name, None))
+        assert_that(count_map[node.name].count).is_equal_to(final_map.get(node.name, None).count)
+        assert_that(count_map[node.name].ip).is_equal_to(final_map.get(node.name, None).ip)
+        assert_that(count_map[node.name].ip).is_equal_to(node.nodeaddr)
 
 
 @pytest.mark.parametrize(
