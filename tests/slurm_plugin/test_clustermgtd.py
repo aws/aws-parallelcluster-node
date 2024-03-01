@@ -2648,13 +2648,14 @@ def initialize_console_logger_mock(mocker):
 
 
 @pytest.mark.parametrize(
-    "current_replacing_nodes, node, instance, current_time, expected_result",
+    "current_replacing_nodes, node, instance, current_time, max_count, expected_result",
     [
         (
             set(),
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             datetime(2020, 1, 1, 0, 0, 29),
+            0,
             False,
         ),
         (
@@ -2662,6 +2663,7 @@ def initialize_console_logger_mock(mocker):
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
             None,
             datetime(2020, 1, 1, 0, 0, 29),
+            0,
             False,
         ),
         (
@@ -2669,6 +2671,7 @@ def initialize_console_logger_mock(mocker):
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             datetime(2020, 1, 1, 0, 0, 29),
+            0,
             True,
         ),
         (
@@ -2676,15 +2679,30 @@ def initialize_console_logger_mock(mocker):
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             datetime(2020, 1, 1, 0, 0, 30),
+            0,
             False,
         ),
+        (
+            {"queue1-st-c5xlarge-1"},
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD", "queue1"),
+            None,
+            datetime(2020, 1, 1, 0, 0, 30),
+            1,
+            True,
+        ),
     ],
-    ids=["not_in_replacement", "no-backing-instance", "in_replacement", "timeout"],
+    ids=[
+        "not_in_replacement",
+        "no-backing-instance",
+        "in_replacement",
+        "timeout",
+        "no-backing-instance-with-max-count",
+    ],
 )
 @pytest.mark.usefixtures(
     "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
 )
-def test_is_node_being_replaced(current_replacing_nodes, node, instance, current_time, expected_result):
+def test_is_node_being_replaced(current_replacing_nodes, node, instance, current_time, max_count, expected_result):
     mock_sync_config = SimpleNamespace(
         node_replacement_timeout=30,
         insufficient_capacity_timeout=3,
@@ -2693,7 +2711,7 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
         region="region",
         boto3_config=None,
         fleet_config={},
-        ec2_instance_missing_max_count=0,
+        ec2_instance_missing_max_count=max_count,
     )
     cluster_manager = ClusterManager(mock_sync_config)
     cluster_manager._current_time = current_time
@@ -2703,24 +2721,34 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
 
 
 @pytest.mark.parametrize(
-    "node, instance, current_node_in_replacement, is_replacement_timeout",
+    "node, instance, current_node_in_replacement, max_count, is_replacement_timeout",
     [
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             None,
             {"queue1-st-c5xlarge-1"},
+            0,
+            False,
+        ),
+        (
+            StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
+            None,
+            {"queue1-st-c5xlarge-1"},
+            1,
             False,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             {"queue1-st-c5xlarge-1"},
+            0,
             True,
         ),
         (
             DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD+NOT_RESPONDING+POWERING_UP", "queue1"),
             None,
             {"some_node_in_replacement"},
+            0,
             False,
         ),
         (
@@ -2733,12 +2761,14 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
             ),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             {"some_node_in_replacement"},
+            0,
             False,
         ),
         (
             StaticNode("queue1-st-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+NOT_RESPONDING", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, datetime(2020, 1, 1, 0, 0, 0)),
             {"some_node_in_replacement"},
+            0,
             False,
         ),
     ],
@@ -2746,7 +2776,7 @@ def test_is_node_being_replaced(current_replacing_nodes, node, instance, current
 @pytest.mark.usefixtures(
     "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
 )
-def test_is_node_replacement_timeout(node, current_node_in_replacement, is_replacement_timeout, instance):
+def test_is_node_replacement_timeout(node, current_node_in_replacement, max_count, is_replacement_timeout, instance):
     node.instance = instance
     mock_sync_config = SimpleNamespace(
         node_replacement_timeout=30,
