@@ -3,6 +3,13 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.11.0
+------
+
+**BUG FIXES**
+- Fix a bug that was causing `clustermgtd` to fail when a field returned by the command `scontrol show nodes`
+  has a value that contains the character `=`.
+
 3.10.1
 ------
 
