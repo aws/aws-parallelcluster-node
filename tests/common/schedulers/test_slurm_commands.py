@@ -194,23 +194,23 @@ def test_is_static_node(nodename, expected_is_static):
             False,
         ),
         (
-            "NodeName=multiple-dy-c5xlarge-4\n"
-            "NodeAddr=multiple-dy-c5xlarge-4\n"
-            "NodeHostName=multiple-dy-c5xlarge-4\n"
+            "NodeName=multiple-dy-c5xlarge-3\n"
+            "NodeAddr=multiple-dy-c5xlarge-3\n"
+            "NodeHostName=multiple-dy-c5xlarge-3\n"
             "State=IDLE+CLOUD+POWER\n"
-            "Partitions=multiple,multiple2\n"
-            "Reason=(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]\n"
-            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "Partitions=multiple\n"
+            "Reason=some reason containing key=value entries \n"
+            "SlurmdStartTime=None\n"
             "######\n",
             [
                 DynamicNode(
-                    "multiple-dy-c5xlarge-4",
-                    "multiple-dy-c5xlarge-4",
-                    "multiple-dy-c5xlarge-4",
+                    "multiple-dy-c5xlarge-3",
+                    "multiple-dy-c5xlarge-3",
+                    "multiple-dy-c5xlarge-3",
                     "IDLE+CLOUD+POWER",
-                    "multiple,multiple2",
-                    "(Code:InsufficientInstanceCapacity)Failure when resuming nodes [root@2023-01-31T21:24:55]",
-                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
+                    "multiple",
+                    "some reason containing key=value entries ",
+                    slurmdstarttime=None,
                 ),
             ],
             False,

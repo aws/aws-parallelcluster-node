@@ -443,7 +443,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
         lines = node.splitlines()
         kwargs = {}
         for line in lines:
-            key, value = line.split("=")
+            key, value = line.split("=", 1)
             if key in date_fields:
                 if value not in ["None", "Unknown"]:
                     value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
