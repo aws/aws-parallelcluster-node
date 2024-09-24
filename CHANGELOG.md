@@ -8,7 +8,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **BUG FIXES**
 - Fix a bug that was causing `clustermgtd` to fail when a field returned by the command `scontrol show nodes`
-  has a value that contains the character `=`.
+  has a value that contains the equal (`=`) character.
 
 3.10.1
 ------
