@@ -131,6 +131,10 @@ def _self_terminate():
     # Sleep for 10 seconds so termination log entries are uploaded to CW logs
     log.info("Preparing to self terminate the instance in 10 seconds!")
     time.sleep(10)
+    log.info("Killing slurm processes")
+    # TOFIX WORKAROUND: We kill Slurm processes because we observed in 3.13.0 on Ubuntu24.04
+    # that the shutdown hangs waiting for these processes to terminate.
+    run_command("sudo killall -9 --quiet slurmd slurmstepd")
     log.info("Self terminating instance now!")
     run_command("sudo shutdown -h now")
 
