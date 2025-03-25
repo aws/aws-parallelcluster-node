@@ -7,7 +7,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 ------
 
 **CHANGES**
-- Kill slurmd and slurmstepd before shutdown to prevent the shutdown hanging on those processing be running.
+- There were no changes for this version.
 
 3.12.0
 ------
