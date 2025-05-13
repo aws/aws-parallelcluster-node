@@ -129,11 +129,7 @@ def _is_ubuntu2404():
     """Return True if the OS is Ubuntu 24.04."""
     try:
         with open("/etc/os-release", "r") as f:
-            info = dict(
-                line.strip().split("=", 1)
-                for line in f
-                if "=" in line
-            )
+            info = dict(line.strip().split("=", 1) for line in f if "=" in line)
         os_id = info.get("ID", "").strip('"').lower()
         version = info.get("VERSION_ID", "").strip('"')
         return os_id == "ubuntu" and version.startswith("24.04")
