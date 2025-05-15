@@ -12,13 +12,13 @@
 
 import logging
 import os
+from unittest.mock import mock_open
 
 import pytest
 import slurm_plugin
 from assertpy import assert_that
-from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down, _self_terminate, _is_ubuntu2404
+from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down, _is_ubuntu2404, _self_terminate
 from slurm_plugin.slurm_resources import DynamicNode
-from unittest.mock import mock_open
 
 
 @pytest.mark.parametrize(
@@ -131,7 +131,7 @@ def test_self_terminate(mocker, caplog, is_ubuntu2404, expected_cmd):
         ('ID=ubuntu\nVERSION_ID="24.04.2"\n', True),
         ('ID=ubuntu\nVERSION_ID="22.04"\n', False),
         ('ID=rocky\nVERSION_ID="9.3"\n', False),
-        ('ID=ubuntu\n', False),
+        ("ID=ubuntu\n", False),
     ],
 )
 def test_is_ubuntu2404(file_content, expected, mocker):
