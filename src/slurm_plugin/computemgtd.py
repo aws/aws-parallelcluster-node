@@ -152,7 +152,6 @@ def _self_terminate():
         log.info("Using default shutdown command `%s`", shutdown_cmd)
 
     log.info("Self terminating instance now!")
-    time.sleep(600)
     run_command(shutdown_cmd)
 
 
