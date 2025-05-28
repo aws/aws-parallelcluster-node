@@ -125,34 +125,14 @@ class ComputemgtdConfig:
             raise
 
 
-def _is_ubuntu2404():
-    """Return True if the OS is Ubuntu 24.04."""
-    try:
-        with open("/etc/os-release", "r") as f:
-            info = dict(line.strip().split("=", 1) for line in f if "=" in line)
-        os_id = info.get("ID", "").strip('"').lower()
-        version = info.get("VERSION_ID", "").strip('"')
-        return os_id == "ubuntu" and version.startswith("24.04")
-    except Exception as e:
-        log.warning("Unable to detect OS version from /etc/os-release: %s", e)
-        return False
-
-
 @log_exception(log, "self terminating compute instance", catch_exception=CalledProcessError, raise_on_error=False)
 def _self_terminate():
     """Self terminate the instance."""
     # Sleep for 10 seconds so termination log entries are uploaded to CW logs
     log.info("Preparing to self terminate the instance in 10 seconds!")
     time.sleep(10)
-    if _is_ubuntu2404():
-        shutdown_cmd = "sudo systemctl poweroff --force"
-        log.info("Detected Ubuntu 24.04 – using `%s`", shutdown_cmd)
-    else:
-        shutdown_cmd = "sudo shutdown -h now"
-        log.info("Using default shutdown command `%s`", shutdown_cmd)
-
     log.info("Self terminating instance now!")
-    run_command(shutdown_cmd)
+    run_command("sudo shutdown -h now")
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1500)
