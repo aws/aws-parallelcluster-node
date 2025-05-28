@@ -6,8 +6,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.13.1
 ------
 
-**BUG FIXES**
-- Fix a bug that was causing compute node self‑termination to hang on Ubuntu 24.04 nodes.
+**CHANGES**
+- There were no changes for this version.
 
 3.13.0
 ------

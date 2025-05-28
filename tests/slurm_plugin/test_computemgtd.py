@@ -12,12 +12,11 @@
 
 import logging
 import os
-from unittest.mock import mock_open
 
 import pytest
 import slurm_plugin
 from assertpy import assert_that
-from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down, _is_ubuntu2404, _self_terminate
+from slurm_plugin.computemgtd import ComputemgtdConfig, _is_self_node_down, _self_terminate
 from slurm_plugin.slurm_resources import DynamicNode
 
 
@@ -104,38 +103,13 @@ def test_is_self_node_down(mock_node_info, expected_result, mocker):
     assert_that(_is_self_node_down("queue1-st-c5xlarge-1")).is_equal_to(expected_result)
 
 
-@pytest.mark.parametrize(
-    ("is_ubuntu2404", "expected_cmd"),
-    [
-        (True, "sudo systemctl poweroff --force"),
-        (False, "sudo shutdown -h now"),
-    ],
-)
-def test_self_terminate(mocker, caplog, is_ubuntu2404, expected_cmd):
+def test_self_terminate(mocker, caplog):
     """Verify self-termination is implemented via a shutdown command rather than calling TerminateInstances."""
-    mocker.patch("slurm_plugin.computemgtd._is_ubuntu2404", return_value=is_ubuntu2404)
     run_command_patch = mocker.patch("slurm_plugin.computemgtd.run_command")
     sleep_patch = mocker.patch("slurm_plugin.computemgtd.time.sleep")
     with caplog.at_level(logging.INFO):
         _self_terminate()
     assert_that(caplog.text).contains("Preparing to self terminate the instance in 10 seconds!")
     assert_that(caplog.text).contains("Self terminating instance now!")
-    run_command_patch.assert_called_with(expected_cmd)
+    run_command_patch.assert_called_with("sudo shutdown -h now")
     sleep_patch.assert_called_with(10)
-
-
-@pytest.mark.parametrize(
-    ("file_content", "expected"),
-    [
-        ('ID=ubuntu\nVERSION_ID="24.04"\n', True),
-        ('ID=ubuntu\nVERSION_ID="24.04.2"\n', True),
-        ('ID=ubuntu\nVERSION_ID="22.04"\n', False),
-        ('ID=rocky\nVERSION_ID="9.3"\n', False),
-        ("ID=ubuntu\n", False),
-    ],
-)
-def test_is_ubuntu2404(file_content, expected, mocker):
-    m = mock_open(read_data=file_content)
-    mocker.patch("builtins.open", m)
-
-    assert _is_ubuntu2404() is expected
