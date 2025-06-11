@@ -296,11 +296,24 @@ class Ec2CreateFleetManager(FleetManager):
             if self._compute_resource_config.get("MaxPrice"):
                 overrides.update({"MaxPrice": str(self._compute_resource_config["MaxPrice"])})
 
+        priority = 0.0
         for instance_type in self._compute_resource_config["Instances"]:
             subnet_ids = self._compute_resource_config["Networking"]["SubnetIds"]
             for subnet_id in subnet_ids:
-                overrides.update({"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id})
+                if (self._compute_resource_config.get("AllocationStrategy") == "prioritized"
+                        or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"):
+                    overrides.update({
+                        "InstanceType": instance_type["InstanceType"],
+                        "SubnetId": subnet_id,
+                        "Priority": priority
+                    })
+                else:
+                    overrides.update({
+                        "InstanceType": instance_type["InstanceType"],
+                        "SubnetId": subnet_id
+                    })
                 template_overrides.append(copy.deepcopy(overrides))
+                priority += 1.0
         return template_overrides
 
     def _uses_single_instance_type(self):
