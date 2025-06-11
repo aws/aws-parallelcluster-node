@@ -317,8 +317,11 @@ class Ec2CreateFleetManager(FleetManager):
         try:
             common_launch_options = {
                 "SingleInstanceType": self._uses_single_instance_type(),
-                "SingleAvailabilityZone": self._uses_single_az(),  # If using Multi-AZ (by specifying multiple subnets),
-                # set SingleAvailabilityZone to False
+                "SingleAvailabilityZone": (
+                    self._compute_resource_config["Networking"]["SingleAvailabilityZone"]
+                    if self._compute_resource_config["Networking"]["SingleAvailabilityZone"] is not None
+                    else self._uses_single_az()
+                )
             }
             allocation_strategy = self._compute_resource_config.get("AllocationStrategy")
             if allocation_strategy:
