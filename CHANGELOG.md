@@ -7,7 +7,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 ------
 
 **CHANGES**
-- There were no changes for this version.
+- Support prioritized|capacity-optimized-prioritized Allocation Strategy and EnableSingleAvailabilityZone
 
 3.13.0
 ------
