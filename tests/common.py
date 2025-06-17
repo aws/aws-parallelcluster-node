@@ -31,8 +31,9 @@ def client_error(error_code):
     return ClientError({"Error": {"Code": error_code}}, "failed_operation")
 
 
-SINGLE_SUBNET = {"SubnetIds": ["1234567"]}
-MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"]}
+SINGLE_SUBNET = {"SubnetIds": ["1234567"], "SingleAvailabilityZone": None}
+MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"], "SingleAvailabilityZone": None}
+MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE = {"SubnetIds": ["1234567", "7654321"], "SingleAvailabilityZone": True}
 
 FLEET_CONFIG = {
     "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
@@ -108,6 +109,36 @@ FLEET_CONFIG = {
             "CapacityType": "capacity-block",
             "Networking": SINGLE_SUBNET,
             "CapacityReservationId": "cr-234567",
+        },
+    },
+    "queue-single-az": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "lowest-price",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
+        },
+    },
+    "queue-prioritized": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "prioritized",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
+        },
+    },
+    "queue-capacity-optimized-prioritized": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "capacity-optimized-prioritized",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
         },
     },
 }

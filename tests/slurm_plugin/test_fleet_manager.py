@@ -391,6 +391,12 @@ class TestEc2CreateFleetManager:
                 {},
                 "All-or-Nothing is only available with single instance type compute resources or single subnet queues",
             ),
+            # Enable Single Availability Zone
+            (5, "queue-single-az", "fleet1", False, {}, None),
+            # Use "prioritized" Allocation Strategy AND Launch Override with Priority
+            (5, "queue-prioritized", "fleet1", False, {}, None),
+            # Use "capacity-optimized-prioritized" Allocation Strategy AND Launch Override with Priority
+            (5, "queue-capacity-optimized-prioritized", "fleet1", False, {}, None),
         ],
         ids=[
             "fleet_spot",
@@ -402,6 +408,9 @@ class TestEc2CreateFleetManager:
             "fleet-multi-az-single-it-all_or_nothing",
             "fleet-multi-az-multi-it",
             "fleet-multi-az-multi-it-all_or_nothing",
+            "single_az",
+            "prioritized",
+            "capacity_optimized_prioritized",
         ],
     )
     def test_evaluate_launch_params(

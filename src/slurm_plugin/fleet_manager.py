@@ -300,18 +300,15 @@ class Ec2CreateFleetManager(FleetManager):
         for instance_type in self._compute_resource_config["Instances"]:
             subnet_ids = self._compute_resource_config["Networking"]["SubnetIds"]
             for subnet_id in subnet_ids:
-                if (self._compute_resource_config.get("AllocationStrategy") == "prioritized"
-                        or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"):
-                    overrides.update({
-                        "InstanceType": instance_type["InstanceType"],
-                        "SubnetId": subnet_id,
-                        "Priority": priority
-                    })
+                if (
+                    self._compute_resource_config.get("AllocationStrategy") == "prioritized"
+                    or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
+                ):
+                    overrides.update(
+                        {"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id, "Priority": priority}
+                    )
                 else:
-                    overrides.update({
-                        "InstanceType": instance_type["InstanceType"],
-                        "SubnetId": subnet_id
-                    })
+                    overrides.update({"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id})
                 template_overrides.append(copy.deepcopy(overrides))
                 priority += 1.0
         return template_overrides
@@ -334,7 +331,7 @@ class Ec2CreateFleetManager(FleetManager):
                     self._compute_resource_config["Networking"]["SingleAvailabilityZone"]
                     if self._compute_resource_config["Networking"]["SingleAvailabilityZone"] is not None
                     else self._uses_single_az()
-                )
+                ),
             }
             allocation_strategy = self._compute_resource_config.get("AllocationStrategy")
             if allocation_strategy:
