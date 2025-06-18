@@ -116,7 +116,7 @@ FLEET_CONFIG = {
         "fleet1": {
             "Api": "create-fleet",
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
-            "AllocationStrategy": "lowest-price",
+            "AllocationStrategy": "prioritized",
             "CapacityType": "on-demand",
             "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
         },

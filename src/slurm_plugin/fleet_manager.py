@@ -330,6 +330,10 @@ class Ec2CreateFleetManager(FleetManager):
                 "SingleAvailabilityZone": (
                     self._compute_resource_config["Networking"]["SingleAvailabilityZone"]
                     if self._compute_resource_config["Networking"]["SingleAvailabilityZone"] is not None
+                    and (
+                        self._compute_resource_config.get("AllocationStrategy") == "prioritized"
+                        or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
+                    )
                     else self._uses_single_az()
                 ),
             }

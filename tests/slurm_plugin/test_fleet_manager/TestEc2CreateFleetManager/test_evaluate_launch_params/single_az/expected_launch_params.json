@@ -8,25 +8,29 @@
       "Overrides": [
         {
           "InstanceType": "t2.medium",
-          "SubnetId": "1234567"
+          "SubnetId": "1234567",
+          "Priority": 0.0
         },
         {
           "InstanceType": "t2.medium",
-          "SubnetId": "7654321"
+          "SubnetId": "7654321",
+          "Priority": 1.0
         },
         {
           "InstanceType": "t2.large",
-          "SubnetId": "1234567"
+          "SubnetId": "1234567",
+          "Priority": 2.0
         },
         {
           "InstanceType": "t2.large",
-          "SubnetId": "7654321"
+          "SubnetId": "7654321",
+          "Priority": 3.0
         }
       ]
     }
   ],
   "OnDemandOptions": {
-    "AllocationStrategy": "lowest-price",
+    "AllocationStrategy": "prioritized",
     "SingleInstanceType": false,
     "SingleAvailabilityZone": true,
     "CapacityReservationOptions": {
