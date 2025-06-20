@@ -298,12 +298,9 @@ class Ec2CreateFleetManager(FleetManager):
 
         priority = 0.0
         for instance_type in self._compute_resource_config["Instances"]:
-            subnet_ids = self._compute_resource_config["Networking"]["SubnetIds"]
+            subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
             for subnet_id in subnet_ids:
-                if (
-                    self._compute_resource_config.get("AllocationStrategy") == "prioritized"
-                    or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
-                ):
+                if self._uses_subnet_prioritization():
                     overrides.update(
                         {"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id, "Priority": priority}
                     )
@@ -322,20 +319,26 @@ class Ec2CreateFleetManager(FleetManager):
         subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
         return len(subnet_ids) == 1
 
+    def _uses_subnet_prioritization(self):
+        return (
+            self._compute_resource_config.get("AllocationStrategy") == "prioritized"
+            or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
+        )
+
     def _evaluate_launch_params(self, count):
         """Evaluate parameters to be passed to create_fleet call."""
         try:
+            enable_single_availability_zone = self._compute_resource_config.get("Networking", {}).get(
+                "SingleAvailabilityZone", None
+            )
+            if enable_single_availability_zone is None or (
+                enable_single_availability_zone and self._uses_subnet_prioritization() == False
+            ):
+                enable_single_availability_zone = self._uses_single_az()
+
             common_launch_options = {
                 "SingleInstanceType": self._uses_single_instance_type(),
-                "SingleAvailabilityZone": (
-                    self._compute_resource_config["Networking"]["SingleAvailabilityZone"]
-                    if self._compute_resource_config["Networking"]["SingleAvailabilityZone"] is not None
-                    and (
-                        self._compute_resource_config.get("AllocationStrategy") == "prioritized"
-                        or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
-                    )
-                    else self._uses_single_az()
-                ),
+                "SingleAvailabilityZone": enable_single_availability_zone,
             }
             allocation_strategy = self._compute_resource_config.get("AllocationStrategy")
             if allocation_strategy:
