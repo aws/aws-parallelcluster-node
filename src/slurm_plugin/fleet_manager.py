@@ -332,7 +332,7 @@ class Ec2CreateFleetManager(FleetManager):
                 "SingleAvailabilityZone", None
             )
             if enable_single_availability_zone is None or (
-                enable_single_availability_zone and self._uses_subnet_prioritization() == False
+                enable_single_availability_zone and self._uses_subnet_prioritization() is False
             ):
                 enable_single_availability_zone = self._uses_single_az()
 
