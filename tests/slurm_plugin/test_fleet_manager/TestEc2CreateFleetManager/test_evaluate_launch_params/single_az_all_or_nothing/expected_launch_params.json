@@ -2,7 +2,7 @@
   "LaunchTemplateConfigs": [
     {
       "LaunchTemplateSpecification": {
-        "LaunchTemplateName": "hit-queue-capacity-optimized-prioritized-fleet1",
+        "LaunchTemplateName": "hit-queue-single-az-fleet1",
         "Version": "$Latest"
       },
       "Overrides": [
@@ -29,14 +29,17 @@
       ]
     }
   ],
-  "SpotOptions": {
+  "OnDemandOptions": {
+    "AllocationStrategy": "prioritized",
     "SingleInstanceType": false,
     "SingleAvailabilityZone": true,
-    "AllocationStrategy": "capacity-optimized-prioritized"
+    "CapacityReservationOptions": {
+      "UsageStrategy": "use-capacity-reservations-first"
+    }
   },
   "TargetCapacitySpecification": {
     "TotalTargetCapacity": 5,
-    "DefaultTargetCapacityType": "spot"
+    "DefaultTargetCapacityType": "on-demand"
   },
   "Type": "instant"
 }

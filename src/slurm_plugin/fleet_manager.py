@@ -322,7 +322,10 @@ class Ec2CreateFleetManager(FleetManager):
     def _uses_subnet_prioritization(self):
         return (
             self._compute_resource_config.get("AllocationStrategy") == "prioritized"
-            or self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
+            and self._compute_resource_config["CapacityType"] == "on-demand"
+        ) or (
+            self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
+            and self._compute_resource_config["CapacityType"] == "spot"
         )
 
     def _evaluate_launch_params(self, count):
