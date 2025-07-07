@@ -331,17 +331,10 @@ class Ec2CreateFleetManager(FleetManager):
     def _evaluate_launch_params(self, count):
         """Evaluate parameters to be passed to create_fleet call."""
         try:
-            enable_single_availability_zone = self._compute_resource_config.get("Networking", {}).get(
-                "SingleAvailabilityZone", None
-            )
-            if enable_single_availability_zone is None or (
-                enable_single_availability_zone and self._uses_subnet_prioritization() is False
-            ):
-                enable_single_availability_zone = self._uses_single_az()
-
             common_launch_options = {
                 "SingleInstanceType": self._uses_single_instance_type(),
-                "SingleAvailabilityZone": enable_single_availability_zone,
+                "SingleAvailabilityZone": self._uses_single_az(),  # If using Multi-AZ (by specifying multiple subnets),
+                # set SingleAvailabilityZone to False
             }
             allocation_strategy = self._compute_resource_config.get("AllocationStrategy")
             if allocation_strategy:

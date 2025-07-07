@@ -391,10 +391,6 @@ class TestEc2CreateFleetManager:
                 {},
                 "All-or-Nothing is only available with single instance type compute resources or single subnet queues",
             ),
-            # Enable Single Availability Zone
-            (5, "queue-single-az", "fleet1", False, {}, None),
-            # Enable Single Availability Zone with all-or-nothing
-            (5, "queue-single-az", "fleet1", True, {}, None),
             # Use "prioritized" Allocation Strategy AND Launch Override with Priority
             (5, "queue-prioritized", "fleet1", False, {}, None),
             # Use "capacity-optimized-prioritized" Allocation Strategy AND Launch Override with Priority
@@ -410,8 +406,6 @@ class TestEc2CreateFleetManager:
             "fleet-multi-az-single-it-all_or_nothing",
             "fleet-multi-az-multi-it",
             "fleet-multi-az-multi-it-all_or_nothing",
-            "single_az",
-            "single_az_all_or_nothing",
             "prioritized",
             "capacity_optimized_prioritized",
         ],

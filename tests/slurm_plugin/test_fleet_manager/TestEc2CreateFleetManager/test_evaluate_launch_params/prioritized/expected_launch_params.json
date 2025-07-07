@@ -32,7 +32,7 @@
   "OnDemandOptions": {
     "AllocationStrategy": "prioritized",
     "SingleInstanceType": false,
-    "SingleAvailabilityZone": true,
+    "SingleAvailabilityZone": false,
     "CapacityReservationOptions": {
       "UsageStrategy": "use-capacity-reservations-first"
     }

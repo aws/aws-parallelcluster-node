@@ -31,9 +31,8 @@ def client_error(error_code):
     return ClientError({"Error": {"Code": error_code}}, "failed_operation")
 
 
-SINGLE_SUBNET = {"SubnetIds": ["1234567"], "SingleAvailabilityZone": None}
-MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"], "SingleAvailabilityZone": None}
-MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE = {"SubnetIds": ["1234567", "7654321"], "SingleAvailabilityZone": True}
+SINGLE_SUBNET = {"SubnetIds": ["1234567"]}
+MULTIPLE_SUBNETS = {"SubnetIds": ["1234567", "7654321"]}
 
 FLEET_CONFIG = {
     "queue": {"c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]}},
@@ -118,7 +117,7 @@ FLEET_CONFIG = {
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "AllocationStrategy": "prioritized",
             "CapacityType": "on-demand",
-            "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
+            "Networking": MULTIPLE_SUBNETS,
         },
     },
     "queue-prioritized": {
@@ -128,7 +127,7 @@ FLEET_CONFIG = {
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "AllocationStrategy": "prioritized",
             "CapacityType": "on-demand",
-            "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
+            "Networking": MULTIPLE_SUBNETS,
         },
     },
     "queue-capacity-optimized-prioritized": {
@@ -138,7 +137,7 @@ FLEET_CONFIG = {
             "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
             "AllocationStrategy": "capacity-optimized-prioritized",
             "CapacityType": "spot",
-            "Networking": MULTIPLE_SUBNET_ENABLE_SINGLE_AVAILABILITY_ZONE,
+            "Networking": MULTIPLE_SUBNETS,
         },
     },
 }

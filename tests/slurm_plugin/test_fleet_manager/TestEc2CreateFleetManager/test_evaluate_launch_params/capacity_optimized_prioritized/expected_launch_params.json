@@ -31,7 +31,7 @@
   ],
   "SpotOptions": {
     "SingleInstanceType": false,
-    "SingleAvailabilityZone": true,
+    "SingleAvailabilityZone": false,
     "AllocationStrategy": "capacity-optimized-prioritized"
   },
   "TargetCapacitySpecification": {
