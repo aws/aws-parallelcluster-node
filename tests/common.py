@@ -110,6 +110,56 @@ FLEET_CONFIG = {
             "CapacityReservationId": "cr-234567",
         },
     },
+    "queue-single-az": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "prioritized",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue-prioritized": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "prioritized",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue-capacity-optimized-prioritized": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}, {"InstanceType": "t2.large"}],
+            "AllocationStrategy": "capacity-optimized-prioritized",
+            "CapacityType": "spot",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue-prioritized-all-or-nothing": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}],
+            "AllocationStrategy": "prioritized",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue-capacity-optimized-prioritized-all-or-nothing": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}],
+            "AllocationStrategy": "capacity-optimized-prioritized",
+            "CapacityType": "spot",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
 }
 
 LAUNCH_OVERRIDES = {}

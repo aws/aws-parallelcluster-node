@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.14.0
+------
+
+**CHANGES**
+- Support prioritized and capacity-optimized-prioritized Allocation Strategy
+
 3.13.2
 ------
 

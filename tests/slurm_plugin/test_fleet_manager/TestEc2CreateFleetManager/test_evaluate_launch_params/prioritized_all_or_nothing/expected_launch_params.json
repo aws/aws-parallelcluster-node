@@ -1,0 +1,36 @@
+{
+  "LaunchTemplateConfigs": [
+    {
+      "LaunchTemplateSpecification": {
+        "LaunchTemplateName": "hit-queue-prioritized-all-or-nothing-fleet1",
+        "Version": "$Latest"
+      },
+      "Overrides": [
+        {
+          "InstanceType": "t2.medium",
+          "SubnetId": "1234567",
+          "Priority": 0.0
+        },
+        {
+          "InstanceType": "t2.medium",
+          "SubnetId": "7654321",
+          "Priority": 1.0
+        }
+      ]
+    }
+  ],
+  "OnDemandOptions": {
+    "AllocationStrategy": "prioritized",
+    "SingleInstanceType": true,
+    "SingleAvailabilityZone": false,
+    "CapacityReservationOptions": {
+      "UsageStrategy": "use-capacity-reservations-first"
+    },
+    "MinTargetCapacity": 5
+  },
+  "TargetCapacitySpecification": {
+    "TotalTargetCapacity": 5,
+    "DefaultTargetCapacityType": "on-demand"
+  },
+  "Type": "instant"
+}

@@ -391,6 +391,15 @@ class TestEc2CreateFleetManager:
                 {},
                 "All-or-Nothing is only available with single instance type compute resources or single subnet queues",
             ),
+            # Use "prioritized" Allocation Strategy AND Launch Override with Priority
+            (5, "queue-prioritized", "fleet1", False, {}, None),
+            # Use "capacity-optimized-prioritized" Allocation Strategy AND Launch Override with Priority
+            (5, "queue-capacity-optimized-prioritized", "fleet1", False, {}, None),
+            # Use "prioritized" Allocation Strategy AND Launch Override with Priority AND all_or_nothing is True
+            (5, "queue-prioritized-all-or-nothing", "fleet1", True, {}, None),
+            # Use "capacity-optimized-prioritized" Allocation Strategy
+            # AND Launch Override with Priority AND all_or_nothing is True
+            (5, "queue-capacity-optimized-prioritized-all-or-nothing", "fleet1", True, {}, None),
         ],
         ids=[
             "fleet_spot",
@@ -402,6 +411,10 @@ class TestEc2CreateFleetManager:
             "fleet-multi-az-single-it-all_or_nothing",
             "fleet-multi-az-multi-it",
             "fleet-multi-az-multi-it-all_or_nothing",
+            "prioritized",
+            "capacity_optimized_prioritized",
+            "prioritized_all_or_nothing",
+            "capacity_optimized_prioritized_all_or_nothing",
         ],
     )
     def test_evaluate_launch_params(
