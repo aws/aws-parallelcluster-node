@@ -140,6 +140,26 @@ FLEET_CONFIG = {
             "Networking": MULTIPLE_SUBNETS,
         },
     },
+    "queue-prioritized-all-or-nothing": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}],
+            "AllocationStrategy": "prioritized",
+            "CapacityType": "on-demand",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
+    "queue-capacity-optimized-prioritized-all-or-nothing": {
+        "c5xlarge": {"Api": "run-instances", "Instances": [{"InstanceType": "c5.xlarge"}]},
+        "fleet1": {
+            "Api": "create-fleet",
+            "Instances": [{"InstanceType": "t2.medium"}],
+            "AllocationStrategy": "capacity-optimized-prioritized",
+            "CapacityType": "spot",
+            "Networking": MULTIPLE_SUBNETS,
+        },
+    },
 }
 
 LAUNCH_OVERRIDES = {}

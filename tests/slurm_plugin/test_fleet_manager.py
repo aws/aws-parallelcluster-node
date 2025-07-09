@@ -396,10 +396,10 @@ class TestEc2CreateFleetManager:
             # Use "capacity-optimized-prioritized" Allocation Strategy AND Launch Override with Priority
             (5, "queue-capacity-optimized-prioritized", "fleet1", False, {}, None),
             # Use "prioritized" Allocation Strategy AND Launch Override with Priority AND all_or_nothing is True
-            (5, "queue-prioritized", "fleet1", True, {}, None),
+            (5, "queue-prioritized-all-or-nothing", "fleet1", True, {}, None),
             # Use "capacity-optimized-prioritized" Allocation Strategy
             # AND Launch Override with Priority AND all_or_nothing is True
-            (5, "queue-capacity-optimized-prioritized", "fleet1", True, {}, None),
+            (5, "queue-capacity-optimized-prioritized-all-or-nothing", "fleet1", True, {}, None),
         ],
         ids=[
             "fleet_spot",
