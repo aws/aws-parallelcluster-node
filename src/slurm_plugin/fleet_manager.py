@@ -296,11 +296,18 @@ class Ec2CreateFleetManager(FleetManager):
             if self._compute_resource_config.get("MaxPrice"):
                 overrides.update({"MaxPrice": str(self._compute_resource_config["MaxPrice"])})
 
+        priority = 0.0
         for instance_type in self._compute_resource_config["Instances"]:
-            subnet_ids = self._compute_resource_config["Networking"]["SubnetIds"]
+            subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
             for subnet_id in subnet_ids:
-                overrides.update({"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id})
+                if self._uses_subnet_prioritization():
+                    overrides.update(
+                        {"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id, "Priority": priority}
+                    )
+                else:
+                    overrides.update({"InstanceType": instance_type["InstanceType"], "SubnetId": subnet_id})
                 template_overrides.append(copy.deepcopy(overrides))
+                priority += 1.0
         return template_overrides
 
     def _uses_single_instance_type(self):
@@ -311,6 +318,15 @@ class Ec2CreateFleetManager(FleetManager):
         """Check if the queue uses only one Subnet Id."""
         subnet_ids = self._compute_resource_config.get("Networking", {}).get("SubnetIds", [])
         return len(subnet_ids) == 1
+
+    def _uses_subnet_prioritization(self):
+        return (
+            self._compute_resource_config.get("AllocationStrategy") == "prioritized"
+            and self._compute_resource_config["CapacityType"] == "on-demand"
+        ) or (
+            self._compute_resource_config.get("AllocationStrategy") == "capacity-optimized-prioritized"
+            and self._compute_resource_config["CapacityType"] == "spot"
+        )
 
     def _evaluate_launch_params(self, count):
         """Evaluate parameters to be passed to create_fleet call."""

@@ -223,6 +223,8 @@ class SlurmNode(metaclass=ABCMeta):
         "MaxSpotInstanceCountExceeded",
         "Unsupported",
         "SpotMaxPriceTooLow",
+        "UnfulfillableCapacity",
+        "InsufficientCapacity",
     }
 
     def __init__(

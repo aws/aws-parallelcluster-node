@@ -28,7 +28,10 @@ jobs:
         name:
           - Python 3.9 Tests
           - Python 3.10 Tests
-          - Python 3.9 Tests Coverage
+          - Python 3.11 Tests
+          - Python 3.12 Tests
+          - Python 3.13 Tests
+          - Python 3.12 Tests Coverage
           - Code Checks
         include:
           - name: Python 3.9 Tests
@@ -39,12 +42,24 @@ jobs:
             python: '3.10'
             toxdir: cli
             toxenv: py310-nocov
-          - name: Python 3.9 Tests Coverage
-            python: 3.9
+          - name: Python 3.11 Tests
+            python: '3.11'
             toxdir: cli
-            toxenv: py39-cov
+            toxenv: py311-nocov
+          - name: Python 3.12 Tests
+            python: '3.12'
+            toxdir: cli
+            toxenv: py312-nocov
+          - name: Python 3.13 Tests
+            python: '3.13'
+            toxdir: cli
+            toxenv: py313-nocov
+          - name: Python 3.12 Tests Coverage
+            python: 3.12
+            toxdir: cli
+            toxenv: py312-cov
           - name: Code Checks
-            python: 3.9
+            python: 3.12
             toxdir: cli
             toxenv: code-linters
 

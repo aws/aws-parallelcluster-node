@@ -1,0 +1,42 @@
+{
+  "LaunchTemplateConfigs": [
+    {
+      "LaunchTemplateSpecification": {
+        "LaunchTemplateName": "hit-queue-capacity-optimized-prioritized-fleet1",
+        "Version": "$Latest"
+      },
+      "Overrides": [
+        {
+          "InstanceType": "t2.medium",
+          "SubnetId": "1234567",
+          "Priority": 0.0
+        },
+        {
+          "InstanceType": "t2.medium",
+          "SubnetId": "7654321",
+          "Priority": 1.0
+        },
+        {
+          "InstanceType": "t2.large",
+          "SubnetId": "1234567",
+          "Priority": 2.0
+        },
+        {
+          "InstanceType": "t2.large",
+          "SubnetId": "7654321",
+          "Priority": 3.0
+        }
+      ]
+    }
+  ],
+  "SpotOptions": {
+    "SingleInstanceType": false,
+    "SingleAvailabilityZone": false,
+    "AllocationStrategy": "capacity-optimized-prioritized"
+  },
+  "TargetCapacitySpecification": {
+    "TotalTargetCapacity": 5,
+    "DefaultTargetCapacityType": "spot"
+  },
+  "Type": "instant"
+}
