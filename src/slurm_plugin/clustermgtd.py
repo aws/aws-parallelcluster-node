@@ -1262,7 +1262,8 @@ class ClusterManager:
             return
         log.info(
             "The following compute resources are in down state due to insufficient capacity: %s, "
-            "compute resources will be reset after insufficient capacity timeout (%s seconds) expired",
+            "compute resources will be reset after insufficient capacity timeout (%s seconds) expired."
+            "Check the slurm_resume log for ec2 error codes.",
             self._insufficient_capacity_compute_resources,
             self._config.insufficient_capacity_timeout,
         )

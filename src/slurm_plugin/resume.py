@@ -227,7 +227,10 @@ def _resume(arg_nodes, resume_config, slurm_resume):
             print_with_count(failed_nodes),
         )
         for error_code, node_list in instance_manager.failed_nodes.items():
-            _handle_failed_nodes(node_list, reason=f"(Code:{error_code})Failure when resuming nodes")
+            _handle_failed_nodes(
+                node_list,
+                reason=f"(Code:{error_code})Failure when resuming nodes - Check the slurm_resume log for ec2 error codes",
+            )
 
         event_publisher = ClusterEventPublisher.create_with_default_publisher(
             event_logger,
