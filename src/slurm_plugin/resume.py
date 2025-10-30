@@ -230,7 +230,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
             _handle_failed_nodes(
                 node_list,
                 reason=f"(Code:{error_code})Failure when resuming nodes - "
-                       f"Check the slurm_resume log for EC2 error codes",
+                f"Check the slurm_resume log for EC2 error codes",
             )
 
         event_publisher = ClusterEventPublisher.create_with_default_publisher(

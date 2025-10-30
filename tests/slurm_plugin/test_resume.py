@@ -451,7 +451,7 @@ def test_resume_launch(
                     call(
                         nodeset,
                         reason=f"(Code:{error_code})Failure when resuming nodes - "
-                               f"Check the slurm_resume log for EC2 error codes",
+                        f"Check the slurm_resume log for EC2 error codes",
                     )
                 )
             mock_handle_failed_nodes.assert_has_calls(mock_handle_failed_nodes_calls)
