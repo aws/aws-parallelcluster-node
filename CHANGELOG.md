@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.15.0
+------
+
+**CHANGES**
+- Direct users to slurm_resume log to see EC2 error codes if no instances are launched.
+
 3.14.0
 ------
 

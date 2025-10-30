@@ -3533,6 +3533,13 @@ def test_reset_timeout_expired_compute_resources(
     assert_that(cluster_manager._insufficient_capacity_compute_resources).is_equal_to(
         expected_insufficient_capacity_compute_resources
     )
+
+    if expected_insufficient_capacity_compute_resources:
+        assert (
+            "compute resources will be reset after insufficient capacity timeout (20 seconds) expired. "
+            "Check the slurm_resume log for EC2 error codes."
+        ) in caplog.text
+
     if expected_power_save_node_list:
         power_save_mock.assert_called_with(
             expected_power_save_node_list, reason="Enabling node since insufficient capacity timeout expired"

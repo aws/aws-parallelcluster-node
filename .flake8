@@ -18,6 +18,9 @@ ignore =
     W503,
     # N818: exception name should be named with an Error suffix
     N818
+    # B042: Exception class with `__init__` should pass all args to `super().__init__()` in order to work with `copy.copy()`.
+    # Affected by false positive, https://github.com/PyCQA/flake8-bugbear/issues/525
+    B042
 exclude =
     .tox,
     .git,
