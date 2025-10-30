@@ -448,7 +448,10 @@ def test_resume_launch(
         if expected_failed_nodes:
             for error_code, nodeset in expected_failed_nodes.items():
                 mock_handle_failed_nodes_calls.append(
-                    call(nodeset, reason=f"(Code:{error_code})Failure when resuming nodes")
+                    call(
+                        nodeset,
+                        reason=f"(Code:{error_code})Failure when resuming nodes - Check the slurm_resume log for ec2 error codes",
+                    )
                 )
             mock_handle_failed_nodes.assert_has_calls(mock_handle_failed_nodes_calls)
             mock_terminate_instances.assert_called_with(ANY, mock_resume_config.terminate_max_batch_size)
