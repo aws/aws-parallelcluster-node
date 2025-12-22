@@ -9,6 +9,12 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Direct users to slurm_resume log to see EC2 error codes if no instances are launched.
 
+3.14.1
+------
+
+**CHANGES**
+- There were no changes for this version.
+
 3.14.0
 ------
 
