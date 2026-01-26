@@ -41,6 +41,7 @@ from common.time_utils import seconds
 from common.utils import check_command_output, read_json, sleep_remaining_loop_time, time_is_up, wait_remaining_time
 from retrying import retry
 from slurm_plugin.capacity_block_manager import CapacityBlockManager
+from slurm_plugin.cloudwatch_utils import CloudWatchMetricsPublisher
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import TIMESTAMP_FORMAT, ScalingStrategy, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
@@ -60,6 +61,7 @@ from slurm_plugin.task_executor import TaskExecutor
 LOOP_TIME = 60
 CONSOLE_OUTPUT_WAIT_TIME = 5 * 60
 MAXIMUM_TASK_BACKLOG = 100
+CW_METRICS_HEARTBEAT = "ClustermgtdHeartbeat"
 log = logging.getLogger(__name__)
 compute_logger = log.getChild("console_output")
 event_logger = log.getChild("events")
@@ -401,6 +403,7 @@ class ClusterManager:
         self._event_publisher = None
         self._partition_nodelist_mapping_instance = None
         self._capacity_block_manager = None
+        self._metrics_publisher = None
         self.set_config(config)
 
     def set_config(self, config: ClustermgtdConfig):
@@ -426,6 +429,7 @@ class ClusterManager:
             self._instance_manager = self._initialize_instance_manager(config)
             self._console_logger = self._initialize_console_logger(config)
             self._capacity_block_manager = self._initialize_capacity_block_manager(config)
+            self._metrics_publisher = self._initialize_metrics_publisher(config)
 
     def shutdown(self):
         if self._task_executor:
@@ -478,6 +482,16 @@ class ClusterManager:
     def _initialize_capacity_block_manager(config):
         return CapacityBlockManager(
             region=config.region, fleet_config=config.fleet_config, boto3_config=config.boto3_config
+        )
+
+    @staticmethod
+    def _initialize_metrics_publisher(config):
+        """Initialize CloudWatch metrics publisher."""
+        return CloudWatchMetricsPublisher(
+            region=config.region,
+            cluster_name=config.cluster_name,
+            instance_id=config.head_node_instance_id,
+            boto3_config=config.boto3_config,
         )
 
     def _update_compute_fleet_status(self, status):
@@ -573,6 +587,9 @@ class ClusterManager:
 
         # Write clustermgtd heartbeat to file
         self._write_timestamp_to_file()
+
+        # Publish heartbeat metric to CloudWatch
+        self._metrics_publisher.put_metric(metric_name=CW_METRICS_HEARTBEAT, value=1)
 
     def _write_timestamp_to_file(self):
         """Write timestamp into shared file so compute nodes can determine if head node is online."""
