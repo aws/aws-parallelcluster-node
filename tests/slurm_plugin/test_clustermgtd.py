@@ -1643,7 +1643,14 @@ def test_manage_cluster(
         fleet_config={},
     )
     mocker.patch("time.sleep")
+    cloudwatch_metrics_publisher_mock = mocker.patch("slurm_plugin.clustermgtd.CloudWatchMetricsPublisher")
     cluster_manager = ClusterManager(mock_sync_config)
+    cloudwatch_metrics_publisher_mock.assert_called_once_with(
+        region="us-east-2",
+        cluster_name="hit-test",
+        instance_id="i-instance-id",
+        boto3_config=mock_sync_config.boto3_config,
+    )
     cluster_manager._current_time = "current_time"
     cluster_manager._static_nodes_in_replacement = {}
     # Set up function mocks
@@ -1670,6 +1677,7 @@ def test_manage_cluster(
     get_ec2_instances_mock = mocker.patch.object(
         ClusterManager, "_get_ec2_instances", autospec=True, return_value=mock_cluster_instances
     )
+    metrics_publisher_mock = cloudwatch_metrics_publisher_mock.return_value
     get_node_info_with_retry_mock = mocker.patch.object(
         ClusterManager,
         "_get_node_info_with_retry",
@@ -1683,6 +1691,7 @@ def test_manage_cluster(
     # Assert function calls
     initialize_instance_manager_mock.assert_called_once()
     write_timestamp_to_file_mock.assert_called_once()
+    metrics_publisher_mock.put_metric.assert_called_once_with(metric_name="ClustermgtdHeartbeat", value=1)
     compute_fleet_status_manager_mock.get_status.assert_called_once()
     if disable_cluster_management:
         perform_health_check_actions_mock.assert_not_called()
@@ -2255,6 +2264,7 @@ def test_manage_cluster_boto3(
     boto3_stubber("ec2", mocked_boto3_request)
     mocker.patch("slurm_plugin.clustermgtd.datetime").now.return_value = datetime(2020, 1, 2, 0, 0, 0)
     mocker.patch("slurm_plugin.clustermgtd.read_json", side_effect=[FLEET_CONFIG, LAUNCH_OVERRIDES, LAUNCH_OVERRIDES])
+    mocker.patch("slurm_plugin.clustermgtd.CloudWatchMetricsPublisher")
     sync_config = ClustermgtdConfig(test_datadir / config_file)
     sync_config.launch_overrides = {"dynamic": {"c5.xlarge": {"InstanceType": "t2.micro"}}}
     cluster_manager = ClusterManager(sync_config)
