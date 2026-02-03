@@ -586,9 +586,11 @@ class ClusterManager:
                 self._maintain_nodes_down()
 
         # Write clustermgtd heartbeat to file
+        log.info("Writing heartbeat file")
         self._write_timestamp_to_file()
 
         # Publish heartbeat metric to CloudWatch
+        log.info("Publishing heartbeat metric")
         self._metrics_publisher.put_metric(metric_name=CW_METRICS_HEARTBEAT, value=1)
 
     def _write_timestamp_to_file(self):
