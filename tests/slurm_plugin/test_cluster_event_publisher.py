@@ -2958,3 +2958,31 @@ def test_publish_compute_node_events(compute_nodes, expected_details, level_filt
     assert_that(received_events).is_length(len(expected_details))
     for received_event, expected_detail in zip(received_events, expected_details):
         assert_that(received_event).is_equal_to(expected_detail)
+
+
+@pytest.mark.parametrize(
+    "heartbeat_timestamp, expected_detail",
+    [
+        pytest.param(
+            datetime(year=2023, month=4, day=3, hour=18, minute=10, second=13, microsecond=89000, tzinfo=timezone.utc),
+            {"heartbeat-timestamp": "2023-04-03T18:10:13.089+00:00"},
+            id="valid timestamp",
+        ),
+        pytest.param(
+            None,
+            {"heartbeat-timestamp": None},
+            id="No timestamp",
+        ),
+    ],
+)
+def test_publish_heartbeat_event(heartbeat_timestamp: datetime, expected_detail: dict):
+    """Test that publish_heartbeat_event publishes the correct event."""
+    received_events = []
+    event_publisher = ClusterEventPublisher(event_handler(received_events, level_filter=["INFO"]))
+
+    event_publisher.publish_heartbeat_event(heartbeat_timestamp)
+
+    # Verify the event was published with the correct details
+    assert_that(received_events).is_length(1)
+    received_event = received_events[0]
+    assert_that(received_event).is_equal_to({"clustermgtd-heartbeat": expected_detail})
