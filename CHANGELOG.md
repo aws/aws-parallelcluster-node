@@ -8,6 +8,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **CHANGES**
 - Direct users to slurm_resume log to see EC2 error codes if no instances are launched.
+- Emit clustermgtd heartbeat as a structured event to CloudWatch Logs for metric filter-based monitoring.
 
 3.14.1
 ------

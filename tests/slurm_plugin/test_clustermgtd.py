@@ -4112,3 +4112,49 @@ def test_find_active_nodes(partitions_name_map, expected_nodelist):
     """Unit test for the `ClusterManager._find_active_nodes()` method."""
     result_nodelist = ClusterManager._find_active_nodes(partitions_name_map)
     assert_that(result_nodelist).is_equal_to(expected_nodelist)
+
+
+@pytest.mark.parametrize(
+    "write_heartbeat_file_succeeds, expect_heartbeat_event_published",
+    [
+        pytest.param(True, True, id="When heartbeat file is written, heartbeat event is written"),
+        pytest.param(False, False, id="When heartbeat file is not written, heartbeat event is not written"),
+    ],
+)
+@pytest.mark.usefixtures(
+    "initialize_instance_manager_mock", "initialize_executor_mock", "initialize_console_logger_mock"
+)
+def test_heartbeat_reporting(write_heartbeat_file_succeeds, expect_heartbeat_event_published, mocker, tmp_path):
+    """Test that heartbeat event is published only when file write succeeds."""
+    from slurm_plugin.common import TIMESTAMP_FORMAT
+
+    heartbeat_file_path = str(tmp_path / "heartbeat")
+    mock_sync_config = SimpleNamespace(
+        heartbeat_file_path=heartbeat_file_path,
+        insufficient_capacity_timeout=600,
+        cluster_name="test-cluster",
+        head_node_instance_id="i-instance-id",
+        region="us-east-2",
+        boto3_config=None,
+        fleet_config={},
+    )
+
+    cluster_manager = ClusterManager(mock_sync_config)
+    mock_event_publisher = mocker.patch.object(cluster_manager, "_event_publisher")
+
+    if write_heartbeat_file_succeeds:
+        cluster_manager._write_timestamp_to_file()
+        heartbeat_file = tmp_path / "heartbeat"
+        assert_that(heartbeat_file.exists()).is_true()
+    else:
+        mocker.patch("os.open", side_effect=OSError("Mocked write failure"))
+        with pytest.raises(OSError):
+            cluster_manager._write_timestamp_to_file()
+
+    if expect_heartbeat_event_published:
+        mock_event_publisher.publish_heartbeat_event.assert_called_once()
+        event_timestamp = mock_event_publisher.publish_heartbeat_event.call_args[0][0]
+        assert_that(event_timestamp).is_instance_of(datetime)
+        assert_that(event_timestamp.strftime(TIMESTAMP_FORMAT)).is_equal_to(heartbeat_file.read_text())
+    else:
+        mock_event_publisher.publish_heartbeat_event.assert_not_called()
