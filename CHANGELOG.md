@@ -16,6 +16,18 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - There were no changes for this version.
 
+3.14.2
+------
+
+**CHANGES**
+- There were no changes for this version.
+
+3.14.1
+------
+
+**CHANGES**
+- There were no changes for this version.
+
 3.14.0
 ------
 
