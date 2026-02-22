@@ -847,11 +847,18 @@ class ClusterManager:
         nodes_to_terminate = []
         for node in unhealthy_dynamic_nodes:
             if node.name not in self._held_compute_resources:
-                nodes_to_terminate += node
-            else:
-                if time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout):
-                    nodes_to_terminate += node
-                    self._held_compute_resources.pop(node.name, None)
+                nodes_to_terminate.append(node)
+            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout):
+                nodes_to_terminate.append(node)
+                self._held_compute_resources.pop(node.name, None)
+
+        nodes_being_held = set(node.name for node in unhealthy_dynamic_nodes) - set(node.name for node in nodes_to_terminate)
+        if nodes_being_held:
+            log.info(
+                "Holding termination for unhealthy dynamic nodes (timeout: %ss): %s",
+                self._config.hold_drain_nodes_timeout,
+                print_with_count(nodes_being_held),
+            )
 
         instances_to_terminate = [node.instance.id for node in nodes_to_terminate if node.instance]
         if instances_to_terminate:
@@ -910,11 +917,18 @@ class ClusterManager:
         nodes_to_terminate = []
         for node in unhealthy_static_nodes:
             if node.name not in self._held_compute_resources:
-                nodes_to_terminate += node
-            else:
-                if time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout):
-                    nodes_to_terminate += node
-                    self._held_compute_resources.pop(node.name, None)
+                nodes_to_terminate.append(node)
+            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout):
+                nodes_to_terminate.append(node)
+                self._held_compute_resources.pop(node.name, None)
+
+        nodes_being_held = set(node.name for node in unhealthy_static_nodes) - set(node.name for node in nodes_to_terminate)
+        if nodes_being_held:
+            log.info(
+                "Holding termination for unhealthy static nodes (timeout: %ss): %s",
+                self._config.hold_drain_nodes_timeout,
+                print_with_count(nodes_being_held),
+            )
 
         node_list = [node.name for node in nodes_to_terminate]
         # Set nodes into down state so jobs can be requeued immediately
