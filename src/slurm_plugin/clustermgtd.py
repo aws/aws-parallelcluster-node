@@ -151,7 +151,7 @@ class ClustermgtdConfig:
         "terminate_down_nodes": True,
         "orphaned_instance_timeout": 300,
         "ec2_instance_missing_max_count": 0,
-        "hold_drain_nodes_timeout": 30,
+        "hold_drain_nodes_timeout": 5,
         # Health check configs
         "disable_ec2_health_check": False,
         "disable_scheduled_event_health_check": False,
@@ -848,14 +848,14 @@ class ClusterManager:
         for node in unhealthy_dynamic_nodes:
             if node.name not in self._held_compute_resources:
                 nodes_to_terminate.append(node)
-            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout):
+            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout * 60):
                 nodes_to_terminate.append(node)
                 self._held_compute_resources.pop(node.name, None)
 
         nodes_being_held = set(node.name for node in unhealthy_dynamic_nodes) - set(node.name for node in nodes_to_terminate)
         if nodes_being_held:
             log.info(
-                "Holding termination for unhealthy dynamic nodes (timeout: %ss): %s",
+                "Holding termination for unhealthy dynamic nodes (timeout: %sm): %s",
                 self._config.hold_drain_nodes_timeout,
                 print_with_count(nodes_being_held),
             )
@@ -918,14 +918,14 @@ class ClusterManager:
         for node in unhealthy_static_nodes:
             if node.name not in self._held_compute_resources:
                 nodes_to_terminate.append(node)
-            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout):
+            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout * 60):
                 nodes_to_terminate.append(node)
                 self._held_compute_resources.pop(node.name, None)
 
         nodes_being_held = set(node.name for node in unhealthy_static_nodes) - set(node.name for node in nodes_to_terminate)
         if nodes_being_held:
             log.info(
-                "Holding termination for unhealthy static nodes (timeout: %ss): %s",
+                "Holding termination for unhealthy static nodes (timeout: %sm): %s",
                 self._config.hold_drain_nodes_timeout,
                 print_with_count(nodes_being_held),
             )
