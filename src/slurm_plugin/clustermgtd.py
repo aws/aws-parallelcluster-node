@@ -151,7 +151,7 @@ class ClustermgtdConfig:
         "terminate_down_nodes": True,
         "orphaned_instance_timeout": 300,
         "ec2_instance_missing_max_count": 0,
-        "hold_drain_nodes_timeout": 5,
+        "hold_drain_nodes_timeout": 30,
         # Health check configs
         "disable_ec2_health_check": False,
         "disable_scheduled_event_health_check": False,
@@ -843,21 +843,26 @@ class ClusterManager:
         Setting node to down will let slurm requeue jobs allocated to node.
         Setting node to power_down will terminate backing instance and reset dynamic node for future use.
         """
-        # Filter to only nodes that have exceeded the hold timeout
+        # Filter to only nodes that have exceeded the hold timeout (config is in minutes)
+        timeout_seconds = self._config.hold_drain_nodes_timeout * 60
         nodes_to_terminate = []
+        nodes_being_held = []
         for node in unhealthy_dynamic_nodes:
             if node.name not in self._held_compute_resources:
                 nodes_to_terminate.append(node)
-            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout * 60):
+            elif time_is_up(self._held_compute_resources[node.name], self._current_time, timeout_seconds):
                 nodes_to_terminate.append(node)
                 self._held_compute_resources.pop(node.name, None)
+            else:
+                elapsed = (self._current_time - self._held_compute_resources[node.name]).total_seconds()
+                remaining = int(timeout_seconds - elapsed)
+                nodes_being_held.append(f"{node.name}({remaining}s left)")
 
-        nodes_being_held = set(node.name for node in unhealthy_dynamic_nodes) - set(node.name for node in nodes_to_terminate)
         if nodes_being_held:
             log.info(
                 "Holding termination for unhealthy dynamic nodes (timeout: %sm): %s",
                 self._config.hold_drain_nodes_timeout,
-                print_with_count(nodes_being_held),
+                nodes_being_held,
             )
 
         instances_to_terminate = [node.instance.id for node in nodes_to_terminate if node.instance]
@@ -914,21 +919,30 @@ class ClusterManager:
         except Exception as e:
             log.error("Encountered exception when retrieving console output from unhealthy static nodes: %s", e)
 
+        # Config is in minutes, convert to seconds
+        timeout_seconds = self._config.hold_drain_nodes_timeout * 60
         nodes_to_terminate = []
+        nodes_being_held = []
         for node in unhealthy_static_nodes:
             if node.name not in self._held_compute_resources:
                 nodes_to_terminate.append(node)
-            elif time_is_up(self._held_compute_resources[node.name], self._current_time, self._config.hold_drain_nodes_timeout * 60):
+            elif time_is_up(self._held_compute_resources[node.name], self._current_time, timeout_seconds):
                 nodes_to_terminate.append(node)
                 self._held_compute_resources.pop(node.name, None)
+            else:
+                elapsed = (self._current_time - self._held_compute_resources[node.name]).total_seconds()
+                remaining = int(timeout_seconds - elapsed)
+                nodes_being_held.append(f"{node.name}({remaining}s left)")
 
-        nodes_being_held = set(node.name for node in unhealthy_static_nodes) - set(node.name for node in nodes_to_terminate)
         if nodes_being_held:
             log.info(
                 "Holding termination for unhealthy static nodes (timeout: %sm): %s",
                 self._config.hold_drain_nodes_timeout,
-                print_with_count(nodes_being_held),
+                nodes_being_held,
             )
+
+        if not nodes_to_terminate:
+            return
 
         node_list = [node.name for node in nodes_to_terminate]
         # Set nodes into down state so jobs can be requeued immediately
