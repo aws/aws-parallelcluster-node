@@ -152,6 +152,7 @@ class ClustermgtdConfig:
         "orphaned_instance_timeout": 300,
         "ec2_instance_missing_max_count": 0,
         "hold_drain_nodes_timeout": 30,
+        "hold_drain_nodes_reasons": ["Prolog error"],
         # Health check configs
         "disable_ec2_health_check": False,
         "disable_scheduled_event_health_check": False,
@@ -297,6 +298,14 @@ class ClustermgtdConfig:
         self.hold_drain_nodes_timeout = config.getint(
             "clustermgtd", "hold_drain_nodes_timeout", fallback=self.DEFAULTS.get("hold_drain_nodes_timeout")
         )
+        # Parse comma-separated list of reasons
+        hold_drain_nodes_reasons_str = config.get(
+            "clustermgtd", "hold_drain_nodes_reasons", fallback=None
+        )
+        if hold_drain_nodes_reasons_str:
+            self.hold_drain_nodes_reasons = [r.strip() for r in hold_drain_nodes_reasons_str.split(",")]
+        else:
+            self.hold_drain_nodes_reasons = self.DEFAULTS.get("hold_drain_nodes_reasons")
         self.terminate_down_nodes = config.getboolean(
             "clustermgtd", "terminate_down_nodes", fallback=self.DEFAULTS.get("terminate_down_nodes")
         )
@@ -788,9 +797,10 @@ class ClusterManager:
                     # do not consider as unhealthy the nodes reserved for capacity blocks
                     continue
 
-                # Track when the node was first found unhealthy
+                # Track when the node was first found unhealthy, only if drain reason matches configured reasons
                 if node.name not in self._held_compute_resources:
-                    self._held_compute_resources[node.name] = self._current_time
+                    if node.reason and any(reason in node.reason for reason in self._config.hold_drain_nodes_reasons):
+                        self._held_compute_resources[node.name] = self._current_time
 
                 all_unhealthy_nodes.append(node)
 
