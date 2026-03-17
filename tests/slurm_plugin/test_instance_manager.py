@@ -907,6 +907,7 @@ class TestInstanceManager:
                     generate_error=False,
                 ),
                 [
+                    EC2Instance("i-1", "", "", set(), datetime(2020, 1, 1, tzinfo=timezone.utc)),
                     EC2Instance("i-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, tzinfo=timezone.utc)),
                 ],
                 False,

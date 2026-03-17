@@ -262,7 +262,8 @@ class InstanceManager:
         """
         Get instances that are associated with the cluster.
 
-        Instances without all the info set are ignored and not returned
+        Instances with missing EC2 info (e.g., PrivateIpAddress due to EC2 eventual consistency) are included
+        with empty IP fields to allow instance-ID-based fallback matching in clustermgtd.
         """
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
@@ -290,11 +291,25 @@ class InstanceManager:
                     )
                 )
             except Exception as e:
+                required_fields = {"PrivateIpAddress", "PrivateDnsName", "NetworkInterfaces"}
+                missing_fields = required_fields - set(instance_info.keys())
                 logger.warning(
-                    "Ignoring instance %s because not all EC2 info are available, exception: %s, message: %s",
+                    "Instance %s missing some EC2 info, exception: %s, message: %s. "
+                    "Missing top-level fields: %s. "
+                    "Adding with instance ID only to allow fallback matching.",
                     instance_info["InstanceId"],
                     type(e).__name__,
                     e,
+                    missing_fields if missing_fields else "none",
+                )
+                instances.append(
+                    EC2Instance(
+                        instance_info["InstanceId"],
+                        "",
+                        "",
+                        set(),
+                        instance_info.get("LaunchTime"),
+                    )
                 )
 
         return instances
@@ -310,6 +325,39 @@ class InstanceManager:
         except Exception as e:
             logger.error("Failed when terminating compute fleet with error %s", e)
             return False
+
+    def get_instance_id_to_node_name_mapping(self):
+        """Read instance-ID-to-node-name mapping from DynamoDB.
+
+        Returns a dict mapping instance_id -> node_name.
+        Used by clustermgtd for fallback matching when PrivateIpAddress is missing.
+        """
+        if not self._table:
+            logger.warning("DynamoDB table not configured, cannot read instance-ID-to-node-name mapping")
+            return {}
+        try:
+            mapping = {}
+            response = self._table.scan(ProjectionExpression="Id, InstanceId")
+            for item in response.get("Items", []):
+                instance_id = item.get("InstanceId")
+                node_name = item.get("Id")
+                if instance_id and node_name:
+                    mapping[instance_id] = node_name
+            # Handle pagination
+            while "LastEvaluatedKey" in response:
+                response = self._table.scan(
+                    ProjectionExpression="Id, InstanceId",
+                    ExclusiveStartKey=response["LastEvaluatedKey"],
+                )
+                for item in response.get("Items", []):
+                    instance_id = item.get("InstanceId")
+                    node_name = item.get("Id")
+                    if instance_id and node_name:
+                        mapping[instance_id] = node_name
+            return mapping
+        except Exception as e:
+            logger.warning("Failed to read instance-ID-to-node-name mapping from DynamoDB: %s", e)
+            return {}
 
     def _update_failed_nodes(self, nodeset, error_code="Exception", override=True):
         """Update failed nodes dict with error code as key and nodeset value."""
