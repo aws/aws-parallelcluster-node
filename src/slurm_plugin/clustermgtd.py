@@ -1145,15 +1145,14 @@ class ClusterManager:
 
     @staticmethod
     def _update_slurm_nodes_with_ec2_info(nodes, cluster_instances):
+        """Associate EC2 instances with Slurm nodes by matching on instance ID."""
         if cluster_instances:
-            ip_to_slurm_node_map = {node.nodeaddr: node for node in nodes}
+            instance_id_to_slurm_node_map = {node.instance_id: node for node in nodes if node.instance_id}
             for instance in cluster_instances:
-                for private_ip in instance.all_private_ips:
-                    if private_ip in ip_to_slurm_node_map:
-                        slurm_node = ip_to_slurm_node_map.get(private_ip)
-                        slurm_node.instance = instance
-                        instance.slurm_node = slurm_node
-                        break
+                if instance.id in instance_id_to_slurm_node_map:
+                    slurm_node = instance_id_to_slurm_node_map[instance.id]
+                    slurm_node.instance = instance
+                    instance.slurm_node = slurm_node
 
     @staticmethod
     def get_instance_id_to_active_node_map(partitions: List[SlurmPartition]) -> Dict:

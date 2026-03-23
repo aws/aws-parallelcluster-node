@@ -239,6 +239,7 @@ class SlurmNode(metaclass=ABCMeta):
         slurmdstarttime: datetime = None,
         lastbusytime: datetime = None,
         reservation_name: str = None,
+        instance_id: str = None,
     ):
         """Initialize slurm node with attributes."""
         self.name = name
@@ -249,6 +250,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.partitions = partitions.strip().split(",") if partitions else None
         self.reason = reason
         self.instance = instance
+        self.instance_id = instance_id
         self.slurmdstarttime = slurmdstarttime
         self.lastbusytime = lastbusytime
         self.reservation_name = reservation_name

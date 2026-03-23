@@ -262,7 +262,8 @@ class InstanceManager:
         """
         Get instances that are associated with the cluster.
 
-        Instances without all the info set are ignored and not returned
+        Instances with missing EC2 info (e.g., PrivateIpAddress due to EC2 eventual consistency) are included
+        with empty IP fields to allow instance-ID-based matching in clustermgtd.
         """
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
@@ -290,11 +291,25 @@ class InstanceManager:
                     )
                 )
             except Exception as e:
+                required_fields = {"PrivateIpAddress", "PrivateDnsName", "NetworkInterfaces"}
+                missing_fields = required_fields - set(instance_info.keys())
                 logger.warning(
-                    "Ignoring instance %s because not all EC2 info are available, exception: %s, message: %s",
+                    "Instance %s missing some EC2 info, exception: %s, message: %s. "
+                    "Missing top-level fields: %s. "
+                    "Adding with instance ID only to allow fallback matching.",
                     instance_info["InstanceId"],
                     type(e).__name__,
                     e,
+                    missing_fields if missing_fields else "none",
+                )
+                instances.append(
+                    EC2Instance(
+                        instance_info["InstanceId"],
+                        "",
+                        "",
+                        set(),
+                        instance_info.get("LaunchTime"),
+                    )
                 )
 
         return instances
@@ -1077,6 +1092,7 @@ class InstanceManager:
                 slurm_nodes,
                 nodeaddrs=[instance.private_ip for instance in launched_instances],
                 nodehostnames=node_hostnames,
+                instance_ids=[instance.id for instance in launched_instances],
             )
             logger.info(
                 "Nodes are now configured with instances %s",

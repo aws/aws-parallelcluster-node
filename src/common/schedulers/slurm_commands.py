@@ -63,7 +63,8 @@ SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 SCONTROL_OUTPUT_AWK_PARSER = (
     'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
     + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
-    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(ReservationName=\\S+)|(Reason=.*)|(######)'"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(ReservationName=\\S+)"
+    + "|(InstanceId=\\S+)|(Reason=.*)|(######)'"
 )
 
 # Set default timeouts for running different slurm commands.
@@ -129,6 +130,7 @@ def update_nodes(
     nodes,
     nodeaddrs=None,
     nodehostnames=None,
+    instance_ids=None,
     state=None,
     reason=None,
     raise_on_error=True,
@@ -173,6 +175,23 @@ def update_nodes(
         run_command(  # nosec B604
             f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
         )
+
+    # TODO: InstanceId should ideally be set in the same batched scontrol update command as NodeAddr
+    # (e.g., "scontrol update nodename=node-[1-100] nodeaddr=ip1,ip2,... instanceid=id1,id2,...").
+    # However, Slurm has a bug where InstanceId does not support per-node batch assignment ->
+    # comma-separated values are treated as a single literal string instead of being distributed across nodes.
+    # We have reported the bug. Once SchedMD fixes this, move instance_ids into the batched loop above.
+    if instance_ids:
+        node_list = list(nodes) if not isinstance(nodes, list) else nodes
+        for node_name, instance_id in zip(node_list, instance_ids):
+            validate_subprocess_argument(node_name)
+            validate_subprocess_argument(instance_id)
+            run_command(  # nosec B604
+                f"{SCONTROL} update nodename={node_name} instanceid={instance_id}",
+                raise_on_error=raise_on_error,
+                timeout=command_timeout,
+                shell=True,
+            )
 
 
 def update_partitions(partitions, state):
@@ -433,6 +452,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
         "SlurmdStartTime": "slurmdstarttime",
         "LastBusyTime": "lastbusytime",
         "ReservationName": "reservation_name",
+        "InstanceId": "instance_id",
     }
 
     date_fields = ["SlurmdStartTime", "LastBusyTime"]
