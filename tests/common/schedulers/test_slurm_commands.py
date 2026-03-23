@@ -245,6 +245,44 @@ def test_is_static_node(nodename, expected_is_static):
             ],
             True,
         ),
+        # Test case: InstanceId is parsed from scontrol show nodes output
+        (
+            "NodeName=queue1-st-c5xlarge-1\n"
+            "NodeAddr=10.0.1.1\n"
+            "NodeHostName=queue1-st-c5xlarge-1\n"
+            "State=IDLE+CLOUD\n"
+            "Partitions=queue1\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "InstanceId=i-0abc123def456\n"
+            "######\n"
+            "NodeName=queue1-dy-c5xlarge-2\n"
+            "NodeAddr=queue1-dy-c5xlarge-2\n"
+            "NodeHostName=queue1-dy-c5xlarge-2\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=queue1\n"
+            "SlurmdStartTime=None\n"
+            "######\n",
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-1",
+                    "10.0.1.1",
+                    "queue1-st-c5xlarge-1",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
+                    instance_id="i-0abc123def456",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2",
+                    "queue1-dy-c5xlarge-2",
+                    "queue1-dy-c5xlarge-2",
+                    "IDLE+CLOUD+POWER",
+                    "queue1",
+                    slurmdstarttime=None,
+                ),
+            ],
+            False,
+        ),
     ],
 )
 def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name, caplog):
@@ -613,10 +651,16 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
     mocker.patch("common.schedulers.slurm_commands._batch_node_info", return_value=batch_node_info, autospec=True)
     if expected_exception is ValueError:
         with pytest.raises(ValueError):
-            update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+            update_nodes(
+                batch_node_info, "some_nodeaddrs", "some_hostnames",
+                state=state, reason=reason, raise_on_error=raise_on_error,
+            )
     else:
         cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
-        update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+        update_nodes(
+            batch_node_info, "some_nodeaddrs", "some_hostnames",
+            state=state, reason=reason, raise_on_error=raise_on_error,
+        )
         cmd_mock.assert_has_calls(run_command_calls)
 
 

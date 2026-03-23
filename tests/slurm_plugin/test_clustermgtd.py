@@ -1509,6 +1509,35 @@ def test_terminate_orphaned_instances(
         )
 
 
+def test_update_slurm_nodes_with_ec2_info_instance_id_matching():
+    """Test that _update_slurm_nodes_with_ec2_info matches by instance ID instead of IP."""
+    # Nodes with instance_id set (as would be after our change)
+    node1 = StaticNode("queue1-st-c5xlarge-1", "10.0.1.1", "queue1-st-c5xlarge-1", "IDLE+CLOUD", "queue1",
+                       instance_id="i-aaa111")
+    node2 = DynamicNode("queue1-dy-c5xlarge-2", "10.0.1.2", "queue1-dy-c5xlarge-2", "IDLE+CLOUD", "queue1",
+                        instance_id="i-bbb222")
+    # Node without instance_id (powered down, not yet assigned)
+    node3 = DynamicNode("queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3",
+                        "IDLE+CLOUD+POWER", "queue1")
+
+    # EC2 instances - one with full IP, one with missing IP (eventual consistency)
+    instance1 = EC2Instance("i-aaa111", "10.0.1.1", "hostname-1", {"10.0.1.1"}, "launch_time_1")
+    instance2 = EC2Instance("i-bbb222", "", "", set(), "launch_time_2")  # missing IP
+
+    nodes = [node1, node2, node3]
+    cluster_instances = [instance1, instance2]
+
+    ClusterManager._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
+
+    # Both instances should be matched by instance ID
+    assert_that(node1.instance).is_equal_to(instance1)
+    assert_that(instance1.slurm_node).is_equal_to(node1)
+    assert_that(node2.instance).is_equal_to(instance2)
+    assert_that(instance2.slurm_node).is_equal_to(node2)
+    # Node3 has no instance_id, should not be matched
+    assert_that(node3.instance).is_none()
+
+
 @pytest.mark.parametrize(
     "disable_cluster_management, disable_health_check, mock_cluster_instances, nodes, partitions, status, "
     "queue_compute_resource_nodes_map",
