@@ -1761,18 +1761,18 @@ def test_manage_cluster(
             "default.conf",
             [
                 # This node fail scheduler state check and corresponding instance will be terminated and replaced
-                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN", "queue1"),
+                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN", "queue1", instance_id="i-1"),
                 # This node fail scheduler state check and node will be power_down
-                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1", instance_id="i-2"),
                 # This node is good and should not be touched by clustermgtd
-                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1", instance_id="i-3"),
                 # This node is in power_saving state but still has running backing instance, it should be terminated
                 DynamicNode("queue-dy-c5xlarge-6", "ip-6", "hostname", "IDLE+CLOUD+POWER", "queue1"),
                 # This node is in powering_down but still has no valid backing instance, no boto3 call
                 DynamicNode("queue-dy-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             [
-                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
+                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2", instance_id="i-4"),
                 DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
             [
@@ -1973,6 +1973,7 @@ def test_manage_cluster(
                     "DOWN+CLOUD",
                     "queue1",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-1",
                 ),
                 DynamicNode(
                     "queue-dy-c5xlarge-2",
@@ -1981,6 +1982,7 @@ def test_manage_cluster(
                     "DOWN+CLOUD",
                     "queue1",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-2",
                 ),
                 DynamicNode(
                     "queue-dy-c5xlarge-3",
@@ -1989,6 +1991,7 @@ def test_manage_cluster(
                     "IDLE+CLOUD",
                     "queue1",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-3",
                 ),
             ],
             [
@@ -1999,6 +2002,7 @@ def test_manage_cluster(
                     "IDLE+CLOUD",
                     "queue2",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-4",
                 ),
                 DynamicNode(
                     "queue-dy-c5xlarge-5",

@@ -280,7 +280,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 "ServiceUnavailable": {"queue1-st-c5xlarge-2"},
                 "LimitedInstanceCapacity": {"queue1-dy-c5xlarge-2", "queue1-st-c5xlarge-1"},
             },
-            [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
+            [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None, instance_ids=["i-11111"])],
             dict(
                 zip(
                     ["queue1-dy-c5xlarge-1"],
@@ -332,7 +332,7 @@ def test_resume_config(config_file, expected_attributes, test_datadir, mocker):
                 client_error("InsufficientReservedInstanceCapacity"),
             ],
             {"InsufficientReservedInstanceCapacity": {"queue1-st-c5xlarge-2"}},
-            [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None)],
+            [call(["queue1-dy-c5xlarge-1"], nodeaddrs=["ip.1.0.0.1"], nodehostnames=None, instance_ids=["i-11111"])],
             dict(
                 zip(
                     ["queue1-dy-c5xlarge-1"],
