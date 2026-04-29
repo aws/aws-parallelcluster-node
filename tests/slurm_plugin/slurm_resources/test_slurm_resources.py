@@ -756,7 +756,10 @@ def test_slurm_node_is_state_healthy(
             True,
         ),
         (
-            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING", "queue1"),
+            # When ResumeTimeout fires on a cloud node under power_save, Slurm clears
+            # NODE_STATE_NO_RESPOND before setting the node DOWN+CLOUD+POWERED_DOWN.
+            # See slurm/src/slurmctld/power_save.c (_do_power_work).
+            DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "DOWN+CLOUD+POWERED_DOWN", "queue1"),
             EC2Instance("id-1", "ip-1", "hostname", {"ip-1"}, "launch_time"),
             0,
             {},
