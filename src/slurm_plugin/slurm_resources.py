@@ -734,7 +734,7 @@ class DynamicNode(SlurmNode):
                 self.state_string,
             )
             return True
-        # Dynamic node in DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING state
+        # Dynamic node in SLURM_SCONTROL_RESUME_FAILED_STATE.
         elif self.is_bootstrap_timeout():
             # We need to check if nodeaddr is set to avoid counting powering up nodes as bootstrap failure nodes during
             # cluster start/stop.
