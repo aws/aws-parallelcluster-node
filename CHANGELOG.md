@@ -6,6 +6,9 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.16.0
 ------
 
+**ENHANCEMENTS**
+- Mitigate the impact of transient IMDS failures during compute fleet status retrieval.
+
 **BUG FIXES**
 - Fix clustermgtd failing to detect compute node bootstrap timeouts, which prevented the cluster from entering protected mode.
 
