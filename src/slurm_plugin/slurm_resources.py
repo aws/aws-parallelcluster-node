@@ -203,7 +203,11 @@ class SlurmNode(metaclass=ABCMeta):
     SLURM_SCONTROL_POWER_UP_STATE = "POWERING_UP"
     SLURM_SCONTROL_ONLINE_STATES = {"IDLE+CLOUD", "MIXED+CLOUD", "ALLOCATED+CLOUD", "COMPLETING+CLOUD"}
     SLURM_SCONTROL_POWER_WITH_JOB_STATE = {"MIXED", "CLOUD", "POWERED_DOWN"}
-    SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN", "NOT_RESPONDING"}
+    # In Slurm 25.11:
+    # When ResumeTimeout fires on a cloud node, Slurm explicitly clears NODE_STATE_NO_RESPOND (along with DRAIN,
+    # POWER_DOWN, POWERING_UP), adds POWERED_DOWN, and then set node to DOWN with reason "ResumeTimeout reached".
+    # The resulting state is therefore DOWN+CLOUD+POWERED_DOWN and does NOT include NOT_RESPONDING.
+    SLURM_SCONTROL_RESUME_FAILED_STATE = {"DOWN", "CLOUD", "POWERED_DOWN"}
     SLURM_SCONTROL_NODE_DOWN_NOT_RESPONDING_STATE = {"DOWN", "CLOUD", "NOT_RESPONDING"}
     # Due to a bug in Slurm a powered down node can enter IDLE+CLOUD+POWER_DOWN+POWERED_DOWN state
     SLURM_SCONTROL_POWER_STATES = [{"IDLE", "CLOUD", "POWERED_DOWN"}, {"IDLE", "CLOUD", "POWERED_DOWN", "POWER_DOWN"}]
@@ -736,7 +740,7 @@ class DynamicNode(SlurmNode):
                 self.state_string,
             )
             return True
-        # Dynamic node in DOWN+CLOUD+POWERED_DOWN+NOT_RESPONDING state
+        # Dynamic node in SLURM_SCONTROL_RESUME_FAILED_STATE.
         elif self.is_bootstrap_timeout():
             # We need to check if nodeaddr is set to avoid counting powering up nodes as bootstrap failure nodes during
             # cluster start/stop.

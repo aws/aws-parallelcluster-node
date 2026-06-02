@@ -3,6 +3,12 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.16.0
+------
+
+**BUG FIXES**
+- Fix clustermgtd failing to detect compute node bootstrap timeouts, which prevented the cluster from entering protected mode.
+
 3.15.0
 ------
 
