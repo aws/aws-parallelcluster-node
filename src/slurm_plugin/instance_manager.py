@@ -25,7 +25,11 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
 from common.schedulers.slurm_commands import get_nodes_info, update_nodes
 from common.utils import grouper, setup_logging_filter
 from slurm_plugin.common import ComputeInstanceDescriptor, ScalingStrategy, log_exception, print_with_count
-from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
+from slurm_plugin.fleet_manager import (
+    INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
+    EC2Instance,
+    FleetManagerFactory,
+)
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -85,6 +89,7 @@ class InstanceManager:
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
         job_level_scaling: bool = False,
+        instance_info_retrieval_timeout: int = INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -101,6 +106,7 @@ class InstanceManager:
         self._fleet_config = fleet_config
         self._run_instances_overrides = run_instances_overrides or {}
         self._create_fleet_overrides = create_fleet_overrides or {}
+        self._instance_info_retrieval_timeout = instance_info_retrieval_timeout
         self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
             resource_name, region_name=region, config=boto3_config
         )
@@ -1023,6 +1029,7 @@ class InstanceManager:
             all_or_nothing=all_or_nothing_batch,
             run_instances_overrides=self._run_instances_overrides,
             create_fleet_overrides=self._create_fleet_overrides,
+            instance_info_retrieval_timeout=self._instance_info_retrieval_timeout,
         )
         return fleet_manager
 

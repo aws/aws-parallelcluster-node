@@ -67,6 +67,7 @@ class TestClustermgtdConfig:
                     # launch configs
                     "update_node_address": True,
                     "launch_max_batch_size": 500,
+                    "instance_info_retrieval_timeout": 120,
                     # terminate configs
                     "terminate_max_batch_size": 1000,
                     "node_replacement_timeout": 1800,
@@ -107,6 +108,7 @@ class TestClustermgtdConfig:
                     # launch configs
                     "update_node_address": False,
                     "launch_max_batch_size": 1,
+                    "instance_info_retrieval_timeout": 90,
                     # terminate configs
                     "terminate_max_batch_size": 500,
                     "node_replacement_timeout": 10,
@@ -412,6 +414,7 @@ def test_get_ec2_instances(mocker):
         use_private_hostname=False,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=120,
         insufficient_capacity_timeout=600,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
@@ -636,6 +639,7 @@ def test_perform_health_check_actions(
         use_private_hostname=False,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=120,
         fleet_config=FLEET_CONFIG,
         insufficient_capacity_timeout=600,
         head_node_instance_id="i-instance-id",
@@ -1169,6 +1173,7 @@ def test_handle_unhealthy_static_nodes(
         insufficient_capacity_timeout=600,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=120,
         compute_console_logging_enabled=output_enabled,
         compute_console_logging_max_sample_size=sample_size,
         compute_console_wait_time=1,
@@ -1492,6 +1497,7 @@ def test_terminate_orphaned_instances(
         node_replacement_timeout=1800,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=120,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
     )
@@ -1512,13 +1518,16 @@ def test_terminate_orphaned_instances(
 def test_update_slurm_nodes_with_ec2_info_instance_id_matching():
     """Test that _update_slurm_nodes_with_ec2_info matches by instance ID instead of IP."""
     # Nodes with instance_id set (as would be after our change)
-    node1 = StaticNode("queue1-st-c5xlarge-1", "10.0.1.1", "queue1-st-c5xlarge-1", "IDLE+CLOUD", "queue1",
-                       instance_id="i-aaa111")
-    node2 = DynamicNode("queue1-dy-c5xlarge-2", "10.0.1.2", "queue1-dy-c5xlarge-2", "IDLE+CLOUD", "queue1",
-                        instance_id="i-bbb222")
+    node1 = StaticNode(
+        "queue1-st-c5xlarge-1", "10.0.1.1", "queue1-st-c5xlarge-1", "IDLE+CLOUD", "queue1", instance_id="i-aaa111"
+    )
+    node2 = DynamicNode(
+        "queue1-dy-c5xlarge-2", "10.0.1.2", "queue1-dy-c5xlarge-2", "IDLE+CLOUD", "queue1", instance_id="i-bbb222"
+    )
     # Node without instance_id (powered down, not yet assigned)
-    node3 = DynamicNode("queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3",
-                        "IDLE+CLOUD+POWER", "queue1")
+    node3 = DynamicNode(
+        "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3", "IDLE+CLOUD+POWER", "queue1"
+    )
 
     # EC2 instances - one with full IP, one with missing IP (eventual consistency)
     instance1 = EC2Instance("i-aaa111", "10.0.1.1", "hostname-1", {"10.0.1.1"}, "launch_time_1")
@@ -2418,6 +2427,7 @@ def test_handle_successfully_launched_nodes(
         terminate_down_nodes=True,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=120,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
         ec2_instance_missing_max_count=0,

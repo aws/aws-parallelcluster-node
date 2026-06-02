@@ -152,8 +152,13 @@ def update_nodes(
     For example, if updating a state cause failure, but updating nodeaddr cause no failure.
     if we run scontrol update state=fail_state nodeaddr=good_addr nodename=name,
     the scontrol command will fail but nodeaddr will be updated to good_addr.
+
+    InstanceId is set in the same batched command as NodeAddr so that the node and its backing
+    instance are associated atomically. Batched per-node InstanceId assignment requires Slurm >= 25.11.6
+    (https://support.schedmd.com/show_bug.cgi?id=24886); before that fix comma-separated InstanceId values
+    were treated as a single literal string instead of being distributed across the nodes in the range.
     """
-    batched_node_info = _batch_node_info(nodes, nodeaddrs, nodehostnames, batch_size=100)
+    batched_node_info = _batch_node_info(nodes, nodeaddrs, nodehostnames, instance_ids, batch_size=100)
 
     update_cmd = f"{SCONTROL} update"
     if state:
@@ -162,7 +167,7 @@ def update_nodes(
     if reason:
         validate_subprocess_argument(reason)
         update_cmd += f' reason="{reason}"'
-    for nodenames, addrs, hostnames in batched_node_info:
+    for nodenames, addrs, hostnames, ids in batched_node_info:
         validate_subprocess_argument(nodenames)
         node_info = f"nodename={nodenames}"
         if addrs:
@@ -171,27 +176,13 @@ def update_nodes(
         if hostnames:
             validate_subprocess_argument(hostnames)
             node_info += f" nodehostname={hostnames}"
+        if ids:
+            validate_subprocess_argument(ids)
+            node_info += f" instanceid={ids}"
         # It's safe to use the function affected by B604 since the command is fully built in this code
         run_command(  # nosec B604
             f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
         )
-
-    # TODO: InstanceId should ideally be set in the same batched scontrol update command as NodeAddr
-    # (e.g., "scontrol update nodename=node-[1-100] nodeaddr=ip1,ip2,... instanceid=id1,id2,...").
-    # However, Slurm has a bug where InstanceId does not support per-node batch assignment ->
-    # comma-separated values are treated as a single literal string instead of being distributed across nodes.
-    # We have reported the bug. Once SchedMD fixes this, move instance_ids into the batched loop above.
-    if instance_ids:
-        node_list = list(nodes) if not isinstance(nodes, list) else nodes
-        for node_name, instance_id in zip(node_list, instance_ids):
-            validate_subprocess_argument(node_name)
-            validate_subprocess_argument(instance_id)
-            run_command(  # nosec B604
-                f"{SCONTROL} update nodename={node_name} instanceid={instance_id}",
-                raise_on_error=raise_on_error,
-                timeout=command_timeout,
-                shell=True,
-            )
 
 
 def update_partitions(partitions, state):
@@ -242,29 +233,30 @@ def _batch_attribute(attribute, batch_size, expected_length=None):
     return [",".join(batch) for batch in grouper(attribute, batch_size)]
 
 
-def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):
-    """Group nodename, nodeaddrs, nodehostnames into batches."""
+def _batch_optional_attribute(attribute, attribute_label, nodenames, default_batch, batch_size):
+    """Batch an optional per-node attribute, raising if its entry count does not match the nodes."""
+    if not attribute:
+        return default_batch
+    try:
+        return _batch_attribute(attribute, batch_size, expected_length=len(nodenames))
+    except ValueError:
+        log.error("Nodename %s and %s %s contain different number of entries", nodenames, attribute_label, attribute)
+        raise
+
+
+def _batch_node_info(nodenames, nodeaddrs, nodehostnames, instance_ids, batch_size):
+    """Group nodename, nodeaddrs, nodehostnames, instance_ids into batches."""
     if type(nodenames) is str:
         # Only split on , if there is ] before
         # For ex. "node-[1,3,4-5],node-[20,30]" should split into ["node-[1,3,4-5]","node-[20,30]"]
         nodenames = re.split("(?<=]),", nodenames)
     nodename_batch = _batch_attribute(nodenames, batch_size)
-    nodeaddrs_batch = [None] * len(nodename_batch)
-    nodehostnames_batch = [None] * len(nodename_batch)
-    if nodeaddrs:
-        try:
-            nodeaddrs_batch = _batch_attribute(nodeaddrs, batch_size, expected_length=len(nodenames))
-        except ValueError:
-            log.error("Nodename %s and NodeAddr %s contain different number of entries", nodenames, nodeaddrs)
-            raise
-    if nodehostnames:
-        try:
-            nodehostnames_batch = _batch_attribute(nodehostnames, batch_size, expected_length=len(nodenames))
-        except ValueError:
-            log.error("Nodename %s and NodeHostname %s contain different number of entries", nodenames, nodehostnames)
-            raise
+    default_batch = [None] * len(nodename_batch)
+    nodeaddrs_batch = _batch_optional_attribute(nodeaddrs, "NodeAddr", nodenames, default_batch, batch_size)
+    nodehostnames_batch = _batch_optional_attribute(nodehostnames, "NodeHostName", nodenames, default_batch, batch_size)
+    instance_ids_batch = _batch_optional_attribute(instance_ids, "InstanceId", nodenames, default_batch, batch_size)
 
-    return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch)
+    return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch, instance_ids_batch)
 
 
 def set_nodes_down(nodes, reason):

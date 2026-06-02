@@ -57,6 +57,7 @@ def boto3_stubber_path():
                 "job_level_scaling": True,
                 "assign_node_max_batch_size": 500,
                 "terminate_max_batch_size": 1000,
+                "instance_info_retrieval_timeout": 120,
             },
         ),
         (
@@ -77,6 +78,7 @@ def boto3_stubber_path():
                 "job_level_scaling": False,
                 "assign_node_max_batch_size": 400,
                 "terminate_max_batch_size": 600,
+                "instance_info_retrieval_timeout": 90,
             },
         ),
     ],
@@ -406,6 +408,7 @@ def test_resume_launch(
         job_level_scaling=job_level_scaling,
         assign_node_max_batch_size=500,
         terminate_max_batch_size=1000,
+        instance_info_retrieval_timeout=120,
     )
     mocker.patch("slurm_plugin.resume.is_clustermgtd_heartbeat_valid", autospec=True, return_value=is_heartbeat_valid)
     mock_handle_failed_nodes = mocker.patch("slurm_plugin.resume._handle_failed_nodes", autospec=True)
