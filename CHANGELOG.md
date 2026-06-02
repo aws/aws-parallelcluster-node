@@ -6,6 +6,13 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.16.0
 ------
 
+**CHANGES**
+- Match EC2 instances to Slurm nodes by instance ID instead of private IP, so compute nodes are no longer
+  incorrectly replaced when `DescribeInstances` temporarily omits `PrivateIpAddress` due to EC2 API eventual
+  consistency when launching a large number of nodes.
+- Make the CreateFleet post-launch `DescribeInstances` retry timeout configurable
+  (`instance_info_retrieval_timeout`, default 120 seconds) to tolerate EC2 API eventual consistency.
+
 **BUG FIXES**
 - Fix clustermgtd failing to detect compute node bootstrap timeouts, which prevented the cluster from entering protected mode.
 
