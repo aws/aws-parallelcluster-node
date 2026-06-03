@@ -245,7 +245,7 @@ def test_is_static_node(nodename, expected_is_static):
             ],
             True,
         ),
-        # Test case: InstanceId is parsed from scontrol show nodes output
+        # Test case: InstanceId is parsed from scontrol show nodes output; "(null)" is normalized to None
         (
             "NodeName=queue1-st-c5xlarge-1\n"
             "NodeAddr=10.0.1.1\n"
@@ -261,6 +261,7 @@ def test_is_static_node(nodename, expected_is_static):
             "State=IDLE+CLOUD+POWER\n"
             "Partitions=queue1\n"
             "SlurmdStartTime=None\n"
+            "InstanceId=(null)\n"
             "######\n",
             [
                 StaticNode(
@@ -279,6 +280,7 @@ def test_is_static_node(nodename, expected_is_static):
                     "IDLE+CLOUD+POWER",
                     "queue1",
                     slurmdstarttime=None,
+                    instance_id=None,
                 ),
             ],
             False,

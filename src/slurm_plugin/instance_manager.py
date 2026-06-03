@@ -268,8 +268,8 @@ class InstanceManager:
         """
         Get instances that are associated with the cluster.
 
-        Instances with missing EC2 info (e.g., PrivateIpAddress due to EC2 eventual consistency) are included
-        with empty IP fields to allow instance-ID-based matching in clustermgtd.
+        Instances with missing info (e.g. PrivateIpAddress due to EC2 eventual consistency) are kept with
+        empty IP fields so that clustermgtd can still match them to Slurm nodes by instance ID.
         """
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
@@ -297,25 +297,16 @@ class InstanceManager:
                     )
                 )
             except Exception as e:
-                required_fields = {"PrivateIpAddress", "PrivateDnsName", "NetworkInterfaces"}
-                missing_fields = required_fields - set(instance_info.keys())
+                # Keep the instance with empty IP info so it can still be matched by instance ID in clustermgtd.
                 logger.warning(
-                    "Instance %s missing some EC2 info, exception: %s, message: %s. "
-                    "Missing top-level fields: %s. "
-                    "Adding with instance ID only to allow fallback matching.",
+                    "Incomplete EC2 info for instance %s, keeping it for instance-ID matching, "
+                    "exception: %s, message: %s",
                     instance_info["InstanceId"],
                     type(e).__name__,
                     e,
-                    missing_fields if missing_fields else "none",
                 )
                 instances.append(
-                    EC2Instance(
-                        instance_info["InstanceId"],
-                        "",
-                        "",
-                        set(),
-                        instance_info.get("LaunchTime"),
-                    )
+                    EC2Instance(instance_info["InstanceId"], "", "", set(), instance_info.get("LaunchTime"))
                 )
 
         return instances

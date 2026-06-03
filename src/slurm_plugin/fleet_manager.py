@@ -24,11 +24,9 @@ from slurm_plugin.common import print_with_count
 
 logger = logging.getLogger(__name__)
 
-# After a CreateFleet launch, DescribeInstances may not yet return complete info (e.g. PrivateIpAddress)
-# due to EC2 API eventual consistency. Per EC2 guidance, retry with exponential backoff up to a few minutes:
-# https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
-# INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT is the total backoff budget (seconds) and is configurable.
-# INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF caps the wait between two consecutive DescribeInstances attempts.
+# Total time budget (seconds) and per-attempt backoff cap for retrying DescribeInstances after a CreateFleet
+# launch, to tolerate EC2 API eventual consistency.
+# See https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
 INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT = 120
 INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF = 30
 
@@ -460,8 +458,7 @@ class Ec2CreateFleetManager(FleetManager):
         partial_instance_ids = instance_ids
 
         attempt_count = 0
-        # Cumulative un-jittered backoff. Jitter is applied only to the actual sleep so that the number
-        # of attempts stays a deterministic function of the configured timeout.
+        # Budget is tracked against the un-jittered backoff; jitter is added only to the actual sleep.
         elapsed_backoff = 0
         # Wait for instances to be available in EC2
         time.sleep(0.1)
@@ -471,7 +468,6 @@ class Ec2CreateFleetManager(FleetManager):
             if not partial_instance_ids:
                 break
             base_backoff = min(0.3 * 2 ** (attempt_count + 1), INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF)
-            # Stop once the next backoff would exceed the total retrieval timeout budget.
             if elapsed_backoff + base_backoff > self._instance_info_retrieval_timeout:
                 logger.warning(
                     "Unable to retrieve complete info for instances %s within %s seconds, giving up after %s attempts.",

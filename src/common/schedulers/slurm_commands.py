@@ -461,6 +461,9 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
                     value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
                 else:
                     value = None
+            elif key == "InstanceId" and value == "(null)":
+                # Slurm reports an unset InstanceId as "(null)"
+                value = None
             kwargs[map_slurm_key_to_arg[key]] = value
         if lines:
             try:
