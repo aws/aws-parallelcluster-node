@@ -2346,6 +2346,7 @@ class TestComputeFleetStatusManager:
     )
     def test_get_status(self, mocker, get_item_response, fallback, expected_status):
         check_command_output_mocked = mocker.patch("slurm_plugin.clustermgtd.check_command_output", autospec=True)
+        mocker.patch("retrying.time.sleep")
         compute_fleet_status_manager = ComputeFleetStatusManager()
 
         if get_item_response is Exception:
@@ -2354,7 +2355,10 @@ class TestComputeFleetStatusManager:
             check_command_output_mocked.return_value = get_item_response
         status = compute_fleet_status_manager.get_status(fallback)
         assert_that(status).is_equal_to(expected_status)
-        check_command_output_mocked.assert_called_once_with("get-compute-fleet-status.sh")
+        if get_item_response is Exception or get_item_response == "":
+            assert_that(check_command_output_mocked.call_count).is_equal_to(3)
+        else:
+            check_command_output_mocked.assert_called_once_with("get-compute-fleet-status.sh")
 
     @pytest.mark.parametrize(
         "desired_status, update_item_response",

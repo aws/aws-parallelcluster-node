@@ -99,13 +99,18 @@ class ComputeFleetStatusManager:
     COMPUTE_FLEET_LAST_UPDATED_TIME_ATTRIBUTE = "lastStatusUpdatedTime"
 
     @staticmethod
+    @retry(stop_max_attempt_number=3, wait_fixed=seconds(1))
+    def _get_fleet_status():
+        compute_fleet_raw_data = check_command_output("get-compute-fleet-status.sh")
+        log.debug("Retrieved compute fleet data: %s", compute_fleet_raw_data)
+        return ComputeFleetStatus(
+            json.loads(compute_fleet_raw_data).get(ComputeFleetStatusManager.COMPUTE_FLEET_STATUS_ATTRIBUTE)
+        )
+
+    @staticmethod
     def get_status(fallback=None):
         try:
-            compute_fleet_raw_data = check_command_output("get-compute-fleet-status.sh")
-            log.debug("Retrieved compute fleet data: %s", compute_fleet_raw_data)
-            return ComputeFleetStatus(
-                json.loads(compute_fleet_raw_data).get(ComputeFleetStatusManager.COMPUTE_FLEET_STATUS_ATTRIBUTE)
-            )
+            return ComputeFleetStatusManager._get_fleet_status()
         except Exception as e:
             if isinstance(e, CalledProcessError):
                 error = e.stdout.rstrip()
@@ -116,7 +121,6 @@ class ComputeFleetStatusManager:
                 error,
                 fallback,
             )
-
             return fallback
 
     @staticmethod
