@@ -17,6 +17,7 @@ import pytest
 from assertpy import assert_that
 from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import (
+    INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF,
     INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     Ec2CreateFleetManager,
     EC2Instance,
@@ -26,6 +27,19 @@ from slurm_plugin.fleet_manager import (
 )
 
 from tests.common import FLEET_CONFIG, MockedBoto3Request
+
+
+def _expected_describe_attempts(timeout):
+    """Compute DescribeInstances attempts for a never-converging instance, mirroring _get_instances_info."""
+    attempts = 0
+    elapsed_backoff = 0
+    while True:
+        attempts += 1
+        base_backoff = min(0.3 * 2**attempts, INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF)
+        if elapsed_backoff + base_backoff > timeout:
+            break
+        elapsed_backoff += base_backoff
+    return attempts
 
 
 @pytest.fixture()
@@ -1175,9 +1189,12 @@ class TestEc2CreateFleetManager:
         ("instance_info_retrieval_timeout", "expected_describe_calls"),
         [
             # never-converging instance -> attempts bounded by the timeout budget (capped per-attempt backoff)
-            (10, 5),
-            (1, 2),
-            (INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT, 9),
+            (10, _expected_describe_attempts(10)),
+            (1, _expected_describe_attempts(1)),
+            (
+                INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
+                _expected_describe_attempts(INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT),
+            ),
         ],
         ids=["timeout_10s", "timeout_1s", "timeout_default"],
     )

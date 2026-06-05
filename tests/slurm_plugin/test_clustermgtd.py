@@ -23,7 +23,7 @@ from assertpy import assert_that
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
 from slurm_plugin.common import ScalingStrategy
 from slurm_plugin.console_logger import ConsoleLogger
-from slurm_plugin.fleet_manager import EC2Instance
+from slurm_plugin.fleet_manager import INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT, EC2Instance
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -67,7 +67,7 @@ class TestClustermgtdConfig:
                     # launch configs
                     "update_node_address": True,
                     "launch_max_batch_size": 500,
-                    "instance_info_retrieval_timeout": 120,
+                    "instance_info_retrieval_timeout": INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
                     # terminate configs
                     "terminate_max_batch_size": 1000,
                     "node_replacement_timeout": 1800,
@@ -108,7 +108,7 @@ class TestClustermgtdConfig:
                     # launch configs
                     "update_node_address": False,
                     "launch_max_batch_size": 1,
-                    "instance_info_retrieval_timeout": 90,
+                    "instance_info_retrieval_timeout": 200,
                     # terminate configs
                     "terminate_max_batch_size": 500,
                     "node_replacement_timeout": 10,
@@ -414,7 +414,7 @@ def test_get_ec2_instances(mocker):
         use_private_hostname=False,
         run_instances_overrides={},
         create_fleet_overrides={},
-        instance_info_retrieval_timeout=120,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         insufficient_capacity_timeout=600,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
@@ -639,7 +639,7 @@ def test_perform_health_check_actions(
         use_private_hostname=False,
         run_instances_overrides={},
         create_fleet_overrides={},
-        instance_info_retrieval_timeout=120,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         fleet_config=FLEET_CONFIG,
         insufficient_capacity_timeout=600,
         head_node_instance_id="i-instance-id",
@@ -1173,7 +1173,7 @@ def test_handle_unhealthy_static_nodes(
         insufficient_capacity_timeout=600,
         run_instances_overrides={},
         create_fleet_overrides={},
-        instance_info_retrieval_timeout=120,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         compute_console_logging_enabled=output_enabled,
         compute_console_logging_max_sample_size=sample_size,
         compute_console_wait_time=1,
@@ -1497,7 +1497,7 @@ def test_terminate_orphaned_instances(
         node_replacement_timeout=1800,
         run_instances_overrides={},
         create_fleet_overrides={},
-        instance_info_retrieval_timeout=120,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
     )
@@ -2431,7 +2431,7 @@ def test_handle_successfully_launched_nodes(
         terminate_down_nodes=True,
         run_instances_overrides={},
         create_fleet_overrides={},
-        instance_info_retrieval_timeout=120,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
         ec2_instance_missing_max_count=0,

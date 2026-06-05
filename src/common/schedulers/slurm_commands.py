@@ -154,9 +154,7 @@ def update_nodes(
     the scontrol command will fail but nodeaddr will be updated to good_addr.
 
     InstanceId is set in the same batched command as NodeAddr so that the node and its backing
-    instance are associated atomically. Batched per-node InstanceId assignment requires Slurm >= 25.11.6
-    (https://support.schedmd.com/show_bug.cgi?id=24886); before that fix comma-separated InstanceId values
-    were treated as a single literal string instead of being distributed across the nodes in the range.
+    instance are associated atomically.
     """
     batched_node_info = _batch_node_info(nodes, nodeaddrs, nodehostnames, instance_ids, batch_size=100)
 

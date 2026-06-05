@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Total time budget (seconds) and per-attempt backoff cap for retrying DescribeInstances after a CreateFleet
 # launch, to tolerate EC2 API eventual consistency.
 # See https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
-INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT = 120
+INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT = 90
 INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF = 30
 
 
