@@ -17,6 +17,8 @@ import pytest
 from assertpy import assert_that
 from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import (
+    INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF,
+    INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     Ec2CreateFleetManager,
     EC2Instance,
     Ec2RunInstancesManager,
@@ -25,6 +27,19 @@ from slurm_plugin.fleet_manager import (
 )
 
 from tests.common import FLEET_CONFIG, MockedBoto3Request
+
+
+def _expected_describe_attempts(timeout):
+    """Compute DescribeInstances attempts for a never-converging instance, mirroring _get_instances_info."""
+    attempts = 0
+    elapsed_backoff = 0
+    while True:
+        attempts += 1
+        base_backoff = min(0.3 * 2**attempts, INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF)
+        if elapsed_backoff + base_backoff > timeout:
+            break
+        elapsed_backoff += base_backoff
+    return attempts
 
 
 @pytest.fixture()
@@ -1129,12 +1144,87 @@ class TestEc2CreateFleetManager:
         mocker.patch("time.sleep")
         boto3_stubber("ec2", mocked_boto3_request)
         # run test
+        # A 10s retrieval timeout bounds the never-converging cases to exactly 5 DescribeInstances attempts,
+        # matching the number of mocked responses, while leaving room for the converging cases to succeed.
         fleet_manager = FleetManagerFactory.get_manager(
-            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
+            "hit",
+            "region",
+            "boto3_config",
+            FLEET_CONFIG,
+            "queue2",
+            "fleet-ondemand",
+            True,
+            {},
+            {},
+            instance_info_retrieval_timeout=10,
         )
 
         complete_instances, partial_instance_ids = fleet_manager._get_instances_info(instance_ids)
         assert_that(expected_result).is_equal_to((complete_instances, partial_instance_ids))
+
+    def test_instance_info_retrieval_timeout_default(self):
+        # Default timeout is wired through the factory into the CreateFleet manager
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
+        )
+        assert_that(fleet_manager._instance_info_retrieval_timeout).is_equal_to(INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT)
+
+    def test_instance_info_retrieval_timeout_override(self):
+        # A custom timeout is propagated through the factory into the CreateFleet manager
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit",
+            "region",
+            "boto3_config",
+            FLEET_CONFIG,
+            "queue2",
+            "fleet-ondemand",
+            True,
+            {},
+            {},
+            instance_info_retrieval_timeout=240,
+        )
+        assert_that(fleet_manager._instance_info_retrieval_timeout).is_equal_to(240)
+
+    @pytest.mark.parametrize(
+        ("instance_info_retrieval_timeout", "expected_describe_calls"),
+        [
+            # never-converging instance -> attempts bounded by the timeout budget (capped per-attempt backoff)
+            (10, _expected_describe_attempts(10)),
+            (1, _expected_describe_attempts(1)),
+            (
+                INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
+                _expected_describe_attempts(INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT),
+            ),
+        ],
+        ids=["timeout_10s", "timeout_1s", "timeout_default"],
+    )
+    def test_get_instances_info_retry_count_scales_with_timeout(
+        self, mocker, instance_info_retrieval_timeout, expected_describe_calls
+    ):
+        # Patch sleep so the test runs instantly and stub the EC2 describe to always return incomplete info.
+        mocker.patch("time.sleep")
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit",
+            "region",
+            "boto3_config",
+            FLEET_CONFIG,
+            "queue2",
+            "fleet-ondemand",
+            True,
+            {},
+            {},
+            instance_info_retrieval_timeout=instance_info_retrieval_timeout,
+        )
+        # Always-incomplete response keeps the instance in partial_instance_ids, forcing retries until timeout.
+        retrieve_mock = mocker.patch.object(
+            fleet_manager, "_retrieve_instances_info_from_ec2", return_value=([], ["i-12345"])
+        )
+
+        instances, partial_instance_ids = fleet_manager._get_instances_info(["i-12345"])
+
+        assert_that(instances).is_empty()
+        assert_that(partial_instance_ids).is_equal_to(["i-12345"])
+        assert_that(retrieve_mock.call_count).is_equal_to(expected_describe_calls)
 
     @pytest.mark.parametrize(
         ("instance_ids", "mocked_boto3_request", "expected_result"),

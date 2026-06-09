@@ -22,6 +22,7 @@ from common.schedulers.slurm_commands import get_nodes_info, set_nodes_down
 from common.utils import read_json
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import ScalingStrategy, is_clustermgtd_heartbeat_valid, print_with_count
+from slurm_plugin.fleet_manager import INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import CONFIG_FILE_DIR
 
@@ -47,6 +48,7 @@ class SlurmResumeConfig:
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
         "job_level_scaling": True,
         "scaling_strategy": "all-or-nothing",
+        "instance_info_retrieval_timeout": INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     }
 
     def __init__(self, config_file_path):
@@ -95,6 +97,11 @@ class SlurmResumeConfig:
         )  # TODO: Check if it's a valid scaling strategy before calling expensive downstream APIs
         self.job_level_scaling = config.getboolean(
             "slurm_resume", "job_level_scaling", fallback=self.DEFAULTS.get("job_level_scaling")
+        )
+        self.instance_info_retrieval_timeout = config.getint(
+            "slurm_resume",
+            "instance_info_retrieval_timeout",
+            fallback=self.DEFAULTS.get("instance_info_retrieval_timeout"),
         )
         fleet_config_file = config.get(
             "slurm_resume", "fleet_config_file", fallback=self.DEFAULTS.get("fleet_config_file")
@@ -206,6 +213,7 @@ def _resume(arg_nodes, resume_config, slurm_resume):
         run_instances_overrides=resume_config.run_instances_overrides,
         create_fleet_overrides=resume_config.create_fleet_overrides,
         job_level_scaling=resume_config.job_level_scaling,
+        instance_info_retrieval_timeout=resume_config.instance_info_retrieval_timeout,
     )
     instance_manager.add_instances(
         slurm_resume=slurm_resume,

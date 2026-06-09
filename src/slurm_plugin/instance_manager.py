@@ -25,7 +25,11 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
 from common.schedulers.slurm_commands import get_nodes_info, update_nodes
 from common.utils import grouper, setup_logging_filter
 from slurm_plugin.common import ComputeInstanceDescriptor, ScalingStrategy, log_exception, print_with_count
-from slurm_plugin.fleet_manager import EC2Instance, FleetManagerFactory
+from slurm_plugin.fleet_manager import (
+    INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
+    EC2Instance,
+    FleetManagerFactory,
+)
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -85,6 +89,7 @@ class InstanceManager:
         run_instances_overrides: dict = None,
         create_fleet_overrides: dict = None,
         job_level_scaling: bool = False,
+        instance_info_retrieval_timeout: int = INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     ):
         """Initialize InstanceLauncher with required attributes."""
         self._region = region
@@ -101,6 +106,7 @@ class InstanceManager:
         self._fleet_config = fleet_config
         self._run_instances_overrides = run_instances_overrides or {}
         self._create_fleet_overrides = create_fleet_overrides or {}
+        self._instance_info_retrieval_timeout = instance_info_retrieval_timeout
         self._boto3_resource_factory = lambda resource_name: boto3.session.Session().resource(
             resource_name, region_name=region, config=boto3_config
         )
@@ -262,7 +268,8 @@ class InstanceManager:
         """
         Get instances that are associated with the cluster.
 
-        Instances without all the info set are ignored and not returned
+        Instances with missing info (e.g. PrivateIpAddress due to EC2 eventual consistency) are kept with
+        empty IP fields so that clustermgtd can still match them to Slurm nodes by instance ID.
         """
         ec2_client = boto3.client("ec2", region_name=self._region, config=self._boto3_config)
         paginator = ec2_client.get_paginator("describe_instances")
@@ -290,11 +297,16 @@ class InstanceManager:
                     )
                 )
             except Exception as e:
+                # Keep the instance with empty IP info so it can still be matched by instance ID in clustermgtd.
                 logger.warning(
-                    "Ignoring instance %s because not all EC2 info are available, exception: %s, message: %s",
+                    "Incomplete EC2 info for instance %s, keeping it for instance-ID matching, "
+                    "exception: %s, message: %s",
                     instance_info["InstanceId"],
                     type(e).__name__,
                     e,
+                )
+                instances.append(
+                    EC2Instance(instance_info["InstanceId"], "", "", set(), instance_info.get("LaunchTime"))
                 )
 
         return instances
@@ -1008,6 +1020,7 @@ class InstanceManager:
             all_or_nothing=all_or_nothing_batch,
             run_instances_overrides=self._run_instances_overrides,
             create_fleet_overrides=self._create_fleet_overrides,
+            instance_info_retrieval_timeout=self._instance_info_retrieval_timeout,
         )
         return fleet_manager
 
@@ -1077,6 +1090,7 @@ class InstanceManager:
                 slurm_nodes,
                 nodeaddrs=[instance.private_ip for instance in launched_instances],
                 nodehostnames=node_hostnames,
+                instance_ids=[instance.id for instance in launched_instances],
             )
             logger.info(
                 "Nodes are now configured with instances %s",

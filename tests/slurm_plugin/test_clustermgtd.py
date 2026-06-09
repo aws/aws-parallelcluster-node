@@ -23,7 +23,7 @@ from assertpy import assert_that
 from slurm_plugin.clustermgtd import ClusterManager, ClustermgtdConfig, ComputeFleetStatus, ComputeFleetStatusManager
 from slurm_plugin.common import ScalingStrategy
 from slurm_plugin.console_logger import ConsoleLogger
-from slurm_plugin.fleet_manager import EC2Instance
+from slurm_plugin.fleet_manager import INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT, EC2Instance
 from slurm_plugin.slurm_resources import (
     EC2_HEALTH_STATUS_UNHEALTHY_STATES,
     EC2_INSTANCE_ALIVE_STATES,
@@ -67,6 +67,7 @@ class TestClustermgtdConfig:
                     # launch configs
                     "update_node_address": True,
                     "launch_max_batch_size": 500,
+                    "instance_info_retrieval_timeout": INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
                     # terminate configs
                     "terminate_max_batch_size": 1000,
                     "node_replacement_timeout": 1800,
@@ -107,6 +108,7 @@ class TestClustermgtdConfig:
                     # launch configs
                     "update_node_address": False,
                     "launch_max_batch_size": 1,
+                    "instance_info_retrieval_timeout": 200,
                     # terminate configs
                     "terminate_max_batch_size": 500,
                     "node_replacement_timeout": 10,
@@ -412,6 +414,7 @@ def test_get_ec2_instances(mocker):
         use_private_hostname=False,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         insufficient_capacity_timeout=600,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
@@ -636,6 +639,7 @@ def test_perform_health_check_actions(
         use_private_hostname=False,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         fleet_config=FLEET_CONFIG,
         insufficient_capacity_timeout=600,
         head_node_instance_id="i-instance-id",
@@ -1169,6 +1173,7 @@ def test_handle_unhealthy_static_nodes(
         insufficient_capacity_timeout=600,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         compute_console_logging_enabled=output_enabled,
         compute_console_logging_max_sample_size=sample_size,
         compute_console_wait_time=1,
@@ -1492,6 +1497,7 @@ def test_terminate_orphaned_instances(
         node_replacement_timeout=1800,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
     )
@@ -1507,6 +1513,38 @@ def test_terminate_orphaned_instances(
         cluster_manager._instance_manager.delete_instances.assert_called_with(
             expected_instance_to_terminate, terminate_batch_size=4
         )
+
+
+def test_update_slurm_nodes_with_ec2_info_instance_id_matching():
+    """Test that _update_slurm_nodes_with_ec2_info matches by instance ID instead of IP."""
+    # Nodes with instance_id set (as would be after our change)
+    node1 = StaticNode(
+        "queue1-st-c5xlarge-1", "10.0.1.1", "queue1-st-c5xlarge-1", "IDLE+CLOUD", "queue1", instance_id="i-aaa111"
+    )
+    node2 = DynamicNode(
+        "queue1-dy-c5xlarge-2", "10.0.1.2", "queue1-dy-c5xlarge-2", "IDLE+CLOUD", "queue1", instance_id="i-bbb222"
+    )
+    # Node without instance_id (powered down, not yet assigned)
+    node3 = DynamicNode(
+        "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3", "queue1-dy-c5xlarge-3", "IDLE+CLOUD+POWER", "queue1"
+    )
+
+    # EC2 instances - one with full IP, one with missing IP (eventual consistency)
+    instance1 = EC2Instance("i-aaa111", "10.0.1.1", "hostname-1", {"10.0.1.1"}, "launch_time_1")
+    instance2 = EC2Instance("i-bbb222", "", "", set(), "launch_time_2")  # missing IP
+
+    nodes = [node1, node2, node3]
+    cluster_instances = [instance1, instance2]
+
+    ClusterManager._update_slurm_nodes_with_ec2_info(nodes, cluster_instances)
+
+    # Both instances should be matched by instance ID
+    assert_that(node1.instance).is_equal_to(instance1)
+    assert_that(instance1.slurm_node).is_equal_to(node1)
+    assert_that(node2.instance).is_equal_to(instance2)
+    assert_that(instance2.slurm_node).is_equal_to(node2)
+    # Node3 has no instance_id, should not be matched
+    assert_that(node3.instance).is_none()
 
 
 @pytest.mark.parametrize(
@@ -1732,18 +1770,18 @@ def test_manage_cluster(
             "default.conf",
             [
                 # This node fail scheduler state check and corresponding instance will be terminated and replaced
-                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN", "queue1"),
+                StaticNode("queue-st-c5xlarge-1", "ip-1", "hostname", "IDLE+CLOUD+DRAIN", "queue1", instance_id="i-1"),
                 # This node fail scheduler state check and node will be power_down
-                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-2", "ip-2", "hostname", "DOWN+CLOUD", "queue1", instance_id="i-2"),
                 # This node is good and should not be touched by clustermgtd
-                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1"),
+                DynamicNode("queue-dy-c5xlarge-3", "ip-3", "hostname", "IDLE+CLOUD", "queue1", instance_id="i-3"),
                 # This node is in power_saving state but still has running backing instance, it should be terminated
                 DynamicNode("queue-dy-c5xlarge-6", "ip-6", "hostname", "IDLE+CLOUD+POWER", "queue1"),
                 # This node is in powering_down but still has no valid backing instance, no boto3 call
                 DynamicNode("queue-dy-c5xlarge-8", "ip-8", "hostname", "IDLE+CLOUD+POWERING_DOWN", "queue1"),
             ],
             [
-                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2"),
+                StaticNode("queue-st-c5xlarge-4", "ip-4", "hostname", "IDLE+CLOUD", "queue2", instance_id="i-4"),
                 DynamicNode("queue-dy-c5xlarge-5", "ip-5", "hostname", "DOWN+CLOUD", "queue2"),
             ],
             [
@@ -1944,6 +1982,7 @@ def test_manage_cluster(
                     "DOWN+CLOUD",
                     "queue1",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-1",
                 ),
                 DynamicNode(
                     "queue-dy-c5xlarge-2",
@@ -1952,6 +1991,7 @@ def test_manage_cluster(
                     "DOWN+CLOUD",
                     "queue1",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-2",
                 ),
                 DynamicNode(
                     "queue-dy-c5xlarge-3",
@@ -1960,6 +2000,7 @@ def test_manage_cluster(
                     "IDLE+CLOUD",
                     "queue1",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-3",
                 ),
             ],
             [
@@ -1970,6 +2011,7 @@ def test_manage_cluster(
                     "IDLE+CLOUD",
                     "queue2",
                     slurmdstarttime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    instance_id="i-4",
                 ),
                 DynamicNode(
                     "queue-dy-c5xlarge-5",
@@ -2389,6 +2431,7 @@ def test_handle_successfully_launched_nodes(
         terminate_down_nodes=True,
         run_instances_overrides={},
         create_fleet_overrides={},
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         fleet_config=FLEET_CONFIG,
         head_node_instance_id="i-instance-id",
         ec2_instance_missing_max_count=0,

@@ -44,6 +44,7 @@ from slurm_plugin.capacity_block_manager import CapacityBlockManager
 from slurm_plugin.cluster_event_publisher import ClusterEventPublisher
 from slurm_plugin.common import TIMESTAMP_FORMAT, ScalingStrategy, log_exception, print_with_count
 from slurm_plugin.console_logger import ConsoleLogger
+from slurm_plugin.fleet_manager import INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT
 from slurm_plugin.instance_manager import InstanceManager
 from slurm_plugin.slurm_resources import (
     CONFIG_FILE_DIR,
@@ -147,6 +148,7 @@ class ClustermgtdConfig:
         "run_instances_overrides": "/opt/slurm/etc/pcluster/run_instances_overrides.json",
         "create_fleet_overrides": "/opt/slurm/etc/pcluster/create_fleet_overrides.json",
         "fleet_config_file": "/etc/parallelcluster/slurm_plugin/fleet-config.json",
+        "instance_info_retrieval_timeout": INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
         # Terminate configs
         "terminate_max_batch_size": 1000,
         # Timeout to wait for node initialization, should be the same as ResumeTimeout
@@ -257,6 +259,11 @@ class ClustermgtdConfig:
             "clustermgtd", "create_fleet_overrides", fallback=self.DEFAULTS.get("create_fleet_overrides")
         )
         self.create_fleet_overrides = read_json(create_fleet_overrides_file, default={})
+        self.instance_info_retrieval_timeout = config.getint(
+            "clustermgtd",
+            "instance_info_retrieval_timeout",
+            fallback=self.DEFAULTS.get("instance_info_retrieval_timeout"),
+        )
 
     def _get_health_check_config(self, config):
         self.disable_ec2_health_check = config.getboolean(
@@ -452,6 +459,7 @@ class ClusterManager:
             run_instances_overrides=config.run_instances_overrides,
             create_fleet_overrides=config.create_fleet_overrides,
             fleet_config=config.fleet_config,
+            instance_info_retrieval_timeout=config.instance_info_retrieval_timeout,
         )
 
     def _initialize_executor(self, config):
@@ -1149,15 +1157,14 @@ class ClusterManager:
 
     @staticmethod
     def _update_slurm_nodes_with_ec2_info(nodes, cluster_instances):
+        """Associate EC2 instances with Slurm nodes by matching on instance ID."""
         if cluster_instances:
-            ip_to_slurm_node_map = {node.nodeaddr: node for node in nodes}
+            instance_id_to_slurm_node_map = {node.instance_id: node for node in nodes if node.instance_id}
             for instance in cluster_instances:
-                for private_ip in instance.all_private_ips:
-                    if private_ip in ip_to_slurm_node_map:
-                        slurm_node = ip_to_slurm_node_map.get(private_ip)
-                        slurm_node.instance = instance
-                        instance.slurm_node = slurm_node
-                        break
+                if instance.id in instance_id_to_slurm_node_map:
+                    slurm_node = instance_id_to_slurm_node_map[instance.id]
+                    slurm_node.instance = instance
+                    instance.slurm_node = slurm_node
 
     @staticmethod
     def get_instance_id_to_active_node_map(partitions: List[SlurmPartition]) -> Dict:

@@ -63,7 +63,8 @@ SINFO = f"{SLURM_BINARIES_DIR}/sinfo"
 SCONTROL_OUTPUT_AWK_PARSER = (
     'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
     + "grep -oP '^(NodeName=\\S+)|(NodeAddr=\\S+)|(NodeHostName=\\S+)|(?<!Next)(State=\\S+)|"
-    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(ReservationName=\\S+)|(Reason=.*)|(######)'"
+    + "(Partitions=\\S+)|(SlurmdStartTime=\\S+)|(LastBusyTime=\\S+)|(ReservationName=\\S+)"
+    + "|(InstanceId=\\S+)|(Reason=.*)|(######)'"
 )
 
 # Set default timeouts for running different slurm commands.
@@ -129,6 +130,7 @@ def update_nodes(
     nodes,
     nodeaddrs=None,
     nodehostnames=None,
+    instance_ids=None,
     state=None,
     reason=None,
     raise_on_error=True,
@@ -150,8 +152,11 @@ def update_nodes(
     For example, if updating a state cause failure, but updating nodeaddr cause no failure.
     if we run scontrol update state=fail_state nodeaddr=good_addr nodename=name,
     the scontrol command will fail but nodeaddr will be updated to good_addr.
+
+    InstanceId is set in the same batched command as NodeAddr so that the node and its backing
+    instance are associated atomically.
     """
-    batched_node_info = _batch_node_info(nodes, nodeaddrs, nodehostnames, batch_size=100)
+    batched_node_info = _batch_node_info(nodes, nodeaddrs, nodehostnames, instance_ids, batch_size=100)
 
     update_cmd = f"{SCONTROL} update"
     if state:
@@ -160,7 +165,7 @@ def update_nodes(
     if reason:
         validate_subprocess_argument(reason)
         update_cmd += f' reason="{reason}"'
-    for nodenames, addrs, hostnames in batched_node_info:
+    for nodenames, addrs, hostnames, ids in batched_node_info:
         validate_subprocess_argument(nodenames)
         node_info = f"nodename={nodenames}"
         if addrs:
@@ -169,6 +174,9 @@ def update_nodes(
         if hostnames:
             validate_subprocess_argument(hostnames)
             node_info += f" nodehostname={hostnames}"
+        if ids:
+            validate_subprocess_argument(ids)
+            node_info += f" instanceid={ids}"
         # It's safe to use the function affected by B604 since the command is fully built in this code
         run_command(  # nosec B604
             f"{update_cmd} {node_info}", raise_on_error=raise_on_error, timeout=command_timeout, shell=True
@@ -223,29 +231,30 @@ def _batch_attribute(attribute, batch_size, expected_length=None):
     return [",".join(batch) for batch in grouper(attribute, batch_size)]
 
 
-def _batch_node_info(nodenames, nodeaddrs, nodehostnames, batch_size):
-    """Group nodename, nodeaddrs, nodehostnames into batches."""
+def _batch_optional_attribute(attribute, attribute_label, nodenames, default_batch, batch_size):
+    """Batch an optional per-node attribute, raising if its entry count does not match the nodes."""
+    if not attribute:
+        return default_batch
+    try:
+        return _batch_attribute(attribute, batch_size, expected_length=len(nodenames))
+    except ValueError:
+        log.error("Nodename %s and %s %s contain different number of entries", nodenames, attribute_label, attribute)
+        raise
+
+
+def _batch_node_info(nodenames, nodeaddrs, nodehostnames, instance_ids, batch_size):
+    """Group nodename, nodeaddrs, nodehostnames, instance_ids into batches."""
     if type(nodenames) is str:
         # Only split on , if there is ] before
         # For ex. "node-[1,3,4-5],node-[20,30]" should split into ["node-[1,3,4-5]","node-[20,30]"]
         nodenames = re.split("(?<=]),", nodenames)
     nodename_batch = _batch_attribute(nodenames, batch_size)
-    nodeaddrs_batch = [None] * len(nodename_batch)
-    nodehostnames_batch = [None] * len(nodename_batch)
-    if nodeaddrs:
-        try:
-            nodeaddrs_batch = _batch_attribute(nodeaddrs, batch_size, expected_length=len(nodenames))
-        except ValueError:
-            log.error("Nodename %s and NodeAddr %s contain different number of entries", nodenames, nodeaddrs)
-            raise
-    if nodehostnames:
-        try:
-            nodehostnames_batch = _batch_attribute(nodehostnames, batch_size, expected_length=len(nodenames))
-        except ValueError:
-            log.error("Nodename %s and NodeHostname %s contain different number of entries", nodenames, nodehostnames)
-            raise
+    default_batch = [None] * len(nodename_batch)
+    nodeaddrs_batch = _batch_optional_attribute(nodeaddrs, "NodeAddr", nodenames, default_batch, batch_size)
+    nodehostnames_batch = _batch_optional_attribute(nodehostnames, "NodeHostName", nodenames, default_batch, batch_size)
+    instance_ids_batch = _batch_optional_attribute(instance_ids, "InstanceId", nodenames, default_batch, batch_size)
 
-    return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch)
+    return zip(nodename_batch, nodeaddrs_batch, nodehostnames_batch, instance_ids_batch)
 
 
 def set_nodes_down(nodes, reason):
@@ -433,6 +442,7 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
         "SlurmdStartTime": "slurmdstarttime",
         "LastBusyTime": "lastbusytime",
         "ReservationName": "reservation_name",
+        "InstanceId": "instance_id",
     }
 
     date_fields = ["SlurmdStartTime", "LastBusyTime"]
@@ -449,6 +459,9 @@ def _parse_nodes_info(slurm_node_info: str) -> List[SlurmNode]:
                     value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").astimezone(tz=timezone.utc)
                 else:
                     value = None
+            elif key == "InstanceId" and value == "(null)":
+                # Slurm reports an unset InstanceId as "(null)"
+                value = None
             kwargs[map_slurm_key_to_arg[key]] = value
         if lines:
             try:
