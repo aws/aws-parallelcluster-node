@@ -243,6 +243,7 @@ class SlurmNode(metaclass=ABCMeta):
         slurmdstarttime: datetime = None,
         lastbusytime: datetime = None,
         reservation_name: str = None,
+        instance_id: str = None,
     ):
         """Initialize slurm node with attributes."""
         self.name = name
@@ -253,6 +254,7 @@ class SlurmNode(metaclass=ABCMeta):
         self.partitions = partitions.strip().split(",") if partitions else None
         self.reason = reason
         self.instance = instance
+        self.instance_id = instance_id
         self.slurmdstarttime = slurmdstarttime
         self.lastbusytime = lastbusytime
         self.reservation_name = reservation_name
@@ -533,6 +535,7 @@ class StaticNode(SlurmNode):
         slurmdstarttime=None,
         lastbusytime=None,
         reservation_name=None,
+        instance_id=None,
     ):
         """Initialize slurm node with attributes."""
         super().__init__(
@@ -546,6 +549,7 @@ class StaticNode(SlurmNode):
             slurmdstarttime,
             lastbusytime=lastbusytime,
             reservation_name=reservation_name,
+            instance_id=instance_id,
         )
 
     def is_healthy(
@@ -667,6 +671,7 @@ class DynamicNode(SlurmNode):
         slurmdstarttime=None,
         lastbusytime=None,
         reservation_name=None,
+        instance_id=None,
     ):
         """Initialize slurm node with attributes."""
         super().__init__(
@@ -680,6 +685,7 @@ class DynamicNode(SlurmNode):
             slurmdstarttime,
             lastbusytime=lastbusytime,
             reservation_name=reservation_name,
+            instance_id=instance_id,
         )
 
     def is_state_healthy(self, consider_drain_as_unhealthy, consider_down_as_unhealthy, log_warn_if_unhealthy=True):

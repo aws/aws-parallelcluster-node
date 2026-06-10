@@ -907,6 +907,7 @@ class TestInstanceManager:
                     generate_error=False,
                 ),
                 [
+                    EC2Instance("i-1", "", "", set(), datetime(2020, 1, 1, tzinfo=timezone.utc)),
                     EC2Instance("i-2", "ip-2", "hostname", {"ip-2"}, datetime(2020, 1, 1, tzinfo=timezone.utc)),
                 ],
                 False,
@@ -3106,7 +3107,7 @@ class TestJobLevelScalingInstanceManager:
                 [],
                 False,
                 None,
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=[], nodehostnames=None),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=[], nodehostnames=None, instance_ids=[]),
                 None,
             ),
             (
@@ -3114,7 +3115,7 @@ class TestJobLevelScalingInstanceManager:
                 [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 False,
                 None,
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=None, instance_ids=["id-1"]),
                 None,
             ),
             (
@@ -3122,7 +3123,7 @@ class TestJobLevelScalingInstanceManager:
                 [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 True,
                 None,
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"], instance_ids=["id-1"]),
                 None,
             ),
             (
@@ -3130,7 +3131,7 @@ class TestJobLevelScalingInstanceManager:
                 [EC2Instance("id-1", "ip-1", "hostname-1", {"ip-1"}, "some_launch_time")],
                 True,
                 subprocess.CalledProcessError(1, "command"),
-                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"]),
+                call(["queue1-st-c5xlarge-1"], nodeaddrs=["ip-1"], nodehostnames=["hostname-1"], instance_ids=["id-1"]),
                 NodeAddrUpdateError(),
             ),
             (
@@ -3141,7 +3142,12 @@ class TestJobLevelScalingInstanceManager:
                 ],
                 False,
                 None,
-                call(["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"], nodeaddrs=["ip-1", "ip-2"], nodehostnames=None),
+                call(
+                    ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+                    nodeaddrs=["ip-1", "ip-2"],
+                    nodehostnames=None,
+                    instance_ids=["id-1", "id-2"],
+                ),
                 None,
             ),
         ],

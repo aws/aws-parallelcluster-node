@@ -24,6 +24,12 @@ from slurm_plugin.common import print_with_count
 
 logger = logging.getLogger(__name__)
 
+# Total time budget (seconds) and per-attempt backoff cap for retrying DescribeInstances after a CreateFleet
+# launch, to tolerate EC2 API eventual consistency.
+# See https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
+INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT = 90
+INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF = 30
+
 
 class EC2Instance:
     def __init__(self, id, private_ip, hostname, all_private_ips, launch_time):
@@ -94,6 +100,7 @@ class FleetManagerFactory:
         all_or_nothing,
         run_instances_overrides,
         create_fleet_overrides,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     ):
         try:
             queue_config = fleet_config[queue]
@@ -120,6 +127,7 @@ class FleetManagerFactory:
                 compute_resource_config,
                 all_or_nothing,
                 create_fleet_overrides.get(queue, {}).get(compute_resource, {}),
+                instance_info_retrieval_timeout=instance_info_retrieval_timeout,
             )
         elif api == "run-instances":
             return Ec2RunInstancesManager(
@@ -272,6 +280,7 @@ class Ec2CreateFleetManager(FleetManager):
         compute_resource_config,
         all_or_nothing,
         launch_overrides,
+        instance_info_retrieval_timeout=INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
     ):
         super().__init__(
             cluster_name,
@@ -283,6 +292,7 @@ class Ec2CreateFleetManager(FleetManager):
             all_or_nothing,
             launch_overrides,
         )
+        self._instance_info_retrieval_timeout = instance_info_retrieval_timeout
 
     def _evaluate_template_overrides(self) -> list:
         """Build and return the list of Launch Template Overrides to be applied in the CreateFleet request.
@@ -436,22 +446,39 @@ class Ec2CreateFleetManager(FleetManager):
         """
         Describe instances to retrieve info not available from create-fleet response.
 
+        Right after a CreateFleet launch, DescribeInstances may return instances with missing info
+        (e.g. PrivateIpAddress) or even InvalidInstanceID.NotFound due to EC2 API eventual consistency.
+        Retry with exponential backoff (capped per attempt) until the configured total timeout is reached,
+        as recommended at https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
+
         :raises ClientError in case of boto3 failure
         :return list of instances with complete information and list of IDs for instances with incomplete information
         """
         instances = []
         partial_instance_ids = instance_ids
 
-        retries = 5
         attempt_count = 0
+        # Budget is tracked against the un-jittered backoff; jitter is added only to the actual sleep.
+        elapsed_backoff = 0
         # Wait for instances to be available in EC2
         time.sleep(0.1)
-        while attempt_count < retries and partial_instance_ids:
+        while partial_instance_ids:
             complete_instances, partial_instance_ids = self._retrieve_instances_info_from_ec2(partial_instance_ids)
             instances.extend(complete_instances)
+            if not partial_instance_ids:
+                break
+            base_backoff = min(0.3 * 2 ** (attempt_count + 1), INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF)
+            if elapsed_backoff + base_backoff > self._instance_info_retrieval_timeout:
+                logger.warning(
+                    "Unable to retrieve complete info for instances %s within %s seconds, giving up after %s attempts.",
+                    print_with_count(partial_instance_ids),
+                    self._instance_info_retrieval_timeout,
+                    attempt_count + 1,
+                )
+                break
+            elapsed_backoff += base_backoff
             attempt_count += 1
-            if attempt_count < retries:
-                time.sleep(0.3 * 2**attempt_count + (secrets.randbelow(500) / 1000))
+            time.sleep(base_backoff + (secrets.randbelow(500) / 1000))
 
         return instances, partial_instance_ids
 

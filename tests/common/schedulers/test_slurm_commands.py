@@ -245,6 +245,46 @@ def test_is_static_node(nodename, expected_is_static):
             ],
             True,
         ),
+        # Test case: InstanceId is parsed from scontrol show nodes output; "(null)" is normalized to None
+        (
+            "NodeName=queue1-st-c5xlarge-1\n"
+            "NodeAddr=10.0.1.1\n"
+            "NodeHostName=queue1-st-c5xlarge-1\n"
+            "State=IDLE+CLOUD\n"
+            "Partitions=queue1\n"
+            "SlurmdStartTime=2023-01-23T17:57:07\n"
+            "InstanceId=i-0abc123def456\n"
+            "######\n"
+            "NodeName=queue1-dy-c5xlarge-2\n"
+            "NodeAddr=queue1-dy-c5xlarge-2\n"
+            "NodeHostName=queue1-dy-c5xlarge-2\n"
+            "State=IDLE+CLOUD+POWER\n"
+            "Partitions=queue1\n"
+            "SlurmdStartTime=None\n"
+            "InstanceId=(null)\n"
+            "######\n",
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-1",
+                    "10.0.1.1",
+                    "queue1-st-c5xlarge-1",
+                    "IDLE+CLOUD",
+                    "queue1",
+                    slurmdstarttime=datetime(2023, 1, 23, 17, 57, 7).astimezone(tz=timezone.utc),
+                    instance_id="i-0abc123def456",
+                ),
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2",
+                    "queue1-dy-c5xlarge-2",
+                    "queue1-dy-c5xlarge-2",
+                    "IDLE+CLOUD+POWER",
+                    "queue1",
+                    slurmdstarttime=None,
+                    instance_id=None,
+                ),
+            ],
+            False,
+        ),
     ],
 )
 def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name, caplog):
@@ -255,14 +295,15 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
 
 
 @pytest.mark.parametrize(
-    "nodenames, nodeaddrs, hostnames, batch_size, expected_result",
+    "nodenames, nodeaddrs, hostnames, instance_ids, batch_size, expected_result",
     [
         (
             "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
             None,
             None,
+            None,
             2,
-            [("queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
+            [("queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None, None)],
         ),
         (
             # Only split on commas after bucket
@@ -270,11 +311,13 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
             "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-3,queue1-st-c5xlarge-[4,6]",
             "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]",
             None,
+            None,
             2,
             [
                 (
                     "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-3,queue1-st-c5xlarge-[4,6]",
                     "nodeaddr-[1-2],nodeaddr-2,nodeaddr-3,nodeaddr-[4,6]",
+                    None,
                     None,
                 )
             ],
@@ -283,21 +326,45 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
             "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-[3],queue1-st-c5xlarge-[4,6]",
             "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3],nodeaddr-[4,6]",
             "nodehostname-[1-2],nodehostname-2,nodehostname-[3],nodehostname-[4,6]",
+            None,
             2,
             [
                 (
                     "queue1-st-c5xlarge-[1-2],queue1-st-c5xlarge-2,queue1-st-c5xlarge-[3]",
                     "nodeaddr-[1-2],nodeaddr-2,nodeaddr-[3]",
                     "nodehostname-[1-2],nodehostname-2,nodehostname-[3]",
+                    None,
                 ),
-                ("queue1-st-c5xlarge-[4,6]", "nodeaddr-[4,6]", "nodehostname-[4,6]"),
+                ("queue1-st-c5xlarge-[4,6]", "nodeaddr-[4,6]", "nodehostname-[4,6]", None),
             ],
         ),
-        ("queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3", ["nodeaddr-1"], None, 2, ValueError),
+        (
+            # nodeaddr and instanceid are batched together, distributed across the nodes in each batch
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
+            ["nodeaddr-1", "nodeaddr-2", "nodeaddr-3"],
+            None,
+            ["i-1", "i-2", "i-3"],
+            2,
+            [
+                ("queue1-st-c5xlarge-1,queue1-st-c5xlarge-2", "nodeaddr-1,nodeaddr-2", None, "i-1,i-2"),
+                ("queue1-st-c5xlarge-3", "nodeaddr-3", None, "i-3"),
+            ],
+        ),
+        ("queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3", ["nodeaddr-1"], None, None, 2, ValueError),
         (
             "queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3",
             None,
             ["nodehostname-1"],
+            None,
+            2,
+            ValueError,
+        ),
+        (
+            # instance_ids count does not match nodenames count
+            "queue1-st-c5xlarge-1,queue1-st-c5xlarge-[2],queue1-st-c5xlarge-3",
+            None,
+            None,
+            ["i-1"],
             2,
             ValueError,
         ),
@@ -305,6 +372,7 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
             "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2,queue1-st-c5xlarge-3",
             ["nodeaddr-1", "nodeaddr-2"],
             "nodehostname-1,nodehostname-2,nodehostname-3",
+            None,
             2,
             ValueError,
         ),
@@ -312,14 +380,16 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
             ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3"],
             "nodeaddr-[1],nodeaddr-[2],nodeaddr-3",
             ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
+            None,
             2,
             [
                 (
                     "queue1-st-c5xlarge-1,queue1-st-c5xlarge-2",
                     "nodeaddr-[1],nodeaddr-[2]",
                     "nodehostname-1,nodehostname-2",
+                    None,
                 ),
-                ("queue1-st-c5xlarge-3", "nodeaddr-3", "nodehostname-3"),
+                ("queue1-st-c5xlarge-3", "nodeaddr-3", "nodehostname-3", None),
             ],
         ),
         (
@@ -327,6 +397,7 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
             "queue1-st-c5xlarge-[1-fillerr],queue1-st-c5xlarge-[2-fillerr],queue1-st-c5xlarge-[3-filler]",
             "nodeaddr-1,nodeaddr-2,nodeaddr-3",
             ["nodehostname-1", "nodehostname-2", "nodehostname-3"],
+            None,
             2,
             ValueError,
         ),
@@ -335,19 +406,23 @@ def test_parse_nodes_info(node_info, expected_parsed_nodes_output, invalid_name,
         "nodename_only",
         "name+addr",
         "name+addr+hostname",
+        "name+addr+instanceid",
         "incorrect_addr1",
         "incorrect_hostname1",
+        "incorrect_instanceid",
         "incorrect_addr2",
         "mixed_format",
         "same_length_string",
     ],
 )
-def test_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size, expected_result):
+def test_batch_node_info(nodenames, nodeaddrs, hostnames, instance_ids, batch_size, expected_result):
     if expected_result is not ValueError:
-        assert_that(list(_batch_node_info(nodenames, nodeaddrs, hostnames, batch_size))).is_equal_to(expected_result)
+        assert_that(list(_batch_node_info(nodenames, nodeaddrs, hostnames, instance_ids, batch_size))).is_equal_to(
+            expected_result
+        )
     else:
         try:
-            _batch_node_info(nodenames, nodeaddrs, hostnames, batch_size)
+            _batch_node_info(nodenames, nodeaddrs, hostnames, instance_ids, batch_size)
         except Exception as e:
             assert_that(e).is_instance_of(ValueError)
         else:
@@ -481,7 +556,10 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
     "batch_node_info, state, reason, raise_on_error, run_command_calls, expected_exception",
     [
         (
-            [("queue1-st-c5xlarge-1", None, None), ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None)],
+            [
+                ("queue1-st-c5xlarge-1", None, None, None),
+                ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", None, None, None),
+            ],
             None,
             None,
             False,
@@ -503,8 +581,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5xlarge-1", None, "hostname-1"),
-                ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", "addr-2,addr-3", None),
+                ("queue1-st-c5xlarge-1", None, "hostname-1", None),
+                ("queue1-st-c5xlarge-2,queue1-st-c5xlarge-3", "addr-2,addr-3", None, None),
             ],
             "power_down",
             None,
@@ -529,8 +607,8 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5xlarge-1", None, "hostname-1"),
-                ("queue1-st-c5xlarge-[3-6]", "addr-[3-6]", "hostname-[3-6]"),
+                ("queue1-st-c5xlarge-1", None, "hostname-1", None),
+                ("queue1-st-c5xlarge-[3-6]", "addr-[3-6]", "hostname-[3-6]", None),
             ],
             "down",
             "debugging",
@@ -558,8 +636,27 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
             None,
         ),
         (
+            # InstanceId is set in the same batched command as NodeAddr (Slurm >= 25.11.6)
             [
-                ("queue1-st-c5xlarge-1 & rm -rf /", None, "hostname-1"),
+                ("queue1-st-c5xlarge-[1-2]", "addr-1,addr-2", None, "i-111,i-222"),
+            ],
+            None,
+            None,
+            True,
+            [
+                call(
+                    "sudo /opt/slurm/bin/scontrol update "
+                    "nodename=queue1-st-c5xlarge-[1-2] nodeaddr=addr-1,addr-2 instanceid=i-111,i-222",
+                    raise_on_error=True,
+                    timeout=60,
+                    shell=True,
+                ),
+            ],
+            None,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1 & rm -rf /", None, "hostname-1", None),
             ],
             "down",
             "debugging",
@@ -569,7 +666,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5xlarge-1", " & rm -rf /", "hostname-1"),
+                ("queue1-st-c5xlarge-1", " & rm -rf /", "hostname-1", None),
             ],
             "down",
             "debugging",
@@ -579,7 +676,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5xlarge-1", None, " & rm -rf /"),
+                ("queue1-st-c5xlarge-1", None, " & rm -rf /", None),
             ],
             "down",
             "debugging",
@@ -589,7 +686,17 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5xlarge-1", None, "hostname-1"),
+                ("queue1-st-c5xlarge-1", None, None, " & rm -rf /"),
+            ],
+            None,
+            None,
+            None,
+            None,
+            ValueError,
+        ),
+        (
+            [
+                ("queue1-st-c5xlarge-1", None, "hostname-1", None),
             ],
             " & rm -rf /",
             "debugging",
@@ -599,7 +706,7 @@ def test_set_nodes_drain(nodes, reason, reset_addrs, update_call_kwargs, mocker)
         ),
         (
             [
-                ("queue1-st-c5xlarge-1", None, "hostname-1"),
+                ("queue1-st-c5xlarge-1", None, "hostname-1", None),
             ],
             "down",
             " & rm -rf /",
@@ -613,11 +720,79 @@ def test_update_nodes(batch_node_info, state, reason, raise_on_error, run_comman
     mocker.patch("common.schedulers.slurm_commands._batch_node_info", return_value=batch_node_info, autospec=True)
     if expected_exception is ValueError:
         with pytest.raises(ValueError):
-            update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+            update_nodes(
+                batch_node_info,
+                "some_nodeaddrs",
+                "some_hostnames",
+                state=state,
+                reason=reason,
+                raise_on_error=raise_on_error,
+            )
     else:
         cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
-        update_nodes(batch_node_info, "some_nodeaddrs", "some_hostnames", state, reason, raise_on_error)
+        update_nodes(
+            batch_node_info,
+            "some_nodeaddrs",
+            "some_hostnames",
+            state=state,
+            reason=reason,
+            raise_on_error=raise_on_error,
+        )
         cmd_mock.assert_has_calls(run_command_calls)
+
+
+@pytest.mark.parametrize(
+    "nodes, nodeaddrs, instance_ids, expected_run_command_calls",
+    [
+        (
+            # InstanceId and NodeAddr are set together in a single batched scontrol update command,
+            # distributed across the nodes in the range (requires Slurm >= 25.11.6).
+            ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-2"],
+            ["ip-1", "ip-2"],
+            ["i-111", "i-222"],
+            [
+                call(
+                    "sudo /opt/slurm/bin/scontrol update "
+                    "nodename=queue1-st-c5xlarge-1,queue1-st-c5xlarge-2 nodeaddr=ip-1,ip-2 instanceid=i-111,i-222",
+                    raise_on_error=True,
+                    timeout=60,
+                    shell=True,
+                ),
+            ],
+        ),
+        (
+            # Batches larger than 100 nodes are split; each batch keeps its own nodeaddr/instanceid slice.
+            [f"queue1-st-c5xlarge-{i}" for i in range(1, 102)],
+            [f"ip-{i}" for i in range(1, 102)],
+            [f"i-{i}" for i in range(1, 102)],
+            [
+                call(
+                    "sudo /opt/slurm/bin/scontrol update "
+                    f"nodename={','.join(f'queue1-st-c5xlarge-{i}' for i in range(1, 101))} "
+                    f"nodeaddr={','.join(f'ip-{i}' for i in range(1, 101))} "
+                    f"instanceid={','.join(f'i-{i}' for i in range(1, 101))}",
+                    raise_on_error=True,
+                    timeout=60,
+                    shell=True,
+                ),
+                call(
+                    "sudo /opt/slurm/bin/scontrol update "
+                    "nodename=queue1-st-c5xlarge-101 nodeaddr=ip-101 instanceid=i-101",
+                    raise_on_error=True,
+                    timeout=60,
+                    shell=True,
+                ),
+            ],
+        ),
+    ],
+    ids=["single_batch", "split_batches"],
+)
+def test_update_nodes_with_instance_ids(nodes, nodeaddrs, instance_ids, expected_run_command_calls, mocker):
+    """Verify InstanceId is set in the same batched scontrol update command as NodeAddr."""
+    cmd_mock = mocker.patch("common.schedulers.slurm_commands.run_command", autospec=True)
+    update_nodes(nodes, nodeaddrs=nodeaddrs, instance_ids=instance_ids)
+    cmd_mock.assert_has_calls(expected_run_command_calls)
+    assert_that(cmd_mock.call_count).is_equal_to(len(expected_run_command_calls))
 
 
 @pytest.mark.parametrize(
