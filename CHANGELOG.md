@@ -12,6 +12,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **BUG FIXES**
 - Fix clustermgtd failing to detect compute node bootstrap timeouts, which prevented the cluster from entering protected mode.
 - Fix an issue where compute nodes are incorrectly replaced when launching a large number of nodes due to eventual consistency.
+- Fix an issue where starting the compute fleet may not reliably recover the cluster from protected mode.
 
 3.15.0
 ------

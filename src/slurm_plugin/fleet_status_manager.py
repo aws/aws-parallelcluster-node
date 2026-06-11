@@ -19,7 +19,11 @@ from configparser import ConfigParser
 from logging.config import fileConfig
 
 from botocore.config import Config
-from common.schedulers.slurm_commands import resume_powering_down_nodes, update_all_partitions
+from common.schedulers.slurm_commands import (
+    reset_nodes_in_inactive_partitions,
+    resume_powering_down_nodes,
+    update_all_partitions,
+)
 from slurm_plugin.clustermgtd import ComputeFleetStatus, ComputeFleetStatusManager
 from slurm_plugin.common import log_exception
 from slurm_plugin.instance_manager import InstanceManager
@@ -91,6 +95,7 @@ def _manage_fleet_status_transition(config, computefleet_status_data_path):
 
 def _start_partitions():
     log.info("Setting slurm partitions to UP and resuming nodes...")
+    reset_nodes_in_inactive_partitions()
     update_all_partitions(PartitionStatus.UP, reset_node_addrs_hostname=False)
     # TODO: This function was added due to Slurm ticket 12915. The bug is not reproducible and the ticket was then
     #  closed. This operation may now be useless: we need to check this.

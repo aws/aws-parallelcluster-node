@@ -29,6 +29,7 @@ from common.schedulers.slurm_commands import (
     get_nodes_info,
     is_static_node,
     parse_nodename,
+    reset_nodes_in_inactive_partitions,
     resume_powering_down_nodes,
     set_nodes_down,
     set_nodes_drain,
@@ -974,6 +975,40 @@ def test_update_all_partitions(
     else:
         set_nodes_power_down_spy.assert_not_called()
     update_partitions_spy.assert_called_with(partitions_to_update, state)
+
+
+@pytest.mark.parametrize(
+    ("mock_partitions", "expected_idle_call"),
+    [
+        # Only INACTIVE partitions are reset; the UP partition's nodes are left untouched.
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "INACTIVE"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+                SlurmPartition("part-3", "node-5,node-6", "INACTIVE"),
+            ],
+            call("node-1,node-2,node-5,node-6", reset_node_addrs_hostname=True),
+        ),
+        # No INACTIVE partition: nothing is reset.
+        (
+            [
+                SlurmPartition("part-1", "node-1,node-2", "UP"),
+                SlurmPartition("part-2", "node-3,node-4", "UP"),
+            ],
+            None,
+        ),
+    ],
+)
+def test_reset_nodes_in_inactive_partitions(mock_partitions, expected_idle_call, mocker):
+    set_nodes_idle_spy = mocker.patch("common.schedulers.slurm_commands.set_nodes_idle", autospec=True)
+    mocker.patch("common.schedulers.slurm_commands.get_partitions_info", return_value=mock_partitions, autospec=True)
+
+    reset_nodes_in_inactive_partitions()
+
+    if expected_idle_call:
+        set_nodes_idle_spy.assert_has_calls([expected_idle_call])
+    else:
+        set_nodes_idle_spy.assert_not_called()
 
 
 def test_resume_powering_down_nodes(mocker):

@@ -130,11 +130,17 @@ def test_get_computefleet_status(test_datadir, config_file, expected_status):
 
 
 def test_start_partitions(mocker):
+    reset_nodes_in_inactive_partitions_mocked = mocker.patch(
+        "slurm_plugin.fleet_status_manager.reset_nodes_in_inactive_partitions"
+    )
     update_all_partitions_mocked = mocker.patch("slurm_plugin.fleet_status_manager.update_all_partitions")
     resume_powering_down_nodes_mocked = mocker.patch("slurm_plugin.fleet_status_manager.resume_powering_down_nodes")
 
     _start_partitions()
 
+    # INACTIVE partition nodes must be reset before partitions are brought back UP, so that nodes left behind by
+    # protected mode do not re-trigger protected mode right after start.
+    reset_nodes_in_inactive_partitions_mocked.assert_called_once()
     update_all_partitions_mocked.assert_called_once_with(PartitionStatus.UP, reset_node_addrs_hostname=False)
     resume_powering_down_nodes_mocked.assert_called_once()
 

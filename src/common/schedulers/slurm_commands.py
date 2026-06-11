@@ -221,6 +221,27 @@ def update_all_partitions(state, reset_node_addrs_hostname):
         return False
 
 
+def reset_nodes_in_inactive_partitions():
+    """
+    Reset nodeaddr/nodehostname of the nodes belonging to INACTIVE partitions and set them back to idle.
+
+    This is meant to be called when starting the compute fleet, before bringing partitions back UP, to clean up nodes
+    that an INACTIVE partition may have left behind (e.g. dynamic nodes that were powering up without a backing
+    instance when protected mode disabled the partition). If not reset, those nodes would be detected as bootstrap
+    failures right after start and send the cluster back into protected mode. Only INACTIVE partitions are considered,
+    so nodes of active partitions (which may be running jobs) are not affected.
+    """
+    try:
+        inactive_nodes = [
+            part.nodenames for part in get_partitions_info() if PartitionStatus(part.state) == PartitionStatus.INACTIVE
+        ]
+        if inactive_nodes:
+            log.info("Resetting nodes of INACTIVE partitions: %s", inactive_nodes)
+            set_nodes_idle(",".join(inactive_nodes), reset_node_addrs_hostname=True)
+    except Exception as e:
+        log.error("Failed when resetting nodes of INACTIVE partitions with error %s", e)
+
+
 def _batch_attribute(attribute, batch_size, expected_length=None):
     """Parse an attribute into batches."""
     if type(attribute) is str:
