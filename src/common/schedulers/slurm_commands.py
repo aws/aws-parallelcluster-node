@@ -223,7 +223,7 @@ def update_all_partitions(state, reset_node_addrs_hostname):
 
 def reset_nodes_in_inactive_partitions():
     """
-    Reset nodeaddr/nodehostname of the nodes belonging to INACTIVE partitions and set them back to idle.
+    Reset nodeaddr/nodehostname and set to down the nodes belonging to INACTIVE partitions.
 
     This is meant to be called when starting the compute fleet, before bringing partitions back UP, to clean up nodes
     that an INACTIVE partition may have left behind (e.g. dynamic nodes that were powering up without a backing
@@ -232,12 +232,26 @@ def reset_nodes_in_inactive_partitions():
     so nodes of active partitions (which may be running jobs) are not affected.
     """
     try:
-        inactive_nodes = [
-            part.nodenames for part in get_partitions_info() if PartitionStatus(part.state) == PartitionStatus.INACTIVE
+        # Collect the node names of INACTIVE partitions, skipping partitions with no nodes to avoid building a
+        # malformed (e.g. empty or with consecutive commas) node list.
+        inactive_partition_nodes = [
+            part.nodenames
+            for part in get_partitions_info()
+            if PartitionStatus(part.state) == PartitionStatus.INACTIVE and part.nodenames
         ]
-        if inactive_nodes:
-            log.info("Resetting nodes of INACTIVE partitions: %s", inactive_nodes)
-            set_nodes_idle(",".join(inactive_nodes), reset_node_addrs_hostname=True)
+        if not inactive_partition_nodes:
+            return
+        # Reset only the nodes that actually need it (e.g. nodeaddr still set), mirroring clustermgtd's inactive
+        # cleanup.
+        nodes_to_reset = {
+            node.name for node in get_nodes_info(",".join(inactive_partition_nodes)) if node.needs_reset_when_inactive()
+        }
+        if nodes_to_reset:
+            log.info(
+                "Resetting nodeaddr/nodehostname and setting to down the following nodes of INACTIVE partitions: %s",
+                sorted(nodes_to_reset),
+            )
+            reset_nodes(nodes_to_reset, state="down", reason="inactive partition", raise_on_error=False)
     except Exception as e:
         log.error("Failed when resetting nodes of INACTIVE partitions with error %s", e)
 
