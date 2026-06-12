@@ -240,6 +240,7 @@ def reset_nodes_in_inactive_partitions():
             if PartitionStatus(part.state) == PartitionStatus.INACTIVE and part.nodenames
         ]
         if not inactive_partition_nodes:
+            log.info("No nodes in INACTIVE partitions, nothing to reset.")
             return
         # Reset only the nodes that actually need it (e.g. nodeaddr still set), mirroring clustermgtd's inactive
         # cleanup.
@@ -252,6 +253,8 @@ def reset_nodes_in_inactive_partitions():
                 sorted(nodes_to_reset),
             )
             reset_nodes(nodes_to_reset, state="down", reason="inactive partition", raise_on_error=False)
+        else:
+            log.info("No nodes of INACTIVE partitions need to be reset.")
     except Exception as e:
         log.error("Failed when resetting nodes of INACTIVE partitions with error %s", e)
 
