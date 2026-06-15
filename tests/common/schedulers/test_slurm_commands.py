@@ -29,6 +29,7 @@ from common.schedulers.slurm_commands import (
     get_nodes_info,
     is_static_node,
     parse_nodename,
+    reset_nodes_in_inactive_partitions,
     resume_powering_down_nodes,
     set_nodes_down,
     set_nodes_drain,
@@ -974,6 +975,74 @@ def test_update_all_partitions(
     else:
         set_nodes_power_down_spy.assert_not_called()
     update_partitions_spy.assert_called_with(partitions_to_update, state)
+
+
+@pytest.mark.parametrize(
+    ("mock_partitions", "expected_get_nodes_arg", "inactive_nodes_info", "expected_reset_nodes"),
+    [
+        # Only INACTIVE partitions are considered; the UP partition's nodes are not queried/reset. Among the INACTIVE
+        # nodes, only those needing reset (nodeaddr still set) are reset.
+        (
+            [
+                SlurmPartition("queue1", "queue1-dy-c5xlarge-1,queue1-dy-c5xlarge-2", "INACTIVE"),
+                SlurmPartition("queue2", "queue2-dy-c5xlarge-1", "UP"),
+                SlurmPartition("queue3", "queue3-dy-c5xlarge-1", "INACTIVE"),
+            ],
+            "queue1-dy-c5xlarge-1,queue1-dy-c5xlarge-2,queue3-dy-c5xlarge-1",
+            [
+                # nodeaddr set (dirty) -> needs reset
+                DynamicNode("queue1-dy-c5xlarge-1", "1.2.3.4", "1.2.3.4", "IDLE+CLOUD+POWERING_UP", "queue1"),
+                # nodeaddr already equal to name and powered down (clean) -> does not need reset
+                DynamicNode(
+                    "queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-2", "queue1-dy-c5xlarge-2", "DOWN+CLOUD", "queue1"
+                ),
+                DynamicNode("queue3-dy-c5xlarge-1", "1.2.3.5", "1.2.3.5", "IDLE+CLOUD+POWERING_UP", "queue3"),
+            ],
+            {"queue1-dy-c5xlarge-1", "queue3-dy-c5xlarge-1"},
+        ),
+        # No INACTIVE partition: get_nodes_info / reset_nodes are not called at all.
+        (
+            [
+                SlurmPartition("queue1", "queue1-dy-c5xlarge-1", "UP"),
+                SlurmPartition("queue2", "queue2-dy-c5xlarge-1", "UP"),
+            ],
+            None,
+            [],
+            None,
+        ),
+        # INACTIVE partition with no nodes: skipped so the node list is never malformed, nothing is queried/reset.
+        (
+            [
+                SlurmPartition("queue1", "", "INACTIVE"),
+            ],
+            None,
+            [],
+            None,
+        ),
+    ],
+)
+def test_reset_nodes_in_inactive_partitions(
+    mock_partitions, expected_get_nodes_arg, inactive_nodes_info, expected_reset_nodes, mocker
+):
+    reset_nodes_spy = mocker.patch("common.schedulers.slurm_commands.reset_nodes", autospec=True)
+    get_nodes_info_spy = mocker.patch(
+        "common.schedulers.slurm_commands.get_nodes_info", return_value=inactive_nodes_info, autospec=True
+    )
+    mocker.patch("common.schedulers.slurm_commands.get_partitions_info", return_value=mock_partitions, autospec=True)
+
+    reset_nodes_in_inactive_partitions()
+
+    if expected_get_nodes_arg is None:
+        get_nodes_info_spy.assert_not_called()
+        reset_nodes_spy.assert_not_called()
+    else:
+        get_nodes_info_spy.assert_called_once_with(expected_get_nodes_arg)
+        if expected_reset_nodes:
+            reset_nodes_spy.assert_called_once_with(
+                expected_reset_nodes, state="down", reason="inactive partition", raise_on_error=False
+            )
+        else:
+            reset_nodes_spy.assert_not_called()
 
 
 def test_resume_powering_down_nodes(mocker):

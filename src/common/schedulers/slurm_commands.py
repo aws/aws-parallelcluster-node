@@ -221,6 +221,44 @@ def update_all_partitions(state, reset_node_addrs_hostname):
         return False
 
 
+def reset_nodes_in_inactive_partitions():
+    """
+    Reset nodeaddr/nodehostname and set to down the nodes belonging to INACTIVE partitions.
+
+    This is meant to be called when starting the compute fleet, before bringing partitions back UP, to clean up nodes
+    that an INACTIVE partition may have left behind (e.g. dynamic nodes that were powering up without a backing
+    instance when protected mode disabled the partition). If not reset, those nodes would be detected as bootstrap
+    failures right after start and send the cluster back into protected mode. Only INACTIVE partitions are considered,
+    so nodes of active partitions (which may be running jobs) are not affected.
+    """
+    try:
+        # Collect the node names of INACTIVE partitions, skipping partitions with no nodes to avoid building a
+        # malformed (e.g. empty or with consecutive commas) node list.
+        inactive_partition_nodes = [
+            part.nodenames
+            for part in get_partitions_info()
+            if PartitionStatus(part.state) == PartitionStatus.INACTIVE and part.nodenames
+        ]
+        if not inactive_partition_nodes:
+            log.info("No nodes in INACTIVE partitions, nothing to reset.")
+            return
+        # Reset only the nodes that actually need it (e.g. nodeaddr still set), mirroring clustermgtd's inactive
+        # cleanup.
+        nodes_to_reset = {
+            node.name for node in get_nodes_info(",".join(inactive_partition_nodes)) if node.needs_reset_when_inactive()
+        }
+        if nodes_to_reset:
+            log.info(
+                "Resetting nodeaddr/nodehostname and setting to down the following nodes of INACTIVE partitions: %s",
+                sorted(nodes_to_reset),
+            )
+            reset_nodes(nodes_to_reset, state="down", reason="inactive partition", raise_on_error=False)
+        else:
+            log.info("No nodes of INACTIVE partitions need to be reset.")
+    except Exception as e:
+        log.error("Failed when resetting nodes of INACTIVE partitions with error %s", e)
+
+
 def _batch_attribute(attribute, batch_size, expected_length=None):
     """Parse an attribute into batches."""
     if type(attribute) is str:

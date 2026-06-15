@@ -130,13 +130,30 @@ def test_get_computefleet_status(test_datadir, config_file, expected_status):
 
 
 def test_start_partitions(mocker):
-    update_all_partitions_mocked = mocker.patch("slurm_plugin.fleet_status_manager.update_all_partitions")
-    resume_powering_down_nodes_mocked = mocker.patch("slurm_plugin.fleet_status_manager.resume_powering_down_nodes")
+    # Attach all mocks to a single manager so we can assert the order in which they are called.
+    manager = mocker.MagicMock()
+    manager.attach_mock(
+        mocker.patch("slurm_plugin.fleet_status_manager.reset_nodes_in_inactive_partitions"),
+        "reset_nodes_in_inactive_partitions",
+    )
+    manager.attach_mock(
+        mocker.patch("slurm_plugin.fleet_status_manager.update_all_partitions"), "update_all_partitions"
+    )
+    manager.attach_mock(
+        mocker.patch("slurm_plugin.fleet_status_manager.resume_powering_down_nodes"), "resume_powering_down_nodes"
+    )
 
     _start_partitions()
 
-    update_all_partitions_mocked.assert_called_once_with(PartitionStatus.UP, reset_node_addrs_hostname=False)
-    resume_powering_down_nodes_mocked.assert_called_once()
+    # INACTIVE partition nodes must be reset BEFORE partitions are brought back UP, otherwise nodes left behind by
+    # protected mode would be re-detected as bootstrap failures right after start and re-trigger protected mode.
+    assert_that(manager.mock_calls).is_equal_to(
+        [
+            mocker.call.reset_nodes_in_inactive_partitions(),
+            mocker.call.update_all_partitions(PartitionStatus.UP, reset_node_addrs_hostname=False),
+            mocker.call.resume_powering_down_nodes(),
+        ]
+    )
 
 
 def test_stop_partitions(mocker):
