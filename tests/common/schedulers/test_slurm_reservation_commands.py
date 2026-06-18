@@ -16,7 +16,6 @@ import pytest
 from assertpy import assert_that
 from common.schedulers.slurm_commands import DEFAULT_SCONTROL_COMMAND_TIMEOUT, SCONTROL
 from common.schedulers.slurm_reservation_commands import (
-    SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER,
     _add_param,
     _create_or_update_reservation,
     _parse_reservations_info,
@@ -474,38 +473,50 @@ def test_is_slurm_reservation(
 
 
 def test_get_slurm_reservations_info(mocker):
-    # Mock check_command_output call performed in get_slurm_reservations_info()
-    check_command_output_mocked = mocker.patch(
-        "common.schedulers.slurm_reservation_commands.check_command_output", autospec=True
+    # scontrol is now run as a standalone subprocess (no shell pipeline) and parsed in Python.
+    raw_reservations_output = (
+        "ReservationName=root_8 StartTime=2023-10-25T09:46:49 EndTime=2024-10-24T09:46:49 Duration=365-00:00:00\n"
+        "   Nodes=queuep4d-dy-crp4d-[1-5] NodeCnt=5 CoreCnt=480 Features=(null) PartitionName=(null) Flags=MAINT\n"
+        "   TRES=cpu=480\n"
+        "   Users=root Groups=(null) Accounts=(null) Licenses=(null) State=ACTIVE BurstBuffer=(null) Watts=n/a\n"
+        "   MaxStartDelay=(null)\n"
     )
-    get_slurm_reservations_info()
-    expected_cmd = f"{SCONTROL} show reservations | {SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER}"
-    check_command_output_mocked.assert_called_with(
-        expected_cmd, raise_on_error=True, timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, shell=True
+    run_scontrol_command_mocked = mocker.patch(
+        "common.schedulers.slurm_reservation_commands._run_scontrol_command",
+        return_value=raw_reservations_output,
+        autospec=True,
     )
+    reservations = get_slurm_reservations_info()
+    run_scontrol_command_mocked.assert_called_with(
+        "show reservations", command_timeout=DEFAULT_SCONTROL_COMMAND_TIMEOUT, raise_on_error=True
+    )
+    assert_that(reservations).is_equal_to([SlurmReservation("root_8", "ACTIVE", "queuep4d-dy-crp4d-[1-5]", "root")])
+
+
+def test_get_slurm_reservations_info_no_reservations(mocker):
+    # When there are no reservations, scontrol prints "No reservations in the system" and exits 0; this must
+    # parse to an empty list rather than raising.
+    mocker.patch(
+        "common.schedulers.slurm_reservation_commands._run_scontrol_command",
+        return_value="No reservations in the system\n",
+        autospec=True,
+    )
+    assert_that(get_slurm_reservations_info()).is_equal_to([])
 
 
 @pytest.mark.parametrize(
-    "reservations_info, expected_parsed_reservations_output",
+    "reservation_records, expected_parsed_reservations_output",
     [
-        ("######\n", []),
+        ([], []),
         (
-            "ReservationName=root_8\nNodes=queuep4d-dy-crp4d-[1-5]\nUsers=root\nState=ACTIVE\n######\n",
+            [{"ReservationName": "root_8", "Nodes": "queuep4d-dy-crp4d-[1-5]", "Users": "root", "State": "ACTIVE"}],
             [SlurmReservation("root_8", "ACTIVE", "queuep4d-dy-crp4d-[1-5]", "root")],
         ),
         (
-            (
-                "ReservationName=root_8\n"
-                "Nodes=queuep4d-dy-crp4d-[1-5]\n"
-                "Users=root\n"
-                "State=ACTIVE\n"
-                "######\n"
-                "ReservationName=root_9\n"
-                "Nodes=queue1-st-crt2micro-1\n"
-                "Users=root\n"
-                "State=ACTIVE\n"
-                "######\n"
-            ),
+            [
+                {"ReservationName": "root_8", "Nodes": "queuep4d-dy-crp4d-[1-5]", "Users": "root", "State": "ACTIVE"},
+                {"ReservationName": "root_9", "Nodes": "queue1-st-crt2micro-1", "Users": "root", "State": "ACTIVE"},
+            ],
             [
                 SlurmReservation("root_8", "ACTIVE", "queuep4d-dy-crp4d-[1-5]", "root"),
                 SlurmReservation("root_9", "ACTIVE", "queue1-st-crt2micro-1", "root"),
@@ -513,6 +524,6 @@ def test_get_slurm_reservations_info(mocker):
         ),
     ],
 )
-def test_parse_reservations_info(reservations_info, expected_parsed_reservations_output):
-    parsed_info = _parse_reservations_info(reservations_info)
+def test_parse_reservations_info(reservation_records, expected_parsed_reservations_output):
+    parsed_info = _parse_reservations_info(reservation_records)
     assert_that(parsed_info).is_equal_to(expected_parsed_reservations_output)

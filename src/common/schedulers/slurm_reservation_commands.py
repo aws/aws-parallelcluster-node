@@ -9,6 +9,7 @@
 # OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import re
 
 # A nosec comment is appended to the following line in order to disable the B404 check.
 # In this file the input of the module subprocess is trusted.
@@ -16,7 +17,12 @@ import subprocess  # nosec B404
 from datetime import datetime
 from typing import List, Union
 
-from common.schedulers.slurm_commands import DEFAULT_SCONTROL_COMMAND_TIMEOUT, SCONTROL
+from common.schedulers.slurm_commands import (
+    DEFAULT_SCONTROL_COMMAND_TIMEOUT,
+    SCONTROL,
+    _extract_scontrol_records,
+    _run_scontrol_command,
+)
 from common.utils import (
     SlurmCommandError,
     SlurmCommandErrorHandler,
@@ -30,9 +36,11 @@ from slurm_plugin.slurm_resources import SlurmReservation
 logger = logging.getLogger(__name__)
 
 
-SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER = (
-    'awk \'BEGIN{{RS="\\n\\n" ; ORS="######\\n";}} {{print}}\' | '
-    + "grep -oP '^(ReservationName=\\S+)|(?<!Next)(State=\\S+)|(Users=\\S+)|(Nodes=\\S+)|(######)'"
+# Fields extracted from raw `scontrol show reservations` output. Only `ReservationName` is anchored at the
+# start of a line; `(?<!Next)` ensures `State` is matched but `NextState` is not.
+SCONTROL_RESERVATION_INFO_FIELD_REGEX = re.compile(
+    r"^(ReservationName=\S+)" r"|(?<!Next)(State=\S+)" r"|(Users=\S+)" r"|(Nodes=\S+)",
+    re.MULTILINE,
 )
 
 
@@ -256,41 +264,26 @@ def get_slurm_reservations_info(
 
     Official documentation is https://slurm.schedmd.com/reservations.html
     """
-    # awk is used to replace the \n\n record separator with '######\n'
-    show_reservations_command = f"{SCONTROL} show reservations | {SCONTROL_SHOW_RESERVATION_OUTPUT_AWK_PARSER}"
-    slurm_reservations_info = check_command_output(
-        show_reservations_command, raise_on_error=raise_on_error, timeout=command_timeout, shell=True
-    )  # nosec B604
+    raw_reservations_info = _run_scontrol_command(
+        "show reservations", command_timeout=command_timeout, raise_on_error=raise_on_error
+    )
+    reservation_records = _extract_scontrol_records(raw_reservations_info, SCONTROL_RESERVATION_INFO_FIELD_REGEX)
 
-    return _parse_reservations_info(slurm_reservations_info)
+    return _parse_reservations_info(reservation_records)
 
 
-def _parse_reservations_info(slurm_reservations_info: str) -> List[SlurmReservation]:
-    """Parse slurm reservations info into SlurmReservation objects."""
-    # $ /opt/slurm/bin/scontrol show reservations awk 'BEGIN{{RS="\n\n" ; ORS="######\n";}} {{print}}' |
-    # grep -oP '^(ReservationName=\S+)|(?<!Next)(State=\S+)|(Users=\S+)|(Nodes=\S+)|(######)'
-    # ReservationName=root_8
-    # Nodes=queuep4d-dy-crp4d-[1-5]
-    # Users=root
-    # State=ACTIVE
-    # ######
-    # ReservationName=root_9
-    # Nodes=queue1-st-crt2micro-1
-    # Users=root
-    # State=ACTIVE
-    # ######
+def _parse_reservations_info(reservation_records: List[dict]) -> List[SlurmReservation]:
+    """
+    Build SlurmReservation objects from scontrol reservation records extracted by _extract_scontrol_records.
+
+    Each record is a dict mapping Slurm field names to their values, e.g.:
+    {"ReservationName": "root_8", "Nodes": "queuep4d-dy-crp4d-[1-5]", "Users": "root", "State": "ACTIVE"}
+    """
     map_slurm_key_to_arg = {"ReservationName": "name", "Nodes": "nodes", "Users": "users", "State": "state"}
 
-    reservation_info = slurm_reservations_info.split("######\n")
     slurm_reservations = []
-    for reservation in reservation_info:
-        lines = reservation.splitlines()
-        kwargs = {}
-        for line in lines:
-            key, value = line.split("=")
-            kwargs[map_slurm_key_to_arg[key]] = value
-        if lines:
-            reservation = SlurmReservation(**kwargs)
-            slurm_reservations.append(reservation)
+    for fields in reservation_records:
+        kwargs = {map_slurm_key_to_arg[key]: value for key, value in fields.items()}
+        slurm_reservations.append(SlurmReservation(**kwargs))
 
     return slurm_reservations
