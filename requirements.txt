@@ -1,3 +1,3 @@
-boto3>=1.7.55
+boto3>=1.43.45
 retrying~=1.3
 setuptools
