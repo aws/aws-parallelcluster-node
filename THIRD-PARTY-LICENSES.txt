@@ -1,5 +1,5 @@
 boto3
-1.42.91
+1.43.53
 Apache-2.0
 Amazon Web Services
 https://github.com/boto/boto3
@@ -183,7 +183,7 @@ https://github.com/boto/boto3
 
 
 botocore
-1.42.91
+1.43.53
 Apache-2.0
 Amazon Web Services
 https://github.com/boto/botocore
@@ -663,7 +663,7 @@ https://github.com/groodt/retrying
    limitations under the License.
 
 s3transfer
-0.16.0
+0.19.1
 Apache Software License
 Amazon Web Services
 https://github.com/boto/s3transfer
@@ -897,7 +897,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 urllib3
-2.6.3
+2.7.0
 MIT
 Andrey Petrov <andrey.petrov@shazow.net>
 https://github.com/urllib3/urllib3/blob/main/CHANGES.rst
