@@ -961,7 +961,11 @@ class ClusterManager:
             log.info("Found the following unhealthy dynamic nodes: %s", print_with_count(unhealthy_dynamic_nodes))
             self._handle_unhealthy_dynamic_nodes(unhealthy_dynamic_nodes)
         if unhealthy_static_nodes:
-            log.info("Found the following unhealthy static nodes: %s", print_with_count(unhealthy_static_nodes))
+            # Include the node states, which carry the reason the nodes are considered unhealthy.
+            log.info(
+                "Found the following unhealthy static nodes: %s",
+                print_with_count([f"{node} in state {node.state_string}" for node in unhealthy_static_nodes]),
+            )
             self._handle_unhealthy_static_nodes(unhealthy_static_nodes)
 
         # evaluate partitions to put in protected mode and ICEs nodes to terminate
