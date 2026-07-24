@@ -820,7 +820,7 @@ def test_handle_health_check(
                 StaticNode("queue1-st-c5xlarge-11", "ip", "hostname", "IDLE+CLOUD", "queue1"),
                 StaticNode("queue1-st-c5xlarge-12", "ip", "hostname", "DOWN+CLOUD", "queue1"),
             ],
-            {"queue1-st-c5xlarge-2", "queue1-st-c5xlarge-6"},
+            {"queue1-st-c5xlarge-2", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-6"},
         )
     ],
     ids=["mixed"],
@@ -3979,6 +3979,45 @@ def test_set_ice_compute_resources_to_down(
             {},
             False,
             True,  # disable_capacity_blocks_management
+        ),
+        # User-created maintenance reservation: a DOWN node in MAINTENANCE+RESERVED that is NOT
+        # tracked by CapacityBlockManager (not in reserved_nodenames) should still be considered
+        # unhealthy and enter the replacement flow.
+        (
+            [
+                # Node in user-created maintenance reservation - not tracked as CB reserved
+                StaticNode(
+                    "queue1-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue1",
+                ),
+                # Node in CB maintenance reservation - tracked as CB reserved
+                StaticNode(
+                    "queue1-st-c5xlarge-2",
+                    "ip-2",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue1",
+                    reservation_name="cr-123456",
+                ),
+            ],
+            ["queue1-st-c5xlarge-2"],  # reserved_nodenames (only CB node)
+            [],  # expected_unhealthy_dynamic_nodes
+            [
+                StaticNode(
+                    "queue1-st-c5xlarge-1",
+                    "ip-1",
+                    "hostname",
+                    "DOWN+CLOUD+MAINTENANCE+RESERVED",
+                    "queue1",
+                ),
+            ],  # expected_unhealthy_static_nodes (user maintenance node enters replacement)
+            [False],  # unhealthy_static_node_backing_instance_valid
+            {},  # expected_ice_compute_resources_and_nodes_map
+            False,  # disable_nodes_on_insufficient_capacity
+            False,  # disable_capacity_blocks_management
         ),
     ],
 )
