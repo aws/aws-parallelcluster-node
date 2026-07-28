@@ -741,13 +741,13 @@ class ClusterManager:
         return is_instance_status_unhealthy
 
     def _update_static_nodes_in_replacement(self, slurm_nodes: List[SlurmNode]):
-        """Remove from self.static_nodes_in_replacement nodes that are up or that are in maintenance."""
+        """Remove from self.static_nodes_in_replacement nodes that are up."""
         nodename_to_slurm_nodes_map = {node.name: node for node in slurm_nodes}
         nodes_still_in_replacement = set()
         for nodename in self._static_nodes_in_replacement:
             node = nodename_to_slurm_nodes_map.get(nodename)
-            # Consider nodename still in replacement if node is not up and not in maintenance
-            if node and not node.is_up() and not node.is_in_maintenance():
+            # Consider nodename still in replacement if node is not up
+            if node and not node.is_up():
                 nodes_still_in_replacement.add(nodename)
 
         # override self._static_nodes_in_replacement with updated list
