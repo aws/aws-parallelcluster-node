@@ -589,20 +589,30 @@ class StaticNode(SlurmNode):
                 return True
             else:
                 if log_warn_if_unhealthy:
-                    logger.warning("Node state check: node %s in DRAINED, node state: %s", self, self.state_string)
+                    logger.warning(
+                        "Node state check: node %s in DRAINED and not within the replacement protection window, "
+                        "it is considered unhealthy and will be replaced, node state: %s",
+                        self,
+                        self.state_string,
+                    )
                 return False
         # Check to see if node is in DOWN, ignoring any node currently being replaced
         elif self.is_down() and consider_down_as_unhealthy:
             if self.is_being_replaced:
                 logger.debug(
-                    "Node state check: node %s in DOWN but is currently being replaced, ignoring. Node state: ",
+                    "Node state check: node %s in DOWN but is currently being replaced, ignoring, node state: %s",
                     self,
                     self.state_string,
                 )
                 return True
             else:
                 if log_warn_if_unhealthy:
-                    logger.warning("Node state check: node %s in DOWN, node state: %s", self, self.state_string)
+                    logger.warning(
+                        "Node state check: node %s in DOWN and not within the replacement protection window, "
+                        "it is considered unhealthy and will be replaced, node state: %s",
+                        self,
+                        self.state_string,
+                    )
                 return False
         return True
 

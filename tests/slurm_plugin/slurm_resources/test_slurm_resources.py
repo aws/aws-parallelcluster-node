@@ -719,6 +719,40 @@ def test_slurm_node_is_state_healthy(
 
 
 @pytest.mark.parametrize(
+    "node, is_being_replaced, expected_warning",
+    [
+        pytest.param(
+            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+MAINTENANCE+RESERVED", "queue"),
+            False,
+            "node queue-st-c5xlarge-1(some_ip) in DOWN and not within the replacement protection window",
+            id="down_without_protection_window",
+        ),
+        pytest.param(
+            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "IDLE+CLOUD+DRAIN", "queue"),
+            False,
+            "node queue-st-c5xlarge-1(some_ip) in DRAINED and not within the replacement protection window",
+            id="drained_without_protection_window",
+        ),
+        pytest.param(
+            StaticNode("queue-st-c5xlarge-1", "some_ip", "hostname", "DOWN+CLOUD+MAINTENANCE+RESERVED", "queue"),
+            True,
+            None,
+            id="down_within_protection_window_not_warned",
+        ),
+    ],
+)
+def test_slurm_node_state_unhealthy_reason_is_logged(node, is_being_replaced, expected_warning, caplog):
+    """An unhealthy state is reported together with the fact that the node is not protected from replacement."""
+    caplog.set_level(logging.WARNING)
+    node.is_being_replaced = is_being_replaced
+    node.is_state_healthy(consider_drain_as_unhealthy=True, consider_down_as_unhealthy=True)
+    if expected_warning:
+        assert_that(caplog.text).contains(expected_warning, node.state_string)
+    else:
+        assert_that(caplog.text).is_empty()
+
+
+@pytest.mark.parametrize(
     "node, instance, max_count, count_map, is_static_nodes_in_replacement, is_replacement_timeout, "
     "bootstrap_failure_messages, is_failing_health_check, is_node_bootstrap_failure",
     [
