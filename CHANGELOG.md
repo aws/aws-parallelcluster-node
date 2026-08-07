@@ -13,7 +13,7 @@ This file is used to list changes made in each version of the aws-parallelcluste
 - Fix clustermgtd failing to detect compute node bootstrap timeouts, which prevented the cluster from entering protected mode.
 - Fix an issue where compute nodes are replaced when launching a large number of nodes due to eventual consistency.
 - Fix a race condition where a fleet start was not enough to exit protected mode.
-  Even if ParallelCluster was not launching new nodes, issuing the start too early, while some nodes were still coming up, could leave the fleet in protected mode.
+  This race condition is triggered when a fleet stop is issued on a fleet transitioning into protected mode while some of its nodes are powering up.
 - Fix an issue where static nodes in a maintenance reservation enter a terminate/relaunch loop when being replaced.
 
 3.15.0
