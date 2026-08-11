@@ -12,6 +12,7 @@
 
 import logging
 import os
+import subprocess
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import ANY, call
@@ -2356,9 +2357,37 @@ class TestComputeFleetStatusManager:
         status = compute_fleet_status_manager.get_status(fallback)
         assert_that(status).is_equal_to(expected_status)
         if get_item_response is Exception or get_item_response == "":
-            assert_that(check_command_output_mocked.call_count).is_equal_to(3)
+            assert_that(check_command_output_mocked.call_count).is_equal_to(4)
         else:
-            check_command_output_mocked.assert_called_once_with("get-compute-fleet-status.sh")
+            check_command_output_mocked.assert_called_once_with("get-compute-fleet-status.sh", log_error=False)
+
+    @pytest.mark.parametrize(
+        "failed_attempts, expected_status, expected_errors",
+        [
+            (0, ComputeFleetStatus.RUNNING, 0),
+            (2, ComputeFleetStatus.RUNNING, 0),
+            (4, ComputeFleetStatus.STOPPED, 1),
+        ],
+        ids=["no_failure", "transient_failure_recovered", "failure_not_recovered"],
+    )
+    def test_get_status_logs_errors_only_once_retries_are_exhausted(
+        self, mocker, caplog, failed_attempts, expected_status, expected_errors
+    ):
+        caplog.set_level(logging.ERROR)
+        # subprocess.run is patched instead of check_command_output, so that the error logging performed by
+        # _run_command on command failure is exercised as well.
+        command_results = [
+            subprocess.CalledProcessError(1, "get-compute-fleet-status.sh", output="ERROR")
+            for _ in range(failed_attempts)
+        ] + [SimpleNamespace(stdout='{"status": "RUNNING"}')]
+        subprocess_run_mocked = mocker.patch("subprocess.run", autospec=True, side_effect=command_results)
+        mocker.patch("retrying.time.sleep")
+
+        status = ComputeFleetStatusManager().get_status(fallback=ComputeFleetStatus.STOPPED)
+
+        assert_that(status).is_equal_to(expected_status)
+        assert_that(subprocess_run_mocked.call_count).is_equal_to(min(failed_attempts + 1, 4))
+        assert_that(caplog.records).is_length(expected_errors)
 
     @pytest.mark.parametrize(
         "desired_status, update_item_response",

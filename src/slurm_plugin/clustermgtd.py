@@ -98,10 +98,21 @@ class ComputeFleetStatusManager:
     COMPUTE_FLEET_STATUS_ATTRIBUTE = "status"
     COMPUTE_FLEET_LAST_UPDATED_TIME_ATTRIBUTE = "lastStatusUpdatedTime"
 
+    # Retry is sized to outlast the transient IMDS unavailability windows observed in the fleet, which are in the
+    # order of a few seconds: waits are 1s, 2s and 4s, plus a jitter of up to 1s each to avoid retrying in lockstep
+    # with the other daemons polling IMDS. The overall wait is kept well below the clustermgtd loop time, because
+    # the fleet status is retrieved synchronously at the beginning of every loop.
     @staticmethod
-    @retry(stop_max_attempt_number=3, wait_fixed=seconds(1))
+    @retry(
+        wait_exponential_multiplier=500,
+        wait_exponential_max=seconds(4),
+        wait_jitter_max=seconds(1),
+        stop_max_attempt_number=4,
+    )
     def _get_fleet_status():
-        compute_fleet_raw_data = check_command_output("get-compute-fleet-status.sh")
+        # Failures are logged by get_status only once the retries are exhausted, so that the ones recovered by the
+        # retries do not pollute the log with errors that have no impact on the cluster.
+        compute_fleet_raw_data = check_command_output("get-compute-fleet-status.sh", log_error=False)
         log.debug("Retrieved compute fleet data: %s", compute_fleet_raw_data)
         return ComputeFleetStatus(
             json.loads(compute_fleet_raw_data).get(ComputeFleetStatusManager.COMPUTE_FLEET_STATUS_ATTRIBUTE)

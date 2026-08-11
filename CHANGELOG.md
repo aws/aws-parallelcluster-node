@@ -11,8 +11,9 @@ This file is used to list changes made in each version of the aws-parallelcluste
 
 **BUG FIXES**
 - Fix clustermgtd failing to detect compute node bootstrap timeouts, which prevented the cluster from entering protected mode.
-- Fix an issue where compute nodes are incorrectly replaced when launching a large number of nodes due to eventual consistency.
-- Fix an issue where starting the compute fleet may not reliably recover the cluster from protected mode.
+- Fix an issue where compute nodes are replaced when launching a large number of nodes due to eventual consistency.
+- Fix a race condition where a fleet start was not enough to exit protected mode.
+  This race condition is triggered when a fleet stop is issued on a fleet transitioning into protected mode while some of its nodes are powering up.
 - Fix an issue where static nodes in a maintenance reservation enter a terminate/relaunch loop when being replaced.
 
 3.15.0
@@ -21,12 +22,6 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **CHANGES**
 - Direct users to slurm_resume log to see EC2 error codes if no instances are launched.
 - Emit clustermgtd heartbeat as a structured event to CloudWatch Logs for metric filter-based monitoring.
-
-3.14.1
-------
-
-**CHANGES**
-- There were no changes for this version.
 
 3.14.2
 ------
