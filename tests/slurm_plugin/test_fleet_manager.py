@@ -29,6 +29,23 @@ from slurm_plugin.fleet_manager import (
 from tests.common import FLEET_CONFIG, MockedBoto3Request
 
 
+UNFULFILLED_OVERRIDE = {
+    "ErrorCode": "UnfulfillableCapacity",
+    "ErrorMessage": "Failed to fulfill capacity. Please review errors in the response.",
+}
+UNSUPPORTED_ERROR = {"ErrorCode": "Unsupported", "ErrorMessage": "Not supported in this AZ."}
+MIN_TARGET_CAPACITY_ERROR = {
+    "ErrorCode": "UnfulfillableCapacity",
+    "ErrorMessage": "Unable to fulfill request due to MinTargetCapacity constraints. Please adjust your request.",
+}
+
+
+def _raises_launch_error(err_list):
+    """Mirror when _launch_instances turns a CreateFleet response with no instances into an exception."""
+    real = [err for err in err_list if err != UNFULFILLED_OVERRIDE] or err_list
+    return any(err.get("ErrorCode") == "RequestLimitExceeded" for err in real) or len(real) == 1
+
+
 def _expected_describe_attempts(timeout):
     """Compute DescribeInstances attempts for a never-converging instance, mirroring _get_instances_info."""
     attempts = 0
@@ -735,6 +752,31 @@ class TestEc2CreateFleetManager:
                 ],
                 [],
             ),
+            # create-fleet - throttling reported together with one generic error per override
+            (
+                test_on_demand_params,
+                [
+                    MockedBoto3Request(
+                        method="create_fleet",
+                        response={
+                            "Instances": [],
+                            "Errors": [
+                                {"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."},
+                            ]
+                            + [
+                                {
+                                    "ErrorCode": "UnfulfillableCapacity",
+                                    "ErrorMessage": "Failed to fulfill capacity. Please review errors in the response.",
+                                }
+                            ]
+                            * 35,
+                            "ResponseMetadata": {"RequestId": "37633199-bcc6-4a88-89e3-89d859d76096"},
+                        },
+                        expected_params=test_on_demand_params,
+                    ),
+                ],
+                [],
+            ),
         ],
         ids=[
             "fleet_spot",
@@ -743,6 +785,7 @@ class TestEc2CreateFleetManager:
             "fleet_capacity_block",
             "fleet_throttling",
             "fleet_multiple_errors",
+            "fleet_throttling_with_generic_errors",
         ],
     )
     def test_launch_instances(
@@ -765,10 +808,10 @@ class TestEc2CreateFleetManager:
             with pytest.raises(Exception) as e:
                 fleet_manager._launch_instances(launch_params)
                 assert isinstance(e, ClientError)
-        elif len(expected_assigned_nodes) == 0 and len(mocked_boto3_request[0].response.get("Errors")) == 1:
+        elif not expected_assigned_nodes and _raises_launch_error(mocked_boto3_request[0].response.get("Errors", [])):
             with pytest.raises(LaunchInstancesError) as e:
                 fleet_manager._launch_instances(launch_params)
-                assert isinstance(e, LaunchInstancesError)
+            assert_that(e.value.code).is_equal_to(mocked_boto3_request[0].response.get("Errors")[0].get("ErrorCode"))
         else:
             assigned_nodes = fleet_manager._launch_instances(launch_params)
             assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
@@ -1326,3 +1369,93 @@ class TestFleetManager:
 
         fleet_manager._evaluate_launch_params.assert_called_once_with(count)
         fleet_manager._launch_instances.assert_called_once()
+
+    def test_launch_ec2_instances_retries_on_throttling(self, mocker):
+        """Verify CreateFleet throttling is retried, also when the response carries one error per override."""
+        mocker.patch("time.sleep")
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
+        )
+        mocker.patch.object(fleet_manager, "_evaluate_launch_params", return_value={})
+        launched_instance_info = {
+            "InstanceId": "i-12345",
+            "PrivateIpAddress": "ip-1",
+            "PrivateDnsName": "hostname",
+            "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+            "NetworkInterfaces": [
+                {"Attachment": {"DeviceIndex": 0, "NetworkCardIndex": 0}, "PrivateIpAddress": "ip-1"},
+            ],
+        }
+        mocker.patch.object(
+            fleet_manager,
+            "_get_instances_info",
+            side_effect=lambda instance_ids: ([launched_instance_info] if instance_ids else [], []),
+        )
+        throttled_response = {
+            "Instances": [],
+            "Errors": [{"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."}]
+            + [
+                {
+                    "ErrorCode": "UnfulfillableCapacity",
+                    "ErrorMessage": "Failed to fulfill capacity. Please review errors in the response.",
+                }
+            ]
+            * 35,
+            "ResponseMetadata": {"RequestId": "1234-abcde"},
+        }
+        create_fleet = mocker.patch(
+            "slurm_plugin.fleet_manager.create_fleet",
+            side_effect=[throttled_response, {"Instances": [{"InstanceIds": ["i-12345"]}]}],
+        )
+
+        launched = fleet_manager.launch_ec2_instances(1)
+
+        assert_that(create_fleet.call_count).is_equal_to(2)
+        assert_that(launched).is_length(1)
+
+    @pytest.mark.parametrize(
+        ("err_list", "expected_error_code"),
+        [
+            # The real cause is reported even though every other override adds an entry pointing back at it.
+            ([UNSUPPORTED_ERROR] + [UNFULFILLED_OVERRIDE] * 35, "Unsupported"),
+            # The entries pointing at the real cause carry no order guarantee.
+            ([UNFULFILLED_OVERRIDE] * 35 + [UNSUPPORTED_ERROR], "Unsupported"),
+            # UnfulfillableCapacity messages other than that one do describe a cause and are kept.
+            ([MIN_TARGET_CAPACITY_ERROR] + [UNFULFILLED_OVERRIDE] * 35, "UnfulfillableCapacity"),
+            # A single override is unaffected, whatever the entry says.
+            ([UNFULFILLED_OVERRIDE], "UnfulfillableCapacity"),
+            ([MIN_TARGET_CAPACITY_ERROR], "UnfulfillableCapacity"),
+            # Nothing to prefer: reporting stays as it was, so no cause is claimed.
+            ([UNFULFILLED_OVERRIDE] * 36, None),
+            ([UNSUPPORTED_ERROR, {"ErrorCode": "VcpuLimitExceeded", "ErrorMessage": "vCPU limit"}], None),
+        ],
+        ids=[
+            "real_cause_first",
+            "real_cause_last",
+            "min_target_capacity_kept",
+            "single_override_unfulfilled",
+            "single_override_min_target_capacity",
+            "only_unfulfilled_overrides",
+            "two_real_causes",
+        ],
+    )
+    def test_launch_instances_reports_the_cause_among_unfulfilled_overrides(
+        self, mocker, err_list, expected_error_code
+    ):
+        """An entry is added per override that was not fulfilled; only a real cause is worth reporting."""
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", False, {}, {}
+        )
+        mocker.patch.object(fleet_manager, "_evaluate_launch_params", return_value={})
+        mocker.patch.object(fleet_manager, "_get_instances_info", return_value=([], []))
+        mocker.patch(
+            "slurm_plugin.fleet_manager.create_fleet",
+            return_value={"Instances": [], "Errors": err_list, "ResponseMetadata": {"RequestId": "1234-abcde"}},
+        )
+
+        if expected_error_code:
+            with pytest.raises(LaunchInstancesError) as e:
+                fleet_manager._launch_instances({})
+            assert_that(e.value.code).is_equal_to(expected_error_code)
+        else:
+            assert_that(fleet_manager._launch_instances({})).is_equal_to({"Instances": []})

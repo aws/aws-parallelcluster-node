@@ -30,6 +30,18 @@ logger = logging.getLogger(__name__)
 INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT = 90
 INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF = 30
 
+# The only error code EC2 returns when a launch request is throttled, see
+# https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-throttling.html
+LAUNCH_THROTTLING_ERROR_CODE = "RequestLimitExceeded"
+
+# An override that CreateFleet did not fulfill because another override failed is reported with this exact
+# code and message pair, which points at the real error rather than being one. Other UnfulfillableCapacity
+# messages, such as the one about MinTargetCapacity constraints, do describe a real cause and are kept.
+UNFULFILLED_OVERRIDE_ERROR = (
+    "UnfulfillableCapacity",
+    "Failed to fulfill capacity. Please review errors in the response.",
+)
+
 
 class EC2Instance:
     def __init__(self, id, private_ip, hostname, all_private_ips, launch_time):
@@ -430,6 +442,23 @@ class Ec2CreateFleetManager(FleetManager):
             if partial_instance_ids:
                 logger.error("Unable to retrieve instance info for instances: %s", partial_instance_ids)
 
+            if not instances:
+                # Every error is logged above, but only the ones describing a cause are worth reporting.
+                real_errors = [
+                    err
+                    for err in err_list
+                    if (err.get("ErrorCode"), err.get("ErrorMessage")) != UNFULFILLED_OVERRIDE_ERROR
+                ]
+                if real_errors:
+                    err_list = real_errors
+                # Throttling is reported even alongside other causes, so that the launch is retried with backoff
+                # instead of the nodes being recorded as insufficient capacity, which fails the compute resource over.
+                throttling = next(
+                    (err for err in err_list if err.get("ErrorCode") == LAUNCH_THROTTLING_ERROR_CODE), None
+                )
+                if throttling:
+                    raise LaunchInstancesError(throttling.get("ErrorCode"), throttling.get("ErrorMessage"))
+            # Any other cause is reported only when the response is unambiguous, unchanged from before.
             if not instances and len(err_list) == 1:
                 raise LaunchInstancesError(err_list[0].get("ErrorCode"), err_list[0].get("ErrorMessage"))
             return {"Instances": instances}

@@ -3,6 +3,13 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
+3.17.0
+------
+
+**BUG FIXES**
+- Fix an issue where EC2 throttling during compute node launch is not retried and is reported as insufficient capacity
+  when using Multiple Instance Types or multiple subnets.
+
 3.16.0
 ------
 
