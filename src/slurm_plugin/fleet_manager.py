@@ -35,8 +35,7 @@ INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF = 30
 LAUNCH_THROTTLING_ERROR_CODE = "RequestLimitExceeded"
 
 # An override that CreateFleet did not fulfill because another override failed is reported with this exact
-# code and message pair, which points at the real error rather than being one. Other UnfulfillableCapacity
-# messages, such as the one about MinTargetCapacity constraints, do describe a real cause and are kept.
+# code and message pair, which points at the real error rather than being one.
 UNFULFILLED_OVERRIDE_ERROR = (
     "UnfulfillableCapacity",
     "Failed to fulfill capacity. Please review errors in the response.",
@@ -443,7 +442,7 @@ class Ec2CreateFleetManager(FleetManager):
                 logger.error("Unable to retrieve instance info for instances: %s", partial_instance_ids)
 
             if not instances:
-                # Every error is logged above, but only the ones describing a cause are worth reporting.
+                # Drop the entries that only point at the real error, unless the response carries nothing else.
                 real_errors = [
                     err
                     for err in err_list
@@ -451,8 +450,9 @@ class Ec2CreateFleetManager(FleetManager):
                 ]
                 if real_errors:
                     err_list = real_errors
-                # Throttling is reported even alongside other causes, so that the launch is retried with backoff
-                # instead of the nodes being recorded as insufficient capacity, which fails the compute resource over.
+                # A single cause is normally left. Should there be several, prefer throttling as a safety net: it is
+                # the only cause that resolves on its own, and reporting it as insufficient capacity would instead
+                # fail the compute resource over.
                 throttling = next(
                     (err for err in err_list if err.get("ErrorCode") == LAUNCH_THROTTLING_ERROR_CODE), None
                 )
