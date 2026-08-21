@@ -28,7 +28,6 @@ from slurm_plugin.fleet_manager import (
 
 from tests.common import FLEET_CONFIG, MockedBoto3Request
 
-
 UNFULFILLED_OVERRIDE = {
     "ErrorCode": "UnfulfillableCapacity",
     "ErrorMessage": "Failed to fulfill capacity. Please review errors in the response.",
@@ -42,8 +41,7 @@ MIN_TARGET_CAPACITY_ERROR = {
 
 def _raises_launch_error(err_list):
     """Mirror when _launch_instances turns a CreateFleet response with no instances into an exception."""
-    real = [err for err in err_list if err != UNFULFILLED_OVERRIDE] or err_list
-    return any(err.get("ErrorCode") == "RequestLimitExceeded" for err in real) or len(real) == 1
+    return bool(err_list)
 
 
 def _expected_describe_attempts(timeout):
@@ -1425,9 +1423,11 @@ class TestFleetManager:
             # A single override is unaffected, whatever the entry says.
             ([UNFULFILLED_OVERRIDE], "UnfulfillableCapacity"),
             ([MIN_TARGET_CAPACITY_ERROR], "UnfulfillableCapacity"),
-            # Nothing to prefer: reporting stays as it was, so no cause is claimed.
-            ([UNFULFILLED_OVERRIDE] * 36, None),
-            ([UNSUPPORTED_ERROR, {"ErrorCode": "VcpuLimitExceeded", "ErrorMessage": "vCPU limit"}], None),
+            # Nothing to prefer: report the first entry rather than let a hardcoded code be recorded.
+            ([UNFULFILLED_OVERRIDE] * 36, "UnfulfillableCapacity"),
+            ([UNSUPPORTED_ERROR, {"ErrorCode": "VcpuLimitExceeded", "ErrorMessage": "vCPU limit"}], "Unsupported"),
+            # An empty error list is the only case left to the caller, which records insufficient capacity.
+            ([], None),
         ],
         ids=[
             "real_cause_first",
@@ -1437,6 +1437,7 @@ class TestFleetManager:
             "single_override_min_target_capacity",
             "only_unfulfilled_overrides",
             "two_real_causes",
+            "no_errors_reported",
         ],
     )
     def test_launch_instances_reports_the_cause_among_unfulfilled_overrides(

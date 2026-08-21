@@ -458,8 +458,10 @@ class Ec2CreateFleetManager(FleetManager):
                 )
                 if throttling:
                     raise LaunchInstancesError(throttling.get("ErrorCode"), throttling.get("ErrorMessage"))
-            # Any other cause is reported only when the response is unambiguous, unchanged from before.
-            if not instances and len(err_list) == 1:
+            # Normally a single cause is left. Reporting the first one of several is a second safety net: the
+            # caller otherwise records a hardcoded InsufficientInstanceCapacity, and any code EC2 actually
+            # returned is more useful than an invented one, whichever of them the response happens to list first.
+            if not instances and err_list:
                 raise LaunchInstancesError(err_list[0].get("ErrorCode"), err_list[0].get("ErrorMessage"))
             return {"Instances": instances}
         except ClientError as e:
