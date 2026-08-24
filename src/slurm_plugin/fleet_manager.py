@@ -30,6 +30,17 @@ logger = logging.getLogger(__name__)
 INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT = 90
 INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF = 30
 
+# The only error code EC2 returns when a launch request is throttled, see
+# https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-throttling.html
+LAUNCH_THROTTLING_ERROR_CODE = "RequestLimitExceeded"
+
+# An override that CreateFleet did not fulfill because another override failed is reported with this exact
+# code and message pair, which points at the real error rather than being one.
+UNFULFILLED_OVERRIDE_ERROR = (
+    "UnfulfillableCapacity",
+    "Failed to fulfill capacity. Please review errors in the response.",
+)
+
 
 class EC2Instance:
     def __init__(self, id, private_ip, hostname, all_private_ips, launch_time):
@@ -430,7 +441,27 @@ class Ec2CreateFleetManager(FleetManager):
             if partial_instance_ids:
                 logger.error("Unable to retrieve instance info for instances: %s", partial_instance_ids)
 
-            if not instances and len(err_list) == 1:
+            if not instances:
+                # Drop the entries that only point at the real error, unless the response carries nothing else.
+                real_errors = [
+                    err
+                    for err in err_list
+                    if (err.get("ErrorCode"), err.get("ErrorMessage")) != UNFULFILLED_OVERRIDE_ERROR
+                ]
+                if real_errors:
+                    err_list = real_errors
+                # A single cause is normally left. Should there be several, prefer throttling as a safety net: it is
+                # the only cause that resolves on its own, and reporting it as insufficient capacity would instead
+                # fail the compute resource over.
+                throttling = next(
+                    (err for err in err_list if err.get("ErrorCode") == LAUNCH_THROTTLING_ERROR_CODE), None
+                )
+                if throttling:
+                    raise LaunchInstancesError(throttling.get("ErrorCode"), throttling.get("ErrorMessage"))
+            # Normally a single cause is left. Reporting the first one of several is a second safety net: the
+            # caller otherwise records a hardcoded InsufficientInstanceCapacity, and any code EC2 actually
+            # returned is more useful than an invented one, whichever of them the response happens to list first.
+            if not instances and err_list:
                 raise LaunchInstancesError(err_list[0].get("ErrorCode"), err_list[0].get("ErrorMessage"))
             return {"Instances": instances}
         except ClientError as e:
