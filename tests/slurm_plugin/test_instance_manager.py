@@ -4033,6 +4033,38 @@ class TestJobLevelScalingInstanceManager:
         assert_that(instances_launched).is_equal_to(expected_instances_launched)
         assert_that(instance_manager.failed_nodes).is_equal_to(expected_failed_nodes)
 
+    def test_launch_instances_reports_throttling_not_insufficient_capacity(self, mocker, instance_manager):
+        """A throttled CreateFleet must not be recorded as insufficient capacity, which would fail over.
+
+        CreateFleet reports one error per launch template override, so the throttling entry comes with a
+        generic entry for every other override.
+        """
+        mocker.patch("time.sleep")
+        mocker.patch(
+            "slurm_plugin.fleet_manager.create_fleet",
+            return_value={
+                "Instances": [],
+                "Errors": [{"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."}]
+                + [
+                    {
+                        "ErrorCode": "UnfulfillableCapacity",
+                        "ErrorMessage": "Failed to fulfill capacity. Please review errors in the response.",
+                    }
+                ]
+                * 29,
+                "ResponseMetadata": {"RequestId": "1234-abcde"},
+            },
+        )
+
+        instance_manager._launch_instances(
+            job=None,
+            nodes_to_launch={"queue2": {"fleet-ondemand": ["queue2-dy-fleet-ondemand-1"]}},
+            launch_batch_size=1,
+            scaling_strategy=ScalingStrategy.BEST_EFFORT,
+        )
+
+        assert_that(instance_manager.failed_nodes).is_equal_to({"RequestLimitExceeded": {"queue2-dy-fleet-ondemand-1"}})
+
     @pytest.mark.parametrize(
         "job_list, launch_batch_size, assign_node_batch_size, update_node_address, "
         "expected_single_nodes_no_oversubscribe, scaling_strategy",
