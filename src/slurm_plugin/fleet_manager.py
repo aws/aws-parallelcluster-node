@@ -469,6 +469,9 @@ class Ec2CreateFleetManager(FleetManager):
                 # A single cause is normally left. Should there be several, throttling is retried only when every
                 # other cause is confined to a pool, since the throttled pools can then still serve the batch once the
                 # rate limit refills. Any other cause would fail the retry on every pool alike and is reported instead.
+                # For example:
+                # - [RequestLimitExceeded, InsufficientInstanceCapacity] -> retry, other pools can still serve the batch
+                # - [RequestLimitExceeded, VcpuLimitExceeded] -> report VcpuLimitExceeded, a retry hits the same limit
                 throttling = next(
                     (err for err in err_list if err.get("ErrorCode") == LAUNCH_THROTTLING_ERROR_CODE), None
                 )
