@@ -21,6 +21,7 @@ from common.ec2_utils import get_private_ip_address_and_dns_name
 from common.utils import setup_logging_filter
 from retrying import retry
 from slurm_plugin.common import print_with_count
+from slurm_plugin.slurm_resources import SlurmNode
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,21 @@ LAUNCH_THROTTLING_ERROR_CODE = "RequestLimitExceeded"
 UNFULFILLED_OVERRIDE_ERROR = (
     "UnfulfillableCapacity",
     "Failed to fulfill capacity. Please review errors in the response.",
+)
+
+# Errors confined to one instance type and subnet pool. Reported alongside throttling, they leave the throttled
+# pools able to serve the batch once the rate limit refills, so the throttling is still retried. Any other error
+# alongside throttling would fail the retry on every pool alike and is reported instead.
+POOL_LEVEL_ERROR_CODES = frozenset(
+    SlurmNode.EC2_ICE_ERROR_CODES
+    | {
+        "InsufficientFreeAddressesInSubnet",
+        "InvalidSubnetID.NotFound",
+        "InvalidSubnet",
+        "InsufficientVolumeCapacity",
+        "VolumeTypeNotAvailableInZone",
+        "ServiceUnavailable",
+    }
 )
 
 
@@ -450,14 +466,27 @@ class Ec2CreateFleetManager(FleetManager):
                 ]
                 if real_errors:
                     err_list = real_errors
-                # A single cause is normally left. Should there be several, prefer throttling as a safety net: it is
-                # the only cause that resolves on its own, and reporting it as insufficient capacity would instead
-                # fail the compute resource over.
+                # A single cause is normally left. Should there be several, throttling is retried only when every
+                # other cause is confined to a pool, since the throttled pools can then still serve the batch once the
+                # rate limit refills. Any other cause would fail the retry on every pool alike and is reported instead.
+                # For example:
+                # - [RequestLimitExceeded, InsufficientInstanceCapacity] -> retry, other pools can still serve the batch
+                # - [RequestLimitExceeded, VcpuLimitExceeded] -> report VcpuLimitExceeded, a retry hits the same limit
                 throttling = next(
                     (err for err in err_list if err.get("ErrorCode") == LAUNCH_THROTTLING_ERROR_CODE), None
                 )
                 if throttling:
-                    raise LaunchInstancesError(throttling.get("ErrorCode"), throttling.get("ErrorMessage"))
+                    blocking = next(
+                        (
+                            err
+                            for err in err_list
+                            if err.get("ErrorCode") != LAUNCH_THROTTLING_ERROR_CODE
+                            and err.get("ErrorCode") not in POOL_LEVEL_ERROR_CODES
+                        ),
+                        None,
+                    )
+                    chosen = blocking or throttling
+                    raise LaunchInstancesError(chosen.get("ErrorCode"), chosen.get("ErrorMessage"))
             # Normally a single cause is left. Reporting the first one of several is a second safety net: the
             # caller otherwise records a hardcoded InsufficientInstanceCapacity, and any code EC2 actually
             # returned is more useful than an invented one, whichever of them the response happens to list first.

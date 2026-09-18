@@ -4065,6 +4065,37 @@ class TestJobLevelScalingInstanceManager:
 
         assert_that(instance_manager.failed_nodes).is_equal_to({"RequestLimitExceeded": {"queue2-dy-fleet-ondemand-1"}})
 
+    def test_launch_instances_reports_blocking_error_instead_of_retrying_throttling(self, mocker, instance_manager):
+        """A cause that fails every pool alike is recorded instead of waiting for the rate limit to refill."""
+        mocker.patch("time.sleep")
+        mocker.patch(
+            "slurm_plugin.fleet_manager.create_fleet",
+            return_value={
+                "Instances": [],
+                "Errors": [
+                    {"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."},
+                    {"ErrorCode": "VcpuLimitExceeded", "ErrorMessage": "vCPU limit"},
+                ]
+                + [
+                    {
+                        "ErrorCode": "UnfulfillableCapacity",
+                        "ErrorMessage": "Failed to fulfill capacity. Please review errors in the response.",
+                    }
+                ]
+                * 28,
+                "ResponseMetadata": {"RequestId": "1234-abcde"},
+            },
+        )
+
+        instance_manager._launch_instances(
+            job=None,
+            nodes_to_launch={"queue2": {"fleet-ondemand": ["queue2-dy-fleet-ondemand-1"]}},
+            launch_batch_size=1,
+            scaling_strategy=ScalingStrategy.BEST_EFFORT,
+        )
+
+        assert_that(instance_manager.failed_nodes).is_equal_to({"VcpuLimitExceeded": {"queue2-dy-fleet-ondemand-1"}})
+
     @pytest.mark.parametrize(
         "job_list, launch_batch_size, assign_node_batch_size, update_node_address, "
         "expected_single_nodes_no_oversubscribe, scaling_strategy",

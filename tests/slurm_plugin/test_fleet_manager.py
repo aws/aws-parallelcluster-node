@@ -19,6 +19,7 @@ from botocore.exceptions import ClientError
 from slurm_plugin.fleet_manager import (
     INSTANCE_INFO_RETRIEVAL_MAX_BACKOFF,
     INSTANCE_INFO_RETRIEVAL_TIMEOUT_DEFAULT,
+    POOL_LEVEL_ERROR_CODES,
     Ec2CreateFleetManager,
     EC2Instance,
     Ec2RunInstancesManager,
@@ -37,11 +38,31 @@ MIN_TARGET_CAPACITY_ERROR = {
     "ErrorCode": "UnfulfillableCapacity",
     "ErrorMessage": "Unable to fulfill request due to MinTargetCapacity constraints. Please adjust your request.",
 }
+THROTTLING_ERROR = {"ErrorCode": "RequestLimitExceeded", "ErrorMessage": "Request limit exceeded."}
+VCPU_LIMIT_ERROR = {"ErrorCode": "VcpuLimitExceeded", "ErrorMessage": "vCPU limit"}
+SUBNET_FULL_ERROR = {"ErrorCode": "InsufficientFreeAddressesInSubnet", "ErrorMessage": "Not enough free addresses."}
 
 
 def _raises_launch_error(err_list):
     """Mirror when _launch_instances turns a CreateFleet response with no instances into an exception."""
     return bool(err_list)
+
+
+def _expected_launch_error_code(err_list):
+    """Mirror which error _launch_instances reports: a non pool-level cause beats throttling, which beats the rest."""
+    real_errors = [err for err in err_list if err != UNFULFILLED_OVERRIDE] or err_list
+    throttling = next((err for err in real_errors if err["ErrorCode"] == "RequestLimitExceeded"), None)
+    if throttling:
+        blocking = next(
+            (
+                err
+                for err in real_errors
+                if err["ErrorCode"] != "RequestLimitExceeded" and err["ErrorCode"] not in POOL_LEVEL_ERROR_CODES
+            ),
+            None,
+        )
+        return (blocking or throttling)["ErrorCode"]
+    return real_errors[0]["ErrorCode"]
 
 
 def _expected_describe_attempts(timeout):
@@ -809,7 +830,9 @@ class TestEc2CreateFleetManager:
         elif not expected_assigned_nodes and _raises_launch_error(mocked_boto3_request[0].response.get("Errors", [])):
             with pytest.raises(LaunchInstancesError) as e:
                 fleet_manager._launch_instances(launch_params)
-            assert_that(e.value.code).is_equal_to(mocked_boto3_request[0].response.get("Errors")[0].get("ErrorCode"))
+            assert_that(e.value.code).is_equal_to(
+                _expected_launch_error_code(mocked_boto3_request[0].response.get("Errors"))
+            )
         else:
             assigned_nodes = fleet_manager._launch_instances(launch_params)
             assert_that(assigned_nodes.get("Instances", [])).is_equal_to(expected_assigned_nodes)
@@ -1411,6 +1434,29 @@ class TestFleetManager:
         assert_that(create_fleet.call_count).is_equal_to(2)
         assert_that(launched).is_length(1)
 
+    def test_launch_ec2_instances_does_not_retry_throttling_with_a_blocking_error(self, mocker):
+        """A cause that fails every pool alike is reported instead of waiting for the rate limit to refill."""
+        mocker.patch("time.sleep")
+        fleet_manager = FleetManagerFactory.get_manager(
+            "hit", "region", "boto3_config", FLEET_CONFIG, "queue2", "fleet-ondemand", True, {}, {}
+        )
+        mocker.patch.object(fleet_manager, "_evaluate_launch_params", return_value={})
+        mocker.patch.object(fleet_manager, "_get_instances_info", return_value=([], []))
+        create_fleet = mocker.patch(
+            "slurm_plugin.fleet_manager.create_fleet",
+            return_value={
+                "Instances": [],
+                "Errors": [THROTTLING_ERROR, VCPU_LIMIT_ERROR] + [UNFULFILLED_OVERRIDE] * 34,
+                "ResponseMetadata": {"RequestId": "1234-abcde"},
+            },
+        )
+
+        with pytest.raises(LaunchInstancesError) as e:
+            fleet_manager.launch_ec2_instances(1)
+
+        assert_that(e.value.code).is_equal_to("VcpuLimitExceeded")
+        assert_that(create_fleet.call_count).is_equal_to(1)
+
     @pytest.mark.parametrize(
         ("err_list", "expected_error_code"),
         [
@@ -1426,6 +1472,18 @@ class TestFleetManager:
             # Nothing to prefer: report the first entry rather than let a hardcoded code be recorded.
             ([UNFULFILLED_OVERRIDE] * 36, "UnfulfillableCapacity"),
             ([UNSUPPORTED_ERROR, {"ErrorCode": "VcpuLimitExceeded", "ErrorMessage": "vCPU limit"}], "Unsupported"),
+            # Throttling is retried when every other cause is confined to a pool: other pools can serve the batch.
+            ([THROTTLING_ERROR, UNSUPPORTED_ERROR] + [UNFULFILLED_OVERRIDE] * 34, "RequestLimitExceeded"),
+            ([THROTTLING_ERROR, SUBNET_FULL_ERROR], "RequestLimitExceeded"),
+            (
+                [THROTTLING_ERROR, {"ErrorCode": "VolumeTypeNotAvailableInZone", "ErrorMessage": "io2"}],
+                "RequestLimitExceeded",
+            ),
+            # Any other cause would fail the retry on every pool alike, so it is reported instead of the throttling.
+            ([THROTTLING_ERROR, VCPU_LIMIT_ERROR] + [UNFULFILLED_OVERRIDE] * 34, "VcpuLimitExceeded"),
+            ([UNFULFILLED_OVERRIDE] * 34 + [VCPU_LIMIT_ERROR, THROTTLING_ERROR], "VcpuLimitExceeded"),
+            ([THROTTLING_ERROR, UNSUPPORTED_ERROR, VCPU_LIMIT_ERROR], "VcpuLimitExceeded"),
+            ([THROTTLING_ERROR, {"ErrorCode": "SomeFutureCode", "ErrorMessage": "?"}], "SomeFutureCode"),
             # An empty error list is the only case left to the caller, which records insufficient capacity.
             ([], None),
         ],
@@ -1437,6 +1495,13 @@ class TestFleetManager:
             "single_override_min_target_capacity",
             "only_unfulfilled_overrides",
             "two_real_causes",
+            "throttling_retried_with_capacity_error",
+            "throttling_retried_with_subnet_error",
+            "throttling_retried_with_az_volume_type_error",
+            "quota_error_blocks_retry",
+            "quota_error_blocks_retry_any_order",
+            "first_non_pool_error_reported",
+            "unknown_code_blocks_retry",
             "no_errors_reported",
         ],
     )
