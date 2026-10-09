@@ -9,6 +9,8 @@ This file is used to list changes made in each version of the aws-parallelcluste
 **BUG FIXES**
 - Fix an issue where EC2 throttling during compute node launch is not retried and is reported as insufficient capacity
   when using Multiple Instance Types or multiple subnets.
+- Fix an issue where the Comment and Extra fields of Slurm nodes and the Comment field of Slurm reservations
+  could alter the node and reservation information read by ParallelCluster.
 
 3.16.1
 ------

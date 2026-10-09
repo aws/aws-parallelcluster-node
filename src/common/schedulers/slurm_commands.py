@@ -75,9 +75,14 @@ SCONTROL_NODE_INFO_FIELD_REGEX = re.compile(
     r"|(LastBusyTime=\S+)"
     r"|(ReservationName=\S+)"
     r"|(InstanceId=\S+)"
-    r"|(Reason=.*)",
+    r"|(Reason=.*)"
+    r"|(Comment=.*)"
+    r"|(Extra=.*)",
     re.MULTILINE,
 )
+
+# Fields matched up to the end of the line and discarded, to prevent their free-text content from being parsed as fields
+SCONTROL_DISCARDED_FIELDS = ("Comment", "Extra")
 
 # Fields extracted from `scontrol show partitions` output. `(?<!Next)` ensures `State` is matched but
 # `NextState` is not.
@@ -426,6 +431,8 @@ def _extract_scontrol_records(raw_output: str, field_regex) -> List[Dict[str, st
         fields = {}
         for match in field_regex.finditer(record):
             key, _, value = match.group(0).partition("=")
+            if key in SCONTROL_DISCARDED_FIELDS:
+                continue
             fields[key] = value
         if fields:
             records.append(fields)

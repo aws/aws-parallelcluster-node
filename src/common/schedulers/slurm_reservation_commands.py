@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # Fields extracted from raw `scontrol show reservations` output. Only `ReservationName` is anchored at the
 # start of a line; `(?<!Next)` ensures `State` is matched but `NextState` is not.
 SCONTROL_RESERVATION_INFO_FIELD_REGEX = re.compile(
-    r"^(ReservationName=\S+)" r"|(?<!Next)(State=\S+)" r"|(Users=\S+)" r"|(Nodes=\S+)",
+    r"^(ReservationName=\S+)" r"|(?<!Next)(State=\S+)" r"|(Users=\S+)" r"|(Nodes=\S+)" r"|(Comment=.*)",
     re.MULTILINE,
 )
 
