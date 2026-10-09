@@ -480,6 +480,7 @@ def test_get_slurm_reservations_info(mocker):
         "   TRES=cpu=480\n"
         "   Users=root Groups=(null) Accounts=(null) Licenses=(null) State=ACTIVE BurstBuffer=(null) Watts=n/a\n"
         "   MaxStartDelay=(null)\n"
+        "   Comment=someComment Users=someUser State=someState Nodes=someNodes\n"
     )
     run_scontrol_command_mocked = mocker.patch(
         "common.schedulers.slurm_reservation_commands._run_scontrol_command",

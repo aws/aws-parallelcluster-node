@@ -1404,7 +1404,127 @@ def test_get_nodes_info_argument_validation(nodes, cmd_timeout, expected_scontro
                     },
                 ]
             ),
-        )
+        ),
+        pytest.param(
+            (
+                "NodeName=queue1-st-compute-resource-1-1 Arch=x86_64 CoresPerSocket=1\n"
+                "   NodeAddr=1.2.3.4 NodeHostName=queue1-st-compute-resource-1-1 Version=25.11.4\n"
+                "   State=IDLE+CLOUD ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   Partitions=queue1\n"
+                "   BootTime=2023-01-26T09:56:30 SlurmdStartTime=2023-01-26T09:57:15\n"
+                "   LastBusyTime=2023-01-26T09:57:15\n"
+                "   Reason=someReason InstanceId=someInstanceId\n"
+                "   Comment=someComment State=DOWN+DRAIN NodeAddr=someNodeAddr "
+                "InstanceId=someInstanceId Reason=someReason\n"
+                "   Extra=someExtra State=DOWN+DRAIN NodeAddr=someNodeAddr "
+                "InstanceId=someInstanceId Reason=someReason\n"
+                "   InstanceId=i-0abc123def456 InstanceType=t2.medium\n"
+            ),
+            [
+                {
+                    "NodeName": "queue1-st-compute-resource-1-1",
+                    "NodeAddr": "1.2.3.4",
+                    "NodeHostName": "queue1-st-compute-resource-1-1",
+                    "State": "IDLE+CLOUD",
+                    "Partitions": "queue1",
+                    "SlurmdStartTime": "2023-01-26T09:57:15",
+                    "LastBusyTime": "2023-01-26T09:57:15",
+                    "Reason": "someReason InstanceId=someInstanceId",
+                    "InstanceId": "i-0abc123def456",
+                }
+            ],
+            id="Free-text fields with key=value pairs are ignored",
+        ),
+        pytest.param(
+            (
+                "NodeName=queue1-st-compute-resource-1-1 Arch=x86_64 CoresPerSocket=1\n"
+                "   NodeAddr=1.2.3.4 NodeHostName=queue1-st-compute-resource-1-1 Version=25.11.4\n"
+                "   State=IDLE+CLOUD ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   Partitions=queue1 Comment=someComment State=DOWN+DRAIN InstanceId=someInstanceId\n"
+            ),
+            [
+                {
+                    "NodeName": "queue1-st-compute-resource-1-1",
+                    "NodeAddr": "1.2.3.4",
+                    "NodeHostName": "queue1-st-compute-resource-1-1",
+                    "State": "IDLE+CLOUD",
+                    "Partitions": "queue1",
+                }
+            ],
+            id="Free-text field sharing a line with other fields is ignored up to the end of the line",
+        ),
+        pytest.param(
+            (
+                "NodeName=q1-st-cr1-1 Arch=x86_64 CoresPerSocket=1 \n"
+                "   CPUAlloc=0 CPUEfctv=2 CPUTot=2 CPULoad=0.08\n"
+                "   AvailableFeatures=static,t3.medium,cr1\n"
+                "   ActiveFeatures=static,t3.medium,cr1\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=1.2.3.4 NodeHostName=q1-st-cr1-1 Version=25.11.8\n"
+                "   OS=Linux 6.12.110-135.202.amzn2023.x86_64 #1 SMP PREEMPT_DYNAMIC Fri Sep 25 01:45:58 UTC 2026 \n"
+                "   RealMemory=3891 AllocMem=0 FreeMem=2452 Sockets=2 Boards=1\n"
+                "   State=IDLE+CLOUD ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   Partitions=q1 \n"
+                "   BootTime=2026-10-08T19:57:35 SlurmdStartTime=2026-10-08T20:00:08\n"
+                "   LastBusyTime=2026-10-08T20:00:11 ResumeAfterTime=None\n"
+                "   CfgTRES=cpu=2,mem=3891M,billing=2\n"
+                "   AllocTRES=\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   Reason=Node start up [root@2026-10-08T20:00:11]\n"
+                "   Comment=someComment\n"
+                "   InstanceId=i-003d87dc15788298b InstanceType=t3.medium\n"
+            ),
+            [
+                {
+                    "NodeName": "q1-st-cr1-1",
+                    "NodeAddr": "1.2.3.4",
+                    "NodeHostName": "q1-st-cr1-1",
+                    "State": "IDLE+CLOUD",
+                    "Partitions": "q1",
+                    "SlurmdStartTime": "2026-10-08T20:00:08",
+                    "LastBusyTime": "2026-10-08T20:00:11",
+                    "Reason": "Node start up [root@2026-10-08T20:00:11]",
+                    "InstanceId": "i-003d87dc15788298b",
+                }
+            ],
+            id="Real Slurm 25.11.8 output with Comment",
+        ),
+        pytest.param(
+            (
+                "NodeName=q1-st-cr1-1 Arch=x86_64 CoresPerSocket=1 \n"
+                "   CPUAlloc=0 CPUEfctv=2 CPUTot=2 CPULoad=0.08\n"
+                "   AvailableFeatures=static,t3.medium,cr1\n"
+                "   ActiveFeatures=static,t3.medium,cr1\n"
+                "   Gres=(null)\n"
+                "   NodeAddr=1.2.3.4 NodeHostName=q1-st-cr1-1 Version=25.11.8\n"
+                "   OS=Linux 6.12.110-135.202.amzn2023.x86_64 #1 SMP PREEMPT_DYNAMIC Fri Sep 25 01:45:58 UTC 2026 \n"
+                "   RealMemory=3891 AllocMem=0 FreeMem=2452 Sockets=2 Boards=1\n"
+                "   State=IDLE+CLOUD ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+                "   Partitions=q1 \n"
+                "   BootTime=2026-10-08T19:57:35 SlurmdStartTime=2026-10-08T20:00:08\n"
+                "   LastBusyTime=2026-10-08T20:00:11 ResumeAfterTime=None\n"
+                "   CfgTRES=cpu=2,mem=3891M,billing=2\n"
+                "   AllocTRES=\n"
+                "   CurrentWatts=0 AveWatts=0\n"
+                "   Reason=Node start up [root@2026-10-08T20:00:11]\n"
+                "   Comment=someComment State=DOWN+DRAIN InstanceId=someInstanceId NodeAddr=someNodeAddr\n"
+                "   InstanceId=i-003d87dc15788298b InstanceType=t3.medium\n"
+            ),
+            [
+                {
+                    "NodeName": "q1-st-cr1-1",
+                    "NodeAddr": "1.2.3.4",
+                    "NodeHostName": "q1-st-cr1-1",
+                    "State": "IDLE+CLOUD",
+                    "Partitions": "q1",
+                    "SlurmdStartTime": "2026-10-08T20:00:08",
+                    "LastBusyTime": "2026-10-08T20:00:11",
+                    "Reason": "Node start up [root@2026-10-08T20:00:11]",
+                    "InstanceId": "i-003d87dc15788298b",
+                }
+            ],
+            id="Real Slurm 25.11.8 output with Comment containing fields",
+        ),
     ],
 )
 def test_extract_scontrol_records(scontrol_output, expected_parsed_output):
@@ -1556,6 +1676,45 @@ def test_run_scontrol_command_oserror_raises_and_logs(mocker, caplog):
     with pytest.raises(OSError):
         _run_scontrol_command("show nodes q1-st-c5-1")
     assert_that(caplog.text).contains("Unable to execute scontrol command")
+
+
+@pytest.mark.parametrize(
+    "free_text_fields",
+    [
+        pytest.param(["Comment"], id="Comment"),
+        pytest.param(["Extra"], id="Extra"),
+        pytest.param(["Comment", "Extra"], id="Comment and Extra"),
+    ],
+)
+def test_get_nodes_info_ignores_fields_in_free_text_fields(free_text_fields, mocker):
+    # A Comment or Extra containing key=value pairs must not alter the node information, e.g. making a healthy node
+    # drained
+    mocker.patch(
+        "common.schedulers.slurm_commands._run_scontrol_command",
+        return_value=(
+            "NodeName=q1-st-cr1-1 Arch=x86_64 CoresPerSocket=1 \n"
+            "   NodeAddr=1.2.3.4 NodeHostName=q1-st-cr1-1 Version=1.2.3\n"
+            "   State=IDLE+CLOUD ThreadsPerCore=1 TmpDisk=0 Weight=1 Owner=N/A MCS_label=N/A\n"
+            "   Partitions=q1 \n"
+            "   BootTime=2026-10-08T19:57:35 SlurmdStartTime=2026-10-08T20:00:08\n"
+            "   LastBusyTime=2026-10-08T20:00:11 ResumeAfterTime=None\n"
+            + "".join(
+                f"   {field}=some{field} State=DOWN+DRAIN NodeAddr=someNodeAddr InstanceId=someInstanceId\n"
+                for field in free_text_fields
+            )
+            + "   InstanceId=i-0123456789abcdefg InstanceType=t3.medium\n\n"
+        ),
+        autospec=True,
+    )
+
+    nodes = get_nodes_info("q1-st-cr1-1")
+
+    assert_that(nodes).is_length(1)
+    assert_that(nodes[0]).is_instance_of(StaticNode)
+    assert_that(nodes[0].state_string).is_equal_to("IDLE+CLOUD")
+    assert_that(nodes[0].is_drained()).is_false()
+    assert_that(nodes[0].nodeaddr).is_equal_to("1.2.3.4")
+    assert_that(nodes[0].instance_id).is_equal_to("i-0123456789abcdefg")
 
 
 def test_get_nodes_info_parsing_failure_propagates(mocker):
