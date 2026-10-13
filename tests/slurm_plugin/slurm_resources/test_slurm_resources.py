@@ -18,6 +18,7 @@ from slurm_plugin.slurm_resources import (
     DynamicNode,
     EC2InstanceHealthState,
     InvalidNodenameError,
+    JobOversubscribe,
     MissingInstance,
     SlurmPartition,
     SlurmResumeJob,
@@ -1528,7 +1529,7 @@ def test_get_node_list(nodenames, expected_node_list, expected_exception):
 
 class TestSlurmJob:
     @pytest.mark.parametrize(
-        "job_json, expected_nodes_alloc, expected_nodes_resume, expected_is_exclusive, expected_exception",
+        "job_json, expected_nodes_alloc, expected_nodes_resume, expected_oversubscribe, expected_exception",
         [
             (
                 {
@@ -1543,7 +1544,7 @@ class TestSlurmJob:
                 },
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4", "queue1-st-c5xlarge-5"],
                 ["queue1-st-c5xlarge-7", "queue1-st-c5xlarge-8"],
-                True,
+                JobOversubscribe.NO,
                 False,
             ),
             (
@@ -1559,7 +1560,7 @@ class TestSlurmJob:
                 },
                 ["queue1-st-c5xlarge-1", "queue1-st-c5xlarge-3", "queue1-st-c5xlarge-4", "queue1-st-c5xlarge-5"],
                 ["queue1-st-c5xlarge-7", "queue1-st-c5xlarge-8"],
-                False,
+                JobOversubscribe.YES,
                 False,
             ),
             (
@@ -1607,13 +1608,51 @@ class TestSlurmJob:
                 },
                 ["queue1-st-c5xlarge-1"],
                 ["queue1-st-c5xlarge-1"],
+                JobOversubscribe.OK,
                 False,
+            ),
+            # Slurm 26.05 adds exclusive and priority
+            (
+                {
+                    "exclusive": "NODE",
+                    "extra": None,
+                    "job_id": 140816,
+                    "priority": 1,
+                    "features": None,
+                    "nodes_alloc": "queue1-st-c5xlarge-1",
+                    "nodes_resume": "queue1-st-c5xlarge-1",
+                    "oversubscribe": "NO",
+                    "partition": "cloud_exclusive",
+                    "reservation": None,
+                },
+                ["queue1-st-c5xlarge-1"],
+                ["queue1-st-c5xlarge-1"],
+                JobOversubscribe.NO,
+                False,
+            ),
+            # Fields a future Slurm adds to the Resume File must not break the resume
+            (
+                {
+                    "exclusive": "TOPO",
+                    "extra": None,
+                    "job_id": 140816,
+                    "features": None,
+                    "nodes_alloc": "queue1-st-c5xlarge-1",
+                    "nodes_resume": "queue1-st-c5xlarge-1",
+                    "oversubscribe": "NO",
+                    "partition": "cloud",
+                    "reservation": None,
+                    "field_added_by_a_future_slurm": "value",
+                },
+                ["queue1-st-c5xlarge-1"],
+                ["queue1-st-c5xlarge-1"],
+                JobOversubscribe.NO,
                 False,
             ),
         ],
     )
     def test_slurm_job(
-        self, job_json, expected_nodes_alloc, expected_nodes_resume, expected_is_exclusive, expected_exception
+        self, job_json, expected_nodes_alloc, expected_nodes_resume, expected_oversubscribe, expected_exception
     ):
         if expected_exception:
             with pytest.raises(InvalidNodenameError):
@@ -1622,7 +1661,9 @@ class TestSlurmJob:
             job = SlurmResumeJob(**job_json)
             assert_that(job.nodes_alloc).is_equal_to(expected_nodes_alloc)
             assert_that(job.nodes_resume).is_equal_to(expected_nodes_resume)
-            assert_that(job.is_exclusive()).is_equal_to(expected_is_exclusive)
+            assert_that(job.oversubscribe).is_equal_to(expected_oversubscribe)
+            assert_that(job.exclusive).is_equal_to(job_json.get("exclusive"))
+            assert_that(job.priority).is_equal_to(job_json.get("priority"))
 
     @pytest.mark.parametrize(
         "jobs_json, expected_equal",
@@ -1788,7 +1829,9 @@ class TestSlurmJob:
                 "partition='cloud_exclusive', "
                 "reservation=None, "
                 "features=None, "
-                "extra=None)",
+                "extra=None, "
+                "exclusive=None, "
+                "priority=None)",
             ),
         ],
     )
