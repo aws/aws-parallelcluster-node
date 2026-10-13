@@ -126,8 +126,16 @@ class SlurmResumeJob(SlurmJob):
         reservation="",
         features="",
         extra="",
+        exclusive=None,
+        priority=None,
+        **unknown_fields,
     ):
-        """Initialize Slurm job with attributes."""
+        """
+        Initialize Slurm job with attributes.
+
+        Slurm adds fields to the jobs of the Resume File over time (exclusive and priority in 26.05), so fields this
+        class does not know are ignored rather than rejected: rejecting them fails the resume of every node.
+        """
         super().__init__(
             job_id,
         )
@@ -139,9 +147,10 @@ class SlurmResumeJob(SlurmJob):
         self.reservation = reservation
         self.features = features
         self.extra = extra
-
-    def is_exclusive(self):
-        return self.oversubscribe == JobOversubscribe.NO
+        self.exclusive = exclusive
+        self.priority = priority
+        if unknown_fields:
+            logger.debug("Ignoring unknown fields of job %s in Slurm Resume File: %s", job_id, unknown_fields)
 
     def __eq__(self, other):
         """Compare 2 SlurmJob objects."""
