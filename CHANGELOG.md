@@ -6,9 +6,6 @@ This file is used to list changes made in each version of the aws-parallelcluste
 3.16.2
 ------
 
-**ENHANCEMENTS**
-- Support Slurm 26.05. Previous ParallelCluster versions are not compatible with Slurm 26.05.
-
 **BUG FIXES**
 - Fix an issue where EC2 throttling during compute node launch is not retried and is reported as insufficient capacity
   when using Multiple Instance Types or multiple subnets.
