@@ -3,17 +3,14 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-3.17.0
+3.16.2
 ------
 
-**ENHANCEMENTS**
-- Support Slurm 26.05. Previous ParallelCluster versions are not compatible with Slurm 26.05.
-
 **BUG FIXES**
-- Fix an issue where EC2 throttling during compute node launch is not retried and is reported as insufficient capacity
-  when using Multiple Instance Types or multiple subnets.
-- Fix an issue where the Comment and Extra fields of Slurm nodes and the Comment field of Slurm reservations
-  could alter the node and reservation information read by ParallelCluster.
+- Fix EC2 throttling during compute node launch not being retried and being reported as insufficient capacity
+  when using multiple instance types or multiple subnets.
+- Fix ParallelCluster treating `key=value` text in the `Comment` and `Extra` fields of Slurm nodes and reservations
+  as actual properties.
 
 3.16.1
 ------
