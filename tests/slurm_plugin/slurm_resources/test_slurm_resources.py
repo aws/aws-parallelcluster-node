@@ -1252,6 +1252,37 @@ def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
             {"queue1-st-c5xlarge-1": MissingInstance("queue1-st-c5xlarge-1", "ip-1", 1)},
             True,
         ),
+        (
+            # Node of GitHub issue #7671: nodeaddr reset to the node name, InstanceId of a terminated instance
+            DynamicNode(
+                "node-dy-c5xlarge-1",
+                "node-dy-c5xlarge-1",
+                "hostname",
+                "IDLE+CLOUD+COMPLETING+POWER_DOWN",
+                "node",
+                instance_id="i-1",
+            ),
+            None,
+            0,
+            {},
+            {},
+            False,
+        ),
+        (
+            DynamicNode(
+                "node-dy-c5xlarge-1",
+                "node-dy-c5xlarge-1",
+                "hostname",
+                "IDLE+CLOUD+POWERING_DOWN",
+                "node",
+                instance_id="i-1",
+            ),
+            None,
+            0,
+            {},
+            {},
+            True,
+        ),
     ],
     ids=[
         "static_no_backing_zero_max_count",
@@ -1262,6 +1293,8 @@ def test_slurm_node_is_powering_down_with_nodeaddr(node, expected_result):
         "static_no_backing_with_count_exceeded",
         "static_backed_with_count_exceeded",
         "static_no_backing_count_not_exceeded_with_wrong_ip",
+        "dynamic_nodeaddr_reset_with_instance_id_no_backing",
+        "dynamic_powering_down_with_instance_id_no_backing",
     ],
 )
 def test_slurm_node_is_backing_instance_valid(node, instance, max_count, count_map, final_map, expected_result):
@@ -1276,6 +1309,69 @@ def test_slurm_node_is_backing_instance_valid(node, instance, max_count, count_m
         assert_that(count_map[node.name].count).is_equal_to(final_map.get(node.name, None).count)
         assert_that(count_map[node.name].ip).is_equal_to(final_map.get(node.name, None).ip)
         assert_that(count_map[node.name].ip).is_equal_to(node.nodeaddr)
+
+
+@pytest.mark.parametrize(
+    "node, expected_result",
+    [
+        (DynamicNode("queue1-dy-c5xlarge-1", "ip-1", "hostname", "MIXED+CLOUD", "queue1"), True),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "hostname",
+                "IDLE+CLOUD+COMPLETING+POWER_DOWN",
+                "queue1",
+                instance_id="i-1",
+            ),
+            True,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "hostname",
+                "IDLE+CLOUD+POWERING_DOWN",
+                "queue1",
+                instance_id="i-1",
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1",
+                "queue1-dy-c5xlarge-1",
+                "hostname",
+                "IDLE+CLOUD+POWERED_DOWN",
+                "queue1",
+                instance_id="i-1",
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "IDLE+CLOUD+POWERED_DOWN", "queue1"
+            ),
+            False,
+        ),
+        (
+            DynamicNode(
+                "queue1-dy-c5xlarge-1", "queue1-dy-c5xlarge-1", "hostname", "MIXED+CLOUD+POWERING_UP", "queue1"
+            ),
+            False,
+        ),
+    ],
+    ids=[
+        "nodeaddr_set",
+        "nodeaddr_reset_with_instance_id",
+        "powering_down_with_instance_id",
+        "powered_down_with_instance_id",
+        "powered_down",
+        "powering_up_before_resume",
+    ],
+)
+def test_slurm_node_is_instance_expected(node, expected_result):
+    assert_that(node.is_instance_expected()).is_equal_to(expected_result)
 
 
 @pytest.mark.parametrize(
