@@ -452,19 +452,31 @@ class SlurmNode(metaclass=ABCMeta):
         # for example because of a short SuspendTimeout
         return self.is_nodeaddr_set() and (self.is_power() or self.is_powering_down())
 
+    def is_instance_expected(self):
+        """
+        Check if a slurm node is expected to be backed by an EC2 instance.
+
+        A node is expected to have an instance if its nodeaddr is set, or if its InstanceId is set and the node is
+        not powering down or powered down. The InstanceId still identifies the node's instance after the nodeaddr
+        has been reset to the node name, until Slurm clears it when the node reaches POWERED_DOWN.
+        """
+        return self.is_nodeaddr_set() or (
+            bool(self.instance_id) and not (self.is_powering_down() or self.is_powered_down())
+        )
+
     def is_backing_instance_valid(
         self,
         ec2_instance_missing_max_count,
         nodes_without_backing_instance_count_map: dict[str, MissingInstance],
         log_warn_if_unhealthy=True,
     ):
-        """Check if a slurm node's addr is set, it points to a valid instance in EC2."""
+        """Check if a slurm node expected to be backed by an instance points to a valid instance in EC2."""
         # Perform this logic only once and return the result thereafter
         if self.ec2_backing_instance_valid is not None:
             return self.ec2_backing_instance_valid
         # Set ec2_backing_instance_valid to True since it will be the result most often
         self.ec2_backing_instance_valid = True
-        if self.is_nodeaddr_set() and not self.instance:
+        if self.is_instance_expected() and not self.instance:
             if log_warn_if_unhealthy:
                 logger.warning(
                     "Node state check: no corresponding instance in EC2 for node %s, node state: %s",
