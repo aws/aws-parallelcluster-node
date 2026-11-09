@@ -49,6 +49,18 @@ logger = logging.getLogger(__name__)
 BOTO3_PAGINATION_PAGE_SIZE = 1000
 BOTO3_MAX_BATCH_SIZE = 50
 
+# RunInstances rejects a request launching more network interfaces than allowed (MaxCount multiplied by the network
+# interfaces of each instance) with this code, launching nothing. Instance types with many network interfaces
+# (e.g. p6-b300 with 17) hit it with the default launch batch size, so the batch is split and launched again.
+REQUEST_ATTACHMENT_LIMIT_ERROR_CODE = "AttachmentLimitExceeded"
+
+
+def _get_launch_error_code(exception):
+    """Return the EC2 error code of a failed launch, None if it is unknown."""
+    if isinstance(exception, ClientError):
+        return exception.response.get("Error", {}).get("Code")
+    return getattr(exception, "code", None)
+
 
 class HostnameTableStoreError(Exception):
     """Raised when error occurs while writing into hostname table."""
@@ -948,7 +960,9 @@ class InstanceManager:
 
                     fleet_manager = self._get_fleet_manager(all_or_nothing_batch, compute_resource, queue)
 
-                    for batch_nodes in grouper(slurm_node_list, launch_batch_size):
+                    pending_batches = list(grouper(slurm_node_list, launch_batch_size))
+                    while pending_batches:
+                        batch_nodes = pending_batches.pop(0)
                         try:
                             launched_ec2_instances = self._launch_ec2_instances(
                                 batch_nodes, compute_resource, fleet_manager, instances_launched, job, queue
@@ -962,16 +976,28 @@ class InstanceManager:
                                 # This path handle the CreateFleet case, which doesn't fail when no capacity is returned
                                 return instances_launched
                         except (ClientError, Exception) as e:
+                            error_code = _get_launch_error_code(e)
+                            if error_code == REQUEST_ATTACHMENT_LIMIT_ERROR_CODE and len(batch_nodes) > 50:
+                                # Nothing was launched: retry this and the remaining batches at half the size
+                                split_batch_size = (len(batch_nodes) + 1) // 2
+                                logger.warning(
+                                    "Launch request for nodes %s exceeded the network interfaces allowed in a single "
+                                    "request, retrying in batches of %s nodes",
+                                    print_with_count(batch_nodes),
+                                    split_batch_size,
+                                )
+                                remaining_nodes = [node for batch in [batch_nodes, *pending_batches] for node in batch]
+                                pending_batches = list(grouper(remaining_nodes, split_batch_size))
+                                continue
+
                             logger.error(
                                 "Encountered exception when launching instances for nodes %s: %s",
                                 print_with_count(batch_nodes),
                                 e,
                             )
                             update_failed_nodes_parameters = {"nodeset": set(batch_nodes)}
-                            if isinstance(e, ClientError):
-                                update_failed_nodes_parameters["error_code"] = e.response.get("Error", {}).get("Code")
-                            elif isinstance(e, Exception) and hasattr(e, "code"):
-                                update_failed_nodes_parameters["error_code"] = e.code
+                            if error_code is not None:
+                                update_failed_nodes_parameters["error_code"] = error_code
                             self._update_failed_nodes(**update_failed_nodes_parameters)
 
                             if job and all_or_nothing_batch:
