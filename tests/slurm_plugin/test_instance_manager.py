@@ -21,6 +21,7 @@ import botocore
 import pytest
 import slurm_plugin
 from assertpy import assert_that
+from botocore.exceptions import ClientError
 from slurm_plugin.common import ScalingStrategy
 from slurm_plugin.fleet_manager import EC2Instance, LaunchInstancesError
 from slurm_plugin.instance_manager import (
@@ -4095,6 +4096,74 @@ class TestJobLevelScalingInstanceManager:
         )
 
         assert_that(instance_manager.failed_nodes).is_equal_to({"VcpuLimitExceeded": {"queue2-dy-fleet-ondemand-1"}})
+
+    @staticmethod
+    def _mock_run_instances_with_network_interfaces(mocker, network_interfaces_per_instance, max_per_request=5000):
+        """Mock RunInstances rejecting requests over the network interfaces per request limit, like EC2 does."""
+        requested_counts = []
+
+        def _run_instances(region, boto3_config, run_instances_kwargs):
+            count = run_instances_kwargs["MaxCount"]
+            requested_counts.append(count)
+            if network_interfaces_per_instance > max_per_request or count * network_interfaces_per_instance > (
+                max_per_request
+            ):
+                raise ClientError(
+                    {"Error": {"Code": "AttachmentLimitExceeded", "Message": "exceeds the maximum allowed limit"}},
+                    "RunInstances",
+                )
+            first_id = sum(requested_counts[:-1])
+            return {
+                "Instances": [
+                    {
+                        "InstanceId": f"i-{first_id + index}",
+                        "PrivateIpAddress": f"ip.{first_id + index}",
+                        "PrivateDnsName": f"ip-{first_id + index}",
+                        "NetworkInterfaces": [],
+                        "LaunchTime": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                    }
+                    for index in range(count)
+                ]
+            }
+
+        mocker.patch("slurm_plugin.fleet_manager.run_instances", side_effect=_run_instances)
+        return requested_counts
+
+    @pytest.mark.parametrize("scaling_strategy", [ScalingStrategy.BEST_EFFORT, ScalingStrategy.ALL_OR_NOTHING])
+    def test_launch_instances_splits_batch_over_interfaces_limit(self, mocker, instance_manager, scaling_strategy):
+        """A batch over the network interfaces per request limit is launched again in smaller batches."""
+        requested_counts = self._mock_run_instances_with_network_interfaces(mocker, network_interfaces_per_instance=17)
+        node_list = [f"queue1-st-c5xlarge-{index}" for index in range(1, 601)]
+
+        instances_launched = instance_manager._launch_instances(
+            job=None,
+            nodes_to_launch={"queue1": {"c5xlarge": node_list}},
+            launch_batch_size=500,
+            scaling_strategy=scaling_strategy,
+        )
+
+        # 500 x 17 = 8500 fails; the batch and the remaining 100 nodes are relaunched in batches of 250 (4250)
+        assert_that(requested_counts).is_equal_to([500, 250, 250, 100])
+        assert_that(instances_launched["queue1"]["c5xlarge"]).is_length(600)
+        assert_that(instance_manager.failed_nodes).is_empty()
+
+    def test_launch_instances_stops_splitting_when_single_instance_exceeds_limit(self, mocker, instance_manager):
+        """An instance alone over the limit fails its nodes with the EC2 error code; small batches are not split."""
+        requested_counts = self._mock_run_instances_with_network_interfaces(
+            mocker, network_interfaces_per_instance=17, max_per_request=16
+        )
+        node_list = [f"queue1-st-c5xlarge-{index}" for index in range(1, 501)]
+
+        instance_manager._launch_instances(
+            job=None,
+            nodes_to_launch={"queue1": {"c5xlarge": node_list}},
+            launch_batch_size=500,
+            scaling_strategy=ScalingStrategy.BEST_EFFORT,
+        )
+
+        # Batches of 50 nodes or fewer are not split: 4 splits down to 32, then the 500 nodes in batches of 32
+        assert_that(requested_counts).is_equal_to([500, 250, 125, 63] + [32] * 15 + [20])
+        assert_that(instance_manager.failed_nodes).is_equal_to({"AttachmentLimitExceeded": set(node_list)})
 
     @pytest.mark.parametrize(
         "job_list, launch_batch_size, assign_node_batch_size, update_node_address, "

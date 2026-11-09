@@ -3,12 +3,13 @@ aws-parallelcluster-node CHANGELOG
 
 This file is used to list changes made in each version of the aws-parallelcluster-node package.
 
-3.17.0
+3.16.3
 ------
 
 **BUG FIXES**
 - Fix dynamic nodes getting stuck in `COMPLETING` state indefinitely, holding their jobs, when the backing instance
   of a node with jobs is terminated and its private IP is reused by another compute node.
+- Fix compute nodes with more than 10 network interfaces each failing to launch in large numbers at once.
 
 3.16.2
 ------
