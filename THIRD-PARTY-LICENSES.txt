@@ -1,5 +1,5 @@
 boto3
-1.43.117
+1.44.0
 Apache-2.0
 Amazon Web Services
 https://github.com/boto/boto3
@@ -183,7 +183,7 @@ https://github.com/boto/boto3
 
 
 botocore
-1.43.117
+1.44.0
 Apache-2.0
 Amazon Web Services
 https://github.com/boto/botocore
