@@ -41,7 +41,7 @@ setup(
     author="Amazon Web Services",
     description="aws-parallelcluster-node provides the scripts for an AWS ParallelCluster node.",
     url="https://github.com/aws/aws-parallelcluster-node",
-    license="Apache License 2.0",
+    license="Apache-2.0",
     packages=find_packages("src", exclude=["tests"]),
     package_dir={"": "src"},
     python_requires=">=3.14",
@@ -58,6 +58,5 @@ setup(
         "Environment :: Console",
         "Programming Language :: Python",
         "Topic :: Scientific/Engineering",
-        "License :: OSI Approved :: Apache Software License",
     ],
 )
